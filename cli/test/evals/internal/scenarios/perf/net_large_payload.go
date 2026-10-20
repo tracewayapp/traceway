@@ -26,7 +26,7 @@ func pncMobileUA(r *seed.Req) bool {
 func pncSeedLargePayload(s *seed.Scenario) error {
 	window := 2 * 24 * time.Hour
 	p := s.Project("social", seed.OTel)
-	api := p.Service("feed-api", seed.Go("nethttp", "pgx")).Versions("8.4.2")
+	api := p.Service("feed-api", seed.Go("nethttp", "sql")).Versions("8.4.2")
 
 	feed := api.Endpoint("GET", "/api/feed")
 	feed.Traffic(seed.Daily(2400), seed.Diurnal(), seed.Over(window))
@@ -38,7 +38,7 @@ func pncSeedLargePayload(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.3, 0.9))
 		r.DB("SELECT c.id, c.kind, c.title, c.body, c.image_data, c.published_at, a.id, a.display_name, a.avatar_data FROM feed_cards c JOIN authors a ON a.id = c.author_id WHERE c.audience = ANY($1) ORDER BY c.published_at DESC LIMIT $2",
 			r.LogNormal(14*time.Millisecond, 32*time.Millisecond), seed.Rows(50))
-		r.Compute("rank cards", r.Ms(2, 6))
+		r.Compute("rank cards", r.Ms(2, 6)).Scope = "feed-api"
 		// json.NewEncoder(w).Encode writes the body as it encodes; on a
 		// slow link the writes block until the client has read it.
 		mbps := 40 + 110*r.Float()
@@ -48,7 +48,7 @@ func pncSeedLargePayload(s *seed.Scenario) error {
 		r.Gap(r.Ms(14, 30) + time.Duration(float64(size)*8/(mbps*1e6)*float64(time.Second)))
 	})
 
-	card := api.Endpoint("GET", "/api/feed/cards/:id")
+	card := api.Endpoint("GET", "/api/feed/cards/{id}")
 	card.Traffic(seed.Daily(900), seed.Diurnal(), seed.Over(window))
 	card.Handler(func(r *seed.Req) {
 		size := 2200 + r.IntN(1800)
@@ -65,7 +65,7 @@ func pncSeedLargePayload(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.5, 1.5) + time.Duration(float64(size)*8/(mbps*1e6)*float64(time.Second)))
 	})
 
-	authors := api.Endpoint("GET", "/api/authors/:id")
+	authors := api.Endpoint("GET", "/api/authors/{id}")
 	authors.Traffic(seed.Daily(600), seed.Diurnal(), seed.Over(window))
 	authors.Handler(func(r *seed.Req) {
 		r.RootAttr("http.response.body.size", 900+r.IntN(700))

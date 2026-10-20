@@ -51,7 +51,7 @@ func papSeedLargeAlloc(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.8, 2))
 		var w papWeighted
 		spanAt := r.At() // Req.At inside Span counts from the span's start
-		r.Span("RetentionService.buildCohorts", func(r *seed.Req) {
+		cohorts := r.Span("RetentionService.buildCohorts", func(r *seed.Req) {
 			r.DB("SELECT id, name, timezone FROM workspaces WHERE id = ?", r.Ms(0.8, 2))
 			fetch := time.Duration((0.15 + rows*0.9e-6) * (0.9 + 0.2*r.Float()) * float64(time.Second))
 			start := spanAt.Add(r.At().Sub(r.Start()))
@@ -60,6 +60,7 @@ func papSeedLargeAlloc(s *seed.Scenario) error {
 			r.Gap(build) // group by user, sort, bucket into cohorts
 			w = papWeighted{start, start.Add(fetch + build), rows}
 		}, seed.A("code.function", "buildCohorts"), seed.A("code.namespace", "com.acme.insights.retention.RetentionService"))
+		cohorts.Scope = pncAnnotationsScope
 		work = append(work, w)
 		workOf[r.Request()] = w
 		sorted = false

@@ -3,7 +3,9 @@
 Invoices for the billing product: create, list and show invoices, and the
 monthly invoice export accounting downloads at month end. Go, `net/http`,
 PostgreSQL through `database/sql`. Traces, logs and metrics go to Traceway
-over OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT`).
+over OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT`); production builds
+(`go build -tags otel`) install otelhttp and otelsql through
+`internal/telemetry`.
 
 ```
 go test ./...

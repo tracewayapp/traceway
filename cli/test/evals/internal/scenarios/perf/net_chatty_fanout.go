@@ -39,13 +39,13 @@ func pncSeedChattyFanout(s *seed.Scenario) error {
 	inventory := fulfil.Service("inventory-service", seed.Python("fastapi", "psycopg")).Versions("1.9.4")
 
 	sku := ""
-	cartGet := carts.Endpoint("GET", "/carts/:id")
+	cartGet := carts.Endpoint("GET", "/carts/{id}")
 	cartGet.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.2, 0.5))
 		r.DB("SELECT sku, qty, added_at FROM cart_lines WHERE cart_id = $1 ORDER BY added_at", r.LogNormal(3*time.Millisecond, 8*time.Millisecond))
 		r.Compute("encode response", r.Ms(0.2, 0.6))
 	})
-	product := catalog.Endpoint("GET", "/products/:sku")
+	product := catalog.Endpoint("GET", "/products/{sku}")
 	product.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.1, 0.3))
 		r.Cache("get", "product:"+sku, r.Ms(0.3, 0.9))
@@ -60,12 +60,12 @@ func pncSeedChattyFanout(s *seed.Scenario) error {
 		r.Cache("mget", "product:"+pncSku(r), r.Ms(0.5, 1.4))
 		r.Compute("encode response", r.Ms(0.4, 1.2))
 	})
-	price := pricing.Endpoint("GET", "/prices/:sku")
+	price := pricing.Endpoint("GET", "/prices/{sku}")
 	price.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.2, 0.6))
 		r.DB("SELECT amount_minor, currency, valid_until FROM price_book WHERE sku = ? AND price_list = ? AND currency = ?", r.LogNormal(1500*time.Microsecond, 4*time.Millisecond))
 	})
-	stock := inventory.Endpoint("GET", "/stock/:sku")
+	stock := inventory.Endpoint("GET", "/stock/{sku}")
 	stock.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.2, 0.5))
 		r.Cache("GET", "stock:eu-central:"+sku, r.Ms(0.4, 1.1))
@@ -82,7 +82,7 @@ func pncSeedChattyFanout(s *seed.Scenario) error {
 		lines[r.Request()] = n
 		cartID := fmt.Sprintf("c_%07d", r.IntN(9000000))
 		r.Gap(r.Ms(0.4, 1.0))
-		r.Cache("GET", "sess:"+fmt.Sprintf("%x", r.IntN(1<<30)), r.Ms(0.4, 1.2))
+		r.Cache("get", "sess:"+fmt.Sprintf("%x", r.IntN(1<<30)), r.Ms(0.4, 1.2))
 		pncCall(r, cartGet, rtt(r), "/carts/"+cartID, "")
 		for range n {
 			sku = pncSku(r)
@@ -97,7 +97,7 @@ func pncSeedChattyFanout(s *seed.Scenario) error {
 	wish.Traffic(seed.Daily(240), seed.Diurnal(), seed.Over(window))
 	wish.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.4, 1.0))
-		r.Cache("GET", "sess:"+fmt.Sprintf("%x", r.IntN(1<<30)), r.Ms(0.4, 1.2))
+		r.Cache("get", "sess:"+fmt.Sprintf("%x", r.IntN(1<<30)), r.Ms(0.4, 1.2))
 		r.DB("SELECT sku FROM wishlist_items WHERE customer_id = $1 ORDER BY added_at DESC LIMIT 50", r.LogNormal(3*time.Millisecond, 8*time.Millisecond), seed.Rows(5+r.IntN(30)))
 		pncCall(r, productsBatch, rtt(r), "/products/batch", "")
 		r.Gap(r.Ms(0.8, 2))

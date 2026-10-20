@@ -10,7 +10,8 @@ portal's pages by calling the internal services:
 | notifications-service | unread notifications |
 | recommendations-service | suggested catalog items |
 
-Traces go to Traceway over OTLP (`src/tracing.ts`, loaded with `node -r`).
+Traces and logs (the access log in `src/access-log.ts`) go to Traceway over
+OTLP (`src/tracing.ts`, loaded with `node -r`).
 
 ```
 npm run build && npm start

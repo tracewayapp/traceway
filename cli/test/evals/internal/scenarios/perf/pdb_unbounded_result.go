@@ -9,6 +9,15 @@ import (
 
 func init() { scenarios.Register("perf/db-unbounded-result", pdbSeedUnboundedResult) }
 
+// pdbWebMvcScope reports the controller spans the Java agent records with
+// controller telemetry on (ClassName.method around the handler invocation).
+const pdbWebMvcScope = "io.opentelemetry.spring-webmvc-6.0"
+
+func pdbController(r *seed.Req, name string, f func(r *seed.Req)) {
+	sp := r.Span(name, f)
+	sp.Scope = pdbWebMvcScope
+}
+
 // pdbSeedUnboundedResult: the admin audit log returns every event an
 // organization ever recorded, with no LIMIT. Events accrue every day, so the
 // rows each request returns (db.response.returned_rows) grow week over week,
@@ -19,6 +28,7 @@ func init() { scenarios.Register("perf/db-unbounded-result", pdbSeedUnboundedRes
 // big query's cost per row returned stays flat while the rows grow.
 func pdbSeedUnboundedResult(s *seed.Scenario) error {
 	window := 29 * 24 * time.Hour
+	const roleSQL = "SELECT m.role FROM org_members m WHERE m.org_id = ? AND m.user_id = ?"
 	p := s.Project("ledgerly", seed.OTel)
 	api := p.Service("admin-api", seed.Java("spring")).Versions("3.18.1")
 
@@ -48,8 +58,8 @@ func pdbSeedUnboundedResult(s *seed.Scenario) error {
 			r.KeepDetail()
 		}
 		r.Gap(r.Ms(0.6, 1.8)) // Spring Security filter chain
-		r.Span("AuditLogController.list", func(r *seed.Req) {
-			r.DB("SELECT m.role FROM org_members m WHERE m.org_id = ? AND m.user_id = ?", r.Ms(0.5, 1.4), seed.Rows(1))
+		pdbController(r, "AuditLogController.list", func(r *seed.Req) {
+			r.DB(roleSQL, r.Ms(0.5, 1.4), seed.Rows(1))
 			perRow := 0.017 + 0.003*r.Float()
 			r.DB("SELECT e.id, e.actor_id, e.action, e.target_type, e.target_id, e.ip_address, e.user_agent, e.created_at FROM audit_events e WHERE e.org_id = ? ORDER BY e.created_at DESC",
 				pdbDur(1.5+perRow*float64(n)), seed.Rows(n))
@@ -63,8 +73,8 @@ func pdbSeedUnboundedResult(s *seed.Scenario) error {
 	recent.Detail(seed.DetailPolicy{Recent: 12 * time.Hour, Rate: 0.04, Max: 4})
 	recent.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.6, 1.8))
-		r.Span("AuditLogController.activity", func(r *seed.Req) {
-			r.DB("SELECT m.role FROM org_members m WHERE m.org_id = ? AND m.user_id = ?", r.Ms(0.5, 1.4), seed.Rows(1))
+		pdbController(r, "AuditLogController.activity", func(r *seed.Req) {
+			r.DB(roleSQL, r.Ms(0.5, 1.4), seed.Rows(1))
 			r.DB("SELECT e.id, e.actor_id, e.action, e.created_at FROM audit_events e WHERE e.org_id = ? ORDER BY e.created_at DESC LIMIT 20",
 				r.Ms(1.1, 2.6), seed.Rows(20))
 			r.Gap(r.Ms(0.3, 0.8))
@@ -76,24 +86,38 @@ func pdbSeedUnboundedResult(s *seed.Scenario) error {
 	settings.Traffic(seed.Daily(18), seed.Diurnal(), seed.Over(window))
 	settings.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.6, 1.8))
-		r.Span("SettingsController.update", func(r *seed.Req) {
+		pdbController(r, "SettingsController.update", func(r *seed.Req) {
+			r.DB(roleSQL, r.Ms(0.5, 1.4), seed.Rows(1))
 			r.DB("UPDATE org_settings SET locale = ?, timezone = ?, invoice_prefix = ?, updated_at = now() WHERE org_id = ?", r.Ms(1.0, 2.5))
 			r.DB("INSERT INTO audit_events (org_id, actor_id, action, target_type, target_id, ip_address, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, now())", r.Ms(0.8, 2.0))
 		})
 		r.Gap(r.Ms(0.2, 0.6))
+		r.Status(204)
 	})
 
-	pdbHealthy(api, window,
-		pdbRoute{method: "GET", route: "/api/admin/members", perDay: 50, queries: []string{
-			"SELECT u.id, u.email, u.full_name, m.role, m.joined_at FROM org_members m JOIN users u ON u.id = m.user_id WHERE m.org_id = ? ORDER BY u.full_name",
-		}, dbMedianMs: 2.5},
-		pdbRoute{method: "GET", route: "/api/admin/settings", perDay: 35, queries: []string{
-			"SELECT s.locale, s.timezone, s.invoice_prefix, s.updated_at FROM org_settings s WHERE s.org_id = ?",
-		}, dbMedianMs: 1},
-		pdbRoute{method: "GET", route: "/api/admin/invoices", perDay: 30, queries: []string{
-			"SELECT i.id, i.number, i.status, i.total_cents, i.issued_at FROM invoices i WHERE i.org_id = ? ORDER BY i.issued_at DESC LIMIT 50",
-		}, dbMedianMs: 2},
-	)
+	for _, rt := range []struct {
+		route, controller, query string
+		perDay                   int
+		dbMedianMs               float64
+	}{
+		{"/api/admin/members", "MembersController.list", "SELECT u.id, u.email, u.full_name, m.role, m.joined_at FROM org_members m JOIN users u ON u.id = m.user_id WHERE m.org_id = ? ORDER BY u.full_name", 50, 2.5},
+		{"/api/admin/settings", "SettingsController.get", "SELECT s.locale, s.timezone, s.invoice_prefix, s.updated_at FROM org_settings s WHERE s.org_id = ?", 35, 1},
+		{"/api/admin/invoices", "InvoicesController.list", "SELECT i.id, i.number, i.status, i.total_cents, i.issued_at FROM invoices i WHERE i.org_id = ? ORDER BY i.issued_at DESC LIMIT 50", 30, 2},
+	} {
+		rt := rt
+		e := api.Endpoint("GET", rt.route)
+		e.Traffic(seed.Daily(rt.perDay), seed.Diurnal(), seed.Over(window))
+		e.Detail(seed.DetailPolicy{Recent: 6 * time.Hour, Rate: 0.02, Max: 4})
+		e.Handler(func(r *seed.Req) {
+			r.Gap(r.Ms(0.6, 1.8))
+			pdbController(r, rt.controller, func(r *seed.Req) {
+				m := pdbDur(rt.dbMedianMs)
+				r.DB(rt.query, r.LogNormal(m, m*5))
+				r.Gap(r.Ms(0.2, 1.4))
+			})
+			r.Gap(r.Ms(0.1, 0.5))
+		})
+	}
 	api.Host().CPU(seed.Flat(0.19, 0.28))
 	api.Host().Memory(seed.Flat(0.56, 0.62))
 

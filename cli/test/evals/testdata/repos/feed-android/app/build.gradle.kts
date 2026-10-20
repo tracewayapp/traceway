@@ -11,8 +11,12 @@ android {
         applicationId = "com.example.pinboard"
         minSdk = 26
         targetSdk = 35
+        buildConfigField("String", "TRACEWAY_DSN", "\"${providers.gradleProperty("tracewayDsn").getOrElse("")}\"")
         versionCode = 5800
         versionName = "5.8.0"
+    }
+    buildFeatures {
+        buildConfig = true
     }
     buildTypes {
         release {

@@ -1,4 +1,4 @@
-import { useOutletContext, useParams } from 'react-router';
+import { Link, useOutletContext, useParams } from 'react-router';
 
 export function CategoryPage() {
   const { slug } = useParams();
@@ -9,10 +9,10 @@ export function CategoryPage() {
     <ul className="grid">
       {products.map((p) => (
         <li key={p.id}>
-          <a href={`/p/${p.sku}`}>
+          <Link to={`/p/${p.sku}`}>
             <img src={p.image_url} alt="" loading="lazy" />
             {p.title} · {(p.amount_minor / 100).toFixed(2)} {p.currency}
-          </a>
+          </Link>
         </li>
       ))}
     </ul>

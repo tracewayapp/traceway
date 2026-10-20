@@ -27,7 +27,7 @@ func New(level string) *slog.Logger {
 		lvl = slog.LevelInfo
 	}
 	stdout := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl, AddSource: lvl == slog.LevelDebug})
-	return slog.New(fanout{min: lvl, hs: []slog.Handler{stdout, otelslog.NewHandler("listings-api")}})
+	return slog.New(fanout{min: lvl, hs: []slog.Handler{stdout, otelslog.NewHandler("go.opentelemetry.io/contrib/bridges/otelslog")}})
 }
 
 // fanout writes every record to each handler.

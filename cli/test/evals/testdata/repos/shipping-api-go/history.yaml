@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'v3.7.4: rate parcels by destination zone'
+  age: 420h
+  author: Priya Natarajan <priya@example.com>
+head:
+  message: 'v3.8.0: validate postal codes before booking'
+  age: 20h25m
+  author: Jonas Weber <jonas@example.com>

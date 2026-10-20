@@ -24,6 +24,14 @@ const pctAndroidTimeoutStack = `java.net.SocketTimeoutException: timeout
 	at okhttp3.internal.connection.Exchange.readResponseHeaders(Exchange.kt:110)
 	at okhttp3.internal.http.CallServerInterceptor.intercept(CallServerInterceptor.kt:93)
 	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:34)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
 	at com.tracewayapp.traceway.network.TracewayOkHttpInterceptor.intercept(TracewayOkHttpInterceptor.kt:31)
 	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
 	at com.example.shop.net.AuthInterceptor.intercept(AuthInterceptor.kt:18)
@@ -107,7 +115,7 @@ func pctSeedXSAndroidTimeouts(s *seed.Scenario) error {
 	cart.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.5, 1.2))
 		r.DB("select c.id, ci.sku, ci.qty, ci.unit_price_cents from carts c join cart_items ci on ci.cart_id=c.id where c.id=?", r.LogNormal(3*time.Millisecond, 9*time.Millisecond), seed.Rows(1+r.IntN(4)))
-		r.Compute("render cart", r.Ms(1, 4))
+		r.Gap(r.Ms(1, 4)) // map to JSON
 	})
 	addItem := api.Endpoint("POST", "/api/cart/items")
 	addItem.Traffic(seed.Daily(500), seed.Diurnal(), seed.Burst(saleAt, s.Now, 6), seed.Over(window))
@@ -140,6 +148,12 @@ func pctSeedXSAndroidTimeouts(s *seed.Scenario) error {
 			}
 			r.KeepDetail()
 			newest = r
+			lines := 0
+			for _, sp := range r.Root.Children {
+				if sp.Name == "UPDATE inventory" {
+					lines++
+				}
+			}
 			at := r.Start.Add(readTimeout + 15*time.Millisecond)
 			cartAt := r.Start.Add(-time.Duration(25+i%50) * time.Second)
 			app.Crash(seed.Crash{
@@ -151,7 +165,7 @@ func pctSeedXSAndroidTimeouts(s *seed.Scenario) error {
 					{Type: "navigation", At: cartAt.Add(4 * time.Second), From: "CartActivity", To: "CheckoutActivity"},
 					{Type: "network", At: at, Method: "POST", URL: "https://api.shop.example/api/checkout", DurationMs: float64(readTimeout.Milliseconds()) + 4},
 				},
-				Logs: []seed.ActionLog{{At: r.Start.Add(-20 * time.Millisecond), Level: "info", Message: fmt.Sprintf("CheckoutViewModel: placing order (%d items)", 1+i%3)}},
+				Logs: []seed.ActionLog{{At: r.Start.Add(-20 * time.Millisecond), Level: "info", Message: fmt.Sprintf("CheckoutViewModel: placing order (%d items)", lines)}},
 			})
 			crashes++
 		}

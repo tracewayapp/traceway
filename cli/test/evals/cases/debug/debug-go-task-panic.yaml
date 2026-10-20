@@ -1,0 +1,93 @@
+id: debug-go-task-panic
+suite: debug
+title: A pasted new-error email for a panic inside the label worker's consumer
+tags: [go, task, notification]
+seed: debug/go-task-panic
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: An older group on the same task, carrier 429 Too Many Requests during a sale peak five days ago, stopped by itself; the panic is new with v2.4.0 and hits only orders whose packages query returns no rows.
+workspace: {repo: fulfillment-worker-go}
+prompt: |
+  I got this e-mail a couple of days ago and the errors have not stopped. Can you work out what's going on and fix it?
+
+  [CRITICAL] [fulfillment] New error: runtime.boundsError
+
+  A new error has been detected: runtime.boundsError
+
+  Exception ID: {{seed.occ.id}}
+  Hash: {{seed.hash}}
+  Occurred at: {{seed.occ.email}}
+  App version: {{seed.occ.appVersion}}
+  Server: {{seed.occ.server}}
+  Task: process fulfillment.orders
+
+  Stack trace:
+  {{seed.occ.stack}}
+
+  Attributes:
+  {{seed.occ.attrs}}
+
+  View details: {{env.url}}/issues/{{seed.hash}}
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "Yes, please fix it in the code."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    culprit: {file: internal/labels/labels.go, symbol: Handle, line: 41}
+    needs_instrumentation: false
+    mentions_all: ["no packages|without packages|zero packages|empty|digital|gift card|no rows|0 rows", "2\\.4\\.0|release|deploy"]
+  grounding:
+    - "labels.go:41"
+  calls:
+    any_of:
+      - [{op: exceptions.occurrence, args: {id: "{{seed.occ.id}}"}}]
+      - [{op: exceptions.show, args: {hash: "{{seed.hash}}"}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.*, write_file]
+      - [exceptions.*, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-go-task-panic
+    command: go test ./...
+    gating: true
+    touches_culprit: true
+    must_not_change: [internal/worker/worker.go]
+judge:
+  expected: The email's occurrence is a panic (index out of range [0] with length 0) in labels.(*Service).Handle at internal/labels/labels.go:41, inside the "process fulfillment.orders" consumer. The task run shows the order's packages query returned no rows, an order with nothing to ship (gift cards, digital items). v2.4.0, deployed about 46 hours ago, switched to one multi-parcel label request built from order.Packages[0], which panics for those orders; the group first appeared with that release. The fix returns early (no label) for an order without packages and keeps one label per order for physical orders.
+  rubric:
+    - Uses the email's Exception ID and Occurred at (converted to RFC 3339) to open the occurrence, then the task run, and reads the zero-row packages query.
+    - Ties the panic to the v2.4.0 change that indexes order.Packages[0], with the group's first appearance at that release.
+    - Fixes Handle for orders with no packages without changing the multi-parcel label for physical orders, and without hiding the panic in the worker's recover.
+oracle:
+  - shell: >-
+      traceway exceptions occurrence {{seed.occ.id}} --recorded-at {{seed.occ.recordedAt}} --output json
+      | jq '{exception: (.exception | {exceptionHash, recordedAt, appVersion, attributes, stackTrace}), relatedEntity}'
+  - shell: >-
+      traceway tasks show {{calls.c01.relatedEntity.id}} --recorded-at {{calls.c01.relatedEntity.recordedAt}} --output json
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 50 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count}), versions: ([.occurrences[].appVersion] | unique)}'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - read_file: internal/labels/labels.go
+  - write_file: {path: internal/labels/labels.go, from: oracle/debug-go-task-panic/labels.go}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      occurrence_id: "{{seed.occ.id}}"
+      category: logic
+      culprit: {file: internal/labels/labels.go, symbol: Handle, line: 41}
+      evidence:
+        - {call_id: c01, claim: "the occurrence is index out of range [0] with length 0 in labels.(*Service).Handle at labels.go:41, in the process fulfillment.orders task, app version 2.4.0"}
+        - {call_id: c02, claim: "in that task run the packages query returned no rows: the order has nothing to ship"}
+        - {call_id: c03, claim: "the group first appeared after the v2.4.0 deploy, and every occurrence listed is on 2.4.0"}
+        - {call_id: c04, claim: "v2.4.0 switched to one multi-parcel label per order"}
+        - {call_id: c05, claim: "Handle reads order.Packages[0].Service without checking that the order has packages"}
+      fix_summary: Handle returns early, buying no label, for an order without packages; physical orders still get one label covering every parcel.
+      files_changed: [internal/labels/labels.go]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The label worker panics with runtime error: index out of range [0] with length 0 in labels.(*Service).Handle (internal/labels/labels.go:41) while processing fulfillment.orders. The task run behind the email shows the order's packages query returned 0 rows: orders of only digital items (gift cards) have no packages. v2.4.0, deployed about 46 hours ago, builds one multi-parcel label request from order.Packages[0], which panics for those orders; the group first appeared with that release and every occurrence is on 2.4.0. I made Handle return early without buying a label when an order has no packages. The carrier 429 group on the same task is from a sale peak five days ago and unrelated.

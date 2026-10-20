@@ -2,6 +2,7 @@
 package search
 
 import (
+	"html"
 	"math"
 	"sort"
 	"strings"
@@ -21,8 +22,7 @@ type Hit struct {
 
 // Rank re-scores the database's top candidates: text rank blended with
 // title matches and freshness, then the best 20.
-func Rank(q string, hits []Hit) []Hit {
-	terms := Terms(q)
+func Rank(terms []string, hits []Hit) []Hit {
 	for i := range hits {
 		h := &hits[i]
 		title := strings.ToLower(h.Title)
@@ -37,9 +37,6 @@ func Rank(q string, hits []Hit) []Hit {
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].Score > hits[j].Score })
 	if len(hits) > 20 {
 		hits = hits[:20]
-	}
-	for i := range hits {
-		hits[i].Highlight = Highlight(hits[i].Snippet, terms)
 	}
 	return hits
 }
@@ -62,4 +59,15 @@ func Highlight(s string, terms []string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+// RenderHTML renders a document body as HTML paragraphs.
+func RenderHTML(body string) string {
+	var b strings.Builder
+	for _, p := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n\n") {
+		if p = strings.TrimSpace(p); p != "" {
+			b.WriteString("<p>" + strings.ReplaceAll(html.EscapeString(p), "\n", "<br>") + "</p>")
+		}
+	}
+	return b.String()
 }

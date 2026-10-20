@@ -39,3 +39,44 @@ func TestHistogramDeltaWindows(t *testing.T) {
 		}
 	}
 }
+
+// TestHistogramLowRateKeepsCount: a rate below one observation per point
+// still reports its observations over time instead of rounding every point
+// to zero, across the chunks a series is rendered in.
+func TestHistogramLowRateKeepsCount(t *testing.T) {
+	m := &metricSeries{name: "h", kind: histogramKind, value: func(time.Time) float64 { return 0.2 }, count: func(time.Time) float64 { return 0.3 }}
+	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	var times []time.Time
+	for i := range 100 {
+		times = append(times, base.Add(time.Duration(i)*time.Minute))
+	}
+	var total uint64
+	for _, chunk := range [][]time.Time{times[:37], times[37:]} {
+		for _, dp := range m.render(chunk, base).GetHistogram().DataPoints {
+			total += dp.Count
+		}
+	}
+	if total < 29 || total > 31 {
+		t.Fatalf("100 minutes at 0.3/min reported %d observations, want 30", total)
+	}
+}
+
+// TestRatioGaugeStaysInRange: the jitter never pushes a ratio past 1.
+func TestRatioGaugeStaysInRange(t *testing.T) {
+	s := NewScenario("ratio", time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC), NewDrySink())
+	svc := s.Project("p", OTel).Service("svc", Go("nethttp", "sql"))
+	svc.Gauge("cache.hit_ratio", "1", nil, Const(0.999))
+	svc.Gauge("queue.depth", "{items}", nil, Const(1000))
+	m, depth := svc.metrics[0], svc.metrics[1]
+	over := false
+	for i := range 600 {
+		at := s.Now.Add(-time.Duration(i) * time.Minute)
+		if v := m.value(at); v < 0 || v > 1 {
+			t.Fatalf("ratio %v at %s", v, at)
+		}
+		over = over || depth.value(at) > 1000
+	}
+	if !over {
+		t.Fatal("the jitter no longer moves other gauges above their series")
+	}
+}

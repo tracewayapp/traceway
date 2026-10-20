@@ -5,4 +5,6 @@
   are forwarded from MetricKit by `Diagnostics/CrashDiagnostics.swift`. dSYMs
   are uploaded on every release build.
 - `api/`: the mobile API the app talks to (Go, `net/http`, PostgreSQL through
-  `database/sql`, OpenTelemetry; project **mobile-api**).
+  `database/sql`; project **mobile-api**). Traces and logs go to Traceway over
+  OTLP; the production binary is built with `-tags otel` (see
+  `api/internal/telemetry`).

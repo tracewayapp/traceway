@@ -229,7 +229,9 @@ func (svc *Service) dbName() string {
 	return strings.ReplaceAll(strings.TrimSuffix(strings.TrimSuffix(svc.Name, "-api"), "-service"), "-", "_")
 }
 
-func (svc *Service) dbHost() string { return svc.dbName() + "-db.internal" }
+func (svc *Service) dbHost() string {
+	return strings.ReplaceAll(svc.dbName(), "_", "-") + "-db.internal"
+}
 
 // Cache records a cache CLIENT span (redis).
 func (r *Req) Cache(cmd, key string, d time.Duration, attrs ...KV) *Span {
@@ -261,7 +263,8 @@ func (r *Req) HTTP(method, url string, d time.Duration, status int, attrs ...KV)
 		m[kv.K] = kv.V
 	}
 	sp := r.child(method, KindClient, r.owner().Stack.HTTPClient, d, m)
-	if status >= 500 {
+	// Client spans count a 4xx as an error too (HTTP semantic conventions).
+	if status >= 400 {
 		sp.Status = StatusError
 	}
 	return sp

@@ -20,7 +20,8 @@ func init() { scenarios.Register("perf/infra-disk-io", papSeedDiskIO) }
 // API and no growth in its tables.
 func papSeedDiskIO(s *seed.Scenario) error {
 	p := s.Project("bookings", seed.OTel)
-	api := p.Service("bookings-api", seed.Node("express", "pg")).Versions("6.4.1")
+	api := p.Service("bookings-api", seed.Node("express", "pg")).Versions("6.4.1").
+		Instances("bookings-api-6d8f9c7b4-2kqxp", "bookings-api-6d8f9c7b4-h7w5n", "bookings-api-6d8f9c7b4-tz9mc")
 	db := p.Service("bookings-db", seed.Go("nethttp", "pgx")).Instances("pg-bookings-1")
 	window := 24 * time.Hour
 	onset := s.Ago(9*time.Hour + 40*time.Minute)
@@ -79,8 +80,11 @@ func papSeedDiskIO(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.8, 2))
 	})
 
-	api.Host().CPU(seed.Flat(0.17, 0.25))
-	api.Host().Memory(seed.Flat(0.39, 0.44))
+	for i, h := range api.Hosts {
+		shift := time.Duration(i) * 137 * time.Second // pods do not share one noise curve
+		api.HostNamed(h).CPU(func(t time.Time) float64 { return seed.Flat(0.17, 0.25)(t.Add(shift)) })
+		api.HostNamed(h).Memory(func(t time.Time) float64 { return seed.Flat(0.39, 0.44)(t.Add(shift)) })
+	}
 
 	pg := db.Host()
 	pg.CPU(seed.Step(onset, seed.Flat(0.1, 0.15), seed.Flat(0.14, 0.2)),

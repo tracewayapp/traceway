@@ -10,7 +10,7 @@ import (
 )
 
 // Bucket is an S3 bucket reached through presigned requests from the
-// signing sidecar (see deploy/).
+// signing sidecar (SIGNER_URL).
 type Bucket struct {
 	Endpoint string // https://<bucket>.s3.<region>.amazonaws.com
 	Signer   func(method, key string, ttl time.Duration) (string, error)

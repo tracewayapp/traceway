@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:traceway/traceway.dart';
 
 import '../../core/api_client.dart';
 import 'models/product.dart';
@@ -14,7 +15,16 @@ class ProductPage extends StatefulWidget {
 }
 
 class _ProductPageState extends State<ProductPage> {
-  late final Future<Product> _product = ApiClient().product(widget.productId);
+  late final Future<Product> _product = _load();
+
+  Future<Product> _load() async {
+    try {
+      return await ApiClient().product(widget.productId);
+    } catch (error, stack) {
+      TracewayClient.instance?.captureException(error, stack);
+      rethrow;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

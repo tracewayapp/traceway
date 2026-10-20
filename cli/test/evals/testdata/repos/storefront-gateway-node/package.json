@@ -9,10 +9,14 @@
   },
   "dependencies": {
     "@opentelemetry/auto-instrumentations-node": "^0.62.0",
+    "@opentelemetry/exporter-logs-otlp-proto": "^0.203.0",
     "@opentelemetry/exporter-trace-otlp-proto": "^0.203.0",
+    "@opentelemetry/sdk-logs": "^0.203.0",
     "@opentelemetry/sdk-node": "^0.203.0",
+    "@opentelemetry/winston-transport": "^0.14.0",
     "express": "^5.1.0",
     "ioredis": "^5.7.0",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "winston": "^3.17.0"
   }
 }

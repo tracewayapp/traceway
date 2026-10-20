@@ -29,9 +29,9 @@ app.get('/api/search', async (req, res) => {
   res.json(body.hits.hits.map((h) => ({ id: h._id, ...h._source })));
 });
 
+app.get('/healthz', (_req, res) => res.sendStatus(204));
+
 app.get('/api/cart', async (req, res) => {
-  const cached = await redis.get(`cart:${req.get('x-session-id')}`);
-  if (cached) return res.type('json').send(cached);
   const { rows } = await pool.query(
     'SELECT p.id, p.name, p.price_cents, ci.qty FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.cart_id = $1',
     [req.get('x-cart-id')]);
@@ -44,7 +44,6 @@ app.post('/api/cart/items', async (req, res) => {
   await pool.query(
     'INSERT INTO cart_items (cart_id, product_id, qty) VALUES ($1, $2, $3) ON CONFLICT (cart_id, product_id) DO UPDATE SET qty = cart_items.qty + EXCLUDED.qty',
     [req.get('x-cart-id'), productId, qty]);
-  await redis.del(`cart:${req.get('x-session-id')}`);
   res.sendStatus(201);
 });
 

@@ -3,6 +3,7 @@ package perf
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/scenarios"
@@ -14,6 +15,18 @@ func init() { scenarios.Register("perf/db-pool-exhaustion", pdbSeedPoolExhaustio
 // pdbPoolTimeout is the SQLAlchemy QueuePool message for pool_size=10,
 // max_overflow=5, pool_timeout=30.
 const pdbPoolTimeout = "QueuePool limit of size 10 overflow 5 reached, connection timed out, timeout 30.00 (Background on this error at: https://sqlalche.me/e/20/3o7r)"
+
+// pdbCartItems is select(CartItem) by cart, as SQLAlchemy renders it for psycopg.
+const pdbCartItems = "SELECT cart_items.id, cart_items.cart_id, cart_items.sku, cart_items.qty, cart_items.unit_price_cents FROM cart_items WHERE cart_items.cart_id = %(cart_id_1)s::UUID"
+
+// pdbStockQuery is the stock check; in_() expands to one parameter per SKU.
+func pdbStockQuery(skus int) string {
+	params := make([]string, skus)
+	for i := range params {
+		params[i] = fmt.Sprintf("%%(sku_1_%d)s::VARCHAR", i+1)
+	}
+	return "SELECT inventory.sku, inventory.available FROM inventory WHERE inventory.sku IN (" + strings.Join(params, ", ") + ")"
+}
 
 // pdbSeedPoolExhaustion: checkout holds its pooled connection for the whole
 // request, including the payment provider call. At the lunch and evening
@@ -71,7 +84,7 @@ func pdbSeedPoolExhaustion(s *seed.Scenario) error {
 		}
 		return w, true
 	}
-	poolTimeout := func(r *seed.Req, route, frame string) {
+	poolTimeout := func(r *seed.Req, frame string) {
 		r.Error(seed.Exc{Type: "sqlalchemy.exc.TimeoutError", Message: pdbPoolTimeout, Escaped: true, Stack: "Traceback (most recent call last):\n" +
 			"  File \"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\", line 219, in run_endpoint_function\n    return await run_in_threadpool(dependant.call, **values)\n" +
 			"  File \"/usr/local/lib/python3.12/site-packages/starlette/concurrency.py\", line 38, in run_in_threadpool\n    return await anyio.to_thread.run_sync(func)\n" +
@@ -82,8 +95,7 @@ func pdbSeedPoolExhaustion(s *seed.Scenario) error {
 			"  File \"/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py\", line 449, in connect\n    return _ConnectionFairy._checkout(self)\n" +
 			"  File \"/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/impl.py\", line 167, in _do_get\n    raise exc.TimeoutError(\n" +
 			"sqlalchemy.exc.TimeoutError: " + pdbPoolTimeout})
-		r.Log(seed.SevError, "Exception in ASGI application", seed.A("exception.type", "sqlalchemy.exc.TimeoutError"), seed.A("exception.message", pdbPoolTimeout),
-			seed.A("http.route", route))
+		r.Log(seed.SevError, "Exception in ASGI application", seed.A("exception.type", "sqlalchemy.exc.TimeoutError"), seed.A("exception.message", pdbPoolTimeout))
 		r.Status(500)
 	}
 
@@ -97,16 +109,18 @@ func pdbSeedPoolExhaustion(s *seed.Scenario) error {
 		cart := fmt.Sprintf("%08x-%04x-4%03x-%04x-%06x%06x", r.IntN(1<<30)|1<<28, r.IntN(1<<16), r.IntN(1<<12), 0x8000+r.IntN(1<<14), r.IntN(1<<24), r.IntN(1<<24))
 		if !ok {
 			r.Log(seed.SevWarn, "checkout failed for cart "+cart+": "+pdbPoolTimeout, seed.A("cart_id", cart))
-			poolTimeout(r, "/api/checkout", "  File \"/app/app/checkout.py\", line 32, in create_checkout\n    return _checkout(body, x_user_id)\n"+
+			poolTimeout(r, "  File \"/app/app/checkout.py\", line 32, in create_checkout\n    return _checkout(body, x_user_id)\n"+
 				"  File \"/app/app/checkout.py\", line 40, in _checkout\n    items = session.execute(select(CartItem).where(CartItem.cart_id == body.cart_id)).scalars().all()\n")
 			return
 		}
 		lines := 1 + r.IntN(5)
-		r.DB("SELECT cart_items.sku, cart_items.qty, cart_items.unit_price_cents FROM cart_items WHERE cart_items.cart_id = %(cart_id_1)s::UUID", r.Ms(2, 5), seed.Rows(lines))
-		r.DB("SELECT inventory.sku, inventory.available FROM inventory WHERE inventory.sku = ANY (%(sku_1)s::VARCHAR[])", r.Ms(40, 60), seed.Rows(lines))
+		r.DB(pdbCartItems, r.Ms(2, 5), seed.Rows(lines))
+		r.DB(pdbStockQuery(lines), r.Ms(40, 60), seed.Rows(lines))
 		r.HTTP("POST", "https://api.payments.example/v1/charges", r.Ms(150, 260), 201)
-		r.DB("INSERT INTO orders (id, cart_id, user_id, total_cents, status, created_at) VALUES (%(id)s::UUID, %(cart_id)s::UUID, %(user_id)s::INTEGER, %(total_cents)s::INTEGER, %(status)s::VARCHAR, now())", r.Ms(4, 8))
-		r.DB("UPDATE inventory SET available=(inventory.available - %(param_1)s::INTEGER) WHERE inventory.sku = %(sku_1)s::VARCHAR", r.Ms(3, 6))
+		r.DB("INSERT INTO orders (id, cart_id, user_id, total_cents, status) VALUES (%(id)s::UUID, %(cart_id)s::UUID, %(user_id)s::INTEGER, %(total_cents)s::INTEGER, %(status)s::VARCHAR) RETURNING orders.created_at", r.Ms(4, 8))
+		for range lines {
+			r.DB("UPDATE inventory SET available=(inventory.available - %(available_1)s::INTEGER) WHERE inventory.sku = %(sku_1)s::VARCHAR", r.Ms(3, 6))
+		}
 		r.DB("DELETE FROM cart_items WHERE cart_items.cart_id = %(cart_id_1)s::UUID", r.Ms(2, 4))
 		r.Gap(r.Ms(0.5, 1.5))
 		r.Status(201)
@@ -120,10 +134,10 @@ func pdbSeedPoolExhaustion(s *seed.Scenario) error {
 		wait, ok := waitFor(r)
 		r.Gap(wait)
 		if !ok {
-			poolTimeout(r, "/api/cart", "  File \"/app/app/cart.py\", line 18, in get_cart\n    rows = session.execute(select(CartItem).where(CartItem.cart_id == cart_id)).scalars().all()\n")
+			poolTimeout(r, "  File \"/app/app/cart.py\", line 18, in get_cart\n    rows = session.execute(select(CartItem).where(CartItem.cart_id == cart_id)).scalars().all()\n")
 			return
 		}
-		r.DB("SELECT cart_items.sku, cart_items.qty, cart_items.unit_price_cents FROM cart_items WHERE cart_items.cart_id = %(cart_id_1)s::UUID", r.Ms(2, 5), seed.Rows(1+r.IntN(5)))
+		r.DB(pdbCartItems, r.Ms(2, 5), seed.Rows(1+r.IntN(5)))
 		r.Gap(r.Ms(0.4, 1.0))
 	})
 

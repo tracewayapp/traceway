@@ -5,6 +5,8 @@ The shop's catalog API and web storefront.
 - `api/` - catalog-api (Express, PostgreSQL, Redis). `GET /api/catalog`
   returns every active product with its category and price for a locale
   (~1200 products). Merchandising publishes catalog changes twice a day.
+  Traces, the `cache.hit_ratio` gauge and the access log go to Traceway over
+  OTLP (`src/tracing.js`).
 - `web/` - the storefront SPA (React, Vite) at shop.example.com, reporting
   errors and sessions to Traceway with `@tracewayapp/react`.
 

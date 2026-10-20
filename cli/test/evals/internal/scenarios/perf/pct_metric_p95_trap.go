@@ -62,11 +62,11 @@ func pctSeedMetricP95Trap(s *seed.Scenario) error {
 		cpu, db := stretch(r)
 		ms := func(lo, hi, f float64) time.Duration { return time.Duration(float64(r.Ms(lo, hi)) * f) }
 		r.Gap(ms(0.4, 1.2, cpu))
-		r.Compute("parse query", ms(0.8, 2.5, cpu))
+		r.Compute("parse query", ms(0.8, 2.5, cpu)).Scope = "query-api"
 		r.DB("SELECT d.id, d.title, d.snippet, d.updated_at, ts_rank_cd(d.tsv, q) AS rank FROM documents d, websearch_to_tsquery('simple', $1) q WHERE d.tenant_id = $2 AND d.tsv @@ q ORDER BY rank DESC LIMIT 200",
 			time.Duration(float64(r.LogNormal(18*time.Millisecond, 60*time.Millisecond))*db), seed.Rows(40+r.IntN(161)))
-		r.Compute("rank results", ms(20, 55, cpu))
-		r.Compute("render highlights", ms(8, 22, cpu))
+		r.Compute("rank results", ms(20, 55, cpu)).Scope = "query-api"
+		r.Compute("render highlights", ms(8, 22, cpu)).Scope = "query-api"
 		r.Gap(ms(0.3, 0.9, cpu))
 	})
 	suggest := api.Endpoint("GET", "/api/suggest")
@@ -76,16 +76,16 @@ func pctSeedMetricP95Trap(s *seed.Scenario) error {
 		ms := func(lo, hi, f float64) time.Duration { return time.Duration(float64(r.Ms(lo, hi)) * f) }
 		r.Gap(ms(0.3, 0.8, cpu))
 		r.DB("SELECT term, hits FROM suggest_terms WHERE tenant_id = $1 AND term LIKE $2 ORDER BY hits DESC LIMIT 10", time.Duration(float64(r.LogNormal(3*time.Millisecond, 10*time.Millisecond))*db), seed.Rows(10))
-		r.Compute("encode response", ms(2, 6, cpu))
+		r.Gap(ms(2, 6, cpu))
 	})
-	doc := api.Endpoint("GET", "/api/documents/:id")
+	doc := api.Endpoint("GET", "/api/documents/{id}")
 	doc.Traffic(seed.Daily(700), seed.Diurnal(), seed.RateFunc(pctAfternoon), seed.Over(window))
 	doc.Handler(func(r *seed.Req) {
 		cpu, db := stretch(r)
 		ms := func(lo, hi, f float64) time.Duration { return time.Duration(float64(r.Ms(lo, hi)) * f) }
 		r.Gap(ms(0.3, 0.8, cpu))
 		r.DB("SELECT id, title, body, updated_at FROM documents WHERE id = $1 AND tenant_id = $2", time.Duration(float64(r.LogNormal(3*time.Millisecond, 9*time.Millisecond))*db), seed.Rows(1))
-		r.Compute("render document", ms(6, 18, cpu))
+		r.Compute("render document", ms(6, 18, cpu)).Scope = "query-api"
 	})
 	feedback := api.Endpoint("POST", "/api/feedback")
 	feedback.Traffic(seed.Daily(240), seed.Diurnal(), seed.RateFunc(pctAfternoon), seed.Over(window))
@@ -94,7 +94,8 @@ func pctSeedMetricP95Trap(s *seed.Scenario) error {
 		ms := func(lo, hi, f float64) time.Duration { return time.Duration(float64(r.Ms(lo, hi)) * f) }
 		r.Gap(ms(0.3, 0.8, cpu))
 		r.DB("INSERT INTO search_feedback (tenant_id, query, document_id, verdict, created_at) VALUES ($1, $2, $3, $4, now())", time.Duration(float64(r.LogNormal(3*time.Millisecond, 10*time.Millisecond))*db))
-		r.Compute("encode response", ms(0.3, 1, cpu))
+		r.Gap(ms(0.3, 1, cpu))
+		r.Status(204)
 	})
 
 	for i, h := range api.Hosts {

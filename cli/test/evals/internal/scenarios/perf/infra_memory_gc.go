@@ -42,12 +42,16 @@ func papSeedMemoryGC(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.3, 0.8))
 		pause(r)
 		r.Gap(r.Ms(0.05, 0.2)) // memo lookup
+		if r.Chance(0.5) {
+			r.Gap(r.Ms(0.2, 0.6))
+			return
+		}
 		r.DB("SELECT id, name, kind, country, lat, lon FROM places WHERE name_prefix @@ to_tsquery($1) ORDER BY popularity DESC LIMIT 10", r.Ms(3, 9), seed.Rows(10))
 		pause(r)
 		r.Gap(r.Ms(0.4, 1.2))
 	})
 
-	place := api.Endpoint("GET", "/api/places/:id")
+	place := api.Endpoint("GET", "/api/places/{id}")
 	place.Traffic(papJitter("place", 0.06), seed.Daily(900), seed.Diurnal(), seed.Over(window))
 	place.Detail(detail)
 	place.Handler(func(r *seed.Req) {
@@ -75,10 +79,11 @@ func papSeedMemoryGC(s *seed.Scenario) error {
 	batch.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.5, 1.5))
 		n := 500 + r.IntN(4500)
-		r.Compute("decode batch", time.Duration(float64(n)*0.004*float64(time.Millisecond)), seed.A("batch.size", n))
+		r.Compute("decode batch", time.Duration(float64(n)*0.004*float64(time.Millisecond)), seed.A("batch.size", n)).Scope = "geo-api"
 		pause(r)
-		r.DB("SELECT q.idx, p.id, p.lat, p.lon FROM places p JOIN unnest($1::text[]) WITH ORDINALITY AS q(addr, idx) ON p.normalized_address = q.addr", time.Duration(float64(n)*0.05*float64(time.Millisecond))+r.Ms(10, 25), seed.Rows(n))
-		r.Compute("match addresses", time.Duration(float64(n)*0.06*float64(time.Millisecond)))
+		// pgx ends the query span when the rows are closed, so it covers
+		// scanning the matches into the result.
+		r.DB("SELECT q.idx, p.id, p.lat, p.lon FROM places p JOIN unnest($1::text[]) WITH ORDINALITY AS q(addr, idx) ON p.normalized_address = q.addr", time.Duration(float64(n)*0.11*float64(time.Millisecond))+r.Ms(10, 25), seed.Rows(n))
 		pause(r)
 		r.Gap(time.Duration(float64(n)*0.01*float64(time.Millisecond)) + r.Ms(1, 3))
 	})

@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+
+	"example.com/mobile-api/internal/telemetry"
 )
 
 // Payload is what the apps read at launch.
@@ -71,6 +73,8 @@ func Handler(s Store) http.Handler {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		_, end := telemetry.Start(r.Context(), "encode response")
+		defer end()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(Payload{Flags: flags, MinimumVersion: min, LatestVersion: latest})
 	})

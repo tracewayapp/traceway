@@ -33,8 +33,8 @@ public class CheckoutService {
             throw new EmptyCartException(cartId);
         }
 
-        // Reserve in cart order. UPDATE ... WHERE available - reserved >= qty
-        // takes the row lock on the inventory row until commit.
+        // Reserve in cart order: the UPDATE only matches while
+        // available - reserved still covers the quantity.
         for (var item : cart.items()) {
             int updated = inventory.reserve(item.sku(), item.qty());
             if (updated == 0) {

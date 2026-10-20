@@ -18,6 +18,8 @@ type fakeStore struct {
 
 func (f *fakeStore) Order(context.Context, int64, int64) (*Order, error) { return f.order, nil }
 func (f *fakeStore) OrderByID(context.Context, int64) (*Order, error)    { return f.order, nil }
+func (f *fakeStore) PaidOrder(context.Context, int64) (*Order, error)    { return f.order, nil }
+func (f *fakeStore) Lines(context.Context, int64) ([]Line, error)        { return nil, nil }
 func (f *fakeStore) RecordRefund(context.Context, int64) error           { return nil }
 func (f *fakeStore) MarkPaid(_ context.Context, _ int64, chargeID string) error {
 	f.paid = chargeID

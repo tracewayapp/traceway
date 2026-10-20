@@ -1,4 +1,5 @@
 import Foundation
+import Traceway
 
 /// Feature flags and the minimum supported version, from GET /api/config.
 final class RemoteConfig {

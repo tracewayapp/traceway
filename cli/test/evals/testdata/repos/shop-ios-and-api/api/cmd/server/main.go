@@ -1,7 +1,7 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -9,17 +9,23 @@ import (
 
 	"example.com/mobile-api/internal/config"
 	"example.com/mobile-api/internal/feed"
+	"example.com/mobile-api/internal/telemetry"
 )
 
 func main() {
-	// otelsql.Open("pgx", ...) in production builds.
-	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
+	ctx := context.Background()
+	shutdown, err := telemetry.Setup(ctx)
+	if err != nil {
+		slog.Error("telemetry setup", "err", err)
+		os.Exit(1)
+	}
+	defer shutdown(ctx)
+
+	db, err := telemetry.OpenDB(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		slog.Error("open database", "err", err)
 		os.Exit(1)
 	}
-	// Sized for the steady state: about 40 requests a second at a few
-	// milliseconds each, plus the feed.
 	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(8)
 	db.SetConnMaxLifetime(30 * time.Minute)
@@ -31,7 +37,7 @@ func main() {
 	mux.Handle("GET /api/products/{id}", feed.Product(db))
 	addr := ":" + envOr("PORT", "8080")
 	slog.Info("listening", "addr", addr)
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Addr: addr, Handler: telemetry.Handler(telemetry.AccessLog(mux)), ReadHeaderTimeout: 5 * time.Second}
 	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("serve", "err", err)
 		os.Exit(1)

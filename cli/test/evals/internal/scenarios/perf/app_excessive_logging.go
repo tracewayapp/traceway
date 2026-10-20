@@ -43,16 +43,17 @@ func papSeedExcessiveLogging(s *seed.Scenario) error {
 		category := 100 + r.IntN(400)
 		key := fmt.Sprintf("listings:search:%d:%x", category, r.IntN(1<<20))
 		logLine(r, "cache lookup", seed.A("cache.key", key))
-		r.Cache("GET", key, r.Ms(0.3, 0.9))
+		r.Cache("get", key, r.Ms(0.3, 0.9))
 		rows := 36 + r.IntN(9)
-		r.DB("SELECT id, seller_id, title, price_cents, currency, thumbnail_url, ranked_at FROM listings WHERE category_id = $1 AND status = 'active' ORDER BY ranked_at DESC LIMIT 44",
-			r.Ms(6, 15), seed.Rows(rows))
+		pdbAcquire(r)
+		pdbPgx(r, "SELECT id, seller_id, title, price_cents, currency, thumbnail_url, ranked_at FROM listings WHERE category_id = $1 AND status = 'active' ORDER BY ranked_at DESC LIMIT 44",
+			r.Ms(6, 15), rows)
 		for i := 0; i < rows; i++ {
 			logLine(r, "decoded listing", seed.A("listing.id", 300000+r.IntN(600000)), seed.A("seller.id", 1000+r.IntN(90000)))
 		}
 		logLine(r, "query executed", seed.A("db.table", "listings"), seed.A("rows", rows))
 		r.Gap(r.Ms(0.3, 0.9)) // marshal the page for the cache
-		r.Cache("SET", key, r.Ms(0.3, 0.9))
+		r.Cache("set", key, r.Ms(0.3, 0.9))
 		r.Log(seed.SevInfo, "search served", seed.A("category.id", category), seed.A("results", rows))
 		r.Gap(r.Ms(0.5, 1.5)) // JSON encode
 	})
@@ -66,11 +67,13 @@ func papSeedExcessiveLogging(s *seed.Scenario) error {
 		path, _ := r.Request().Root.Attrs["url.path"].(string)
 		fmt.Sscanf(path, "/api/listings/%d", &id)
 		logLine(r, "cache lookup", seed.A("cache.key", fmt.Sprintf("listing:%d", id)))
-		r.Cache("GET", fmt.Sprintf("listing:%d", id), r.Ms(0.3, 0.9))
-		r.DB("SELECT id, seller_id, title, description, price_cents, currency, status, ranked_at FROM listings WHERE id = $1", r.Ms(1.5, 4), seed.Rows(1))
+		r.Cache("get", fmt.Sprintf("listing:%d", id), r.Ms(0.3, 0.9))
+		pdbAcquire(r)
+		pdbPgx(r, "SELECT id, seller_id, title, description, price_cents, currency, status, ranked_at FROM listings WHERE id = $1", r.Ms(1.5, 4), 1)
 		logLine(r, "query executed", seed.A("db.table", "listings"), seed.A("rows", 1))
 		images := 12 + r.IntN(10)
-		r.DB("SELECT url, width, height, position FROM listing_images WHERE listing_id = $1 ORDER BY position", r.Ms(1.5, 4), seed.Rows(images))
+		pdbAcquire(r)
+		pdbPgx(r, "SELECT url, width, height, position FROM listing_images WHERE listing_id = $1 ORDER BY position", r.Ms(1.5, 4), images)
 		logLine(r, "query executed", seed.A("db.table", "listing_images"), seed.A("rows", images))
 		logLine(r, "decoded listing", seed.A("listing.id", id))
 		for i := 0; i < images; i++ {
@@ -85,7 +88,8 @@ func papSeedExcessiveLogging(s *seed.Scenario) error {
 		r.KeepDetail()
 		r.Gap(r.Ms(0.3, 0.8))
 		logLine(r, "recording view")
-		r.DB("INSERT INTO listing_views (listing_id, viewer_id, viewed_at) VALUES ($1, $2, now())", r.Ms(1.5, 4))
+		pdbAcquire(r)
+		pdbPgx(r, "INSERT INTO listing_views (listing_id, viewer_id, viewed_at) VALUES ($1, $2, now())", r.Ms(1.5, 4), 1)
 		logLine(r, "query executed", seed.A("db.table", "listing_views"), seed.A("rows", 1))
 		r.Status(204)
 	})
@@ -96,7 +100,7 @@ func papSeedExcessiveLogging(s *seed.Scenario) error {
 		r.KeepDetail()
 		r.Gap(r.Ms(0.3, 0.8))
 		logLine(r, "cache lookup", seed.A("cache.key", "categories:v3"))
-		r.Cache("GET", "categories:v3", r.Ms(0.3, 0.8))
+		r.Cache("get", "categories:v3", r.Ms(0.3, 0.8))
 		logLine(r, "cache hit", seed.A("cache.key", "categories:v3"))
 		r.Gap(r.Ms(0.6, 1.6))
 	})

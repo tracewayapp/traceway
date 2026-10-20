@@ -8,23 +8,26 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"example.com/checkout-api/internal/payments"
+	"example.com/checkout-api/internal/telemetry"
 )
-
-// RecordError records err on the request's span
-// (trace.SpanFromContext(ctx).RecordError in production builds).
-var RecordError = func(ctx context.Context, err error) {}
 
 // Store is the orders data access the handlers need.
 type Store interface {
+	// Order loads a customer's order for payment.
 	Order(ctx context.Context, id, customerID int64) (*Order, error)
+	Lines(ctx context.Context, orderID int64) ([]Line, error)
+	// OrderByID loads an order for display.
 	OrderByID(ctx context.Context, id int64) (*Order, error)
+	// PaidOrder loads an order with its charge, for a refund.
+	PaidOrder(ctx context.Context, id int64) (*Order, error)
 	MarkPaid(ctx context.Context, id int64, chargeID string) error
 	RecordRefund(ctx context.Context, id int64) error
 }
 
-// Order is an order awaiting payment.
+// Order is one order.
 type Order struct {
 	ID            int64
 	Status        string
@@ -32,6 +35,14 @@ type Order struct {
 	Currency      string
 	PaymentMethod string
 	ChargeID      string
+	PaidAt        *time.Time
+}
+
+// Line is one order line.
+type Line struct {
+	SKU            string `json:"sku"`
+	Qty            int64  `json:"qty"`
+	UnitPriceCents int64  `json:"unitPriceCents"`
 }
 
 // Payments is the payment provider.
@@ -63,9 +74,14 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "order not payable", http.StatusConflict)
 		return
 	}
+	lines, err := h.Store.Lines(r.Context(), o.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	charge, err := h.Payments.Charge(r.Context(), payments.ChargeRequest{AmountMinor: o.TotalCents, Currency: o.Currency, PaymentMethod: o.PaymentMethod, IdempotencyKey: fmt.Sprintf("order-%d", o.ID)})
 	if err != nil {
-		RecordError(r.Context(), err)
+		telemetry.RecordError(r.Context(), err)
 		slog.ErrorContext(r.Context(), "charge failed", "error", err)
 		http.Error(w, "payment failed, please try again", http.StatusBadGateway)
 		return
@@ -75,7 +91,7 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"orderId": o.ID, "status": "paid", "chargeId": charge.ID})
+	_ = json.NewEncoder(w).Encode(map[string]any{"orderId": o.ID, "status": "paid", "chargeId": charge.ID, "lines": lines})
 }
 
 type refundRequest struct {
@@ -89,7 +105,7 @@ func (h *Handler) Refund(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	o, err := h.Store.OrderByID(r.Context(), in.OrderID)
+	o, err := h.Store.PaidOrder(r.Context(), in.OrderID)
 	if err != nil || o == nil || o.Status != "paid" {
 		http.Error(w, "order not refundable", http.StatusConflict)
 		return
@@ -122,6 +138,11 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	lines, err := h.Store.Lines(r.Context(), o.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"orderId": o.ID, "status": o.Status, "totalCents": o.TotalCents, "currency": o.Currency})
+	_ = json.NewEncoder(w).Encode(map[string]any{"orderId": o.ID, "status": o.Status, "totalCents": o.TotalCents, "currency": o.Currency, "paidAt": o.PaidAt, "lines": lines})
 }

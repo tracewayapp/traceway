@@ -1,0 +1,55 @@
+id: write-mark-slow
+suite: write
+title: Mark an endpoint that is slow by design as expected-slow
+tags: [endpoints]
+seed: write/mark-slow
+arms: [cli-write+skill, mcp-write]
+invoke: natural
+distractor: GET /api/reports is the next slowest endpoint and is not accepted as slow; a round guess (say 10 seconds) instead of an offset just above the measured p95 would hide real regressions.
+prompt: |
+  POST /api/reports/export keeps topping our slowest endpoints in Traceway and drags the apdex down, but that's expected: it renders the whole PDF inside the request, and finance has signed off on it. Can you mark it as expected-slow so it stops counting against us?
+budget: {max_turns: 20, max_tool_calls: 12, timeout: 8m}
+user:
+  - default: "Yes, that one. Give it a bit of headroom over what it does today; I don't have an exact number."
+expect:
+  state:
+    - kind: slow_endpoint
+      endpoint: "{{seed.endpoint}}"
+      offset_ms: {min: 3300, max: 6000}
+      reason: "(pdf|render|finance|expected|by design)"
+    - kind: slow_endpoint
+      endpoint: "{{seed.otherEndpoint}}"
+      offset_ms: 0
+    - kind: agent_writes
+      count: 1
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: endpoints.mark_slow, args: {endpoint: "{{seed.endpoint}}"}}
+    forbidden:
+      - {op: endpoints.mark_slow, args: {endpoint: "{{seed.otherEndpoint}}"}}
+      - {op: alerts.snooze}
+      - {op: alerts.disable}
+    order:
+      - [endpoints.list, endpoints.mark_slow]
+    max_failed_calls: 3
+  report:
+    contains:
+      - "(\\d[\\d,.]* ?(ms|s|seconds)\\b)"
+      - "(p95|95th)"
+judge:
+  expected: The agent reads the current latency of POST /api/reports/export (p95 about {{seed.p95.lastDayMs}} ms over the last day, {{seed.p95.lastHourMs}} ms over the last hour), marks it expected-slow with an offset a bit above that p95 (for example {{seed.p95.suggestedOffsetMs}} ms) and the reason (the PDF is rendered in the request, accepted by finance), leaves GET /api/reports alone, and explains that raw percentiles do not change while apdex and impact stop penalizing up to the offset, and how to remove the mark.
+  rubric:
+    - Bases the offset on the measured p95 (a bit above it), not on a guess.
+    - Stores the reason and marks only POST /api/reports/export.
+    - Explains the effect (apdex/impact, not raw percentiles) and how to undo it (offset 0).
+oracle:
+  - op: endpoints.list
+    args: {since: 24h, search: "POST /api/reports/export"}
+  - op: endpoints.mark_slow
+    args: {endpoint: "{{seed.endpoint}}", offset_ms: "{{seed.p95.suggestedOffsetMs}}", reason: "Renders the full PDF inside the request; accepted by finance"}
+  - finish:
+      summary: |
+        POST /api/reports/export has a p95 of about {{seed.p95.lastDayMs}} ms over the last day. I marked it expected-slow with a {{seed.p95.suggestedOffsetMs}} ms allowance, a bit above that p95, and the reason "Renders the full PDF inside the request; accepted by finance". Its raw p50/p95/p99 stay the same, but apdex and impact no longer penalize it up to the allowance, so it should drop out of the slowest-endpoint rankings that use impact. GET /api/reports is unchanged. To remove the mark, set the offset to 0 (endpoints mark-slow "POST /api/reports/export" --offset-ms 0).
+      changes:
+        - {action: mark endpoint expected-slow, target: "POST /api/reports/export", new_value: "offset {{seed.p95.suggestedOffsetMs}} ms", undo: "endpoints mark-slow \"POST /api/reports/export\" --offset-ms 0"}

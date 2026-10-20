@@ -10,9 +10,9 @@ workspace: {repo: catalog-api-go}
 prompt: |
   Got this alert by email about 40 minutes ago while I was in a meeting. Can you check what happened and whether we need to do something?
 
-  [WARNING] [catalog] P95 latency {{seed.alertP95}}ms on GET /api/categories/:slug/products
+  [WARNING] [catalog] P95 latency {{seed.alertP95}}ms on GET /api/categories/{slug}/products
 
-  The P95 latency for GET /api/categories/:slug/products has reached {{seed.alertP95}}ms over the last 10 minutes (threshold: 1000ms).
+  The P95 latency for GET /api/categories/{slug}/products has reached {{seed.alertP95}}ms over the last 10 minutes (threshold: 1000ms).
 
   {{env.url}}/endpoints?from={{seed.linkFrom}}&to={{seed.linkTo}}
 
@@ -24,13 +24,13 @@ expect:
   answer:
     checklist_item: cold_start_jit_connection_warmup
     not: [none_found, insufficient_evidence, cache_stampede_thundering_herd, no_cache_low_hit_ratio, expensive_join_or_aggregation, missing_or_unused_index]
-    locus: {endpoint: "GET /api/categories/:slug/products"}
+    locus: {endpoint: "GET /api/categories/{slug}/products"}
     onset: {at: "{{seed.deployAt}}", tolerance_minutes: 30}
   grounding:
     - "SELECT id FROM categories WHERE slug"
   calls:
     required:
-      - {op: endpoints.slow, args: {endpoint: "GET /api/categories/:slug/products"}}
+      - {op: endpoints.slow, args: {endpoint: "GET /api/categories/{slug}/products"}}
     any_of:
       - [{op: traces.show, args: {recorded_at: present}}]
       - [{op: endpoints.show, args: {recorded_at: present}}]
@@ -58,10 +58,10 @@ oracle:
       traceway endpoints list --search /api/categories/ --since 1h --output json
       | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round), impactReason}]'
   - op: endpoints.slow
-    args: {endpoint: "GET /api/categories/:slug/products"}
+    args: {endpoint: "GET /api/categories/{slug}/products"}
   - shell: >-
       traceway endpoints chart --metric-type p95 --since 3h --interval-minutes 5 --output json
-      | jq '[.series[] | select(.endpoint == "GET /api/categories/:slug/products") | {t: .timestamp, p95_ms: (.value|round)}]'
+      | jq '[.series[] | select(.endpoint == "GET /api/categories/{slug}/products") | {t: .timestamp, p95_ms: (.value|round)}]'
   - shell: >-
       traceway endpoints list --search /api/categories/ --from {{seed.deployMinus60m}} --to {{seed.deployAt}} --output json
       | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
@@ -80,13 +80,13 @@ oracle:
       | jq '[.nodes[] | {endpoint: .endpoint.endpoint, version: .endpoint.appVersion, duration_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: (.duration/1e6|round)}]}]'
   - shell: >-
       traceway endpoints chart --metric-type p95 --since 48h --interval-minutes 30 --output json
-      | jq '[.series[] | select(.endpoint == "GET /api/categories/:slug/products" and .value > 200) | {t: .timestamp, p95_ms: (.value|round)}]'
+      | jq '[.series[] | select(.endpoint == "GET /api/categories/{slug}/products" and .value > 200) | {t: .timestamp, p95_ms: (.value|round)}]'
   - shell: git log --format='%h %ad %s' --date=iso -3
   - read_file: cmd/server/main.go
   - submit:
       checklist_item: cold_start_jit_connection_warmup
       category: caching
-      locus: {endpoint: "GET /api/categories/:slug/products", span: "category listing query on a cold instance (products JOIN product_prices JOIN inventory) plus connect", service: catalog-api}
+      locus: {endpoint: "GET /api/categories/{slug}/products", span: "category listing query on a cold instance (products JOIN product_prices JOIN inventory) plus connect", service: catalog-api}
       onset: "{{seed.deployAt}}"
       evidence:
         - {call_id: c02, claim: "the endpoint is not marked slow (offsetMs 0), so the 1000ms alert applies as is"}
@@ -102,4 +102,4 @@ oracle:
       fix: Gate readiness on the cache preload (have /healthz answer 503 until Preload has filled every category, or preload before ListenAndServe), and warm the pgx pool (pool_min_conns) so a restarted instance takes traffic only when it is warm.
       confidence: high
       report: |
-        The alert was a warmup spike from the v5.1.0 release, not a regression. GET /api/categories/:slug/products is not marked slow (offsetMs 0), so the 1000ms rule applied. v5.1.0 restarted all three catalog instances about five minutes before the alert. A restarted instance starts with an empty in-process category cache, which a background preload fills one category at a time, and an empty pgx pool; meanwhile an instance's first request for a category runs the full listing query (one to two seconds) and the first requests open connections. p95 went over a second right after the restart, was back at ~20ms about ten minutes later and has stayed there; warm v5.1.0 is as fast as v5.0.4 was, and the v5.0.4 restart 30 hours earlier shows the same spike. Nothing needs reverting. To stop it recurring on every release, keep /healthz failing until the preload has filled the cache (or preload before serving) and set pool_min_conns so connections are open before traffic arrives.
+        The alert was a warmup spike from the v5.1.0 release, not a regression. GET /api/categories/{slug}/products is not marked slow (offsetMs 0), so the 1000ms rule applied. v5.1.0 restarted all three catalog instances about five minutes before the alert. A restarted instance starts with an empty in-process category cache, which a background preload fills one category at a time, and an empty pgx pool; meanwhile an instance's first request for a category runs the full listing query (one to two seconds) and the first requests open connections. p95 went over a second right after the restart, was back at ~20ms about ten minutes later and has stayed there; warm v5.1.0 is as fast as v5.0.4 was, and the v5.0.4 restart 30 hours earlier shows the same spike. Nothing needs reverting. To stop it recurring on every release, keep /healthz failing until the preload has filled the cache (or preload before serving) and set pool_min_conns so connections are open before traffic arrives.

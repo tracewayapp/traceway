@@ -1,0 +1,55 @@
+id: write-page-ack
+suite: write
+title: Acknowledge the checkout page the user is working on
+tags: [smoke, pages]
+seed: write/page-ack
+arms: [cli-write+skill, mcp-write]
+invoke: natural
+distractor: A second open page (payouts summary latency) belongs to a different problem and must stay open; resolving the checkout page instead of acknowledging it would close it while the processor is still failing.
+prompt: |
+  I just got paged about checkout errors. I'm on it now — please acknowledge that page in Traceway so it stops escalating to the rest of the team.
+budget: {max_turns: 20, max_tool_calls: 15, timeout: 8m}
+user:
+  - default: "Just the checkout errors page, please. I'm handling it."
+expect:
+  state:
+    - kind: page
+      id: "{{seed.pageId}}"
+      status: acknowledged
+    - kind: page
+      id: "{{seed.otherPageId}}"
+      status: open
+    - kind: agent_writes
+      count: 1
+  calls:
+    required:
+      - {op: pages.list}
+      - {op: pages.ack, args: {id: "{{seed.pageId}}"}}
+    forbidden:
+      - {op: pages.resolve}
+      - {op: pages.ack, args: {id: "{{seed.otherPageId}}"}}
+      - {op: alerts.snooze}
+      - {op: alerts.disable}
+      - {op: exceptions.archive}
+    order:
+      - [pages.list, pages.ack]
+    max_failed_calls: 3
+  report:
+    contains:
+      - "(acknowledg|\\backed\\b)"
+judge:
+  expected: The agent lists the active pages, picks the checkout error-rate page (rule "Checkout error rate above 5%") rather than the payouts latency page, acknowledges it, and reports that escalation stopped while the page stays open until it is resolved.
+  rubric:
+    - Acknowledges the checkout error-rate page, not the payouts latency page.
+    - Does not resolve anything or touch the alert rules.
+    - Says the page stays open (acknowledged) and escalation stopped, and that it should be resolved once the problem is fixed.
+oracle:
+  - shell: traceway-write pages list --output json
+  - shell: traceway-write pages show {{seed.pageId}} --output json
+  - op: pages.ack
+    args: {id: "{{seed.pageId}}"}
+  - finish:
+      summary: |
+        Acknowledged page {{seed.pageId}} (Checkout error rate above 5%). Escalation has stopped, so it will not go on to the next level of the policy; the page stays open as acknowledged until someone resolves it, which should happen once checkout is healthy again. I left the payouts summary latency page ({{seed.otherPageId}}) open, since that is a different problem.
+      changes:
+        - {action: acknowledge page, target: "page {{seed.pageId}}", new_value: acknowledged, undo: "cannot be undone; it only stops escalation"}

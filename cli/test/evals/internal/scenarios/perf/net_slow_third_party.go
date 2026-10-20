@@ -70,7 +70,7 @@ func pncSeedSlowThirdParty(s *seed.Scenario) error {
 		timeout := !forcedTimeout && incidents[2].has(r.Start()) && !r.Start().Before(incidents[2].from.Add(10*time.Minute))
 		forcedTimeout = forcedTimeout || timeout
 		r.Gap(r.Ms(0.4, 1.0))
-		r.DB("SELECT id, status, total_cents, currency FROM orders WHERE id = $1 AND customer_id = $2", r.LogNormal(2500*time.Microsecond, 7*time.Millisecond))
+		r.DB("SELECT id, status, total_cents, currency, payment_method FROM orders WHERE id = $1 AND customer_id = $2", r.LogNormal(2500*time.Microsecond, 7*time.Millisecond))
 		r.DB("SELECT sku, qty, unit_price_cents FROM order_lines WHERE order_id = $1", r.LogNormal(2*time.Millisecond, 5*time.Millisecond), seed.Rows(1+r.IntN(6)))
 		if _, ok := providerCall(r, "/v1/charges", timeout); !ok {
 			r.Error(seed.Exc{Type: "*url.Error", Message: `Post "https://api.payments.example/v1/charges": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`})
@@ -81,7 +81,7 @@ func pncSeedSlowThirdParty(s *seed.Scenario) error {
 		}
 		r.DB("UPDATE orders SET status = 'paid', paid_at = now(), charge_id = $2 WHERE id = $1", r.LogNormal(2500*time.Microsecond, 6*time.Millisecond))
 		r.DB("INSERT INTO payment_events (order_id, kind, payload) VALUES ($1, $2, $3)", r.LogNormal(2*time.Millisecond, 5*time.Millisecond))
-		r.Compute("encode response", r.Ms(0.3, 1))
+		r.Gap(r.Ms(0.3, 1))
 	})
 
 	refunds := api.Endpoint("POST", "/api/refunds")
@@ -96,13 +96,13 @@ func pncSeedSlowThirdParty(s *seed.Scenario) error {
 		r.DB("INSERT INTO payment_events (order_id, kind, payload) VALUES ($1, $2, $3)", r.LogNormal(2*time.Millisecond, 5*time.Millisecond))
 	})
 
-	order := api.Endpoint("GET", "/api/orders/:id")
+	order := api.Endpoint("GET", "/api/orders/{id}")
 	order.Traffic(seed.Daily(900), seed.Diurnal(), seed.Over(window))
 	order.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.3, 0.8))
 		r.DB("SELECT id, status, total_cents, currency, paid_at FROM orders WHERE id = $1", r.LogNormal(2500*time.Microsecond, 7*time.Millisecond))
 		r.DB("SELECT sku, qty, unit_price_cents FROM order_lines WHERE order_id = $1", r.LogNormal(2*time.Millisecond, 5*time.Millisecond))
-		r.Compute("encode response", r.Ms(0.3, 1))
+		r.Gap(r.Ms(0.3, 1))
 	})
 
 	s.Background(api, seed.TrafficOpts{Endpoints: 5, PerDay: 150})

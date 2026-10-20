@@ -1,9 +1,9 @@
 # catalog-api
 
 The shopfront's product catalog: category grids, product pages, search and
-prices. Node 24, Express 5, PostgreSQL through `pg`. Telemetry goes to
-Traceway over OTLP with `@opentelemetry/auto-instrumentations-node`
-(`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME=catalog-api`).
+prices. Node 24, Express 5, PostgreSQL through `pg`. Traces, logs and metrics
+go to Traceway over OTLP (`src/tracing.js`, with
+`@opentelemetry/auto-instrumentations-node`; `OTEL_EXPORTER_OTLP_ENDPOINT`).
 
 ```
 npm install

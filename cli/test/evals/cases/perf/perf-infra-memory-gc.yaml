@@ -20,7 +20,6 @@ expect:
     locus: {service: geo-api}
   grounding:
     - "go.memory.used"
-    - "starting geo-api"
   calls:
     required:
       - {op: endpoints.list}
@@ -76,7 +75,7 @@ oracle:
         - {call_id: c05, claim: "each drop is a process restart (startup log)"}
         - {call_id: c06, claim: "a one-query place lookup near the top of the cycle stalls for ~0.2s or more after its ~2ms query returned, with no span"}
         - {call_id: c07, claim: "the same lookup right after a restart takes a few ms"}
-        - {call_id: c08, claim: "the heaviest batch while the heap was low spends its time in its own decode, query and matching spans, sized by the batch"}
+        - {call_id: c08, claim: "the heaviest batch while the heap was low spends its time in its own decode and query spans, sized by the batch"}
       ruled_out:
         - {checklist_item: unbounded_in_memory_work_large_allocations, call_id: c03, reason: "the heap grows at a steady rate day and night and only drops at restarts; the batch endpoint is rare and its work is bounded"}
         - {checklist_item: connection_pool_exhaustion, call_id: c06, reason: "the stall comes after the query returned and follows the heap, not the load"}

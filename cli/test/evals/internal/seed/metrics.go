@@ -126,10 +126,12 @@ type metricSeries struct {
 	scope            string
 	// cumTotal and cumPrev carry a counter's running total across the
 	// chunks metricRequests renders it in; histPrev carries the end of a
-	// histogram's last delta window the same way.
-	cumTotal float64
-	cumPrev  time.Time
-	histPrev time.Time
+	// histogram's last delta window the same way, and histCarry the part of
+	// an observation its rounded counts have not reported yet.
+	cumTotal  float64
+	cumPrev   time.Time
+	histPrev  time.Time
+	histCarry float64
 }
 
 // MetricStep controls sampling: points every Recent inside the last day,
@@ -141,10 +143,14 @@ func (svc *Service) Gauge(name, unit string, attrs map[string]any, v Series) {
 	svc.GaugeOn(svc.Hosts[0], name, unit, attrs, v)
 }
 
-// GaugeOn adds a gauge series for one instance.
+// GaugeOn adds a gauge series for one instance. A ratio (unit "1") stays
+// within [0, 1] after the jitter.
 func (svc *Service) GaugeOn(host, name, unit string, attrs map[string]any, v Series) {
 	label := fmt.Sprint(host, name, attrs)
 	jittered := func(t time.Time) float64 { return v(t) * (1 + 0.03*(noise(label, t)-0.5)) }
+	if unit == "1" {
+		jittered = Clamp(jittered, 0, 1)
+	}
 	svc.metrics = append(svc.metrics, &metricSeries{name: name, unit: unit, kind: gaugeKind, attrs: attrs, host: host, value: jittered, scope: metricScope(name)})
 	svc.s.record(name)
 }
@@ -355,9 +361,11 @@ func (m *metricSeries) render(times []time.Time, origin time.Time) *metricspb.Me
 			}
 			prev = times[0].Add(-step)
 		}
+		carry := m.histCarry
 		for _, t := range times {
-			per := m.count(t) * t.Sub(prev).Minutes()
-			cnt := uint64(math.Max(0, math.Round(per)))
+			per := math.Max(0, m.count(t)*t.Sub(prev).Minutes()) + carry
+			cnt := uint64(math.Round(per))
+			carry = per - float64(cnt)
 			mean := m.value(t)
 			s := mean * float64(cnt)
 			h.DataPoints = append(h.DataPoints, &metricspb.HistogramDataPoint{
@@ -366,7 +374,7 @@ func (m *metricSeries) render(times []time.Time, origin time.Time) *metricspb.Me
 			})
 			prev = t
 		}
-		m.histPrev = prev
+		m.histPrev, m.histCarry = prev, carry
 		out.Data = &metricspb.Metric_Histogram{Histogram: h}
 	}
 	return out

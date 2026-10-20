@@ -50,7 +50,7 @@ func papSeedNoisyNeighbor(s *seed.Scenario) error {
 		r.DB("SELECT id, title, venue_id, starts_at, min_price_cents FROM events WHERE city_id = $1 AND starts_at > now() ORDER BY starts_at LIMIT 30", db(r, r.Ms(4, 10)), seed.Rows(30))
 		r.Gap(cpu(r, r.Ms(6, 14))) // render the listing JSON
 	})
-	event := api.Endpoint("GET", "/api/events/:id")
+	event := api.Endpoint("GET", "/api/events/{id}")
 	event.Traffic(papJitter("event", 0.06), seed.Daily(1100), seed.Diurnal(), seed.Over(window))
 	event.Detail(detail)
 	event.Handler(func(r *seed.Req) {
@@ -64,12 +64,12 @@ func papSeedNoisyNeighbor(s *seed.Scenario) error {
 	reserve.Detail(detail)
 	reserve.Handler(func(r *seed.Req) {
 		r.Gap(cpu(r, r.Ms(0.8, 2)))
-		r.DB("UPDATE seat_blocks SET available = available - $2 WHERE id = $1 AND available >= $2", db(r, r.Ms(2, 5)))
+		r.DB("UPDATE seat_blocks SET available = available - $2 WHERE id = $1 AND available >= $2 RETURNING event_id, price_cents", db(r, r.Ms(2, 5)))
 		r.DB("INSERT INTO orders (id, event_id, buyer_id, seats, total_cents, status, created_at) VALUES ($1, $2, $3, $4, $5, 'reserved', now())", db(r, r.Ms(2, 5)))
 		r.Gap(cpu(r, r.Ms(3, 8))) // sign the reservation token
 		r.Status(201)
 	})
-	order := api.Endpoint("GET", "/api/orders/:id")
+	order := api.Endpoint("GET", "/api/orders/{id}")
 	order.Traffic(papJitter("order", 0.06), seed.Daily(500), seed.Diurnal(), seed.Over(window))
 	order.Detail(detail)
 	order.Handler(func(r *seed.Req) {
@@ -148,14 +148,16 @@ func papSeedNoisyNeighbor(s *seed.Scenario) error {
 		}
 	}
 
-	for _, h := range hosts {
+	for i, h := range hosts {
 		host := api.HostNamed(h)
+		shift := time.Duration(i) * 137 * time.Second // hosts do not share one noise curve
+		at := func(v seed.Series) seed.Series { return func(t time.Time) float64 { return v(t.Add(shift)) } }
 		if h == bad {
-			host.CPU(seed.Flat(0.27, 0.35), seed.CPUExtra{Steal: seed.Step(onset, seed.Flat(0, 0.004), seed.Flat(0.24, 0.34))})
+			host.CPU(at(seed.Flat(0.27, 0.35)), seed.CPUExtra{Steal: seed.Step(onset, seed.Flat(0, 0.004), seed.Flat(0.24, 0.34))})
 		} else {
-			host.CPU(seed.Flat(0.26, 0.34))
+			host.CPU(at(seed.Flat(0.26, 0.34)))
 		}
-		host.Memory(seed.Flat(0.47, 0.53))
+		host.Memory(at(seed.Flat(0.47, 0.53)))
 	}
 
 	rfc := func(t time.Time) string { return t.UTC().Format(time.RFC3339) }

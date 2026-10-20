@@ -22,16 +22,34 @@ type Store struct {
 	Meters  int     `json:"meters"`
 }
 
-// Finder looks up stores near a point (PostGIS in production).
-type Finder interface {
-	Near(ctx context.Context, p maps.Point, limit int) ([]Store, error)
+// Directory reads the store data (PostgreSQL with PostGIS).
+type Directory interface {
+	// Near returns the ten stores closest to p within 50km.
+	Near(ctx context.Context, p maps.Point) ([]Store, error)
+	Hours(ctx context.Context, storeID int) ([]OpeningHours, error)
 }
 
 // Handler serves /api/stores.
 type Handler struct {
 	Maps      *maps.Client
 	Inventory *inventory.Client
-	Stores    Finder
+	Stores    Directory
+}
+
+// Hours serves GET /api/stores/{id}/hours.
+func (h *Handler) Hours(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "bad store id", http.StatusBadRequest)
+		return
+	}
+	hours, err := h.Stores.Hours(r.Context(), id)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(hours)
 }
 
 // Availability serves GET /api/stores/{id}/availability.
@@ -62,7 +80,7 @@ func (h *Handler) Nearby(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not resolve the location", http.StatusBadGateway)
 		return
 	}
-	stores, err := h.Stores.Near(r.Context(), origin, 10)
+	stores, err := h.Stores.Near(r.Context(), origin)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

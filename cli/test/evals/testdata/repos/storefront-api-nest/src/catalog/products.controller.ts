@@ -1,6 +1,7 @@
 import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
 import Redis from 'ioredis';
 import { Pool } from 'pg';
+import { CacheStats } from './cache-stats';
 
 const TTL_SECONDS = 300;
 
@@ -9,13 +10,18 @@ export class ProductsController {
   constructor(
     private readonly db: Pool,
     private readonly redis: Redis,
+    private readonly stats: CacheStats,
   ) {}
 
   @Get('products/:id')
   async findOne(@Param('id') id: string) {
     const key = `product:${id}`;
     const hit = await this.redis.get(key);
-    if (hit) return JSON.parse(hit);
+    if (hit) {
+      this.stats.hit();
+      return JSON.parse(hit);
+    }
+    this.stats.miss();
     const { rows } = await this.db.query(
       'SELECT id, slug, name, price_cents, currency, images, attributes FROM products WHERE id = $1',
       [id],
@@ -29,9 +35,13 @@ export class ProductsController {
   async byCategory(@Param('slug') slug: string) {
     const key = `category:${slug}:page:1`;
     const hit = await this.redis.get(key);
-    if (hit) return JSON.parse(hit);
+    if (hit) {
+      this.stats.hit();
+      return JSON.parse(hit);
+    }
+    this.stats.miss();
     const { rows } = await this.db.query(
-      'SELECT id, slug, name, price_cents, currency, thumbnail_url FROM products WHERE category_id = $1 ORDER BY rank LIMIT 48',
+      'SELECT p.id, p.slug, p.name, p.price_cents, p.currency, p.thumbnail_url FROM products p JOIN categories c ON c.id = p.category_id WHERE c.slug = $1 ORDER BY p.rank LIMIT 48',
       [slug],
     );
     await this.redis.set(key, JSON.stringify(rows), 'EX', TTL_SECONDS);

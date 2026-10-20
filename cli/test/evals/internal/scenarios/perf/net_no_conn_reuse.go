@@ -85,23 +85,23 @@ func pncSeedNoConnReuse(s *seed.Scenario) error {
 			dest[i] = fmt.Sprintf("store%%3A%d", 1000+r.IntN(400))
 		}
 		pncTracedGet(r, "https://"+mapsHost+"/v1/distancematrix?origins="+place.ll+"&destinations="+strings.Join(dest, "%7C")+"&mode=driving", mapsHost, remote, true, r.LogNormal(24*time.Millisecond, 55*time.Millisecond))
-		r.Compute("encode response", r.Ms(0.4, 1.2))
+		r.Gap(r.Ms(0.4, 1.2))
 	})
 
-	avail := api.Endpoint("GET", "/api/stores/:id/availability")
+	avail := api.Endpoint("GET", "/api/stores/{id}/availability")
 	avail.Traffic(seed.Daily(900), seed.Diurnal(), seed.Over(window))
 	avail.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.2, 0.6))
 		pncTracedGet(r, fmt.Sprintf("http://inventory.internal:8080/v2/stock?store=%d", 100+r.IntN(300)), "inventory.internal", fmt.Sprintf("10.20.3.%d", 10+r.IntN(5)), false, r.LogNormal(6*time.Millisecond, 14*time.Millisecond))
-		r.Compute("encode response", r.Ms(0.2, 0.8))
+		r.Gap(r.Ms(0.2, 0.8))
 	})
 
-	hours := api.Endpoint("GET", "/api/stores/:id/hours")
+	hours := api.Endpoint("GET", "/api/stores/{id}/hours")
 	hours.Traffic(seed.Daily(700), seed.Diurnal(), seed.Over(window))
 	hours.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.2, 0.6))
 		r.DB("SELECT weekday, opens_at, closes_at FROM store_hours WHERE store_id = $1", r.LogNormal(2*time.Millisecond, 5*time.Millisecond), seed.Rows(7))
-		r.Compute("encode response", r.Ms(0.1, 0.5))
+		r.Gap(r.Ms(0.1, 0.5))
 	})
 
 	s.Background(api, seed.TrafficOpts{Endpoints: 3, PerDay: 150})

@@ -4,8 +4,10 @@ const express = require('express');
 const q = require('./catalog/queries');
 const db = require('./db');
 const { toCard } = require('./catalog/cards');
+const { accessLog } = require('./access-log');
 
 const app = express();
+app.use(accessLog);
 
 app.get('/api/categories/:categoryId/products', async (req, res) => {
   const category = await db.query('SELECT id, name, slug FROM categories WHERE id = $1', [req.params.categoryId]);

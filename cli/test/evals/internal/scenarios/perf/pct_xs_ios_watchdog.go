@@ -20,7 +20,7 @@ os: ios arch: arm64
 #1  libdispatch.dylib+0x4a24
 #2  libdispatch.dylib+0x49d0
 #3  ConfigClient.fetchBlocking(timeout:) (ConfigClient.swift:33:23)
-#4  RemoteConfig.loadAtLaunch() (RemoteConfig.swift:18:37)
+#4  RemoteConfig.loadAtLaunch() (RemoteConfig.swift:19:37)
 #5  AppDelegate.application(_:didFinishLaunchingWithOptions:) (AppDelegate.swift:17:29)
 #6  UIKitCore+0x2f1a84
 #7  UIKitCore+0x2f0e2c
@@ -82,7 +82,7 @@ func pctSeedXSIOSWatchdog(s *seed.Scenario) error {
 		r.Gap(poolWait(r))
 		r.DB("SELECT key, value, rollout_pct FROM feature_flags WHERE platform = $1 AND enabled", r.LogNormal(2*time.Millisecond, 6*time.Millisecond), seed.Rows(40+r.IntN(10)))
 		r.DB("SELECT min_supported, latest FROM app_versions WHERE platform = $1", r.LogNormal(1*time.Millisecond, 4*time.Millisecond), seed.Rows(1))
-		r.Compute("encode response", r.Ms(0.3, 1))
+		r.Compute("encode response", r.Ms(0.3, 1)).Scope = "mobile-api"
 	})
 	devices := api.Endpoint("POST", "/api/devices")
 	devices.Traffic(seed.Daily(1200), seed.Diurnal(), launches, seed.Over(window))
@@ -98,17 +98,17 @@ func pctSeedXSIOSWatchdog(s *seed.Scenario) error {
 		r.Gap(poolWait(r))
 		r.DB("SELECT p.id, p.title, p.image_url, p.price_cents, p.badge FROM promotions p WHERE p.active AND p.segment = ANY($1) ORDER BY p.priority DESC LIMIT 30", r.LogNormal(120*time.Millisecond, 380*time.Millisecond), seed.Rows(30))
 		r.DB("SELECT product_id, count(*) FROM recent_views WHERE user_id = $1 GROUP BY product_id ORDER BY count(*) DESC LIMIT 20", r.LogNormal(60*time.Millisecond, 220*time.Millisecond), seed.Rows(20))
-		r.Compute("assemble feed", r.Ms(2, 6))
+		r.Compute("assemble feed", r.Ms(2, 6)).Scope = "mobile-api"
 	})
 	// Everything that touches the database shares the pool, so every route
 	// waits in a wave (no unrelated background routes on this service).
-	product := api.Endpoint("GET", "/api/products/:id")
+	product := api.Endpoint("GET", "/api/products/{id}")
 	product.Traffic(seed.Daily(1800), seed.Diurnal(), seed.RateFunc(func(t time.Time) float64 { return 1 + 8*wave(t)/pctDiurnal(t) }), seed.Over(window))
 	product.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.3, 0.8))
 		r.Gap(poolWait(r))
 		r.DB("SELECT id, name, description, price_cents, images FROM products WHERE id = $1", r.LogNormal(2*time.Millisecond, 7*time.Millisecond), seed.Rows(1))
-		r.Compute("encode response", r.Ms(0.3, 1))
+		r.Compute("encode response", r.Ms(0.3, 1)).Scope = "mobile-api"
 	})
 	api.Host().CPU(seed.Flat(0.18, 0.32))
 	api.Host().Memory(seed.Flat(0.48, 0.56))

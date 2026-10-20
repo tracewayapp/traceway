@@ -28,6 +28,15 @@ type Request struct {
 // ErrOutOfStock means a line could not be held.
 var ErrOutOfStock = errors.New("out of stock")
 
+// LineError is a database error while holding one line of the cart.
+type LineError struct {
+	SKU string
+	Err error
+}
+
+func (e *LineError) Error() string { return e.Err.Error() }
+func (e *LineError) Unwrap() error { return e.Err }
+
 // Handler serves the reservation routes.
 type Handler struct{ Pool db.Pool }
 
@@ -45,12 +54,30 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrOutOfStock):
 		http.Error(w, err.Error(), http.StatusConflict)
 	case db.SQLState(err) == "55P03": // lock_not_available
-		slog.WarnContext(r.Context(), "reserve stock: "+err.Error(), "cart_id", req.CartID)
+		slog.WarnContext(r.Context(), "reserve stock: "+err.Error(), logAttrs(req, err)...)
 		http.Error(w, "busy, try again", http.StatusServiceUnavailable)
 	default:
-		slog.ErrorContext(r.Context(), "reserve stock: "+err.Error(), "cart_id", req.CartID)
+		slog.ErrorContext(r.Context(), "reserve stock: "+err.Error(), logAttrs(req, err)...)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
+}
+
+func logAttrs(req Request, err error) []any {
+	attrs := []any{"cart_id", req.CartID}
+	var le *LineError
+	if errors.As(err, &le) {
+		attrs = append(attrs, "sku", le.SKU)
+	}
+	var pg *db.PgError
+	if errors.As(err, &pg) {
+		if pg.Detail != "" {
+			attrs = append(attrs, "pg_detail", pg.Detail)
+		}
+		if pg.Where != "" {
+			attrs = append(attrs, "pg_where", pg.Where)
+		}
+	}
+	return attrs
 }
 
 // Reserve holds every line of the cart in one transaction: either all lines
@@ -75,7 +102,7 @@ func Reserve(ctx context.Context, pool db.Pool, req Request) (err error) {
 			"UPDATE inventory SET reserved = reserved + $1, updated_at = now() WHERE sku = $2 AND warehouse_id = $3 AND on_hand - reserved >= $1",
 			l.Qty, l.SKU, l.WarehouseID)
 		if err != nil {
-			return err
+			return &LineError{SKU: l.SKU, Err: err}
 		}
 		if n == 0 {
 			return fmt.Errorf("%s: %w", l.SKU, ErrOutOfStock)
@@ -100,13 +127,21 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	// RETURNING sku, warehouse_id, qty feeds the UPDATE below (pgx scans
-	// it in the production adapter).
-	if _, err := tx.Exec(ctx, "DELETE FROM reservations WHERE id = $1 RETURNING sku, warehouse_id, qty", r.PathValue("id")); err != nil {
+	var (
+		sku         string
+		warehouseID int64
+		qty         int
+	)
+	if err := tx.QueryRow(ctx, "DELETE FROM reservations WHERE id = $1 RETURNING sku, warehouse_id, qty", r.PathValue("id")).
+		Scan(&sku, &warehouseID, &qty); err != nil {
+		if errors.Is(err, db.ErrNoRows) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if _, err := tx.Exec(ctx, "UPDATE inventory SET reserved = reserved - $1, updated_at = now() WHERE sku = $2 AND warehouse_id = $3"); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE inventory SET reserved = reserved - $1, updated_at = now() WHERE sku = $2 AND warehouse_id = $3", qty, sku, warehouseID); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

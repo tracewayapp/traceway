@@ -1,8 +1,10 @@
 # orders-api
 
 The storefront's order service: order history and order detail for signed-in
-customers. Go, `net/http`, PostgreSQL through `database/sql`. Traces, logs and
-metrics go to Traceway over OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT`).
+customers. Go, `net/http`, PostgreSQL through `database/sql`. Traces and logs
+go to Traceway over OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT`); the production binary
+is built with `-tags otel` (see `internal/telemetry`). Host metrics come from
+the OTel Collector's hostmetrics receiver.
 
 ```
 go test ./...

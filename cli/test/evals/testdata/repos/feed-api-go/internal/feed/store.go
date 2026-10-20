@@ -3,6 +3,7 @@ package feed
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -12,7 +13,7 @@ type Card struct {
 	Kind        string
 	Title       string
 	Body        string
-	ImageData   string // data:image/jpeg;base64,... (about 45KB per card)
+	ImageData   string // data:image/jpeg;base64,...
 	PublishedAt time.Time
 	Author      Author
 }
@@ -24,9 +25,19 @@ type Author struct {
 	AvatarData  string // data:image/png;base64,...
 }
 
-// Store reads cards.
+// Profile is an author's public profile.
+type Profile struct {
+	ID          int64  `json:"id"`
+	DisplayName string `json:"displayName"`
+	Bio         string `json:"bio"`
+	Followers   int64  `json:"followers"`
+}
+
+// Store reads cards and authors.
 type Store interface {
 	Latest(ctx context.Context, audiences []string, limit int) ([]Card, error)
+	Card(ctx context.Context, id int64) (*Card, error)
+	Profile(ctx context.Context, id int64) (*Profile, error)
 }
 
 // SQL implements Store on PostgreSQL.
@@ -50,4 +61,34 @@ func (s *SQL) Latest(ctx context.Context, audiences []string, limit int) ([]Card
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// Card returns one card with its author's name, or nil.
+func (s *SQL) Card(ctx context.Context, id int64) (*Card, error) {
+	var c Card
+	var image sql.NullString
+	err := s.DB.QueryRowContext(ctx, `SELECT c.id, c.kind, c.title, c.body, c.image_data, c.published_at, a.id, a.display_name FROM feed_cards c JOIN authors a ON a.id = c.author_id WHERE c.id = $1`, id).
+		Scan(&c.ID, &c.Kind, &c.Title, &c.Body, &image, &c.PublishedAt, &c.Author.ID, &c.Author.DisplayName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	c.ImageData = image.String
+	return &c, nil
+}
+
+// Profile returns an author's profile, or nil.
+func (s *SQL) Profile(ctx context.Context, id int64) (*Profile, error) {
+	var p Profile
+	err := s.DB.QueryRowContext(ctx, `SELECT id, display_name, bio, followers FROM authors WHERE id = $1`, id).
+		Scan(&p.ID, &p.DisplayName, &p.Bio, &p.Followers)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
 }

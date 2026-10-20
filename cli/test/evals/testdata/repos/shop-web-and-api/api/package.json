@@ -5,9 +5,16 @@
   "type": "module",
   "scripts": { "start": "node --import ./src/otel.js src/server.js", "test": "node --test" },
   "dependencies": {
+    "@opentelemetry/api": "1.9.0",
     "@opentelemetry/auto-instrumentations-node": "0.64.1",
+    "@opentelemetry/exporter-logs-otlp-proto": "0.205.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.205.0",
+    "@opentelemetry/instrumentation": "0.205.0",
+    "@opentelemetry/sdk-logs": "0.205.0",
     "@opentelemetry/sdk-node": "0.205.0",
+    "@opentelemetry/winston-transport": "0.16.0",
     "express": "5.1.0",
-    "pg": "8.16.3"
+    "pg": "8.16.3",
+    "winston": "3.17.0"
   }
 }

@@ -1,0 +1,76 @@
+id: debug-log-only-error
+suite: debug
+title: 500s with no exception, explained by an ERROR at startup
+tags: [python, config, logs]
+seed: debug/log-only-error
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: The only exception group is a database restart three days ago on GET /api/products/{product_id} (server closed the connection unexpectedly), which stopped after four minutes; the current 500s raise no exception at all and are explained only by logs.
+workspace: {repo: catalog-api-py}
+prompt: |
+  catalog-api has been answering 500s for a few hours and the "You may also like" row on product pages is empty. Can you find out what's wrong and fix it?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I don't know more than that. Please fix it."
+expect:
+  answer:
+    category: config
+    culprit: {file: config/settings.toml, line: 11}
+    needs_instrumentation: false
+    mentions_all: ["timeout_ms", "3\\.4\\.0|release|deploy|startup|start-up"]
+  grounding:
+    - "must be an integer, got '800'"
+  calls:
+    required:
+      - {op: logs.query}
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [logs.query, write_file]
+      - [logs.query, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-log-only-error
+    command: python3 -m unittest
+    gating: true
+    touches_culprit: true
+judge:
+  expected: >-
+    No exception explains it: GET /api/products/{product_id}/recommendations answers 500 on every request since v3.4.0 was deployed
+    about 9 hours ago, each with the ERROR log "recommendations requested but no recommendations client is configured". At
+    startup both instances logged "invalid config: recommendations.timeout_ms must be an integer, got '800'; recommendations
+    are disabled". v3.4.0 quoted timeout_ms in config/settings.toml (line 11), so the validator in app/config.py disables the
+    feature. The fix makes timeout_ms an integer (800) again. The database exception group from three days ago is unrelated.
+  rubric:
+    - Finds the evidence in logs (the per-request ERROR and the startup ERROR) rather than in exceptions, and does not blame the old database exception group.
+    - Ties the startup ERROR to the v3.4.0 change that quoted timeout_ms.
+    - Fixes the setting in config/settings.toml (an integer), keeping the new model and timeout intent.
+oracle:
+  - shell: >-
+      traceway exceptions list --since 24h --output json
+      | jq '[.data[]? | {hash: .exceptionHash, count, firstSeen, lastSeen, top: (.stackTrace | split("\n")[0])}]'
+  - shell: >-
+      traceway logs query --since 24h --min-severity 17 --service catalog-api --page-size 20 --output json
+      | jq '[.data[] | {timestamp, body, traceId}] | group_by(.body) | map({body: .[0].body, n: length, latest: (map(.timestamp) | max)})'
+  - shell: >-
+      traceway logs query --since 24h --min-severity 17 --service catalog-api --sort-direction asc --page-size 10 --output json
+      | jq '[.data[] | {timestamp, body, traceId, host: .resourceAttributes["host.name"], version: .resourceAttributes["service.version"]}]'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - shell: git show HEAD -- config/settings.toml
+  - write_file: {path: config/settings.toml, from: oracle/debug-log-only-error/settings.toml}
+  - submit:
+      category: config
+      culprit: {file: config/settings.toml, symbol: recommendations.timeout_ms, line: 11}
+      evidence:
+        - {call_id: c01, claim: "no exception in the last 24 hours: the 500s raise none"}
+        - {call_id: c02, claim: "every recommendations request logs ERROR 'recommendations requested but no recommendations client is configured'"}
+        - {call_id: c03, claim: "the ERRORs start when each instance starts on 3.4.0, outside any request (no trace): 'invalid config: recommendations.timeout_ms must be an integer, got '800'; recommendations are disabled'; the per-request ERRORs follow"}
+        - {call_id: c04, claim: "v3.4.0 was committed shortly before that startup"}
+        - {call_id: c05, claim: "v3.4.0 changed timeout_ms from 1200 to the string \"800\""}
+      fix_summary: timeout_ms in config/settings.toml is the integer 800 again, so the startup validation keeps recommendations enabled.
+      files_changed: [config/settings.toml]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        There is no exception for this: since v3.4.0 was deployed (about 9 hours ago) every GET /api/products/{product_id}/recommendations answers 500 and logs "recommendations requested but no recommendations client is configured". The reason is in the startup logs of both instances: "invalid config: recommendations.timeout_ms must be an integer, got '800'; recommendations are disabled". v3.4.0 wrote timeout_ms = "800" (a string) in config/settings.toml, line 11, so app/config.py disables the recommendations client. I changed it to the integer 800, keeping the new model and the tighter timeout. The database exception group from three days ago is a short, unrelated restart.

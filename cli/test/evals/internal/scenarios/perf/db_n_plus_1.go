@@ -37,17 +37,17 @@ func seedNPlusOne(s *seed.Scenario) error {
 		for range n {
 			r.DB("SELECT id, sku, qty, unit_price FROM order_items WHERE order_id = $1", r.Ms(6, 14))
 		}
-		r.Compute("encode response", r.Ms(2, 6))
+		r.Compute("encode response", r.Ms(2, 6)).Scope = "orders-api"
 		r.Gap(r.Ms(0.2, 0.6))
 	})
 
-	order := api.Endpoint("GET", "/api/orders/:id")
+	order := api.Endpoint("GET", "/api/orders/{id}")
 	order.Traffic(seed.Daily(120), seed.Diurnal(), seed.Over(window))
 	order.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.4, 1.1))
 		r.DB("SELECT id, user_id, status, total_cents, created_at FROM orders WHERE id = $1", r.Ms(2, 5))
-		r.DB("SELECT o.id, o.sku, o.qty, o.unit_price FROM order_items o WHERE o.order_id = $1", r.Ms(3, 7))
-		r.Compute("encode response", r.Ms(0.5, 1.5))
+		r.DB("SELECT id, sku, qty, unit_price FROM order_items WHERE order_id = $1", r.Ms(3, 7))
+		r.Compute("encode response", r.Ms(0.5, 1.5)).Scope = "orders-api"
 	})
 
 	s.Background(api, seed.TypicalTraffic(10))

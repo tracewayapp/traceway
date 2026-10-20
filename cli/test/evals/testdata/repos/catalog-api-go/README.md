@@ -3,7 +3,9 @@
 Product catalog for the storefront: category listings and product pages.
 Go, `net/http`, PostgreSQL through pgx. Runs as three instances (catalog-api-a/b/c)
 behind the load balancer; a release restarts all three. Traces, logs and
-metrics go to Traceway over OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT`).
+metrics go to Traceway over OTLP (`OTEL_EXPORTER_OTLP_ENDPOINT`); production
+builds (`go build -tags otel`) install otelhttp and otelpgx through
+`internal/telemetry`.
 
 ```
 go test ./...

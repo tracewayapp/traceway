@@ -67,7 +67,7 @@ func pncSeedNoCache(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.3, 0.8))
 		r.Cache("GET", "sess:"+fmt.Sprintf("%x", r.IntN(1<<30)), r.Ms(0.3, 0.9))
 		r.DB("SELECT id, rating, title, body, created_at FROM reviews WHERE product_sku = $1 ORDER BY created_at DESC LIMIT 10 OFFSET $2", r.LogNormal(4*time.Millisecond, 10*time.Millisecond), seed.Rows(10))
-		r.Compute("serialize", r.Ms(0.3, 1))
+		r.Gap(r.Ms(0.3, 1)) // res.json
 	})
 
 	s.Background(svc, seed.TrafficOpts{Endpoints: 3, PerDay: 150})

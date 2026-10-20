@@ -67,14 +67,20 @@ func dbgSeedAndroidNPE(s *seed.Scenario) error {
 		c := seed.Crash{At: at, Stack: npe, AppVersion: "5.8.0", Device: dbgPick(s, modern)}
 		if at.After(s.Ago(10 * time.Hour)) {
 			cursor := fmt.Sprintf("c_%x", s.RNG.IntN(1<<30))
+			first, firstMs := at.Add(-time.Duration(7800+s.RNG.IntN(900))*time.Millisecond), 180+s.RNG.IntN(300)
+			next, nextMs := at.Add(-time.Duration(900+s.RNG.IntN(1200))*time.Millisecond), 160+s.RNG.IntN(300)
+			loaded := func(req time.Time, ms int) time.Time {
+				return req.Add(time.Duration(ms+20+s.RNG.IntN(60)) * time.Millisecond)
+			}
+			// The SDK attaches only the last 10 seconds of actions and logs.
 			c.Actions = []seed.Action{
-				{Type: "navigation", At: at.Add(-time.Duration(20+s.RNG.IntN(90)) * time.Second), From: "SplashActivity", To: "FeedActivity"},
-				{Type: "network", At: at.Add(-time.Duration(8000+s.RNG.IntN(9000)) * time.Millisecond), Method: "GET", URL: "https://api.pinboard.example/v2/feed?limit=20", DurationMs: float64(180 + s.RNG.IntN(300)), Status: 200, RespBytes: 18000 + s.RNG.IntN(9000)},
-				{Type: "network", At: at.Add(-time.Duration(600+s.RNG.IntN(1500)) * time.Millisecond), Method: "GET", URL: "https://api.pinboard.example/v2/feed?cursor=" + cursor + "&limit=20", DurationMs: float64(160 + s.RNG.IntN(300)), Status: 200, RespBytes: 17000 + s.RNG.IntN(9000)},
+				{Type: "navigation", At: first.Add(-time.Duration(300+s.RNG.IntN(700)) * time.Millisecond), From: "SplashActivity", To: "FeedActivity"},
+				{Type: "network", At: first, Method: "GET", URL: "https://api.pinboard.example/v2/feed?limit=20", DurationMs: float64(firstMs), Status: 200, RespBytes: 18000 + s.RNG.IntN(9000)},
+				{Type: "network", At: next, Method: "GET", URL: "https://api.pinboard.example/v2/feed?cursor=" + cursor + "&limit=20", DurationMs: float64(nextMs), Status: 200, RespBytes: 17000 + s.RNG.IntN(9000)},
 			}
 			c.Logs = []seed.ActionLog{
-				{At: at.Add(-time.Duration(7000+s.RNG.IntN(2000)) * time.Millisecond), Level: "info", Message: "feed page loaded: 20 items"},
-				{At: at.Add(-time.Duration(300+s.RNG.IntN(400)) * time.Millisecond), Level: "info", Message: "feed page loaded: 20 items"},
+				{At: loaded(first, firstMs), Level: "info", Message: "feed page loaded: 20 items"},
+				{At: loaded(next, nextMs), Level: "info", Message: "feed page loaded: 20 items"},
 			}
 		}
 		p.Crash(c)

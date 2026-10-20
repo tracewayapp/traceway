@@ -465,16 +465,20 @@ func checkPostMortem(ctx context.Context, in *Input, a catalog.StateAssert, getJ
 	return nil
 }
 
+// generatedDirs hold installed packages or build output, which name SDK
+// attributes such as service.name whatever the agent wrote.
+var generatedDirs = map[string]bool{".venv": true, "venv": true, "__pycache__": true, ".next": true, "dist": true}
+
 func checkFiles(root string, a catalog.StateAssert) error {
 	var matched []string
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if d.IsDir() && (d.Name() == ".git" || d.Name() == "node_modules" || d.Name() == ".skills" || strings.HasPrefix(d.Name(), ".twevals")) {
+		if d.IsDir() && (d.Name() == ".git" || d.Name() == "node_modules" || d.Name() == ".skills" || strings.HasPrefix(d.Name(), ".twevals") || generatedDirs[d.Name()]) {
 			return filepath.SkipDir
 		}
-		if d.IsDir() {
+		if d.IsDir() || strings.HasPrefix(d.Name(), ".twevals") {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, p)

@@ -31,7 +31,7 @@ def create_checkout(body: CheckoutIn, x_user_id: int = Header()):
     try:
         return _checkout(body, x_user_id)
     except PoolTimeoutError as exc:
-        log.warning("checkout failed for cart %s: %s", body.cart_id, exc)
+        log.warning("checkout failed for cart %s: %s", body.cart_id, exc, extra={"cart_id": str(body.cart_id)})
         raise
 
 

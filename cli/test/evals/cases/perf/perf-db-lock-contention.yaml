@@ -5,7 +5,7 @@ tags: [database, go, pgx]
 seed: perf/db-lock-contention
 arms: [cli+skill, cli-noskill, mcp]
 invoke: natural
-distractor: Connection-pool exhaustion. Release 1.32.0 a week ago raised the pgx pool from 20 to 40 connections and the evening spikes look the same before and after; in the slow requests BEGIN starts within a millisecond (no wait for a connection) and the time is inside the UPDATE inventory spans.
+distractor: Connection-pool exhaustion. Release 1.32.0 a week ago raised the pgx pool from 20 to 40 connections and the evening spikes look the same before and after; in the slow requests pool.acquire hands out a connection in well under a millisecond, BEGIN follows at once, and the time is inside the UPDATE inventory spans.
 workspace: {repo: inventory-api-go}
 prompt: |
   Stock reservations (POST /api/reservations on inventory-api) get really slow every evening during the 18:00 product drop, and some carts fail with 500s or 503s. Last week we raised the pgx pool from 20 to 40 connections and it didn't change anything. Can you use Traceway to figure out what's actually going on and what we should fix in the code?
@@ -31,10 +31,10 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: Lock / transaction contention. During the 18:00 drop many reservations update the same few hot inventory rows. Reserve updates each cart line in cart order inside one transaction, so concurrent carts queue on the row locks (the UPDATE inventory spans run for hundreds of ms to seconds, while BEGIN starts immediately), and carts that lock two hot SKUs in opposite orders deadlock (ERROR deadlock detected, SQLSTATE 40P01, after ~1s) or hit lock_timeout (55P03 after 5s). p50 stays ~8ms; p99 is seconds only in the drop window, every evening before and after the pool change, which therefore did not help. Fix by locking rows in a consistent order (sort the lines by warehouse and SKU, or one UPDATE ... FROM unnest for all lines), keeping the transaction short, and retrying 40P01 once.
+  expected: Lock / transaction contention. During the 18:00 drop many reservations update the same few hot inventory rows. Reserve updates each cart line in cart order inside one transaction, so concurrent carts queue on the row locks (the UPDATE inventory spans run for hundreds of ms to seconds, while pool.acquire and BEGIN take well under a millisecond), and carts that lock two hot SKUs in opposite orders deadlock (ERROR deadlock detected, SQLSTATE 40P01, after ~1s) or hit lock_timeout (55P03 after 5s). p50 stays ~8ms; p99 is seconds only in the drop window, every evening before and after the pool change, which therefore did not help. Fix by locking rows in a consistent order (sort the lines by warehouse and SKU, or one UPDATE ... FROM unnest for all lines), keeping the transaction short, and retrying 40P01 once.
   rubric:
     - Locates the time inside the UPDATE inventory spans (lock waits in the database) and cites the deadlock / lock timeout errors from the logs.
-    - Rules out pool exhaustion with evidence (no gap before BEGIN, spikes unchanged after the pool was doubled).
+    - Rules out pool exhaustion with evidence (pool.acquire is instant and there is no gap before BEGIN, spikes unchanged after the pool was doubled).
     - Proposes a consistent lock order (sorted SKUs or a single statement) and short transactions, not a bigger pool.
 oracle:
   - shell: >-
@@ -62,12 +62,12 @@ oracle:
       evidence:
         - {call_id: c01, claim: "POST /api/reservations has p50 ~8ms but p99 in the seconds"}
         - {call_id: c02, claim: "the drop produces ERROR deadlock detected (40P01) while updating inventory rows, with Postgres naming two processes that each wait for the other"}
-        - {call_id: c03, claim: "in a failing request BEGIN starts within a millisecond, and the time is inside the UPDATE inventory statements: the one that fails waits on a row lock for about a second before Postgres reports the deadlock"}
+        - {call_id: c03, claim: "in a failing request pool.acquire and BEGIN take well under a millisecond, and the time is inside the UPDATE inventory statements: the one that fails waits on a row lock for about a second before Postgres reports the deadlock"}
         - {call_id: c04, claim: "p99 spikes in the evening bucket every day, before and after the pool was raised to 40"}
         - {call_id: c05, claim: "CPU is flat"}
         - {call_id: c07, claim: "Reserve updates the cart lines in cart order inside one transaction, so two carts can lock the same SKUs in opposite orders"}
       ruled_out:
-        - {checklist_item: connection_pool_exhaustion, call_id: c03, reason: "no wait before BEGIN; doubling the pool (c06) left the evening spikes unchanged (c04)"}
+        - {checklist_item: connection_pool_exhaustion, call_id: c03, reason: "pool.acquire returns at once and BEGIN follows; doubling the pool (c06) left the evening spikes unchanged (c04)"}
         - {checklist_item: cpu_saturation, call_id: c05, reason: "CPU flat during the drop"}
       fix: Lock inventory rows in one global order (sort the lines by warehouse and SKU before updating, or update them all in one UPDATE ... FROM unnest statement), keep the reservation transaction short, and retry a 40P01 once. A bigger pool does not help.
       confidence: high

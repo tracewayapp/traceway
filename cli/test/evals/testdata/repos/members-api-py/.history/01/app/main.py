@@ -1,16 +1,21 @@
 """HTTP routes."""
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+import logging
 
-from app import queries
+from fastapi import Depends, FastAPI, HTTPException
+
+from app import access_log, auth, contacts, insights, media, queries
 from app.db import engine
+from app.deps import current_account_id
 from app.summary import build_summary
 
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 app = FastAPI(title="members-api")
-
-
-def current_account_id(x_account_id: int = Header()) -> int:
-    return x_account_id
+access_log.install(app)
+for module in (auth, contacts, insights, media):
+    app.include_router(module.router)
 
 
 @app.get("/api/account/summary")

@@ -4,11 +4,16 @@ version = "2.31.4"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi==0.118.0",
+  "python-multipart==0.0.20",
   "uvicorn==0.37.0",
   "sqlalchemy==2.0.43",
   "psycopg2-binary==2.9.10",
   "bcrypt==4.3.0",
   "httpx==0.28.1",
+  "pillow==11.3.0",
   "opentelemetry-distro==0.58b0",
   "opentelemetry-exporter-otlp-proto-http==1.37.0",
+  "opentelemetry-instrumentation-fastapi==0.58b0",
+  "opentelemetry-instrumentation-httpx==0.58b0",
+  "opentelemetry-instrumentation-sqlalchemy==0.58b0",
 ]

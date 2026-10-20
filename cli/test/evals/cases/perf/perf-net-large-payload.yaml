@@ -31,7 +31,7 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: Large request/response payloads. GET /api/feed returns 50 cards with their images inlined as base64 data URIs (feed_cards.image_data and the author avatars), so every response is ~2.3MB (http.response.body.size). The feed query takes ~15ms and ranking a few ms; the rest of the server span, after the last child span, is the body being written, which blocks on the client's link, so phones (okhttp, iPhone) take 1.2-2.5s while desktops take 150-300ms for the same size, and the small card endpoint is fast. Not a cache problem and not CPU (flat). Fix by sending CDN image URLs instead of inline data (and not selecting image_data), which cuts the response to tens of KB.
+  expected: Large request/response payloads. GET /api/feed returns 50 cards with their images inlined as base64 data URIs (feed_cards.image_data and the author avatars), so every response is ~2.3MB (http.response.body.size). The feed query takes ~15ms and ranking a few ms; the rest of the server span, after the last child span, is the body being written, which blocks on the client's link, so phones (okhttp, iPhone) take about 1-3.5s while desktops take 150-450ms for the same size, and the small card endpoint is fast. Not a cache problem and not CPU (flat). Fix by sending CDN image URLs instead of inline data (and not selecting image_data), which cuts the response to tens of KB.
   rubric:
     - Ties the latency to the response size (http.response.body.size ~2.3MB) and shows that it follows the client's bandwidth (phone vs desktop, the small card endpoint), with the DB and handler work small.
     - Rules out a missing cache or a slow query from the data (the query is ~15ms) and CPU saturation.

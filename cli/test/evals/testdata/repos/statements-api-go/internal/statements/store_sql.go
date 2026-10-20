@@ -40,6 +40,23 @@ func (s *SQLStore) InvoicesForPeriod(ctx context.Context, accountID int64, from,
 	return out, rows.Err()
 }
 
+func (s *SQLStore) LatestInvoices(ctx context.Context, accountID int64) ([]Invoice, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, number, issued_at, total_cents, status FROM invoices WHERE account_id = $1 ORDER BY issued_at DESC LIMIT 50`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Invoice
+	for rows.Next() {
+		var inv Invoice
+		if err := rows.Scan(&inv.ID, &inv.Number, &inv.IssuedAt, &inv.TotalCents, &inv.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, inv)
+	}
+	return out, rows.Err()
+}
+
 func (s *SQLStore) CreateStatement(ctx context.Context, st *Statement) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO statements (id, account_id, period_start, period_end, status, created_at) VALUES ($1, $2, $3, $4, 'rendering', now())`,
 		st.ID, st.AccountID, st.PeriodStart, st.PeriodEnd)

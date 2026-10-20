@@ -120,9 +120,9 @@ network and an empty module cache, so a fixture with hidden tests must not
 need module dependencies. Without Docker, setup runs of a real model fail, and hidden tests of
 a real model's patch are skipped unless `TWEVALS_HOST_TESTS=1` (the diff
 checks, such as touching the culprit, still gate). Oracle runs (our own code)
-use the host when Docker is missing. The setup oracles fetch their pinned
-OpenTelemetry modules, so `oracle --all` needs the Go module proxy or a warm
-module cache.
+use the host when Docker is missing. The setup oracles install pinned
+packages (Go modules, npm and PyPI), so `oracle --all` needs those registries
+or warm caches, and `node`/`npm` and `python3` with `venv` on the host.
 
 ### Exit codes
 
@@ -140,6 +140,12 @@ averages: 100-400k cumulative input tokens (about 70% cached), 5-15k output.
 | Opus 5.5 | ~$0.26-0.96 | up to ~$1.90 |
 | GPT-6 Astra | ~$0.62-2.23 | up to ~$4.75 |
 | Judge (Haiku 5.5) | under $0.01 | |
+
+| Preset, 1 repeat | Runs per model | Both models (live prices, 2026-10-17) |
+|---|---|---|
+| `smoke` | 12 | ~$11-38 |
+| `core` | 68 | ~$60-217 |
+| `full` | 178 | ~$158-568 |
 
 `twevals plan` prints the real numbers from live OpenRouter prices, including
 the cache-write price and long-prompt tiers. Controls: the required cap, the
@@ -267,7 +273,15 @@ func seedNPlusOne(s *seed.Scenario) error {
   hostmetrics names, `system.cpu.utilization` split by `state`) and from
   `svc.Gauge/Counter/Histogram(name, unit, attrs, series)`. Histograms arrive
   as `<name>.avg` and `<name>.count`. Series helpers: `Flat`, `Step`, `Ramp`,
-  `Periodic`, `Sawtooth`, `Plus`, `Scale`, `Clamp`.
+  `Periodic`, `Sawtooth`, `Plus`, `Scale`, `Clamp`. A gauge is a point
+  sample every step (1 minute in the last day, 10 before), so a burst
+  shorter than a step must be averaged into the series by the seed. `Flat`
+  noise depends only on time: two hosts with the same bounds draw the same
+  curve unless the seed shifts or offsets one.
+- **Background traffic** (`s.Background`) names its routes in the service
+  router's syntax (`:id` for Express and gin, `{id}` for net/http, chi,
+  FastAPI, Spring and ASP.NET Core) and writes its queries with the driver's
+  placeholders. Fixtures do not implement these routes.
 - **Browser and mobile SDK data** goes through `p.Crash(seed.Crash{...})`, with
   network and navigation `Actions` and console `Logs`, and `p.Session(...)`.
   It travels the native `/api/report` protocol, and covers only what those
@@ -344,7 +358,9 @@ See `perf-db-n-plus-1.yaml` for the full shape. The keys:
 - `credential` (`scope: read`, `member: readonly`) and `agent_access: false`
   for the policy cases.
 - `expect.answer`, `expect.grounding`, `expect.calls`, `expect.state` (kinds
-  in `internal/grade/state.go`), `expect.code`, `expect.report`.
+  in `internal/grade/state.go`), `expect.code`, `expect.report`. An op in
+  `expect.calls` is an exact op, `*`, a prefix (`endpoints.*`), a file op with
+  a path glob (`edit_file:handlers/*.go`), or alternatives (`logs.query|traces.show`).
 - `judge.rubric` and `judge.expected`. Both are shown only to the judge.
 - `hooks`: harness actions after a matching call, such as editing a
   post-mortem behind the agent's back (`edit_post_mortem`, `stub_healthy`,
@@ -397,6 +413,19 @@ holds the denylist, which covers phrases like `n+1`, `stampede`,
 `missing index`, `pool exhaust`, `gc pause` and `noisy neighbor`. Use real
 library messages, such as SQLAlchemy's `QueuePool limit of size 5 overflow 10
 reached` or Postgres's `deadlock detected`, and neutral names.
+
+## The catalog
+
+68 cases, 178 case × arm combinations:
+
+| Suite | Cases | What they cover |
+|---|---|---|
+| perf | 35 | All 26 rows of the bottleneck checklist; controls (inside a marked-slow allowance, past it, onset bisection outside the chart's top 5, an alert hand-off, a healthy endpoint, the metric "p95" trap); cross-surface cases where browser, Android and iOS crashes have a backend root cause |
+| debug | 14 | Go, Python, Node, Android, iOS and Flutter issues reached by hash, pasted notification, dashboard URL or bug report; a mixed group, a log-only failure, a case where the right answer is more instrumentation, and a write-credential case that must stay read-only |
+| write | 13 | Pages, alerts, monitors, archiving, post-mortems (incl. a concurrent-edit conflict), slow marks, and the 403 policy (opt-in off, read token, readonly member) |
+| setup | 6 | Go net/http, Express, FastAPI, Next.js, a React SPA with the browser SDK, and a Go + React monorepo through the setup-token plan flow |
+
+`twevals list --preset full` prints every combination.
 
 ## Layout
 

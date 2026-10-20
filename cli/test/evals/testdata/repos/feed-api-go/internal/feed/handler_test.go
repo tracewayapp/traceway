@@ -12,6 +12,17 @@ type fakeStore struct{ cards []Card }
 
 func (f fakeStore) Latest(context.Context, []string, int) ([]Card, error) { return f.cards, nil }
 
+func (f fakeStore) Card(_ context.Context, id int64) (*Card, error) {
+	for _, c := range f.cards {
+		if c.ID == id {
+			return &c, nil
+		}
+	}
+	return nil, nil
+}
+
+func (f fakeStore) Profile(context.Context, int64) (*Profile, error) { return nil, nil }
+
 func TestFeedRanksAnnouncementsFirst(t *testing.T) {
 	now := time.Now()
 	h := &Handler{Store: fakeStore{cards: []Card{

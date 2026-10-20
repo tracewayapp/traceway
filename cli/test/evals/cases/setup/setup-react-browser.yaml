@@ -1,0 +1,87 @@
+id: setup-react-browser
+suite: setup
+title: Add the Traceway browser SDK to a React + Vite SPA, with debug IDs and source map upload in CI
+tags: [browser, react, vite]
+seed: setup/react-browser
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: shop-web-vite}
+setup:
+  path: fast
+  token: ingest
+  env:
+    VITE_TRACEWAY_URL: "@url"
+    VITE_TRACEWAY_TOKEN: "@token:shop-web"
+  # A browser SDK only reports from a browser, so the build is the check:
+  # the bundle must carry the connection string taken from the environment,
+  # with debug IDs and source maps. dist/ is removed afterwards because the
+  # bundle legitimately holds the (public) browser token.
+  verify:
+    build: |
+      set -e
+      npm install --no-audit --no-fund --loglevel=error
+      npm run build
+      grep -rqF -- "$VITE_TRACEWAY_TOKEN" dist/assets || { echo "the bundle does not carry the token from VITE_TRACEWAY_TOKEN"; exit 1; }
+      grep -rqF -- "$VITE_TRACEWAY_URL" dist/assets || { echo "the bundle does not carry the instance URL from VITE_TRACEWAY_URL"; exit 1; }
+      grep -rqF -- "/api/report" dist/assets || { echo "the connection string does not end in /api/report"; exit 1; }
+      ls dist/assets/*.js.map > /dev/null 2>&1 || { echo "the build emits no source maps"; exit 1; }
+      grep -qE '//# debugId=[0-9a-fA-F-]{36}' dist/assets/*.js || { echo "the bundles carry no debug IDs"; exit 1; }
+      rm -r dist
+prompt: |
+  Please add Traceway browser monitoring to our storefront. We self-host Traceway at {{env.url}} and the "shop-web" project (React) is already set up. The build reads the project's ingest token from VITE_TRACEWAY_TOKEN and the instance URL from VITE_TRACEWAY_URL; both are set on this machine, and in CI as the secret VITE_TRACEWAY_TOKEN and the repository variable VITE_TRACEWAY_URL. CI also has the project's source map upload token as the secret TRACEWAY_SOURCEMAP_TOKEN. That one only exists in CI, so `npm run build` has to keep working without it.
+budget: {max_turns: 45, max_tool_calls: 40, max_output_tokens: 20000, timeout: 20m}
+user:
+  - match: "(?i)backend|api project|opentelemetry|otel"
+    reply: "The API is a separate service with its own project; only the storefront in this change."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    - kind: file
+      path: package.json
+      contains: ["\"@tracewayapp/react\"", "\"@tracewayapp/bundler-plugin\""]
+    - kind: file
+      path: "vite.config.*"
+      contains: ["tracewayDebugIds", "sourcemap:\\s*(true|['\"]hidden['\"])"]
+    - kind: file
+      path: "**/*"
+      contains: ["TracewayProvider", "VITE_TRACEWAY"]
+    - kind: file
+      path: ".github/workflows/*"
+      contains: ["VITE_TRACEWAY_TOKEN", "traceway-sourcemaps|@tracewayapp/sourcemap-upload", "TRACEWAY_SOURCEMAP_TOKEN", "(^|[^A-Z_])TRACEWAY_URL|--url"]
+    - kind: no_token_literal
+    - kind: no_token_printed
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: The agent installs @tracewayapp/react and wraps the app in TracewayProvider with a connection string built from the environment as <VITE_TRACEWAY_TOKEN>@<VITE_TRACEWAY_URL>/api/report (no token in source), adds @tracewayapp/bundler-plugin's tracewayDebugIds() with build.sourcemap enabled, and runs traceway-sourcemaps as a CI step after the build with TRACEWAY_SOURCEMAP_TOKEN and TRACEWAY_URL (or --url), not as a postbuild hook that would break local builds. CI's build step gets VITE_TRACEWAY_TOKEN and VITE_TRACEWAY_URL from the secret and variable. It does not use OpenTelemetry in the browser.
+  rubric:
+    - Uses the browser SDK (@tracewayapp/react, TracewayProvider), not OpenTelemetry, with the connection string format <token>@<instance>/api/report built from env.
+    - Adds the bundler plugin and enables source maps, so production stacks resolve.
+    - Uploads source maps from CI with the upload token and the uploader's TRACEWAY_URL/--url, keeping npm run build working without the upload token.
+    - Wires VITE_TRACEWAY_TOKEN and VITE_TRACEWAY_URL into the CI build, and never prints or hard-codes the token.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: package.json
+  - read_file: src/main.jsx
+  - read_file: vite.config.js
+  - read_file: .github/workflows/deploy.yml
+  - shell: npm install --no-audit --no-fund --loglevel=error @tracewayapp/react@1.2.1 && npm install --no-audit --no-fund --loglevel=error -D @tracewayapp/bundler-plugin@1.2.1 @tracewayapp/sourcemap-upload@1.2.1 && npm ls --depth=0
+  - write_file: {path: src/main.jsx, from: oracle/setup-react-browser/main.jsx}
+  - write_file: {path: vite.config.js, from: oracle/setup-react-browser/vite.config.js}
+  - write_file: {path: .github/workflows/deploy.yml, from: oracle/setup-react-browser/deploy.yml}
+  - shell: |
+      npm run build 2>&1 | tail -n 6
+      echo "bundles with a debug ID: $(grep -lE '//# debugId=' dist/assets/*.js | wc -l)"
+      echo "source maps: $(ls dist/assets/*.js.map | wc -l)"
+      echo "bundles naming the report endpoint: $(grep -lF '/api/report' dist/assets/*.js | wc -l)"
+  - finish:
+      summary: |
+        shop-web now reports browser errors and session replay to the shop-web project. src/main.jsx wraps the app in TracewayProvider (outside StrictMode, so development does not start two clients) with the connection string built at build time from the environment, <VITE_TRACEWAY_TOKEN>@<VITE_TRACEWAY_URL>/api/report; without those variables the app renders unwrapped. vite.config.js enables source maps and adds tracewayDebugIds() from @tracewayapp/bundler-plugin, so every bundle and its map share a debug ID. The deploy workflow passes VITE_TRACEWAY_TOKEN and VITE_TRACEWAY_URL to the build, uploads the maps with traceway-sourcemaps (TRACEWAY_SOURCEMAP_TOKEN, TRACEWAY_URL from the repository variable), and deletes them from dist before the S3 sync. npm run build works locally without the upload token. To check it: deploy, throw a test error in the browser, and open /issues in the shop-web project.
+      changes:
+        - {action: wrap the app in TracewayProvider, target: src/main.jsx}
+        - {action: enable source maps and debug IDs, target: vite.config.js}
+        - {action: pass the Traceway variables to the build and upload source maps, target: .github/workflows/deploy.yml}
+        - {action: "add @tracewayapp/react, @tracewayapp/bundler-plugin and @tracewayapp/sourcemap-upload", target: package.json}

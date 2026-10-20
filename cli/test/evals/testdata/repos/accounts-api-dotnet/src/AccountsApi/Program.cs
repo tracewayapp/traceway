@@ -1,3 +1,4 @@
+using Accounts.Api;
 using Accounts.Api.Accounts;
 using Accounts.Api.Data;
 using Accounts.Api.Exports;
@@ -30,6 +31,7 @@ builder.Services.AddAuthentication().AddJwtBearer();
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+app.UseAccessLog();
 app.UseAuthentication();
 app.UseAuthorization();
 

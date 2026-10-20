@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'v1.13.2: show promotion savings in the cart summary'
+  age: 610h
+  author: Grace Ito <grace@example.com>
+head:
+  message: 'v1.14.0: fail fast on slow upstreams (2s default timeouts)'
+  age: 26h20m
+  author: Marco Bellini <marco@example.com>

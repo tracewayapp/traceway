@@ -1,8 +1,10 @@
 import express from 'express';
+import { accessLog } from './access-log.js';
 import { pool } from './db.js';
 import { nightsBetween } from './dates.js';
 
 const app = express();
+app.use(accessLog);
 app.use(express.json());
 
 // Indexes: availability (listing_id, day), bookings (id), listings (id),

@@ -1,11 +1,14 @@
 'use strict';
 const express = require('express');
+const { trace } = require('@opentelemetry/api');
 const { CACHE_TTL_SECONDS, cacheKey } = require('../catalog-cache');
 const cacheMetrics = require('../cache-metrics');
 
 const CATALOG_SQL = `SELECT p.id, p.sku, p.title, p.brand, p.image_url, c.slug AS category, pr.amount_minor, pr.currency
   FROM products p JOIN categories c ON c.id = p.category_id JOIN prices pr ON pr.product_id = p.id AND pr.price_list = $1
   WHERE p.active ORDER BY c.position, p.rank`;
+
+const tracer = trace.getTracer('catalog-api');
 
 function priceList(locale) {
   return locale === 'en-GB' ? 'gbp' : locale === 'en-US' ? 'usd' : 'eur';
@@ -22,7 +25,13 @@ function catalogRouter({ db, redis }) {
         return res.type('json').send(cached);
       }
       const { rows } = await db.query(CATALOG_SQL, [priceList(req.query.locale)]);
-      const body = JSON.stringify({ products: rows });
+      const body = tracer.startActiveSpan('serialize catalog', (span) => {
+        try {
+          return JSON.stringify({ products: rows });
+        } finally {
+          span.end();
+        }
+      });
       await redis.set(key, body, 'EX', CACHE_TTL_SECONDS);
       res.type('json').send(body);
     } catch (err) {

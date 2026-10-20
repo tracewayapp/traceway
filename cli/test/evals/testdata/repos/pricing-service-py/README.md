@@ -7,7 +7,8 @@ OTLP via `opentelemetry-instrument`.
 
 ```
 python3 -m unittest discover -s tests
-opentelemetry-instrument uvicorn app.main:app --port 8000
+OTEL_SERVICE_NAME=pricing-service OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true \
+  opentelemetry-instrument uvicorn app.main:app --port 8000
 ```
 
 Routes:

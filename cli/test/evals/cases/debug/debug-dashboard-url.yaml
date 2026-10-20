@@ -1,0 +1,73 @@
+id: debug-dashboard-url
+suite: debug
+title: A pasted dashboard link to one occurrence of the invoice-page panic
+tags: [go, regression, url]
+seed: debug/dashboard-url
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: An older, unrelated mailer timeout issue on POST /api/invoices/{id}/send; the linked occurrence is a few hours old rather than the newest, so the link's own id and timestamp are what to open.
+workspace: {repo: billing-api-go}
+prompt: |
+  {{env.url}}/issues/{{seed.hash}}/{{seed.occ.id}}?t={{seed.occ.t}}
+  Support forwarded this from a customer who can't open their invoice. What happened there? Please fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "Yes, please fix it in the code."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    occurrence_id: "{{seed.occ.id}}"
+    category: null_reference
+    culprit: {file: internal/invoices/render.go, symbol: formatAddress, line: 37}
+    needs_instrumentation: false
+    mentions_all: ["billing address|BillingAddress"]
+  grounding:
+    - "render.go:37"
+  calls:
+    required:
+      - {op: exceptions.occurrence, args: {id: "{{seed.occ.id}}", recorded_at: "~^{{seed.occ.second}}"}}
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.occurrence, write_file]
+      - [exceptions.occurrence, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-go-nil-regression
+    command: go test ./...
+    gating: true
+    touches_culprit: true
+    must_not_change: [internal/invoices/model.go]
+judge:
+  expected: The link names one occurrence; the agent opens it with exceptions occurrence and the URL's t as recorded_at. It is the nil-pointer panic in formatAddress (internal/invoices/render.go:37), which dereferences Customer.BillingAddress, nil for customers who never entered an address. The group first appeared with the v1.8.2 release about 30 hours ago, which added the billing address to the invoice view. The fix handles a nil address.
+  rubric:
+    - Opens the linked occurrence directly (exceptions occurrence with the URL's t), rather than guessing a timestamp or only listing the group.
+    - Explains the nil billing address, and ties the group's first appearance to the v1.8.2 release.
+    - Fixes formatAddress for a nil address without changing how present addresses render.
+oracle:
+  - shell: >-
+      traceway exceptions occurrence {{seed.occ.id}} --recorded-at {{seed.occ.recordedAt}} --output json
+      | jq '{exception: (.exception | {id, exceptionHash, recordedAt, appVersion, traceId, attributes, stackTrace}), relatedEntity}'
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 20 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count}), versions: ([.occurrences[].appVersion] | unique)}'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - read_file: internal/invoices/render.go
+  - write_file: {path: internal/invoices/render.go, from: oracle/debug-go-nil-regression/render.go}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      occurrence_id: "{{seed.occ.id}}"
+      category: null_reference
+      culprit: {file: internal/invoices/render.go, symbol: formatAddress, line: 37}
+      evidence:
+        - {call_id: c01, claim: "the linked occurrence is a nil pointer dereference in formatAddress at render.go:37 on GET /api/invoices/{id}, app version 1.8.2"}
+        - {call_id: c02, claim: "the group first appeared about 30 hours ago, with the v1.8.2 release, and the 20 newest occurrences are all on 1.8.2"}
+        - {call_id: c03, claim: "v1.8.2 added the billing address to the invoice page"}
+        - {call_id: c04, claim: "formatAddress reads a.Line1 without checking for a nil address"}
+      fix_summary: formatAddress returns an empty string when the customer has no billing address.
+      files_changed: [internal/invoices/render.go]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The linked occurrence is the invoice-page panic: runtime error: invalid memory address or nil pointer dereference in formatAddress (internal/invoices/render.go:37), serving GET /api/invoices/{id} on 1.8.2. v1.8.2, released about 30 hours ago, started rendering the billing address on the invoice page, and BillingAddress is nil for customers who never entered one, so their invoices answer 500. The group first appeared with that release. I made formatAddress return an empty string for a nil address.

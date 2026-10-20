@@ -5,7 +5,7 @@ tags: [control, python, onset, database]
 seed: perf/ctl-onset-bisect
 arms: [cli+skill, cli-noskill, mcp]
 invoke: slash
-distractor: Data growth. The orders count query on the same request has crept up all through the window, so a coarse first-days-versus-now comparison reads like gradual growth; but the p95 stepped from about 25ms to about 450ms inside one hour, right at the 2.32.0 deploy, when a new monthly-spend aggregate (orders JOIN order_items GROUP BY month) appeared in every request.
+distractor: Data growth. The orders count query on the same request has crept up all through the window, so a coarse first-days-versus-now comparison reads like gradual growth; but the p95 stepped from about 25ms to about 400-450ms inside one hour, right at the 2.32.0 deploy, when a new monthly-spend aggregate (orders JOIN order_items GROUP BY month) appeared in every request.
 workspace: {repo: members-api-py}
 prompt: |
   /traceway perf GET /api/account/summary
@@ -34,7 +34,7 @@ expect:
     max_identical_repeats: 2
 judge:
   expected: >-
-    The account summary regressed at the 2.32.0 deploy about 52 hours ago. Before it the route's p95 was about 20-25ms (creeping up slowly with the orders table); within one hour of the deploy it stepped to about 450ms. The route is not in the top five of endpoints chart (imports, reports, avatar uploads, recommendations, search and login are slower), so the onset comes from comparing endpoints list --search windows. Slow requests carry a new aggregate, SELECT date_trunc('month', ...) ... FROM orders JOIN order_items ... GROUP BY month, taking 200-600ms; it is the monthly spend chart added in 2.32.0. The indexes on orders(account_id, created_at) and order_items(order_id) exist; the cost is aggregating the account's whole history on every page view. Fix: precompute the monthly totals (a rollup maintained on order writes, or a materialized view), cache them per account, or bound the range.
+    The account summary regressed at the 2.32.0 deploy about 52 hours ago. Before it the route's p95 was about 20-25ms (creeping up slowly with the orders table); within one hour of the deploy it stepped to about 400-450ms. The route is not in the top five of endpoints chart (imports, reports, avatar uploads, recommendations, search and login are slower), so the onset comes from comparing endpoints list --search windows. Slow requests carry a new aggregate, SELECT date_trunc('month', ...) ... FROM orders JOIN order_items ... GROUP BY month, taking 200-600ms; it is the monthly spend chart added in 2.32.0. The indexes on orders(account_id, created_at) and order_items(order_id) exist; the cost is aggregating the account's whole history on every page view. Fix: precompute the monthly totals (a rollup maintained on order writes, or a materialized view), cache them per account, or bound the range.
   rubric:
     - Dates the onset to within an hour of the 2.32.0 deploy by comparing the route's percentiles across narrowing --from/--to windows (the chart does not show it).
     - Rejects gradual data growth as the explanation (the step is abrupt; the slow creep before it is tens of milliseconds).
@@ -76,7 +76,7 @@ oracle:
       locus: {endpoint: "GET /api/account/summary", span: "SELECT date_trunc(...) AS month, count(DISTINCT orders.id), sum(order_items.qty * order_items.unit_price_cents) FROM orders JOIN order_items ... GROUP BY month", service: members-api}
       onset: "{{seed.deployAt}}"
       evidence:
-        - {call_id: c01, claim: "over the last day the account summary has p95 about 450ms"}
+        - {call_id: c01, claim: "over the last day the account summary has p95 about 400-450ms"}
         - {call_id: c02, claim: "the route is not among the top five endpoints of the p95 chart, so its onset has to be bisected"}
         - {call_id: c03, claim: "five to ten days ago its p95 was about 20ms"}
         - {call_id: c04, claim: "from 120h to 60h ago the p95 is still about 20-25ms"}
@@ -91,4 +91,4 @@ oracle:
       fix: Stop aggregating the account's whole order history on every page view. Maintain monthly totals in a rollup table (updated on order writes) or a materialized view, or cache the result per account; at minimum bound the range to the last 12 months.
       confidence: high
       report: |
-        The account page slowed at the 2.32.0 deploy, about 52 hours ago (between 52h30m and 51h ago by window bisection). Before it GET /api/account/summary had p95 around 20-25ms; right after it the p95 is about 450ms. The route is not in endpoints chart's top five, so I bisected endpoints list --search over narrowing --from/--to windows. Slow requests on 2.32.0 run a new aggregate, `SELECT date_trunc('month', orders.created_at) ... FROM orders JOIN order_items ... GROUP BY month`, for the monthly spend chart added in that release; it takes a few hundred milliseconds on every page view because it aggregates the account's whole history. The orders count query has crept up a little with data growth, but that is a few milliseconds and not the regression. Fix: precompute the monthly totals (rollup table or materialized view, refreshed on order writes) or cache them per account, and bound the range.
+        The account page slowed at the 2.32.0 deploy, about 52 hours ago (between 52h30m and 51h ago by window bisection). Before it GET /api/account/summary had p95 around 20-25ms; right after it the p95 is about 400-450ms. The route is not in endpoints chart's top five, so I bisected endpoints list --search over narrowing --from/--to windows. Slow requests on 2.32.0 run a new aggregate, `SELECT date_trunc('month', orders.created_at) ... FROM orders JOIN order_items ... GROUP BY month`, for the monthly spend chart added in that release; it takes a few hundred milliseconds on every page view because it aggregates the account's whole history. The orders count query has crept up a little with data growth, but that is a few milliseconds and not the regression. Fix: precompute the monthly totals (rollup table or materialized view, refreshed on order writes) or cache them per account, and bound the range.

@@ -33,7 +33,7 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: Cache stampede / thundering herd. GET /api/home serves the feed from Redis (home:feed:v3, set with a 10-minute TTL, "ex 600"); p50 is ~3ms but p99 is ~7s. Every ~10 minutes, at the moment the key expires, every request that arrives before the first rebuild has written the key back misses and rebuilds the feed itself (12 section queries), so 15-25 identical ~7-10s traces start within the same few seconds; the concurrent rebuilds also slow each other down in the database. Between expiries the cache-hit ratio is ~98% and requests take a few ms, so the cache works. Fix with request coalescing (one rebuild per key, others wait for it, e.g. singleflight), plus early/background refresh and TTL jitter.
+  expected: Cache stampede / thundering herd. GET /api/home serves the feed from Redis (home:feed:v3, set with a 10-minute TTL, "ex 600"); p50 is ~3ms but p99 is ~8s. Every ~10 minutes, at the moment the key expires, every request that arrives before the first rebuild has written the key back misses and rebuilds the feed itself (12 section queries), so 15-30 identical ~7-10s traces start within the same few seconds; the concurrent rebuilds also slow each other down in the database. Between expiries the cache-hit ratio is ~98% and requests take a few ms, so the cache works. Fix with request coalescing (one rebuild per key, others wait for it, e.g. singleflight), plus early/background refresh and TTL jitter.
   rubric:
     - Identifies the periodicity (p99 spikes every ~10 minutes, matching the 600s TTL) and the burst of identical rebuild traces within seconds of each other.
     - Rules out "no cache" with the high hit ratio between bursts and the fast cache hits, and explains why the rebuilds are slow only during the burst.
@@ -63,7 +63,7 @@ oracle:
       locus: {endpoint: "GET /api/home", span: "get home:feed:v3 miss followed by buildHomeFeed (12 queries) and set home:feed:v3 ex 600, in many concurrent requests", service: home-api}
       onset: null
       evidence:
-        - {call_id: c01, claim: "GET /api/home p50 ~3ms, p95 ~5ms, p99 ~7s: a rare but severe tail"}
+        - {call_id: c01, claim: "GET /api/home p50 ~3ms, p95 ~5ms, p99 ~8s: a rare but severe tail"}
         - {call_id: c02, claim: "p99 spikes to 7-10s in every other 5-minute bucket, i.e. every ~10 minutes"}
         - {call_id: c03, claim: "inside one spike, about twenty 7-10s requests start within the same ~10 seconds"}
         - {call_id: c04, claim: "each slow request misses home:feed:v3, runs the twelve section queries and sets the key back with ex 600 (a 10-minute TTL)"}

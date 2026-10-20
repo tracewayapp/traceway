@@ -5,11 +5,13 @@ Checkout and refunds for the shop (Go, `net/http`, PostgreSQL via pgx).
 (api.payments.example) and marks it paid; `POST /api/refunds` refunds a
 charge; `GET /api/orders/{id}` reads an order.
 
-- `internal/checkout` - handlers
+- `internal/checkout` - handlers and the orders store
 - `internal/payments` - payment provider client
+- `internal/telemetry` - OpenTelemetry wiring
 
-Traces, logs and Go runtime metrics go to Traceway over OTLP (otelhttp,
-otelpgx, the contrib runtime instrumentation).
+Traces, logs and Go runtime metrics go to Traceway over OTLP; production
+builds (`go build -tags otel`) install otelhttp, otelpgx and the contrib
+runtime instrumentation.
 
 ```
 go test ./...

@@ -75,7 +75,7 @@ oracle:
       evidence:
         - {call_id: c01, claim: "over the last day the export's p95 is around 4s and p50 near 3s"}
         - {call_id: c02, claim: "the endpoint is marked slow with offsetMs 2000 (Monthly invoice CSV for accounting ... Up to 2s is expected), so p95 is double the allowance"}
-        - {call_id: c04, claim: "hourly p95 sits around 1.5s, below the 2s allowance, until about 26 hours ago, then steps well past it (mostly 3-4s) within one hour"}
+        - {call_id: c04, claim: "hourly p95 stays below the 2s allowance (mostly 1-1.5s) until about 26 hours ago, then steps well past it (mostly 3-4s) within one hour"}
         - {call_id: c06, claim: "a slow export on 4.8.0 runs one invoice_tax_lines query per invoice, over a hundred per request, which add seconds after the unchanged JOIN"}
         - {call_id: c07, claim: "an export on 4.7.3 runs only the invoices/lines JOIN and the CSV encode"}
         - {call_id: c08, claim: "v4.8.0 (tax breakdown per invoice in the monthly export) was committed right before the step"}

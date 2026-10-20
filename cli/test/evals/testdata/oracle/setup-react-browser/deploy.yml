@@ -1,0 +1,35 @@
+name: Deploy shop-web
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+        env:
+          VITE_API_URL: https://api.shop.example.com
+          VITE_TRACEWAY_URL: ${{ vars.VITE_TRACEWAY_URL }}
+          VITE_TRACEWAY_TOKEN: ${{ secrets.VITE_TRACEWAY_TOKEN }}
+      - name: Upload source maps to Traceway
+        run: npx traceway-sourcemaps --directory ./dist
+        env:
+          TRACEWAY_URL: ${{ vars.VITE_TRACEWAY_URL }}
+          TRACEWAY_SOURCEMAP_TOKEN: ${{ secrets.TRACEWAY_SOURCEMAP_TOKEN }}
+      - name: Keep source maps off the CDN
+        run: find dist -name '*.map' -delete
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: eu-central-1
+      - run: aws s3 sync dist s3://shop-web-prod --delete

@@ -34,13 +34,13 @@ var pncHomeSections = []struct {
 // arrives before the first rebuild has written it back misses and rebuilds
 // the feed itself: ~2.4 req/s times a ~7s rebuild under that contention is
 // 15-25 identical rebuild traces per expiry, every ~10 minutes. Between
-// expiries the hit ratio is ~99%. Distractor: the misses run 12 queries
+// expiries the hit ratio is ~98%. Distractor: the misses run 12 queries
 // against the DB on the request path, which reads like a missing cache, but
-// the cache is there and hits ~99% of the time.
+// the cache is there and hits ~98% of the time.
 func pncSeedStampede(s *seed.Scenario) error {
 	window := 2 * time.Hour
 	p := s.Project("storefront-home", seed.OTel)
-	api := p.Service("home-api", seed.Go("chi", "pgx")).Versions("3.4.1")
+	api := p.Service("home-api", seed.Go("nethttp", "sql")).Versions("3.4.1")
 
 	// Expiry schedule: each window [at, at+fill) is when the key is gone
 	// and requests miss; the first rebuild's SET closes it and the next
@@ -80,7 +80,7 @@ func pncSeedStampede(s *seed.Scenario) error {
 		e, miss := missWindow(r.Start())
 		if !miss {
 			r.Cache("get", "home:feed:v3", r.LogNormal(700*time.Microsecond, 2*time.Millisecond))
-			r.Compute("decode feed", r.Ms(0.8, 2.2))
+			r.Compute("decode feed", r.Ms(0.8, 2.2)).Scope = "home-api"
 			r.Gap(r.Ms(0.3, 1.2))
 			return
 		}
@@ -96,18 +96,18 @@ func pncSeedStampede(s *seed.Scenario) error {
 			for _, sec := range pncHomeSections {
 				r.DB(sec.q, time.Duration(total*sec.w*(0.9+0.2*r.Float())))
 			}
-			r.Compute("encode feed", r.Ms(6, 14))
+			r.Compute("encode feed", r.Ms(6, 14)).Scope = "home-api"
 		}).Scope = "home-api"
 		r.Cache("set", "home:feed:v3", r.Ms(0.6, 1.8), seed.A("db.query.text", "set home:feed:v3 ? ex 600"))
 		r.Gap(r.Ms(0.3, 1.2))
 	})
 
-	product := api.Endpoint("GET", "/api/home/stories/:id")
+	product := api.Endpoint("GET", "/api/home/stories/{id}")
 	product.Traffic(seed.Daily(6000), seed.Over(window))
 	product.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.2, 0.6))
 		r.DB("SELECT id, title, body, image_url, published_at FROM seasonal_stories WHERE id = $1", r.LogNormal(2500*time.Microsecond, 7*time.Millisecond))
-		r.Compute("encode response", r.Ms(0.3, 1))
+		r.Compute("encode response", r.Ms(0.3, 1)).Scope = "home-api"
 	})
 
 	s.Background(api, seed.TrafficOpts{Endpoints: 3, PerDay: 900, Window: window})

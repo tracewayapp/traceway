@@ -101,7 +101,7 @@ func pncSeedColdStart(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.5, 1.5))
 	})
 
-	item := svc.Endpoint("GET", "/api/prices/:sku")
+	item := svc.Endpoint("GET", "/api/prices/{sku}")
 	item.Traffic(seed.Daily(160), seed.Diurnal(), seed.Over(window))
 	item.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.5, 1.5))

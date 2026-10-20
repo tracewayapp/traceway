@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"example.com/invoicing-api/internal/telemetry"
 )
 
 // Handlers serves /api/exports.
@@ -36,6 +38,8 @@ func (h *Handlers) Invoices(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", `attachment; filename="invoices-`+from.Format("2006-01")+`.csv"`)
+	_, end := telemetry.Start(ctx, "encode csv")
+	defer end()
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"invoice", "issued_at", "customer", "sku", "description", "qty", "unit_price", "invoice_total"})
 	for _, inv := range invs {

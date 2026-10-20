@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"example.com/mobile-api/internal/telemetry"
 )
 
 type promotion struct {
@@ -52,6 +54,8 @@ func Handler(db *sql.DB) http.Handler {
 			}
 			vrows.Close()
 		}
+		_, end := telemetry.Start(ctx, "assemble feed")
+		defer end()
 		_ = json.NewEncoder(w).Encode(map[string]any{"promotions": promos, "recentlyViewed": viewed})
 	})
 }
@@ -81,6 +85,8 @@ func Product(db *sql.DB) http.Handler {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		_, end := telemetry.Start(r.Context(), "encode response")
+		defer end()
 		_ = json.NewEncoder(w).Encode(p)
 	})
 }

@@ -42,20 +42,21 @@ func pctSeedXSFrontendTimeouts(s *seed.Scenario) error {
 		r.HTTP("POST", "https://shop-prod.search-cloud.example/1/indexes/products/query", provider, 200,
 			seed.A("http.request.body.size", 180+r.IntN(60)), seed.A("http.response.body.size", 9000+r.IntN(6000)))
 		r.DB("SELECT id, stock, price_cents FROM product_stock WHERE id = ANY($1)", r.LogNormal(3*time.Millisecond, 9*time.Millisecond), seed.Rows(24))
-		r.Compute("merge results", r.Ms(1, 4))
+		r.Compute("merge results", r.Ms(1, 4)).Scope = "shop-api"
 	})
 	product := api.Endpoint("GET", "/api/products/:id")
 	product.Traffic(seed.Daily(900), seed.Diurnal(), seed.Over(3*24*time.Hour))
 	product.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.5, 1.5))
 		r.DB("SELECT id, name, slug, description, price_cents, images FROM products WHERE id = $1", r.LogNormal(3*time.Millisecond, 10*time.Millisecond), seed.Rows(1))
-		r.Compute("serialize product", r.Ms(0.5, 2))
+		r.Gap(r.Ms(0.5, 2))
 	})
 	cart := api.Endpoint("POST", "/api/cart/items")
 	cart.Traffic(seed.Daily(400), seed.Diurnal(), seed.Over(3*24*time.Hour))
 	cart.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.5, 1.5))
 		r.DB("INSERT INTO cart_items (cart_id, product_id, qty) VALUES ($1, $2, $3) ON CONFLICT (cart_id, product_id) DO UPDATE SET qty = cart_items.qty + EXCLUDED.qty", r.LogNormal(3*time.Millisecond, 10*time.Millisecond))
+		r.Status(204)
 	})
 	s.Background(api, seed.TypicalTraffic(4))
 	api.Host().CPU(seed.Flat(0.2, 0.3))
@@ -65,7 +66,8 @@ func pctSeedXSFrontendTimeouts(s *seed.Scenario) error {
 	// shoppers in three, ended in the web app's TimeoutError, reported with
 	// the network and navigation actions the SDK captured.
 	const timeout = 8 * time.Second
-	browsers := []string{"Chrome 141 / macOS", "Chrome 141 / Windows", "Safari 18 / iOS", "Edge 141 / Windows", "Firefox 143 / Linux"}
+	// Chromium words the abort as "signal timed out"; that is the group.
+	browsers := []string{"Chrome 141 / macOS", "Chrome 141 / Windows", "Chrome 141 / Android", "Edge 141 / Windows", "Chrome 141 / Linux"}
 	stack := "TimeoutError: signal timed out\nsearchProducts()\n    src/api/search.ts:9:21\nrunSearch()\n    src/pages/SearchPage.tsx:13:21"
 	var newest *seed.Request
 	crashes := 0
@@ -90,12 +92,15 @@ func pctSeedXSFrontendTimeouts(s *seed.Scenario) error {
 			at := r.Start.Add(timeout + 40*time.Millisecond)
 			term, _ := url.QueryUnescape(q[2:])
 			prev := r.Start.Add(-time.Duration(20+i%40) * time.Second)
+			product := fmt.Sprintf("/products/%d", 1000+i%900)
+			typed := r.Start.Add(-time.Duration(3+i%9) * time.Second)
 			web.Crash(seed.Crash{
 				At: at, Stack: stack, AppVersion: "2026.10.14", Device: browsers[i%len(browsers)],
 				Attributes: map[string]string{"page": "/search", "release": "web-2026.10.14"},
 				Actions: []seed.Action{
-					{Type: "navigation", At: prev, From: "/", To: "/search"},
-					{Type: "network", At: prev.Add(400 * time.Millisecond), Method: "GET", URL: "https://www.shop.example/api/products/" + fmt.Sprint(1000+i%900), DurationMs: float64(40 + i%60), Status: 200, RespBytes: 4200},
+					{Type: "navigation", At: prev, From: "/", To: product},
+					{Type: "network", At: prev.Add(400 * time.Millisecond), Method: "GET", URL: "https://www.shop.example/api" + product, DurationMs: float64(40 + i%60), Status: 200, RespBytes: 4200},
+					{Type: "navigation", At: typed, From: product, To: "/search"},
 					{Type: "network", At: at, Method: "GET", URL: "https://www.shop.example/api/search?" + q, DurationMs: float64(timeout.Milliseconds()) + 2, Error: "TimeoutError: signal timed out"},
 				},
 				Logs: []seed.ActionLog{{At: at.Add(5 * time.Millisecond), Level: "warn", Message: fmt.Sprintf("search for %q gave up after 8000ms", term)}},

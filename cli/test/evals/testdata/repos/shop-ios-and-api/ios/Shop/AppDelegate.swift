@@ -18,4 +18,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         PushRegistration.shared.register(application)
         return true
     }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        PushRegistration.shared.didRegister(deviceToken: deviceToken)
+    }
 }

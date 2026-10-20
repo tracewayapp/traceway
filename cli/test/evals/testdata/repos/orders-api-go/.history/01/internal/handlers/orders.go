@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"example.com/orders-api/internal/store"
+	"example.com/orders-api/internal/telemetry"
 )
 
 // Handlers holds the HTTP handlers.
@@ -27,7 +28,7 @@ func (h *Handlers) ListOrders(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, orders)
+	writeJSON(w, r, orders)
 }
 
 // GetOrder serves GET /api/orders/{id}.
@@ -50,10 +51,12 @@ func (h *Handlers) GetOrder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, o)
+	writeJSON(w, r, o)
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
+func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
+	_, end := telemetry.Start(r.Context(), "encode response")
+	defer end()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
 }

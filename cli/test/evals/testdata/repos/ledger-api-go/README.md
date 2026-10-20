@@ -3,7 +3,8 @@
 General ledger service: account balances, journal entries and the finance
 team's quarterly ledger export. Go, `net/http`, PostgreSQL through pgx.
 Traces, logs and metrics go to Traceway over OTLP
-(`OTEL_EXPORTER_OTLP_ENDPOINT`).
+(`OTEL_EXPORTER_OTLP_ENDPOINT`); production builds (`go build -tags otel`)
+install otelhttp and otelpgx through `internal/telemetry`.
 
 ```
 go test ./...

@@ -19,8 +19,8 @@ expect:
     not: [sequential_calls_that_could_run_in_parallel, select_n_plus_1, slow_third_party_upstream_api, cpu_saturation]
     locus: {endpoint: "GET /api/cart", service: storefront-gateway}
   grounding:
-    - "GET /stock/:sku"
-    - "GET /prices/:sku"
+    - "GET /stock/{sku}"
+    - "GET /prices/{sku}"
   calls:
     required:
       - {op: endpoints.list}
@@ -64,10 +64,10 @@ oracle:
   - submit:
       checklist_item: chatty_ipc_microservice_fan_out
       category: network
-      locus: {endpoint: "GET /api/cart", span: "per-line GET /products/:sku, GET /prices/:sku, GET /stock/:sku calls from buildCart", service: storefront-gateway}
+      locus: {endpoint: "GET /api/cart", span: "per-line GET /products/{sku}, GET /prices/{sku}, GET /stock/{sku} calls from buildCart", service: storefront-gateway}
       onset: null
       evidence:
-        - {call_id: c01, claim: "GET /api/cart is the slowest storefront endpoint; GET /carts/:id behind it is fast"}
+        - {call_id: c01, claim: "GET /api/cart is the slowest storefront endpoint; GET /carts/{id} behind it is fast"}
         - {call_id: c03, claim: "a cart of about ten lines makes ~30 hops into the catalog and fulfillment projects (one each to products, prices and stock per line) plus one to cart-service; the downstream servers spend 1-2ms per call while each client call takes ~10ms, so the client calls add up to nearly the whole request"}
         - {call_id: c05, claim: "catalog endpoints answer in a millisecond or two; POST /products/batch exists and is fast"}
         - {call_id: c06, claim: "gateway CPU is flat and low"}
@@ -78,4 +78,4 @@ oracle:
       fix: In buildCart, fetch products, prices and stock once per cart with catalog.getMany (POST /products/batch), pricing.getMany and inventory.getMany instead of three calls per line; 31 hops become 4.
       confidence: high
       report: |
-        GET /api/cart is slow because buildCart (src/routes/cart.js) calls three services in other projects for every cart line: GET /products/:sku and GET /prices/:sku (catalog project) and GET /stock/:sku (fulfillment project), one line at a time. A cart of about ten lines makes ~30 cross-project hops (three per line), plus one to cart-service; the downstream endpoints spend a millisecond or two per call doing work, but each call costs ~9-12ms end to end, so most of the request is round trips, and the latency grows with the cart. The downstream teams are right that their endpoints are fast; CPU is flat. Fix: change buildCart to fetch each service once for all SKUs with the batch methods the clients already have (POST /products/batch is what the wishlist uses), which takes a ten-line cart from 31 hops to 4.
+        GET /api/cart is slow because buildCart (src/routes/cart.js) calls three services in other projects for every cart line: GET /products/{sku} and GET /prices/{sku} (catalog project) and GET /stock/{sku} (fulfillment project), one line at a time. A cart of about ten lines makes ~30 cross-project hops (three per line), plus one to cart-service; the downstream endpoints spend a millisecond or two per call doing work, but each call costs ~9-12ms end to end, so most of the request is round trips, and the latency grows with the cart. The downstream teams are right that their endpoints are fast; CPU is flat. Fix: change buildCart to fetch each service once for all SKUs with the batch methods the clients already have (POST /products/batch is what the wishlist uses), which takes a ten-line cart from 31 hops to 4.

@@ -1,17 +1,26 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
 
 	"example.com/invoicing-api/internal/exports"
 	"example.com/invoicing-api/internal/invoices"
+	"example.com/invoicing-api/internal/telemetry"
 )
 
 func main() {
-	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
+	ctx := context.Background()
+	shutdown, err := telemetry.Setup(ctx)
+	if err != nil {
+		slog.Error("telemetry setup", "err", err)
+		os.Exit(1)
+	}
+	defer shutdown(ctx)
+
+	db, err := telemetry.OpenDB(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		slog.Error("open database", "err", err)
 		os.Exit(1)
@@ -25,7 +34,7 @@ func main() {
 	mux.HandleFunc("GET /api/exports/invoices", exp.Invoices)
 	addr := ":" + envOr("PORT", "8080")
 	slog.Info("listening", "addr", addr)
-	if err := http.ListenAndServe(addr, withTracing(mux)); err != nil {
+	if err := http.ListenAndServe(addr, telemetry.Handler(telemetry.AccessLog(mux))); err != nil {
 		slog.Error("serve", "err", err)
 		os.Exit(1)
 	}
@@ -37,7 +46,3 @@ func envOr(k, def string) string {
 	}
 	return def
 }
-
-// withTracing is where the OpenTelemetry HTTP middleware is installed
-// (otelhttp.NewHandler in production builds).
-func withTracing(h http.Handler) http.Handler { return h }

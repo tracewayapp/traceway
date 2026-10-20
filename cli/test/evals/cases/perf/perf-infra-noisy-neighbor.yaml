@@ -74,8 +74,8 @@ oracle:
       onset: "{{seed.onsetAt}}"
       evidence:
         - {call_id: c01, claim: "every endpoint's p95 is 2-3x its p50 over the last day: a share of requests is slow on every route"}
-        - {call_id: c02, claim: "the p95 of all endpoints stepped up in the same bucket"}
-        - {call_id: c03, claim: "per host, only tickets-node-c's request duration rose (~43ms against ~17ms on node-a and node-b), from that same bucket"}
+        - {call_id: c02, claim: "the p95 of every endpoint stepped up about 14 hours ago and stayed up"}
+        - {call_id: c03, claim: "per host, only tickets-node-c's request duration rose (~43ms against ~17ms on node-a and node-b), from that same time"}
         - {call_id: c04, claim: "node-a and node-b stay ~69% idle; node-c fell to ~39% at the step"}
         - {call_id: c05, claim: "the lost idle on node-c is steal: ~30% from the step on, zero on the other hosts"}
         - {call_id: c06, claim: "user CPU is the same on all three hosts, so node-c is not doing more work"}
@@ -88,4 +88,4 @@ oracle:
       fix: Take tickets-node-c out of the target group and replace it (stop/start the instance so it lands on another host, or terminate it and let it be recreated); more servers are not needed. Alert on CPU steal per host so the next one is caught quickly; consider dedicated tenancy if it recurs.
       confidence: high
       report: |
-        No, more servers would not help: one of the three VMs is being starved by its hypervisor. Since about 14 hours ago every request served by tickets-node-c takes ~2.5-3x longer (http.server.request.duration ~43ms there against ~17ms on node-a and node-b; in the access logs the 40-65ms requests all come from node-c). The load balancer sends it a third of the traffic, which is why every endpoint's p95 rose while p50 barely moved and some users see no problem. From the same moment node-c loses ~30% of its CPU time to steal, so its idle fell from ~69% to ~39% although its own user and system time did not change; node-a and node-b have no steal and stay ~69% idle, and traffic is flat. Drain tickets-node-c from the target group and replace it (a stop/start moves it to another host), and add an alert on per-host CPU steal.
+        No, more servers would not help: one of the three VMs is being starved by its hypervisor. Since about 14 hours ago every request served by tickets-node-c takes ~2.5-3x longer (http.server.request.duration ~43ms there against ~17ms on node-a and node-b; in the access logs every request over 40ms comes from node-c). The load balancer sends it a third of the traffic, which is why every endpoint's p95 rose while p50 barely moved and some users see no problem. From the same moment node-c loses ~30% of its CPU time to steal, so its idle fell from ~69% to ~39% although its own user and system time did not change; node-a and node-b have no steal and stay ~69% idle, and traffic is flat. Drain tickets-node-c from the target group and replace it (a stop/start moves it to another host), and add an alert on per-host CPU steal.

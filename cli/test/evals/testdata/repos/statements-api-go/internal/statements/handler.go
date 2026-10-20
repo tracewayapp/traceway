@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
+
+	"example.com/statements-api/internal/telemetry"
 )
 
 // Account is the billed customer.
@@ -45,6 +48,7 @@ type Statement struct {
 type Store interface {
 	Account(ctx context.Context, id int64) (*Account, error)
 	InvoicesForPeriod(ctx context.Context, accountID int64, from, to time.Time) ([]Invoice, error)
+	LatestInvoices(ctx context.Context, accountID int64) ([]Invoice, error)
 	CreateStatement(ctx context.Context, st *Statement) error
 	MarkReady(ctx context.Context, id, objectKey string) error
 	MarkFailed(ctx context.Context, id string) error
@@ -79,6 +83,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/statements", h.Create)
 	mux.HandleFunc("GET /api/statements/{id}", h.Get)
 	mux.HandleFunc("GET /api/statements/{id}/download", h.Download)
+	mux.HandleFunc("GET /api/invoices", h.Invoices)
 }
 
 type createRequest struct {
@@ -164,12 +169,30 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	url, err := h.uploader.PresignGet(r.Context(), st.ObjectKey, 15*time.Minute)
+	ctx, end := telemetry.Start(r.Context(), "presign object url")
+	url, err := h.uploader.PresignGet(ctx, st.ObjectKey, 15*time.Minute)
+	end()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, url, http.StatusFound)
+}
+
+// Invoices serves GET /api/invoices?accountId=: the account's latest 50
+// invoices.
+func (h *Handler) Invoices(w http.ResponseWriter, r *http.Request) {
+	accountID, err := strconv.ParseInt(r.URL.Query().Get("accountId"), 10, 64)
+	if err != nil {
+		http.Error(w, "accountId is required", http.StatusBadRequest)
+		return
+	}
+	invoices, err := h.store.LatestInvoices(r.Context(), accountID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, invoices)
 }
 
 func newID() string {

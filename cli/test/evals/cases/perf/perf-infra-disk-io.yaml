@@ -78,8 +78,8 @@ oracle:
         - {call_id: c02, claim: "every endpoint's p50 stepped up about 4.5-7x in the same hour and stayed up"}
         - {call_id: c03, claim: "before that, a booking lookup's two primary-key queries took 1-3ms each"}
         - {call_id: c04, claim: "after it, the same two primary-key queries each take several times as long: indexed point lookups slowed as much as anything"}
-        - {call_id: c05, claim: "the availability search query alone now takes ~60ms for a few hundred rows, against an endpoint p50 of ~15ms before: the same few-fold slowdown as the primary-key lookups"}
-        - {call_id: c06, claim: "user CPU on the API host is flat and on the database host only rose from ~10% to ~13%"}
+        - {call_id: c05, claim: "the availability search query alone now takes well over 50ms for a few hundred rows, against an endpoint p50 of ~15ms before: the same few-fold slowdown as the primary-key lookups"}
+        - {call_id: c06, claim: "user CPU on the three API pods is flat and on the database host only rose from ~10% to ~13%"}
         - {call_id: c07, claim: "on pg-bookings-1 iowait went from ~2% to ~35% at the step"}
         - {call_id: c08, claim: "its disk queue went from about 1 to over 30 operations at the same time"}
         - {call_id: c09, claim: "disk reads and writes went up about 7x from then on"}

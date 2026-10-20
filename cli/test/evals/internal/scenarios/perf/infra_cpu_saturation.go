@@ -96,7 +96,6 @@ func papSeedCPUSaturation(s *seed.Scenario) error {
 	traffic(cart, "cart", 220)
 	cart.Handler(func(r *seed.Req) {
 		queue(r)
-		r.Cache("GET", "cart:session", db(r, r.Ms(0.4, 1.2)))
 		r.DB("SELECT p.id, p.name, p.price_cents, ci.qty FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.cart_id = $1", db(r, r.Ms(2, 5)))
 		r.Gap(cpu(r, r.Ms(2, 5))) // price cart
 	})
@@ -106,24 +105,24 @@ func papSeedCPUSaturation(s *seed.Scenario) error {
 		queue(r)
 		r.Gap(cpu(r, r.Ms(0.6, 1.5))) // validate body
 		r.DB("INSERT INTO cart_items (cart_id, product_id, qty) VALUES ($1, $2, $3) ON CONFLICT (cart_id, product_id) DO UPDATE SET qty = cart_items.qty + EXCLUDED.qty", db(r, r.Ms(2, 5)))
-		r.Cache("DEL", "cart:session", db(r, r.Ms(0.3, 0.9)))
 		r.Status(201)
 	})
 	checkout := api.Endpoint("POST", "/api/checkout")
 	traffic(checkout, "checkout", 70)
 	checkout.Handler(func(r *seed.Req) {
 		queue(r)
+		r.DB("BEGIN", db(r, r.Ms(0.2, 0.6)))
 		r.DB("SELECT p.id, p.price_cents, p.stock, ci.qty FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.cart_id = $1 FOR UPDATE", db(r, r.Ms(3, 7)))
 		r.Gap(cpu(r, r.Ms(4, 9))) // price order
 		r.HTTP("POST", "https://api.payments.example/v1/payment_intents", r.LogNormal(180*time.Millisecond, 420*time.Millisecond), 200)
 		r.DB("INSERT INTO orders (id, user_id, total_cents, status, created_at) VALUES ($1, $2, $3, 'paid', now())", db(r, r.Ms(2, 5)))
+		r.DB("COMMIT", db(r, r.Ms(0.6, 1.8)))
 		r.Status(201)
 	})
 	recs := api.Endpoint("GET", "/api/recommendations")
 	traffic(recs, "recs", 200)
 	recs.Handler(func(r *seed.Req) {
 		queue(r)
-		r.Cache("GET", "recs:user", db(r, r.Ms(0.4, 1.2)))
 		r.DB("SELECT product_id, score FROM recommendations WHERE user_id = $1 ORDER BY score DESC LIMIT 12", db(r, r.Ms(3, 8)))
 		r.Gap(cpu(r, r.Ms(5, 12))) // rank recommendations
 	})

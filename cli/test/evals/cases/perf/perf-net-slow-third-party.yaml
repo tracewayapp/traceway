@@ -33,7 +33,7 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: Slow third-party / upstream API. Three times in three days (25-40 minutes each) the payment provider slowed down; the charge CLIENT span (POST https://api.payments.example/v1/charges) went from ~230ms to several seconds, and some calls hit the client's 10s timeout (the *url.Error "context deadline exceeded (Client.Timeout exceeded while awaiting headers)" group, answered 502). POST /api/checkout and POST /api/refunds, the two routes that call the provider, spike together in the same hours while GET /api/orders/:id and the rest stay flat; inside a slow checkout the DB spans start immediately and take a few ms, CPU is flat. Goroutines rise during the windows because requests are waiting on the provider, not on the pool. Mitigations on our side are a tighter timeout for the charge call, a circuit breaker, an asynchronous "payment pending" flow with the idempotency key, and raising it with the provider.
+  expected: Slow third-party / upstream API. Three times in three days (25-40 minutes each) the payment provider slowed down; the charge CLIENT span (POST https://api.payments.example/v1/charges) went from ~230ms to several seconds, and some calls hit the client's 10s timeout (the *url.Error "context deadline exceeded (Client.Timeout exceeded while awaiting headers)" group, answered 502). POST /api/checkout and POST /api/refunds, the two routes that call the provider, spike together in the same hours while GET /api/orders/{id} and the rest stay flat; inside a slow checkout the DB spans start immediately and take a few ms, CPU is flat. Goroutines rise during the windows because requests are waiting on the provider, not on the pool. Mitigations on our side are a tighter timeout for the charge call, a circuit breaker, an asynchronous "payment pending" flow with the idempotency key, and raising it with the provider.
   rubric:
     - Localizes the time to the external charge span and correlates the spikes with the provider (checkout and refunds spike together, routes that do not call it stay flat; the timeouts are on that call).
     - Rules out connection-pool exhaustion and saturation from the data (no gap before the DB spans, fast DB spans, flat CPU; goroutines are a symptom).
@@ -64,7 +64,7 @@ oracle:
       locus: {endpoint: "POST /api/checkout", span: "POST https://api.payments.example/v1/charges", service: checkout-api}
       onset: null
       evidence:
-        - {call_id: c01, claim: "POST /api/checkout and POST /api/refunds have p50 ~240ms but p99 of several seconds; the other routes are fast"}
+        - {call_id: c01, claim: "POST /api/checkout and POST /api/refunds have p50 ~240ms but a p99 of seconds; the other routes are fast"}
         - {call_id: c02, claim: "checkout and refunds spike in the same three windows in three days; routes that do not call the provider stay flat"}
         - {call_id: c03, claim: "the timeout error group is the charge call to api.payments.example hitting the 10s client timeout, first and last seen inside the slow windows; any other group is unrelated"}
         - {call_id: c05, claim: "a slow checkout spends nearly all its time in POST https://api.payments.example/v1/charges; its DB spans start immediately and take a few ms"}

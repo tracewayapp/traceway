@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: '3.11.4: cart badge counts pending items'
+  age: 720h
+  author: Camille Roux <camille@example.com>
+head:
+  message: '3.12.0: live chat with support from the Help center'
+  age: 25h30m
+  author: Ethan Brooks <ethan@example.com>

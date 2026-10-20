@@ -36,7 +36,7 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: Missing index on users.email. Every lookup runs one query, SELECT ... FROM users WHERE users.email = $1, that returns one row (or none) yet takes about 500ms in the last day and about 250ms a month ago; it grows smoothly with the users table, so Postgres is reading the whole table. Primary-key reads of users (GET /api/me, the invite flow) stay at 1-2ms, CPU is flat around 20-25%, and the 1.13.0 release two weeks ago only changed POST /api/invites. The model and migrations index org_id but not email. Fix with CREATE INDEX CONCURRENTLY on users(email) (an Alembic migration plus index=True on the model).
+  expected: Missing index on users.email. Every lookup runs one query, SELECT ... FROM users WHERE users.email = $1, that returns one row (or none) yet takes about 500ms in the last day and about 230ms a month ago; it grows smoothly with the users table, so Postgres is reading the whole table. Primary-key reads of users (GET /api/me, the invite flow) stay at 1-2ms, CPU is flat around 20-25%, and the 1.13.0 release two weeks ago only changed POST /api/invites. The model and migrations index org_id but not email. Fix with CREATE INDEX CONCURRENTLY on users(email) (an Alembic migration plus index=True on the model).
   rubric:
     - Attributes the latency to the single users-by-email query, which returns at most one row but takes hundreds of milliseconds and grows with the table.
     - Rules out the 1.13.0 release (no step in the lookup's curve, it only changed POST /api/invites) and saturation (flat CPU).
@@ -49,7 +49,7 @@ oracle:
       traceway logs query --since 6h --search /api/users/lookup --page-size 5 --output json
       | jq '{data: [.data[] | {traceId, timestamp, body}]}'
   - shell: >-
-      traceway traces show {{calls.c02.data.0.traceId}} --recorded-at {{calls.c02.data.0.timestamp}} --output json
+      traceway traces show {{seed.slowRequest.traceId}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
       | jq '[.nodes[] | {endpoint: .endpoint.endpoint, id: .endpoint.id, recordedAt: .endpoint.recordedAt, version: .endpoint.appVersion, ms: (.endpoint.duration / 1e6),
       spans: [.spans[] | {name, ms: (.duration / 1e6), query: .attributes["db.query.text"], rows: .attributes["db.response.returned_rows"]}]}]'
   - shell: >-
@@ -66,7 +66,7 @@ oracle:
       onset: null
       evidence:
         - {call_id: c01, claim: "GET /api/users/lookup has p50 and p95 both around half a second, so every request pays it"}
-        - {call_id: c03, claim: "the request spends almost all its time in one users query filtered by email that returns a single row; the orgs primary-key read next to it takes about a millisecond"}
+        - {call_id: c03, claim: "the slowest lookup of the last day spends almost all its time in one users query filtered by email that returns a single row; the orgs primary-key read next to it takes about a millisecond"}
         - {call_id: c04, claim: "the lookup's p50 roughly doubled over four weeks, climbing every week with no step at the release; POST /api/invites only moved by a few ms"}
         - {call_id: c05, claim: "CPU stayed flat all day, so this is not saturation"}
         - {call_id: c08, claim: "users.email has no index (only org_id is indexed in the model and the migrations)"}

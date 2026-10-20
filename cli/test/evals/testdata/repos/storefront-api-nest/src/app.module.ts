@@ -6,6 +6,7 @@ import { FeatureFlagsGuard } from './flags/feature-flags.guard';
 import { FeatureFlagsService } from './flags/feature-flags.service';
 import { MeController } from './me/me.controller';
 import { ProductsController } from './catalog/products.controller';
+import { CacheStats } from './catalog/cache-stats';
 import { CartController } from './cart/cart.controller';
 
 @Module({
@@ -14,6 +15,7 @@ import { CartController } from './cart/cart.controller';
     { provide: Pool, useValue: new Pool({ connectionString: process.env.DATABASE_URL, max: 20 }) },
     { provide: Redis, useValue: new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379') },
     FeatureFlagsService,
+    CacheStats,
     // Every request gets the current flags on req.flags, so handlers and
     // templates can branch on them.
     { provide: APP_GUARD, useClass: FeatureFlagsGuard },

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strconv"
+
+	"example.com/billing-api/internal/telemetry"
 )
 
 // Handler serves invoices.
@@ -31,18 +33,20 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	telemetry.SetAttributes(r.Context(), telemetry.Attr{Key: "enduser.id", Value: inv.Customer.ID})
 	view := render(inv)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(view)
 }
 
-// Recover turns a panic into a 500 and records it on the request span
-// (span.RecordError with the stack in production builds).
+// Recover turns a panic into a 500 and records it, with its stack, on the
+// request span.
 func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if v := recover(); v != nil {
-				slog.Error("panic serving request", "path", r.URL.Path, "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
+				telemetry.RecordPanic(r.Context(), v, debug.Stack())
+				slog.ErrorContext(r.Context(), "panic serving request", "path", r.URL.Path, "panic", fmt.Sprint(v))
 				http.Error(w, "internal error", http.StatusInternalServerError)
 			}
 		}()

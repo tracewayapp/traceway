@@ -64,8 +64,9 @@ func pdbSeedLockContention(s *seed.Scenario) error {
 		lines := 1 + r.IntN(4)
 		cart := fmt.Sprintf("c_%08x", r.IntN(1<<31))
 		r.Gap(r.Ms(0.3, 0.9)) // decode the cart
-		r.DB("begin", r.Ms(0.2, 0.6))
-		r.DB("SET LOCAL lock_timeout = '5s'", r.Ms(0.1, 0.3))
+		pdbAcquire(r)
+		pdbPgx(r, "begin", r.Ms(0.2, 0.6), 0)
+		pdbPgx(r, "SET LOCAL lock_timeout = '5s'", r.Ms(0.1, 0.3), 0)
 		hotLocked := 0
 		for i := 0; i < lines; i++ {
 			sku := pickSKU(r, h)
@@ -80,18 +81,18 @@ func pdbSeedLockContention(s *seed.Scenario) error {
 			}
 			switch {
 			case d >= 5*time.Second:
-				sp := r.DB(updateSQL, 5*time.Second+r.Ms(0.5, 2))
-				pdbPgError(r, sp, "ERROR: canceling statement due to lock timeout (SQLSTATE 55P03)")
-				r.DB("rollback", r.Ms(0.2, 0.6))
+				sp := pdbPgx(r, updateSQL, 5*time.Second+r.Ms(0.5, 2), -1)
+				pdbPgError(r, sp, "55P03", "ERROR: canceling statement due to lock timeout (SQLSTATE 55P03)")
+				pdbPgx(r, "rollback", r.Ms(0.2, 0.6), 0)
 				r.Log(seed.SevWarn, "reserve stock: ERROR: canceling statement due to lock timeout (SQLSTATE 55P03)",
 					seed.A("cart_id", cart), seed.A("sku", sku), seed.A("pg_where", tuple(r)))
 				r.Status(503)
 				return
 			case hotLocked >= 2 && h > 0 && r.Chance(0.07):
 				// Another cart holds this row and waits for one we hold.
-				sp := r.DB(updateSQL, time.Second+r.Ms(1, 6))
-				pdbPgError(r, sp, "ERROR: deadlock detected (SQLSTATE 40P01)")
-				r.DB("rollback", r.Ms(0.2, 0.6))
+				sp := pdbPgx(r, updateSQL, time.Second+r.Ms(1, 6), -1)
+				pdbPgError(r, sp, "40P01", "ERROR: deadlock detected (SQLSTATE 40P01)")
+				pdbPgx(r, "rollback", r.Ms(0.2, 0.6), 0)
 				a, b := pid(r), pid(r)
 				tx1, tx2 := 9917000+r.IntN(900), 9917000+r.IntN(900)
 				r.Log(seed.SevError, "reserve stock: ERROR: deadlock detected (SQLSTATE 40P01)",
@@ -101,10 +102,10 @@ func pdbSeedLockContention(s *seed.Scenario) error {
 				r.Status(500)
 				return
 			}
-			r.DB(updateSQL, d, seed.Rows(1))
+			pdbPgx(r, updateSQL, d, 1)
 		}
-		r.DB("INSERT INTO reservations (cart_id, sku, warehouse_id, qty, expires_at) SELECT $1, unnest($2::text[]), $3, unnest($4::int[]), now() + interval '15 minutes'", r.Ms(0.8, 2.2))
-		r.DB("commit", r.Ms(0.8, 2.6))
+		pdbPgx(r, "INSERT INTO reservations (cart_id, sku, warehouse_id, qty, expires_at) SELECT $1, unnest($2::text[]), $3, unnest($4::int[]), now() + interval '15 minutes'", r.Ms(0.8, 2.2), lines)
+		pdbPgx(r, "commit", r.Ms(0.8, 2.6), 0)
 		r.Gap(r.Ms(0.2, 0.5))
 		r.Status(201)
 	})
@@ -115,25 +116,39 @@ func pdbSeedLockContention(s *seed.Scenario) error {
 	release.Handler(func(r *seed.Req) {
 		h := heat(r.Start())
 		r.Gap(r.Ms(0.3, 0.8))
-		r.DB("begin", r.Ms(0.2, 0.6))
-		r.DB("DELETE FROM reservations WHERE id = $1 RETURNING sku, warehouse_id, qty", r.Ms(0.6, 1.6), seed.Rows(1))
+		pdbAcquire(r)
+		pdbPgx(r, "begin", r.Ms(0.2, 0.6), 0)
+		pdbPgx(r, "DELETE FROM reservations WHERE id = $1 RETURNING sku, warehouse_id, qty", r.Ms(0.6, 1.6), 1)
 		d := r.Ms(0.6, 1.8)
 		if h > 0 && r.Chance(0.5*h) {
 			d += time.Duration(h * float64(r.LogNormal(250*time.Millisecond, 2*time.Second)))
 		}
-		r.DB("UPDATE inventory SET reserved = reserved - $1, updated_at = now() WHERE sku = $2 AND warehouse_id = $3", time.Duration(math.Min(float64(d), float64(4900*time.Millisecond))), seed.Rows(1))
-		r.DB("commit", r.Ms(0.8, 2.4))
+		pdbPgx(r, "UPDATE inventory SET reserved = reserved - $1, updated_at = now() WHERE sku = $2 AND warehouse_id = $3", time.Duration(math.Min(float64(d), float64(4900*time.Millisecond))), 1)
+		pdbPgx(r, "commit", r.Ms(0.8, 2.4), 0)
 		r.Gap(r.Ms(0.2, 0.5))
+		r.Status(204)
 	})
 
-	pdbHealthy(api, window,
-		pdbRoute{method: "GET", route: "/api/inventory/{sku}", perDay: 220, queries: []string{
-			"SELECT sku, warehouse_id, on_hand, reserved, updated_at FROM inventory WHERE sku = $1",
-		}, dbMedianMs: 0.9},
-		pdbRoute{method: "GET", route: "/api/warehouses", perDay: 30, queries: []string{
-			"SELECT id, code, name, timezone FROM warehouses ORDER BY code",
-		}, dbMedianMs: 0.8},
-	)
+	for _, rt := range []struct {
+		route, query string
+		perDay       int
+		rows         func(r *seed.Req) int
+	}{
+		{"/api/inventory/{sku}", "SELECT sku, warehouse_id, on_hand, reserved, updated_at FROM inventory WHERE sku = $1", 220, func(r *seed.Req) int { return 1 + r.IntN(4) }},
+		{"/api/warehouses", "SELECT id, code, name, timezone FROM warehouses ORDER BY code", 30, func(*seed.Req) int { return 6 }},
+	} {
+		rt := rt
+		e := api.Endpoint("GET", rt.route)
+		e.Traffic(seed.Daily(rt.perDay), seed.Diurnal(), seed.Over(window))
+		e.Detail(seed.DetailPolicy{Recent: 6 * time.Hour, Rate: 0.02, Max: 4})
+		e.Handler(func(r *seed.Req) {
+			r.Gap(r.Ms(0.3, 0.9))
+			pdbAcquire(r)
+			pdbPgx(r, rt.query, r.LogNormal(900*time.Microsecond, 4500*time.Microsecond), rt.rows(r))
+			r.Gap(r.Ms(0.2, 1.2))
+		})
+	}
+	api.Log(deployAt.Add(3*time.Second), seed.SevInfo, "listening", seed.A("addr", ":8080"), seed.A("max_conns", 40))
 	api.Host().CPU(seed.Plus(seed.Flat(0.16, 0.24), func(t time.Time) float64 { return 0.04 * heat(t) }))
 	api.Host().Memory(seed.Flat(0.38, 0.43))
 
@@ -154,10 +169,35 @@ func pdbSeedLockContention(s *seed.Scenario) error {
 	return nil
 }
 
+// pdbAcquire records otelpgx's pool.acquire span; an idle connection is
+// handed out at once.
+func pdbAcquire(r *seed.Req) {
+	sp := pdbPgx(r, "pool.acquire", r.Ms(0.02, 0.12), -1)
+	sp.Name = "pool.acquire"
+	delete(sp.Attrs, "db.query.text")
+	delete(sp.Attrs, "db.operation.name")
+}
+
+// pdbPgx records a query span the way otelpgx v0.9 names and tags it by
+// default: "query <SQL>", db.system (semconv 1.27) and pgx.rows_affected
+// on success (rows < 0 leaves it out).
+func pdbPgx(r *seed.Req, query string, d time.Duration, rows int) *seed.Span {
+	sp := r.DB(query, d)
+	sp.Name = "query " + query
+	sp.Attrs["db.system"] = sp.Attrs["db.system.name"]
+	delete(sp.Attrs, "db.system.name")
+	delete(sp.Attrs, "db.collection.name")
+	if rows >= 0 {
+		sp.Attrs["pgx.rows_affected"] = rows
+	}
+	return sp
+}
+
 // pdbPgError records the error otelpgx attaches to a failed query span.
-func pdbPgError(r *seed.Req, sp *seed.Span, msg string) {
+func pdbPgError(r *seed.Req, sp *seed.Span, code, msg string) {
 	sp.Status = seed.StatusError
 	sp.StatusMsg = msg
+	sp.Attrs["pgx.sql_state"] = code
 	sp.Events = append(sp.Events, seed.Event{Name: "exception", At: sp.Dur, Attrs: map[string]any{
 		"exception.type": "*pgconn.PgError", "exception.message": msg,
 	}})

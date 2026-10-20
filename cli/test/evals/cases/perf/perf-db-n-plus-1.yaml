@@ -34,7 +34,7 @@ expect:
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:
-  expected: Select N+1. ListOrders loads up to 100 orders and then runs one order_items query per order (60-90 per request in the last day, 6-14ms each). Orders per customer grew over the month, so latency grew without a deploy; CPU is flat around 25%.
+  expected: Select N+1. ListOrders loads up to 100 orders and then runs one order_items query per order (roughly 25-95 per request in the last day and about 90 in the slowest one, 6-14ms each). Orders per customer grew over the month, so latency grew without a deploy; CPU is flat around 25%.
   rubric:
     - Attributes the latency to one order_items query per order and quantifies it (dozens of queries per request).
     - Rules out saturation (flat CPU) and a deploy regression (gradual climb, no release in the window).

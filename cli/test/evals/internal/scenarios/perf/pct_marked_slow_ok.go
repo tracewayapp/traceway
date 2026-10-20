@@ -10,15 +10,16 @@ import (
 func init() { scenarios.Register("perf/ctl-marked-slow-ok", pctSeedMarkedSlowOK) }
 
 // pctLedgerExport is the ledger export handler: one range query over a
-// quarter of ledger entries, a CSV encode and the streamed write, all
-// proportional to the row count (at most ~1.98s for 54k rows).
+// quarter of ledger entries whose rows are written as CSV while they are
+// scanned (pgx ends the query span when the rows are closed, so it covers
+// the encode), then the final flush; all proportional to the row count (at
+// most ~1.98s for 54k rows).
 func pctLedgerExport(r *seed.Req, rows int) {
 	n := float64(rows)
 	jit := func(lo, hi float64) float64 { return lo + (hi-lo)*r.Float() }
 	r.Gap(r.Ms(0.5, 1.2))
 	r.DB("SELECT id, posted_at, account_code, counterparty, description, amount_cents, currency FROM ledger_entries WHERE org_id = $1 AND posted_at >= $2 AND posted_at < $3 ORDER BY posted_at",
-		time.Duration(n*0.019*jit(0.96, 1.04)*float64(time.Millisecond)), seed.Rows(rows))
-	r.Compute("encode csv", time.Duration(n*0.0135*jit(0.96, 1.04)*float64(time.Millisecond)))
+		time.Duration(n*(0.019*jit(0.96, 1.04)+0.0135*jit(0.96, 1.04))*float64(time.Millisecond)), seed.Rows(rows))
 	r.Gap(time.Duration(n * 0.0025 * jit(0.9, 1.1) * float64(time.Millisecond)))
 }
 
@@ -33,20 +34,20 @@ func pctLedgerRows(r *seed.Req) int {
 
 // pctLedgerService declares the ledger API with its everyday endpoints.
 func pctLedgerService(s *seed.Scenario, p *seed.Project, window time.Duration) *seed.Service {
-	api := p.Service("ledger-api", seed.Go("nethttp", "sql")).Versions("3.9.2")
-	bal := api.Endpoint("GET", "/api/accounts/:id/balance")
+	api := p.Service("ledger-api", seed.Go("nethttp", "pgx")).Versions("3.9.2")
+	bal := api.Endpoint("GET", "/api/accounts/{id}/balance")
 	bal.Traffic(seed.Daily(200), seed.Diurnal(), seed.Over(window))
 	bal.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.4, 1.0))
 		r.DB("SELECT balance_cents, currency, updated_at FROM account_balances WHERE account_id = $1", r.LogNormal(2*time.Millisecond, 9*time.Millisecond))
-		r.Compute("encode response", r.Ms(0.2, 0.8))
+		r.Gap(r.Ms(0.2, 0.8))
 	})
-	entries := api.Endpoint("GET", "/api/accounts/:id/entries")
+	entries := api.Endpoint("GET", "/api/accounts/{id}/entries")
 	entries.Traffic(seed.Daily(120), seed.Diurnal(), seed.Over(window))
 	entries.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.4, 1.0))
 		r.DB("SELECT id, posted_at, description, amount_cents FROM ledger_entries WHERE account_id = $1 ORDER BY posted_at DESC LIMIT 50", r.LogNormal(6*time.Millisecond, 24*time.Millisecond), seed.Rows(50))
-		r.Compute("encode response", r.Ms(0.6, 2.0))
+		r.Gap(r.Ms(0.6, 2.0))
 	})
 	post := api.Endpoint("POST", "/api/journal-entries")
 	post.Traffic(seed.Daily(60), seed.Diurnal(), seed.Over(window))

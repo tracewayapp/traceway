@@ -13,32 +13,84 @@ func init() { scenarios.Register("perf/net-retries", pncSeedRetries) }
 const (
 	pncRatesURL     = "https://rates.carrier.example/v2/rates"
 	pncRetryFn      = "app.carriers.client.CarrierClient.fetch_rates"
-	pncReadTimeout  = "The read operation timed out"
 	pnc503Message   = "Server error '503 Service Unavailable' for url 'https://rates.carrier.example/v2/rates'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503"
 	pncRetryErrType = "tenacity.RetryError"
 )
 
 const pncRetryErrorStack = `Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_async/connection.py", line 103, in handle_async_request
+    return await self._connection.handle_async_request(request)
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_async/http11.py", line 136, in handle_async_request
+    raise exc
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_async/http11.py", line 106, in handle_async_request
+    ) = await self._receive_response_headers(**kwargs)
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_async/http11.py", line 177, in _receive_response_headers
+    event = await self._receive_event(timeout=timeout)
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_async/http11.py", line 217, in _receive_event
+    data = await self._network_stream.read(
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 32, in read
+    with map_exceptions(exc_map):
+  File "/usr/local/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/usr/local/lib/python3.12/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
   File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 114, in __call__
     result = await fn(*args, **kwargs)
   File "/app/app/carriers/client.py", line 36, in fetch_rates
     response = await self._http.post(RATES_URL, json=payload)
   File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1859, in post
     return await self.request(
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+  File "/usr/local/lib/python3.12/site-packages/httpx/_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+  File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "/usr/local/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
   File "/usr/local/lib/python3.12/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
     raise mapped_exc(message) from exc
-httpx.ReadTimeout: The read operation timed out
+httpx.ReadTimeout
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "/usr/local/lib/python3.12/site-packages/starlette/routing.py", line 76, in app
+  File "/usr/local/lib/python3.12/site-packages/starlette/routing.py", line 75, in app
     response = await f(request)
+  File "/usr/local/lib/python3.12/site-packages/fastapi/routing.py", line 387, in app
+    raw_response = await run_endpoint_function(
+  File "/usr/local/lib/python3.12/site-packages/fastapi/routing.py", line 288, in run_endpoint_function
+    return await dependant.call(**values)
   File "/app/app/routes/quotes.py", line 27, in create_quote
     rates = await carrier.fetch_rates(parcel)
   File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 189, in async_wrapped
     return await copy(fn, *args, **kwargs)
+  File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 111, in __call__
+    do = await self.iter(retry_state=retry_state)
   File "/usr/local/lib/python3.12/site-packages/tenacity/asyncio/__init__.py", line 153, in iter
+    result = await action(retry_state)
+  File "/usr/local/lib/python3.12/site-packages/tenacity/_utils.py", line 99, in inner
+    return call(*args, **kwargs)
+  File "/usr/local/lib/python3.12/site-packages/tenacity/__init__.py", line 421, in exc_check
     raise retry_exc from fut.exception()
 tenacity.RetryError: RetryError[<Future at 0x7f3a2c1b9d50 state=finished raised ReadTimeout>]`
 
@@ -80,8 +132,8 @@ func pncSeedRetries(s *seed.Scenario) error {
 				sp := r.HTTP("POST", pncRatesURL, 5*time.Second+r.Ms(1, 8), 0)
 				delete(sp.Attrs, "http.response.status_code")
 				sp.Attrs["error.type"] = "ReadTimeout"
-				sp.Status, sp.StatusMsg = seed.StatusError, pncReadTimeout
-				cause = "ReadTimeout: " + pncReadTimeout
+				sp.Status, sp.StatusMsg = seed.StatusError, "ReadTimeout: "
+				cause = "ReadTimeout: "
 			case x < 0.05:
 				r.HTTP("POST", pncRatesURL, r.LogNormal(35*time.Millisecond, 90*time.Millisecond), 503, seed.A("error.type", "503"))
 				cause = "HTTPStatusError: " + pnc503Message
@@ -109,11 +161,11 @@ func pncSeedRetries(s *seed.Scenario) error {
 		r.Compute(route+" http send", r.Ms(0.05, 0.3))
 	})
 
-	track := api.Endpoint("GET", "/api/shipments/:id/tracking")
+	track := api.Endpoint("GET", "/api/shipments/{shipment_id}/tracking")
 	track.Traffic(seed.Daily(1100), seed.Diurnal(), seed.Over(window))
 	track.Handler(func(r *seed.Req) {
 		r.DB("SELECT status, location, occurred_at FROM tracking_events WHERE shipment_id = %s ORDER BY occurred_at DESC LIMIT 20", r.LogNormal(3*time.Millisecond, 8*time.Millisecond), seed.Rows(1+r.IntN(12)))
-		r.Compute("GET /api/shipments/:id/tracking http send", r.Ms(0.05, 0.3))
+		r.Compute("GET /api/shipments/{shipment_id}/tracking http send", r.Ms(0.05, 0.3))
 	})
 
 	s.Background(api, seed.TrafficOpts{Endpoints: 4, PerDay: 150})

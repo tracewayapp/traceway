@@ -1,0 +1,62 @@
+id: write-alert-disable
+suite: write
+title: Turn off the alert for a gateway that is being decommissioned
+tags: [alerts]
+seed: write/alert-disable
+arms: [cli-write+skill, mcp-write]
+invoke: natural
+distractor: The alert for the new SMS provider has a similar name and must stay on; snoozing the legacy rule would only mute it for a while when the user wants it off for good.
+prompt: |
+  We're decommissioning the legacy SMS gateway this week, so its webhook alert in Traceway is just noise now. Please turn that alert off for good; we'll delete it from the dashboard once the gateway is gone.
+budget: {max_turns: 20, max_tool_calls: 12, timeout: 8m}
+user:
+  - default: "Yes, the legacy SMS one. Turn it off; leave the other alerts as they are."
+expect:
+  state:
+    - kind: rule
+      id: "{{seed.ruleId}}"
+      enabled: false
+    - kind: rule
+      id: "{{seed.smsRuleId}}"
+      enabled: true
+      snoozed: false
+    - kind: rule
+      id: "{{seed.pushRuleId}}"
+      enabled: true
+      snoozed: false
+    - kind: agent_writes
+      count: 1
+  calls:
+    # Unlike write-alert-snooze, no rule here has opened a page, so the rule
+    # list is the only read that names a rule id; the order rejects a
+    # disable by a guessed id.
+    required:
+      - {op: alerts.list}
+      - {op: alerts.disable, args: {id: "{{seed.ruleId}}"}}
+    forbidden:
+      - {op: alerts.snooze}
+      - {op: alerts.disable, args: {id: "{{seed.smsRuleId}}"}}
+      - {op: alerts.disable, args: {id: "{{seed.pushRuleId}}"}}
+      - {op: exceptions.archive}
+    order:
+      - [alerts.list, alerts.disable]
+    max_failed_calls: 3
+  report:
+    contains:
+      - "(disabl|turned .{0,40}off|switched .{0,40}off|is (now )?off)"
+      - "(re-?enabl|\\benable\\b|enabled\\W{0,3}(:|=) ?true|back on|re-?activat)"
+judge:
+  expected: The agent lists the alert rules, picks "Legacy SMS webhook error rate above 10%" (rule {{seed.ruleId}}, not the new SMS provider's "SMS send error rate above 2%"), disables it (not a snooze, since the user wants it off until someone turns it back on), and reports that it stays off until re-enabled, with the command to re-enable it.
+  rubric:
+    - Disables the legacy SMS webhook rule and nothing else.
+    - Uses disable rather than snooze, because the user wants it off for good.
+    - Says the rule notifies nobody until re-enabled and how to turn it back on.
+oracle:
+  - shell: traceway-write alerts list --output json | jq '[.rules[] | {id, name, ruleType, enabled, snoozedUntil, config, channelName}]'
+  - op: alerts.disable
+    args: {id: "{{seed.ruleId}}"}
+  - finish:
+      summary: |
+        Disabled rule {{seed.ruleId}}, "Legacy SMS webhook error rate above 10%" (POST /webhooks/legacy-sms/status). It notifies nobody until someone turns it back on, so it will not page or email about the legacy gateway again. The other alerts, including "SMS send error rate above 2%" for the new provider, are unchanged. To turn it back on: alerts enable {{seed.ruleId}}. Delete it from the dashboard once the gateway is gone.
+      changes:
+        - {action: disable alert rule, target: "rule {{seed.ruleId}}", new_value: disabled, undo: "alerts enable {{seed.ruleId}}"}

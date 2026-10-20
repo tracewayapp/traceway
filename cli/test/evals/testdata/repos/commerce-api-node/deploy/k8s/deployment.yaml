@@ -17,11 +17,24 @@ spec:
           ports: [{containerPort: 8080}]
           env:
             - {name: OTEL_SERVICE_NAME, value: commerce-api}
-            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4318"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://localhost:4318"}
           envFrom: [{secretRef: {name: commerce-api}}]
           resources:
             requests: {cpu: "1", memory: 512Mi}
             limits: {cpu: "1", memory: 1Gi}
           readinessProbe:
-            httpGet: {path: /api/categories, port: 8080}
+            httpGet: {path: /healthz, port: 8080}
             periodSeconds: 10
+        # Forwards the app's OTLP to Traceway and adds the pod's CPU and memory
+        # (hostmetrics receiver, reported under the pod's hostname).
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.135.0
+          args: ["--config=/etc/otelcol/config.yaml"]
+          envFrom: [{secretRef: {name: commerce-api}}]
+          volumeMounts: [{name: otelcol-config, mountPath: /etc/otelcol}]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+      volumes:
+        - name: otelcol-config
+          configMap: {name: commerce-api-otelcol}

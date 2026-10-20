@@ -7,6 +7,6 @@ the quote checkout shows.
 Run with the OpenTelemetry distro so traces and logs reach Traceway:
 
 ```
-opentelemetry-instrument uvicorn app.main:app --host 0.0.0.0 --port 8000
+OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true opentelemetry-instrument uvicorn app.main:app --host 0.0.0.0 --port 8000
 python -m unittest
 ```

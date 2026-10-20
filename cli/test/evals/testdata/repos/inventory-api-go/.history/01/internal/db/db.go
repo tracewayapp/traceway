@@ -1,6 +1,5 @@
 // Package db is the seam between the handlers and pgx: the handlers use these
-// interfaces, and the pgx build (driver_pgx.go, -tags pgx) adapts
-// *pgxpool.Pool and pgx.Tx to them.
+// interfaces, and pgx.go adapts *pgxpool.Pool and pgx.Tx to them.
 package db
 
 import (
@@ -11,8 +10,14 @@ import (
 // Tx is the part of pgx.Tx the handlers use. Exec returns the rows affected.
 type Tx interface {
 	Exec(ctx context.Context, sql string, args ...any) (int64, error)
+	QueryRow(ctx context.Context, sql string, args ...any) Row
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
+}
+
+// Row is one result row.
+type Row interface {
+	Scan(dest ...any) error
 }
 
 // Pool begins transactions.
@@ -30,6 +35,9 @@ var Config = struct {
 	MinConns:          4,
 	MaxConnIdleTimeMs: 300_000,
 }
+
+// ErrNoRows is returned by Row.Scan when the query matched no row.
+var ErrNoRows = errors.New("no rows in result set")
 
 // PgError is the subset of *pgconn.PgError the handlers inspect.
 type PgError struct {

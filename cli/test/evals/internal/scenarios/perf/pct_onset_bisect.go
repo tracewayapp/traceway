@@ -38,7 +38,7 @@ func pctSeedOnsetBisect(s *seed.Scenario) error {
 			r.DB("SELECT date_trunc(%(date_trunc_1)s, orders.created_at) AS month, count(DISTINCT orders.id) AS orders, sum(order_items.qty * order_items.unit_price_cents) AS spend_cents FROM orders JOIN order_items ON order_items.order_id = orders.id WHERE orders.account_id = %(account_id_1)s GROUP BY date_trunc(%(date_trunc_1)s, orders.created_at) ORDER BY month",
 				r.LogNormal(260*time.Millisecond, 520*time.Millisecond), seed.Rows(12+r.IntN(13)))
 		}
-		r.Compute("serialize response", r.Ms(0.8, 2.5))
+		r.Gap(r.Ms(0.8, 2.5))
 		r.Gap(r.Ms(0.3, 0.9))
 	})
 
@@ -46,21 +46,21 @@ func pctSeedOnsetBisect(s *seed.Scenario) error {
 	imports.Traffic(seed.Daily(27), seed.Diurnal(), seed.Over(window))
 	imports.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(1, 3))
-		r.Compute("parse csv", r.LogNormal(1100*time.Millisecond, 2600*time.Millisecond))
-		r.DB("INSERT INTO contacts (account_id, email, name, tags) VALUES (%(account_id_m0)s, %(email_m0)s, %(name_m0)s, %(tags_m0)s)", r.LogNormal(300*time.Millisecond, 700*time.Millisecond))
+		r.Compute("parse csv", r.LogNormal(1100*time.Millisecond, 2600*time.Millisecond)).Scope = "members-api"
+		r.DB("INSERT INTO contacts (account_id, email, name, tags) VALUES (%(account_id_m0)s, %(email_m0)s, %(name_m0)s, %(tags_m0)s::VARCHAR[])", r.LogNormal(300*time.Millisecond, 700*time.Millisecond))
 	})
 	reports := api.Endpoint("GET", "/api/reports/activity")
 	reports.Traffic(seed.Daily(90), seed.Diurnal(), seed.Over(window))
 	reports.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.8, 1.8))
 		r.DB("SELECT activity_events.kind, count(*) AS count_1 FROM activity_events WHERE activity_events.account_id = %(account_id_1)s AND activity_events.created_at >= %(created_at_1)s GROUP BY activity_events.kind", r.LogNormal(700*time.Millisecond, 1500*time.Millisecond), seed.Rows(9))
-		r.Compute("serialize response", r.Ms(1, 3))
+		r.Gap(r.Ms(1, 3))
 	})
 	avatar := api.Endpoint("POST", "/api/media/avatar")
 	avatar.Traffic(seed.Daily(20), seed.Diurnal(), seed.Over(window))
 	avatar.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(2, 6))
-		r.Compute("resize image", r.LogNormal(650*time.Millisecond, 1300*time.Millisecond))
+		r.Compute("resize image", r.LogNormal(650*time.Millisecond, 1300*time.Millisecond)).Scope = "members-api"
 		r.DB("UPDATE accounts SET avatar_key=%(avatar_key)s WHERE accounts.id = %(id_1)s", r.LogNormal(3*time.Millisecond, 9*time.Millisecond))
 	})
 	recs := api.Endpoint("GET", "/api/recommendations")
@@ -68,23 +68,23 @@ func pctSeedOnsetBisect(s *seed.Scenario) error {
 	recs.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.8, 1.8))
 		r.HTTP("POST", "http://recs-model.internal:8501/v1/models/members:predict", r.LogNormal(430*time.Millisecond, 1100*time.Millisecond), 200)
-		r.Compute("serialize response", r.Ms(0.5, 2))
+		r.Gap(r.Ms(0.5, 2))
 	})
 	search := api.Endpoint("GET", "/api/search")
 	search.Traffic(seed.Daily(360), seed.Diurnal(), seed.Over(window))
 	search.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.8, 1.8))
-		r.DB("SELECT contacts.id, contacts.name, contacts.email FROM contacts WHERE contacts.account_id = %(account_id_1)s AND contacts.search_vector @@ plainto_tsquery(%(plainto_tsquery_1)s) ORDER BY ts_rank(contacts.search_vector, plainto_tsquery(%(plainto_tsquery_1)s)) DESC LIMIT %(param_1)s",
+		r.DB("SELECT contacts.id, contacts.name, contacts.email FROM contacts WHERE contacts.account_id = %(account_id_1)s AND (contacts.search_vector @@ plainto_tsquery(%(plainto_tsquery_1)s)) ORDER BY ts_rank(contacts.search_vector, plainto_tsquery(%(plainto_tsquery_1)s)) DESC LIMIT %(param_1)s",
 			r.LogNormal(390*time.Millisecond, 900*time.Millisecond), seed.Rows(20))
-		r.Compute("serialize response", r.Ms(0.5, 2))
+		r.Gap(r.Ms(0.5, 2))
 	})
 	login := api.Endpoint("POST", "/api/auth/login")
 	login.Traffic(seed.Daily(260), seed.Diurnal(), seed.Over(window))
 	login.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.8, 1.8))
 		r.DB("SELECT accounts.id, accounts.password_hash FROM accounts WHERE accounts.email = %(email_1)s", r.LogNormal(2*time.Millisecond, 6*time.Millisecond), seed.Rows(1))
-		r.Compute("bcrypt.checkpw", r.Ms(400, 540))
-		r.DB("INSERT INTO sessions (account_id, token_hash, expires_at) VALUES (%(account_id)s, %(token_hash)s, %(expires_at)s)", r.LogNormal(3*time.Millisecond, 9*time.Millisecond))
+		r.Compute("bcrypt.checkpw", r.Ms(400, 540)).Scope = "members-api"
+		r.DB("INSERT INTO sessions (account_id, token_hash, expires_at) VALUES (%(account_id)s, %(token_hash)s, %(expires_at)s) RETURNING sessions.id", r.LogNormal(3*time.Millisecond, 9*time.Millisecond))
 	})
 	s.Background(api, seed.TypicalTraffic(6))
 	api.Host().CPU(seed.Flat(0.24, 0.36))

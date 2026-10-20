@@ -5,7 +5,7 @@ tags: [smoke, control, go, marked-slow]
 seed: perf/ctl-marked-slow-ok
 arms: [cli+skill, cli-noskill, mcp]
 invoke: slash
-distractor: The export is the slowest endpoint by far (p95 about 1.7-1.8s) and its waterfall is one large range query plus a CSV encode, which reads like an expensive query or an unbounded result set; but an operator marked it slow with a 2000ms allowance, p95 and even p99 stay under it, and it has held that level all month.
+distractor: The export is the slowest endpoint by far (p95 about 1.7-1.8s) and its waterfall is one large range query that streams the CSV, which reads like an expensive query or an unbounded result set; but an operator marked it slow with a 2000ms allowance, p95 and even p99 stay under it, and it has held that level all month.
 workspace: {repo: ledger-api-go}
 prompt: |
   /traceway perf GET /api/reports/export
@@ -39,7 +39,7 @@ expect:
       - "2(\\.0+)?\\s*s|2,?000\\s*ms"
       - "allowance|offset|marked (as )?slow|accepted"
 judge:
-  expected: Nothing is wrong. GET /api/reports/export has p95 about 1.7-1.8s (p50 about 1.1-1.2s, p99 under 1.9s, no request over 2s), but an operator marked it slow with a 2000ms allowance ("Full ledger CSV export for the finance team ... Up to 2s is fine"), so it is inside its accepted baseline. The p95 has been flat for the whole month (no deploy, no step), CPU is flat, and the time goes to the one range query and the CSV encode, both proportional to the rows exported. Answer none_found; no fix is needed.
+  expected: Nothing is wrong. GET /api/reports/export has p95 about 1.7-1.8s (p50 about 1.1-1.2s, p99 about 1.8-1.9s, no request over 2s), but an operator marked it slow with a 2000ms allowance ("Full ledger CSV export for the finance team ... Up to 2s is fine"), so it is inside its accepted baseline. The p95 has been flat for the whole month (no deploy, no step), CPU is flat, and the time goes to the one range query, whose rows are written to the CSV as they are read, so it grows with the rows exported. Answer none_found; no fix is needed.
   rubric:
     - States the p95 together with the 2000ms allowance and concludes it is within the accepted baseline (endpoints slow was checked).
     - Shows the latency has not regressed over time (flat weekly p95, no deploy) rather than judging one window.
@@ -66,14 +66,14 @@ oracle:
       locus: {endpoint: "GET /api/reports/export", service: ledger-api}
       onset: null
       evidence:
-        - {call_id: c01, claim: "GET /api/reports/export is the slowest endpoint: p50 about 1.1-1.2s, p95 about 1.7-1.8s, p99 under 1.9s over the last day"}
+        - {call_id: c01, claim: "GET /api/reports/export is the slowest endpoint: p50 about 1.1-1.2s, p95 about 1.7-1.8s, p99 about 1.8-1.9s over the last day"}
         - {call_id: c02, claim: "an operator marked it slow with offsetMs 2000 (Full ledger CSV export for the finance team; up to 2s is fine)"}
         - {call_id: c03, claim: "weekly p95 has stayed around 1.8s for the whole month: no step, no regression"}
-        - {call_id: c05, claim: "the slowest export of the day spends its time in the one range query and the CSV encode, both proportional to the 50k+ rows it returned"}
+        - {call_id: c05, claim: "the slowest export of the day spends nearly all its time in the one range query, which streams the 50k+ rows it returned into the CSV"}
       ruled_out:
         - {checklist_item: expensive_join_or_aggregation, call_id: c05, reason: "a single range query streamed in posting order; its cost tracks the rows exported and stays inside the allowance"}
         - {checklist_item: no_pagination_unbounded_result_set, call_id: c03, reason: "the range is one quarter by design and the latency has not grown over the month"}
       fix: No change needed; the export is inside its 2000ms accepted baseline.
       confidence: high
       report: |
-        Nothing is wrong with GET /api/reports/export. Its p95 over the last day is about 1.7-1.8s (p50 about 1.1-1.2s, p99 under 1.9s), and the endpoint is marked slow with a 2000ms allowance ("Full ledger CSV export for the finance team ... Up to 2s is fine"), so it sits inside its accepted baseline. The weekly p95 has been flat around 1.8s for the whole month, with no step. The time goes to the one range query over the quarter's ledger entries and the CSV encode, both proportional to the rows exported (up to ~54k for the largest accounts). No fix is needed; "almost two seconds" is the expected cost of a full quarter export.
+        Nothing is wrong with GET /api/reports/export. Its p95 over the last day is about 1.7-1.8s (p50 about 1.1-1.2s, p99 about 1.8-1.9s), and the endpoint is marked slow with a 2000ms allowance ("Full ledger CSV export for the finance team ... Up to 2s is fine"), so it sits inside its accepted baseline. The weekly p95 has been flat around 1.8s for the whole month, with no step. The time goes to the one range query over the quarter's ledger entries, whose rows are written to the CSV as they are read, so it grows with the rows exported (up to ~54k for the largest accounts). No fix is needed; "almost two seconds" is the expected cost of a full quarter export.

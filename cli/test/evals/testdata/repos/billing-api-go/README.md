@@ -1,7 +1,9 @@
 # billing-api
 
-Invoices for the storefront: the invoice page and invoice e-mails.
-Go, `net/http`, PostgreSQL. Telemetry goes to Traceway over OTLP.
+Invoices for the storefront: the invoice page, customers' invoice lists and
+invoice e-mails (through the mailer API). Go, `net/http`, PostgreSQL.
+Telemetry goes to Traceway over OTLP; the production binary is built with
+`-tags otel` (see `internal/telemetry`).
 
 ```
 go test ./...

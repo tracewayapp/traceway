@@ -5,7 +5,7 @@ tags: [smoke, go, regression]
 seed: debug/go-nil-regression
 arms: [cli+skill, cli-noskill, mcp]
 invoke: slash
-distractor: An older, unrelated mailer timeout issue on POST /api/invoices/:id/send; the panic only hits customers without a billing address, so most invoice requests succeed.
+distractor: An older, unrelated mailer timeout issue on POST /api/invoices/{id}/send; the panic only hits customers without a billing address, so most invoice requests succeed.
 workspace: {repo: billing-api-go}
 prompt: |
   /traceway debug {{seed.hash}}

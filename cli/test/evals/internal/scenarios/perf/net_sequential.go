@@ -58,7 +58,7 @@ func pncSeedSequential(s *seed.Scenario) error {
 	notify := p.Service("notifications-service", seed.Node("express", "pg")).Versions("2.0.9")
 	reco := p.Service("recommendations-service", seed.Python("fastapi", "psycopg")).Versions("0.41.2")
 
-	profile := accounts.Endpoint("GET", "/internal/accounts/:id/profile")
+	profile := accounts.Endpoint("GET", "/internal/accounts/{id}/profile")
 	profile.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.2, 0.6))
 		r.DB("SELECT a.id, a.name, a.plan, p.seats FROM accounts a JOIN plans p ON p.id = a.plan_id WHERE a.id = $1", r.LogNormal(20*time.Millisecond, 45*time.Millisecond))
@@ -66,7 +66,7 @@ func pncSeedSequential(s *seed.Scenario) error {
 		r.DB("SELECT flag_key, enabled FROM feature_flags WHERE account_id = $1", r.LogNormal(9*time.Millisecond, 22*time.Millisecond), seed.Rows(18))
 		r.Compute("encode response", r.Ms(1, 3))
 	})
-	summary := billing.Endpoint("GET", "/internal/billing/:accountId/summary")
+	summary := billing.Endpoint("GET", "/internal/billing/{accountId}/summary")
 	summary.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.5, 1.5))
 		r.DB("SELECT id, number, status, total_cents, due_at FROM invoices WHERE account_id = ? ORDER BY due_at DESC LIMIT 3", r.LogNormal(18*time.Millisecond, 42*time.Millisecond), seed.Rows(3))

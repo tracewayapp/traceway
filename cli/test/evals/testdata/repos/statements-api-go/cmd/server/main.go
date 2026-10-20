@@ -1,7 +1,7 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -10,10 +10,19 @@ import (
 	"example.com/statements-api/internal/objects"
 	"example.com/statements-api/internal/pdf"
 	"example.com/statements-api/internal/statements"
+	"example.com/statements-api/internal/telemetry"
 )
 
 func main() {
-	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
+	ctx := context.Background()
+	shutdown, err := telemetry.Setup(ctx)
+	if err != nil {
+		slog.Error("telemetry setup", "err", err)
+		os.Exit(1)
+	}
+	defer shutdown(ctx)
+
+	db, err := telemetry.OpenDB(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		slog.Error("open database", "err", err)
 		os.Exit(1)
@@ -26,13 +35,13 @@ func main() {
 	bucket := &objects.Bucket{
 		Endpoint: os.Getenv("STATEMENTS_BUCKET_URL"),
 		Signer:   objects.SidecarSigner(os.Getenv("SIGNER_URL")),
-		Client:   &http.Client{Timeout: 30 * time.Second},
+		Client:   telemetry.HTTPClient(30 * time.Second),
 	}
 	h := statements.New(statements.NewSQLStore(db), pdf.NewRenderer(font), bucket)
 
 	mux := http.NewServeMux()
 	h.Routes(mux)
-	srv := &http.Server{Addr: ":8080", Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: ":8080", Handler: telemetry.Handler(telemetry.AccessLog(mux)), ReadHeaderTimeout: 10 * time.Second}
 	slog.Info("listening", "addr", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("serve", "err", err)

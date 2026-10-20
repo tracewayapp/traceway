@@ -29,6 +29,10 @@ func (m *memStore) InvoicesForPeriod(context.Context, int64, time.Time, time.Tim
 	return []Invoice{{ID: 1, Number: "INV-1001", TotalCents: 12900, Status: "paid"}}, nil
 }
 
+func (m *memStore) LatestInvoices(context.Context, int64) ([]Invoice, error) {
+	return []Invoice{{ID: 1, Number: "INV-1001", TotalCents: 12900, Status: "paid"}}, nil
+}
+
 func (m *memStore) CreateStatement(_ context.Context, st *Statement) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

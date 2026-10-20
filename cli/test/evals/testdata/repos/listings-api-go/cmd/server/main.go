@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/exaring/otelpgx"
@@ -14,6 +15,8 @@ import (
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/acme/listings-api/internal/listings"
 	"github.com/acme/listings-api/internal/logging"
@@ -53,7 +56,7 @@ func main() {
 
 	addr := os.Getenv("LISTEN_ADDR")
 	log.Info("starting listings-api", "version", version, "log.level", os.Getenv("LOG_LEVEL"), "addr", addr)
-	srv := &http.Server{Addr: addr, Handler: otelhttp.NewHandler(accessLog(log, mux), "listings-api"), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: addr, Handler: tracing("listings-api", accessLog(log, mux)), ReadHeaderTimeout: 10 * time.Second}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Error("serve", "err", err)
 		os.Exit(1)
@@ -69,8 +72,10 @@ func accessLog(log *slog.Logger, next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 		ms := time.Since(start).Milliseconds()
+		_, route, _ := strings.Cut(r.Pattern, " ")
 		log.InfoContext(r.Context(), fmt.Sprintf("%s %s %d %dms", r.Method, r.URL.Path, rec.status, ms),
-			"http.request.method", r.Method, "url.path", r.URL.Path, "http.response.status_code", rec.status, "duration_ms", ms)
+			"http.request.method", r.Method, "url.path", r.URL.Path, "http.route", route,
+			"http.response.status_code", rec.status, "duration_ms", ms)
 	})
 }
 
@@ -89,4 +94,22 @@ func envInt(name string, def int) int {
 		return v
 	}
 	return def
+}
+
+// tracing wraps the mux in otelhttp, naming each server span after the
+// pattern the mux matched ("GET /api/events/{id}") and recording it as
+// http.route, which otelhttp cannot see before the mux has run.
+func tracing(service string, mux http.Handler) http.Handler {
+	routed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, r)
+		if _, route, ok := strings.Cut(r.Pattern, " "); ok {
+			trace.SpanFromContext(r.Context()).SetAttributes(semconv.HTTPRoute(route))
+		}
+	})
+	return otelhttp.NewHandler(routed, service, otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+		if r.Pattern != "" {
+			return r.Pattern
+		}
+		return r.Method
+	}))
 }

@@ -10,6 +10,10 @@ import (
 
 func init() { scenarios.Register("perf/db-missing-query-cache", pdbSeedMissingQueryCache) }
 
+const pdbNestScope = "@opentelemetry/instrumentation-nestjs-core"
+
+var pdbCategorySlugs = []string{"running-shoes", "rain-jackets", "base-layers", "hiking-boots", "backpacks", "tents", "sleeping-bags", "headlamps", "trail-socks", "water-bottles", "camp-kitchen", "climbing-ropes"}
+
 // pdbSeedMissingQueryCache: a global NestJS guard loads every feature flag
 // from Postgres on every request, the same parameterless query returning the
 // same 214 rows, before any handler runs. It costs ~15-30ms per request and
@@ -24,37 +28,36 @@ func pdbSeedMissingQueryCache(s *seed.Scenario) error {
 
 	const flagsSQL = "SELECT key, enabled, rollout_percent, rules FROM feature_flags WHERE archived_at IS NULL ORDER BY key"
 	guard := func(r *seed.Req) {
-		r.Gap(r.Ms(0.3, 0.9)) // session middleware
 		r.DB(flagsSQL, r.LogNormal(19*time.Millisecond, 34*time.Millisecond), seed.Rows(214))
 	}
-	cached := func(r *seed.Req, key, missSQL string, missMs [2]float64) {
-		r.Cache("GET", key, r.Ms(0.3, 0.9))
+	cached := func(r *seed.Req, key, missSQL string, missMs [2]float64, rows int) {
+		r.Cache("get", key, r.Ms(0.3, 0.9))
 		if r.Chance(0.02) {
-			r.DB(missSQL, r.Ms(missMs[0], missMs[1]), seed.Rows(1))
-			r.Cache("SET", key, r.Ms(0.3, 0.8))
+			r.DB(missSQL, r.Ms(missMs[0], missMs[1]), seed.Rows(rows))
+			r.Cache("set", key, r.Ms(0.3, 0.8))
 		}
 	}
 	type route struct {
-		method, path, handler string
-		perDay                int
-		body                  func(r *seed.Req)
+		method, path, controller, handler string
+		perDay                            int
+		body                              func(r *seed.Req)
 	}
 	routes := []route{
-		{"GET", "/api/me", "MeController.getMe", 900, func(r *seed.Req) {
+		{"GET", "/api/me", "MeController", "getMe", 900, func(r *seed.Req) {
 			r.DB("SELECT id, email, first_name, last_name, loyalty_tier FROM customers WHERE id = $1", r.Ms(0.8, 2.2), seed.Rows(1))
 		}},
-		{"GET", "/api/products/:id", "ProductsController.findOne", 1100, func(r *seed.Req) {
+		{"GET", "/api/products/:id", "ProductsController", "findOne", 1100, func(r *seed.Req) {
 			cached(r, fmt.Sprintf("product:%d", 10000+r.IntN(50000)),
-				"SELECT id, slug, name, price_cents, currency, images, attributes FROM products WHERE id = $1", [2]float64{3, 7})
+				"SELECT id, slug, name, price_cents, currency, images, attributes FROM products WHERE id = $1", [2]float64{3, 7}, 1)
 		}},
-		{"GET", "/api/categories/:slug/products", "ProductsController.byCategory", 700, func(r *seed.Req) {
-			cached(r, fmt.Sprintf("category:%d:page:1", 100+r.IntN(300)),
-				"SELECT id, slug, name, price_cents, currency, thumbnail_url FROM products WHERE category_id = $1 ORDER BY rank LIMIT 48", [2]float64{6, 14})
+		{"GET", "/api/categories/:slug/products", "ProductsController", "byCategory", 700, func(r *seed.Req) {
+			cached(r, "category:"+pdbCategorySlugs[r.IntN(len(pdbCategorySlugs))]+":page:1",
+				"SELECT p.id, p.slug, p.name, p.price_cents, p.currency, p.thumbnail_url FROM products p JOIN categories c ON c.id = p.category_id WHERE c.slug = $1 ORDER BY p.rank LIMIT 48", [2]float64{6, 14}, 48)
 		}},
-		{"GET", "/api/cart", "CartController.get", 650, func(r *seed.Req) {
+		{"GET", "/api/cart", "CartController", "get", 650, func(r *seed.Req) {
 			r.DB("SELECT l.sku, l.qty, l.unit_price_cents FROM cart_lines l WHERE l.cart_id = $1", r.Ms(1.2, 3.2), seed.Rows(1+r.IntN(5)))
 		}},
-		{"POST", "/api/cart/lines", "CartController.addLine", 260, func(r *seed.Req) {
+		{"POST", "/api/cart/lines", "CartController", "addLine", 260, func(r *seed.Req) {
 			r.DB("INSERT INTO cart_lines (cart_id, sku, qty, unit_price_cents) VALUES ($1, $2, $3, $4) ON CONFLICT (cart_id, sku) DO UPDATE SET qty = cart_lines.qty + EXCLUDED.qty", r.Ms(1.5, 3.8))
 		}},
 	}
@@ -65,11 +68,18 @@ func pdbSeedMissingQueryCache(s *seed.Scenario) error {
 		e.Traffic(seed.Daily(rt.perDay), seed.Diurnal(), seed.Over(window))
 		e.Detail(seed.DetailPolicy{Recent: 8 * time.Hour, Rate: 0.03, Max: 6})
 		e.Handler(func(r *seed.Req) {
-			guard(r)
-			r.Span(rt.handler, func(r *seed.Req) {
-				rt.body(r)
-				r.Gap(r.Ms(0.3, 1.2)) // serialize
-			})
+			r.Gap(r.Ms(0.3, 0.9)) // session middleware
+			// The request-context span covers the guards; the handler span
+			// is the controller method itself.
+			reqCtx := r.Span(rt.controller+"."+rt.handler, func(r *seed.Req) {
+				guard(r)
+				h := r.Span(rt.handler, func(r *seed.Req) {
+					rt.body(r)
+					r.Gap(r.Ms(0.3, 1.2)) // serialize
+				}, seed.A("nestjs.type", "handler"), seed.A("nestjs.callback", rt.handler))
+				h.Scope = pdbNestScope
+			}, seed.A("nestjs.type", "request_context"), seed.A("nestjs.controller", rt.controller), seed.A("nestjs.callback", rt.handler), seed.A("http.route", rt.path))
+			reqCtx.Scope = pdbNestScope
 			r.Gap(r.Ms(0.1, 0.4))
 		})
 		switch rt.path {

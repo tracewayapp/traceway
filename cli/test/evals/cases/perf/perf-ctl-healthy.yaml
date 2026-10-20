@@ -5,7 +5,7 @@ tags: [control, node, healthy]
 seed: perf/ctl-healthy
 arms: [cli+skill, cli-noskill, mcp]
 invoke: slash
-distractor: The search query matches with ILIKE '%term%' on name and brand, which reads like it needs a trigram index, and POST /api/checkout is far slower than search. But the ILIKE query takes about 15ms on this catalog, GET /api/search has p50 about 25ms and p95 about 45ms with no errors, the same as a week ago, and CPU is flat; checkout's time is its payment call and unrelated.
+distractor: The search query matches with ILIKE '%term%' on name and brand, which reads like it needs a trigram index, and POST /api/checkout is far slower than search. But the ILIKE query takes about 15ms on this catalog, GET /api/search has p50 about 23ms and p95 about 50ms with no errors, the same as a week ago, and CPU is flat; checkout's time is its payment call and unrelated.
 workspace: {repo: storefront-api-node}
 prompt: |
   /traceway perf GET /api/search
@@ -35,7 +35,7 @@ expect:
       - "p95|95th"
       - "[1-9][0-9]\\s*ms"
 judge:
-  expected: Nothing is wrong with GET /api/search. Over the last day p50 is about 25ms, p95 about 45ms and p99 about 60ms, with no errors; the week before looks the same, there is no step at the 1.43.0 release five days ago, and CPU is flat. The slowest searches spend their time in the ILIKE product query (tens of milliseconds) and the facet count. The answer is none_found; if the team still perceives slowness, it is outside this endpoint (the browser, the network, or another page), and the next step is to measure there rather than to change the query.
+  expected: Nothing is wrong with GET /api/search. Over the last day p50 is about 23ms, p95 about 50ms and p99 about 60-65ms, with no errors; the week before looks the same, there is no step at the 1.43.0 release five days ago, and CPU is flat. The slowest searches spend their time in the ILIKE product query (tens of milliseconds) and the facet count. The answer is none_found; if the team still perceives slowness, it is outside this endpoint (the browser, the network, or another page), and the next step is to measure there rather than to change the query.
   rubric:
     - Reports the actual percentiles (p50/p95) and that they are stable over the week, with no errors and no saturation.
     - Concludes there is no backend problem with search instead of inventing a bottleneck.
@@ -64,16 +64,16 @@ oracle:
       locus: {endpoint: "GET /api/search", service: storefront-api}
       onset: null
       evidence:
-        - {call_id: c01, claim: "over the last day GET /api/search has p50 about 25ms, p95 about 45ms, p99 about 60ms"}
+        - {call_id: c01, claim: "over the last day GET /api/search has p50 about 23ms, p95 about 50ms, p99 about 60-65ms"}
         - {call_id: c02, claim: "the week's percentiles are the same: nothing got slower lately"}
-        - {call_id: c03, claim: "daily p95 stays in the mid-40s of milliseconds across the week, with no step up"}
-        - {call_id: c04, claim: "search requests all answer 200 in tens of milliseconds"}
-        - {call_id: c05, claim: "the slowest search of the day is the ILIKE product query plus the facet count, well under a tenth of a second"}
+        - {call_id: c03, claim: "daily p95 stays in the mid-to-high 40s of milliseconds across the week, with no step up"}
+        - {call_id: c04, claim: "search requests all answer 200, most in a few tens of milliseconds"}
+        - {call_id: c05, claim: "the slowest search of the day took about a tenth of a second at most, nearly all of it the ILIKE product query plus the facet count"}
         - {call_id: c06, claim: "CPU is flat and low all day"}
       ruled_out:
-        - {checklist_item: missing_or_unused_index, call_id: c05, reason: "even in the slowest search of the day the ILIKE query takes tens of milliseconds on this catalog"}
+        - {checklist_item: missing_or_unused_index, call_id: c05, reason: "even in the slowest search of the day the ILIKE query takes only about a tenth of a second at most on this catalog"}
         - {checklist_item: cpu_saturation, call_id: c06, reason: "CPU stays low and flat"}
       fix: No change needed for GET /api/search. If the team still sees slow search, measure on the client side (browser timing, network) or check the page around it.
       confidence: high
       report: |
-        Nothing is wrong with GET /api/search on the backend. Over the last day it has p50 about 25ms, p95 about 45ms and p99 about 60ms, with no errors, and the week looks the same: daily p95 is flat with no step, and CPU is low and flat. The slowest search of the day spent its time in the ILIKE product query and the facet count, tens of milliseconds in total. So there is no regression to fix here. If people still find search slow, the time is going somewhere else (the browser, the network, or the page around it), and that is where to measure next; I would not change the query or add an index for an endpoint answering in under 50ms.
+        Nothing is wrong with GET /api/search on the backend. Over the last day it has p50 about 23ms, p95 about 50ms and p99 about 60-65ms, with no errors, and the week looks the same: daily p95 is flat with no step, and CPU is low and flat. The slowest search of the day took about a tenth of a second at most, nearly all of it in the ILIKE product query and the facet count. So there is no regression to fix here. If people still find search slow, the time is going somewhere else (the browser, the network, or the page around it), and that is where to measure next; I would not change the query or add an index for an endpoint answering in about 50ms at p95.

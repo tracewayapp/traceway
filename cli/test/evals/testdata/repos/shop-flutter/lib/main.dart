@@ -20,12 +20,13 @@ class ShopApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Shop',
+      navigatorObservers: [TracewayNavigatorObserver()],
       onGenerateRoute: (settings) {
         final uri = Uri.parse(settings.name ?? '/');
         if (uri.pathSegments.length == 2 && uri.pathSegments.first == 'products') {
-          return MaterialPageRoute(builder: (_) => ProductPage(productId: uri.pathSegments[1]));
+          return MaterialPageRoute(settings: settings, builder: (_) => ProductPage(productId: uri.pathSegments[1]));
         }
-        return MaterialPageRoute(builder: (_) => const Placeholder());
+        return MaterialPageRoute(settings: settings, builder: (_) => const Placeholder());
       },
     );
   }

@@ -27,6 +27,10 @@ spec:
               value: "-javaagent:/otel/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=75"
             - name: OTEL_SERVICE_NAME
               value: pricing-service
+            - name: OTEL_INSTRUMENTATION_LOGBACK_APPENDER_EXPERIMENTAL_LOG_ATTRIBUTES
+              value: "true"
+            - name: OTEL_INSTRUMENTATION_LOGBACK_APPENDER_EXPERIMENTAL_CAPTURE_KEY_VALUE_PAIR_ATTRIBUTES
+              value: "true"
           startupProbe:
             httpGet: {path: /actuator/health/liveness, port: 8080}
             periodSeconds: 2

@@ -11,7 +11,8 @@ Card images are stored with the card (`feed_cards.image_data`, a data URI
 written by the importer) and also uploaded to the media CDN under
 `cards/<id>.jpg` (`CDN_BASE_URL`).
 
-Traces go to Traceway over OTLP (otelhttp, installed by `withTracing`).
+Traces and logs go to Traceway over OTLP; the production binary is built with
+`-tags otel` (see `internal/telemetry`), which installs otelhttp and otelsql.
 
 ```
 go test ./...

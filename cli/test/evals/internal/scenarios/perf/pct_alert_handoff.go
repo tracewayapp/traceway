@@ -101,7 +101,7 @@ func pctSeedAlertHandoff(s *seed.Scenario) error {
 		sp.Kind, sp.Scope = seed.KindClient, "github.com/exaring/otelpgx"
 	}
 
-	listing := api.Endpoint("GET", "/api/categories/:slug/products")
+	listing := api.Endpoint("GET", "/api/categories/{slug}/products")
 	listing.Traffic(seed.Daily(3600), seed.Diurnal(), seed.Over(window))
 	listing.Detail(seed.DetailPolicy{Recent: 70 * time.Minute, Rate: 0.35, Max: 60})
 	listingState := newState()
@@ -120,15 +120,12 @@ func pctSeedAlertHandoff(s *seed.Scenario) error {
 			connect(r, st)
 			r.DB("SELECT p.id, p.slug, p.name, p.brand, p.thumbnail_url, pp.amount_cents, pp.currency, i.available FROM products p JOIN product_prices pp ON pp.product_id = p.id AND pp.price_list = $2 JOIN inventory i ON i.product_id = p.id WHERE p.category_id = (SELECT id FROM categories WHERE slug = $1) AND p.active ORDER BY p.rank LIMIT 500",
 				r.LogNormal(1100*time.Millisecond, 1900*time.Millisecond), seed.Rows(380+r.IntN(121)))
-			r.Compute("build category listing", r.Ms(25, 70))
 			st.cached[cat] = true
 		}
-		r.Compute("filter and page listing", r.Ms(3, 9))
-		r.Compute("encode response", r.Ms(4, 12))
-		r.Gap(r.Ms(0.2, 0.6))
+		r.Gap(r.Ms(7.2, 21.6)) // page, badges, encode
 	})
 
-	product := api.Endpoint("GET", "/api/products/:id")
+	product := api.Endpoint("GET", "/api/products/{id}")
 	product.Traffic(seed.Daily(1500), seed.Diurnal(), seed.Over(window))
 	productState := newState()
 	product.Handler(func(r *seed.Req) {
@@ -137,7 +134,7 @@ func pctSeedAlertHandoff(s *seed.Scenario) error {
 		connect(r, st)
 		r.DB("SELECT p.id, p.slug, p.name, p.brand, p.description, pp.amount_cents, pp.currency, i.available FROM products p JOIN product_prices pp ON pp.product_id = p.id AND pp.price_list = $2 JOIN inventory i ON i.product_id = p.id WHERE p.id = $1",
 			r.LogNormal(3*time.Millisecond, 11*time.Millisecond), seed.Rows(1))
-		r.Compute("encode response", r.Ms(0.5, 2))
+		r.Gap(r.Ms(0.5, 2))
 	})
 	s.Background(api, seed.TypicalTraffic(4))
 	for _, h := range api.Hosts {

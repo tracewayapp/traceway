@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-// Instrument wraps the transport with tracing (otelhttp.NewTransport in
-// production builds).
-var Instrument = func(rt http.RoundTripper) http.RoundTripper { return rt }
-
 // Client talks to the payment provider's REST API.
 type Client struct {
 	BaseURL string
@@ -21,11 +17,11 @@ type Client struct {
 	http    *http.Client
 }
 
-// New returns a client for the provider at baseURL.
-func New(baseURL, apiKey string) *Client {
+// New returns a client for the provider at baseURL, sending through rt.
+func New(baseURL, apiKey string, rt http.RoundTripper) *Client {
 	return &Client{BaseURL: baseURL, APIKey: apiKey, http: &http.Client{
 		Timeout:   10 * time.Second,
-		Transport: Instrument(http.DefaultTransport),
+		Transport: rt,
 	}}
 }
 

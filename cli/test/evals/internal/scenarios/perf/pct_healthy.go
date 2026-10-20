@@ -28,7 +28,7 @@ func pctSeedHealthy(s *seed.Scenario) error {
 			r.LogNormal(14*time.Millisecond, 55*time.Millisecond), seed.Rows(1+r.IntN(24)))
 		r.DB("SELECT facet, value, count(*) AS n FROM product_facets WHERE product_id = ANY($1) GROUP BY facet, value",
 			r.LogNormal(4*time.Millisecond, 15*time.Millisecond), seed.Rows(6+r.IntN(30)))
-		r.Compute("serialize results", r.Ms(1, 4))
+		r.Gap(r.Ms(1, 4))
 		r.Gap(r.Ms(0.3, 0.9))
 	})
 
@@ -38,15 +38,18 @@ func pctSeedHealthy(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.6, 1.6))
 		r.DB("SELECT id, name, slug, brand, description, price_cents, images FROM products WHERE id = $1 AND active", r.LogNormal(3*time.Millisecond, 10*time.Millisecond), seed.Rows(1))
 		r.DB("SELECT sku, size, color, stock FROM product_variants WHERE product_id = $1", r.LogNormal(2*time.Millisecond, 8*time.Millisecond), seed.Rows(4+r.IntN(12)))
-		r.Compute("serialize product", r.Ms(0.5, 2))
+		r.Gap(r.Ms(0.5, 2))
 	})
 	checkout := api.Endpoint("POST", "/api/checkout")
 	checkout.Traffic(seed.Daily(80), seed.Diurnal(), seed.Over(window))
 	checkout.Handler(func(r *seed.Req) {
 		r.Gap(r.Ms(0.8, 2))
+		r.DB("BEGIN", r.Ms(0.2, 0.6))
 		r.DB("SELECT id, items, total_cents, currency FROM carts WHERE id = $1 FOR UPDATE", r.LogNormal(3*time.Millisecond, 10*time.Millisecond))
 		r.HTTP("POST", "https://api.payments.example/v1/payment_intents", r.LogNormal(380*time.Millisecond, 900*time.Millisecond), 200)
 		r.DB("INSERT INTO orders (cart_id, total_cents, currency, payment_ref, created_at) VALUES ($1, $2, $3, $4, now()) RETURNING id", r.LogNormal(4*time.Millisecond, 12*time.Millisecond))
+		r.DB("COMMIT", r.Ms(0.8, 2.5))
+		r.Status(201)
 	})
 	s.Background(api, seed.TypicalTraffic(6))
 	api.Host().CPU(seed.Flat(0.17, 0.27))

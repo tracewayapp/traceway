@@ -34,8 +34,8 @@ func papSeedQuadratic(s *seed.Scenario) error {
 		r.DB("SELECT id, kind, family, sku, partner_sku, min_quantity, percent, amount_cents FROM promotions WHERE active AND starts_at <= now() AND ends_at > now()",
 			r.Ms(1.5, 3.5), seed.Rows(18))
 		promo := time.Duration((0.011*n*n + 0.04*n) * (0.92 + 0.16*r.Float()) * float64(time.Millisecond))
-		r.Compute("apply_promotions", promo, seed.A("promotions.active", 18))
-		r.Compute("calculate_tax", r.Ms(0.2, 0.6)+time.Duration(n*0.004*float64(time.Millisecond)))
+		r.Compute("apply_promotions", promo, seed.A("promotions.active", 18)).Scope = "app.pricing"
+		r.Compute("calculate_tax", r.Ms(0.2, 0.6)+time.Duration(n*0.004*float64(time.Millisecond))).Scope = "app.pricing"
 		r.Gap(r.Ms(0.4, 1.2) + time.Duration(n*0.006*float64(time.Millisecond))) // response model
 	})
 

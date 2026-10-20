@@ -15,7 +15,10 @@ function Layout() {
 
 export function App() {
   return (
-    <TracewayProvider connectionString={import.meta.env.VITE_TRACEWAY_CONNECTION} recordAllSessions>
+    <TracewayProvider
+      connectionString={import.meta.env.VITE_TRACEWAY_CONNECTION}
+      options={{ version: import.meta.env.VITE_APP_VERSION, recordAllSessions: true }}
+    >
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>

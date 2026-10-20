@@ -11,11 +11,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
-)
 
-// Instrument wraps a transport with tracing (otelhttp.NewTransport with
-// otelhttptrace client traces in production builds).
-var Instrument = func(rt http.RoundTripper) http.RoundTripper { return rt }
+	"example.com/store-locator/internal/telemetry"
+)
 
 // Client calls the maps provider.
 type Client struct {
@@ -73,7 +71,7 @@ func (c *Client) Distances(ctx context.Context, origin Point, destinations []str
 func (c *Client) get(ctx context.Context, path string, into any) error {
 	hc := &http.Client{
 		Timeout: 3 * time.Second,
-		Transport: Instrument(&http.Transport{
+		Transport: telemetry.Transport(&http.Transport{
 			Proxy:               http.ProxyFromEnvironment,
 			TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
 			TLSHandshakeTimeout: 2 * time.Second,

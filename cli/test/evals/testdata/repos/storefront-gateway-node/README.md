@@ -10,8 +10,8 @@ pages from the services behind it:
 | pricing-service | catalog | current price per currency |
 | inventory-service | fulfillment | stock per warehouse region |
 
-Clients live in `src/clients`, routes in `src/routes`. Traces go to Traceway
-over OTLP (`src/tracing.js`).
+Clients live in `src/clients`, routes in `src/routes`. Traces and logs go to
+Traceway over OTLP (`src/tracing.js`).
 
 ```
 npm test

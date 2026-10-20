@@ -7,7 +7,7 @@ import (
 )
 
 // pdbRoute is one healthy route of a perf-db scenario: a few fast queries
-// and a small encode step, so the slow route has neighbours that look normal.
+// and a short encode, so the slow route has neighbours that look normal.
 type pdbRoute struct {
 	method, route string
 	perDay        int
@@ -33,7 +33,7 @@ func pdbHealthy(api *seed.Service, window time.Duration, routes ...pdbRoute) {
 				m := time.Duration(med * float64(time.Millisecond))
 				r.DB(q, r.LogNormal(m, m*5))
 			}
-			r.Compute("serialize response", r.Ms(0.2, 1.4))
+			r.Gap(r.Ms(0.2, 1.4))
 			r.Gap(r.Ms(0.1, 0.5))
 		})
 	}

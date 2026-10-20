@@ -1,7 +1,8 @@
 package perf
 
 import (
-	"fmt"
+	"crypto/sha256"
+	"encoding/hex"
 	"sort"
 	"time"
 
@@ -13,13 +14,13 @@ func init() { scenarios.Register("perf/app-sync-background", papSeedSyncBackgrou
 
 // papSeedSyncBackground: POST /api/statements renders the statement PDF in
 // the request (6-11s) and uploads it before answering, although the
-// dashboard only polls GET /api/statements/:id for the result. Distractor:
+// dashboard only polls GET /api/statements/{id} for the result. Distractor:
 // host CPU jumps to 65-95% while a render runs, which looks like saturation,
 // but the average is ~20%, the endpoint is just as slow when the host is
 // otherwise idle, and every other endpoint is fast.
 func papSeedSyncBackground(s *seed.Scenario) error {
 	p := s.Project("billing", seed.OTel)
-	api := p.Service("statements-api", seed.Go("nethttp", "pgx")).Versions("1.12.4")
+	api := p.Service("statements-api", seed.Go("nethttp", "sql")).Versions("1.12.4")
 	window := 7 * 24 * time.Hour
 
 	var renders []papInterval
@@ -38,10 +39,10 @@ func papSeedSyncBackground(s *seed.Scenario) error {
 		pages := 2 + invoices/25
 		render := time.Duration((6200 + float64(pages)*250) * (0.9 + 0.2*r.Float()) * float64(time.Millisecond))
 		at := r.At()
-		r.Compute("render statement pdf", render, seed.A("statement.pages", pages), seed.A("statement.invoices", invoices))
+		r.Compute("render statement pdf", render, seed.A("statement.pages", pages), seed.A("statement.invoices", invoices)).Scope = "statements-api"
 		renders = append(renders, papInterval{at, at.Add(render)})
 		sorted = false
-		key := fmt.Sprintf("statements/%d/%06d.pdf", 2026, 100000+r.IntN(900000))
+		key := "statements/" + r.Start().Format("2006") + "/" + papStatementID(r) + ".pdf"
 		r.HTTP("PUT", "https://acme-billing-statements.s3.eu-west-1.amazonaws.com/"+key, r.Ms(160, 420), 200,
 			seed.A("http.request.body.size", 90000+pages*38000))
 		r.DB("UPDATE statements SET status = 'ready', object_key = $2, rendered_at = now() WHERE id = $1", r.Ms(2, 4))
@@ -49,20 +50,22 @@ func papSeedSyncBackground(s *seed.Scenario) error {
 		r.Status(201)
 	})
 
-	poll := api.Endpoint("GET", "/api/statements/:id")
+	poll := api.Endpoint("GET", "/api/statements/{id}")
 	poll.Traffic(seed.Daily(470), seed.Diurnal(), seed.Over(window))
 	poll.Handler(func(r *seed.Req) {
+		r.RootAttr("url.path", "/api/statements/"+papStatementID(r))
 		r.Gap(r.Ms(0.5, 1.2))
 		r.DB("SELECT id, account_id, status, object_key, rendered_at FROM statements WHERE id = $1", r.Ms(1.5, 4))
 		r.Gap(r.Ms(0.2, 0.6))
 	})
 
-	download := api.Endpoint("GET", "/api/statements/:id/download")
+	download := api.Endpoint("GET", "/api/statements/{id}/download")
 	download.Traffic(seed.Daily(260), seed.Diurnal(), seed.Over(window))
 	download.Handler(func(r *seed.Req) {
+		r.RootAttr("url.path", "/api/statements/"+papStatementID(r)+"/download")
 		r.Gap(r.Ms(0.5, 1.2))
-		r.DB("SELECT object_key FROM statements WHERE id = $1 AND status = 'ready'", r.Ms(1.5, 3.5))
-		r.Compute("presign object url", r.Ms(0.3, 0.9))
+		r.DB("SELECT id, account_id, status, object_key, rendered_at FROM statements WHERE id = $1", r.Ms(1.5, 3.5))
+		r.Compute("presign object url", r.Ms(0.3, 0.9)).Scope = "statements-api"
 		r.Status(302)
 	})
 
@@ -92,4 +95,11 @@ func papSeedSyncBackground(s *seed.Scenario) error {
 	s.Expose("p50Ms24h", func() any { return create.Percentile(0.5, 24*time.Hour).Seconds() * 1000 })
 	s.Expose("p95Ms24h", func() any { return create.Percentile(0.95, 24*time.Hour).Seconds() * 1000 })
 	return nil
+}
+
+// papStatementID is a statement id as the service makes them (16 random
+// bytes, hex), derived from the request so it uses no scenario randomness.
+func papStatementID(r *seed.Req) string {
+	h := sha256.Sum256([]byte(r.Start().Format(time.RFC3339Nano)))
+	return hex.EncodeToString(h[:16])
 }

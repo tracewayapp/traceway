@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const maxBatch = 5000
@@ -22,8 +25,12 @@ type batchResult struct {
 
 // batch geocodes up to maxBatch addresses in one query, for CSV imports.
 func (h *Handler) batch(w http.ResponseWriter, r *http.Request) {
+	_, span := otel.Tracer("geo-api").Start(r.Context(), "decode batch")
 	var req batchRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&req); err != nil {
+	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&req)
+	span.SetAttributes(attribute.Int("batch.size", len(req.Addresses)))
+	span.End()
+	if err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}

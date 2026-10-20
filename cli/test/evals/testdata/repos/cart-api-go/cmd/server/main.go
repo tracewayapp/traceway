@@ -1,0 +1,27 @@
+package main
+
+import (
+	"log/slog"
+	"net/http"
+	"os"
+
+	"example.com/cart-api/internal/config"
+	"example.com/cart-api/internal/pricing"
+	"example.com/cart-api/internal/quote"
+	"example.com/cart-api/internal/telemetry"
+)
+
+func main() {
+	cfg, err := config.Load(os.Getenv)
+	if err != nil {
+		slog.Error("config", "err", err)
+		os.Exit(1)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/cart/quote", quote.NewHandler(pricing.New(cfg)))
+	slog.Info("listening", "port", cfg.Port, "pricing_timeout", cfg.PricingTimeout)
+	if err := http.ListenAndServe(":"+cfg.Port, telemetry.Handler(mux)); err != nil {
+		slog.Error("serve", "err", err)
+		os.Exit(1)
+	}
+}

@@ -18,6 +18,7 @@ spec:
           env:
             - {name: GOMEMLIMIT, value: 900MiB}
             - {name: OTEL_SERVICE_NAME, value: geo-api}
+            - {name: OTEL_RESOURCE_ATTRIBUTES, value: deployment.environment.name=production}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4318"}
           envFrom: [{secretRef: {name: geo-api}}]
           resources:

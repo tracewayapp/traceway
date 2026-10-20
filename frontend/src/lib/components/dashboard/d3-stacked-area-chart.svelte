@@ -166,6 +166,13 @@
 
 	const yAxisUnit = $derived(() => axisScale?.unit ?? '');
 
+	// The unit label sits just above the plot; when the top tick is that high too, the two overlap,
+	// so the unit moves onto the top tick's label instead.
+	const unitOnTopTick = $derived.by(() => {
+		const ticks = yTicks();
+		return !!yAxisUnit() && ticks.length > 0 && yScale(ticks[ticks.length - 1]) < 12;
+	});
+
 	function formatYLabel(value: number): string {
 		if (axisScale) {
 			return formatAxisTick(value, axisScale.divisor);
@@ -386,12 +393,14 @@
 							class="text-muted-foreground"
 							font-size="10"
 						>
-							{formatYLabel(tick)}
+							{formatYLabel(tick)}{unitOnTopTick && __index === yTicks().length - 1
+								? ` ${yAxisUnit()}`
+								: ''}
 						</text>
 					{/each}
 
 					<!-- Y axis unit label -->
-					{#if yAxisUnit()}
+					{#if yAxisUnit() && !unitOnTopTick}
 						<text
 							x={-8}
 							y={-4}

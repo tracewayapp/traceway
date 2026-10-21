@@ -1,0 +1,69 @@
+{
+  "selection": {
+    "Preset": "full",
+    "Cases": "",
+    "Suites": "perf,write",
+    "Tags": "",
+    "Arms": "",
+    "Shard": ""
+  },
+  "models": [
+    "haiku"
+  ],
+  "runs": 1,
+  "maxCostUsd": 10,
+  "shards": [
+    {
+      "suite": "perf",
+      "units": 105,
+      "runs": 105,
+      "low": 0.8085,
+      "high": 2.877,
+      "capUsd": 8.01
+    },
+    {
+      "suite": "write",
+      "units": 26,
+      "runs": 26,
+      "low": 0.2002,
+      "high": 0.7123999999999999,
+      "capUsd": 1.98
+    }
+  ],
+  "estimates": [
+    {
+      "model": "haiku",
+      "modelId": "anthropic/claude-haiku-5.5",
+      "runs": 131,
+      "low": 0.91045,
+      "high": 3.3143,
+      "worst": 6.2225,
+      "source": "live",
+      "basis": "models.yaml"
+    }
+  ],
+  "judge": {
+    "model": "judge",
+    "modelId": "anthropic/claude-haiku-5.5",
+    "runs": 131,
+    "low": 0.09825,
+    "high": 0.27509999999999996,
+    "worst": 0.27509999999999996,
+    "source": "live",
+    "basis": "models.yaml"
+  },
+  "low": 1.0087,
+  "high": 3.5894,
+  "matrix": {
+    "include": [
+      {
+        "cap": "8.01",
+        "shard": "perf"
+      },
+      {
+        "cap": "1.98",
+        "shard": "write"
+      }
+    ]
+  }
+}

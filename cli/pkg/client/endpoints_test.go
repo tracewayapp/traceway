@@ -57,6 +57,32 @@ func TestListEndpoints_callsGroupedRoute(t *testing.T) {
 	}
 }
 
+// TestListRequests_sendOrderByColumns: the backend sorts on column names and
+// falls back to its default order for anything else, so the camelCase flag
+// values must reach it as those names.
+func TestListRequests_sendOrderByColumns(t *testing.T) {
+	wire := func(v any) string {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		s, _ := body["orderBy"].(string)
+		return s
+	}
+	for in, want := range map[string]string{"impact": "impact", "count": "count", "p95": "p95_duration", "lastSeen": "last_seen", "": ""} {
+		if got := wire(ListEndpointsRequest{OrderBy: in}); got != want {
+			t.Errorf("endpoints --order-by %q sent %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{"count": "count", "lastSeen": "last_seen", "firstSeen": "first_seen"} {
+		if got := wire(ListExceptionsRequest{OrderBy: in}); got != want {
+			t.Errorf("exceptions --order-by %q sent %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestGetEndpointChart_callsChartRoute(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/endpoints/chart" {

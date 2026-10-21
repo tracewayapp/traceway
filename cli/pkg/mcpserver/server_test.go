@@ -187,7 +187,7 @@ func TestListExceptions_wireShapeAndDefaults(t *testing.T) {
 	if gotBody["fromDate"] == nil || gotBody["toDate"] == nil {
 		t.Errorf("body missing fromDate/toDate: %v", gotBody)
 	}
-	if gotBody["orderBy"] != "lastSeen" || gotBody["searchType"] != "text" {
+	if gotBody["orderBy"] != "last_seen" || gotBody["searchType"] != "text" {
 		t.Errorf("defaults not applied: %v", gotBody)
 	}
 	page := gotBody["pagination"].(map[string]any)

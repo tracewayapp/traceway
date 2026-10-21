@@ -32,7 +32,8 @@ type ListEndpointsRequest struct {
 	Search        string           `json:"search,omitempty"`
 }
 
-// MarshalJSON expands TimeRange into top-level fromDate/toDate.
+// MarshalJSON expands TimeRange into top-level fromDate/toDate and sends
+// OrderBy as the column name the backend sorts on.
 func (r ListEndpointsRequest) MarshalJSON() ([]byte, error) {
 	type alias ListEndpointsRequest
 	wire := struct {
@@ -40,6 +41,7 @@ func (r ListEndpointsRequest) MarshalJSON() ([]byte, error) {
 		ToDate   time.Time `json:"toDate"`
 		alias
 	}{r.TimeRange.From, r.TimeRange.To, alias(r)}
+	wire.OrderBy = orderByColumn(r.OrderBy)
 	return jsonMarshalNoHTMLEscape(wire)
 }
 

@@ -22,3 +22,20 @@ var (
 	// endpoints, never from metrics/query.
 	MetricAggregationsExact = []string{"avg", "sum", "count", "min", "max"}
 )
+
+// orderByColumns maps the camelCase order-by values above to the column names
+// the backend sorts on. The backend falls back to its default order for any
+// name it does not know, so sending "p95" or "lastSeen" as is silently did
+// not sort.
+var orderByColumns = map[string]string{
+	"p95":       "p95_duration",
+	"lastSeen":  "last_seen",
+	"firstSeen": "first_seen",
+}
+
+func orderByColumn(v string) string {
+	if c, ok := orderByColumns[v]; ok {
+		return c
+	}
+	return v
+}

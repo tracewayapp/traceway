@@ -27,6 +27,8 @@ expect:
       - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.chart}]
       - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.list, args: {from: present}}]
       - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.list, args: {from: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.list, args: {since: "~^([7-9]|[1-9][0-9]+)d$"}}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.list, args: {since: "~^([7-9]|[1-9][0-9]+)d$"}}]
     forbidden:
       - {op: "*", write: true}
     order:

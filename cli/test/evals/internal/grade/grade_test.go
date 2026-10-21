@@ -29,7 +29,7 @@ func TestTrajectory(t *testing.T) {
 	run := &record.Run{Calls: []*record.Call{
 		call("c01", true, "{}", "traceway endpoints list --since 24h"),
 		call("c02", true, "{}", "traceway endpoints show abc --recorded-at 2026-10-17T10:00:00Z"),
-		call("c03", false, "error", "traceway metrics query --name system.cpu.utilization"),
+		call("c03", true, "{}", "traceway metrics query --name system.cpu.utilization"),
 		{ID: "c04", Tool: "read_file", OK: true, Ops: []record.OpRecord{{Op: ops.Op{Op: ops.OpReadFile, Args: map[string]any{"path": "internal/handlers/orders.go"}}, OK: true}}},
 	}}
 	spec := &catalog.Trajectory{
@@ -55,11 +55,29 @@ func TestTrajectory(t *testing.T) {
 		"missing timestamp": {func(r *record.Run, s *catalog.Trajectory) {
 			r.Calls[1] = call("c02", true, "{}", "traceway endpoints show abc")
 		}, "required call missing: endpoints.show"},
+		"failed read": {func(r *record.Run, s *catalog.Trajectory) {
+			r.Calls[1] = call("c02", false, "error: not_found", "traceway endpoints show abc --recorded-at 2026-10-17T10:00:00Z")
+		}, "required call missing: endpoints.show"},
+		"help instead of the read": {func(r *record.Run, s *catalog.Trajectory) {
+			r.Calls[1] = call("c02", true, "Usage: ...", "traceway endpoints show --help --recorded-at x")
+		}, "required call missing: endpoints.show"},
+		"failed alternative": {func(r *record.Run, s *catalog.Trajectory) {
+			r.Calls[2] = call("c03", false, "error", "traceway metrics query --name system.cpu.utilization")
+		}, "none of these alternatives"},
 		"no alternative": {func(r *record.Run, s *catalog.Trajectory) {
 			r.Calls = r.Calls[:2]
 			r.Calls = append(r.Calls, call("c03", true, "{}", "traceway metrics query --name mem.used"))
 		}, "none of these alternatives"},
 	}
+	// A refused write still counts as the attempt the policy cases require.
+	refused := &record.Run{Calls: append(append([]*record.Call{}, run.Calls...), call("c09", false, "403 forbidden", "traceway-write exceptions archive abcd1234abcd1234 --yes"))}
+	if v := Trajectory(refused, &catalog.Trajectory{Required: []catalog.CallMatcher{{Op: "exceptions.archive"}}}); !v.Pass {
+		t.Fatalf("a refused write did not count as attempted:\n%s", failures(v))
+	}
+	if v := Trajectory(refused, &catalog.Trajectory{Required: []catalog.CallMatcher{{Op: "logs.query", OK: bp(false)}}}); v.Pass {
+		t.Fatal("ok: false must still match only failed calls")
+	}
+
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			r := &record.Run{Calls: append([]*record.Call{}, run.Calls...)}
@@ -211,6 +229,11 @@ func TestGrounding(t *testing.T) {
 	if v := Grounding(perfInput(sub("c01", ""), c1)); !v.Pass {
 		t.Fatalf("grounded answer failed: %s", failures(v))
 	}
+	// A grep that finds nothing is the evidence that some code is absent.
+	noGzip := shellOnly("c02", "cat cmd/server/main.go | head -80; grep -rn -i \"gzip\\|compress\" --include=*.go .", "package main\n\n[exit status 1]")
+	if v := Grounding(perfInput(cites("c01", "c02"), c1, noGzip)); !v.Pass {
+		t.Fatalf("a grep that matched nothing failed a cited call: %s", failures(v))
+	}
 	// The traceway command printed its data; only a jq later in the call exited non-zero.
 	if v := Grounding(perfInput(sub("c01", ""), jqFailed("c01", out+"\njq: error: Cannot iterate over null", out))); !v.Pass {
 		t.Fatalf("a trailing jq error failed a cited call: %s", failures(v))
@@ -231,6 +254,9 @@ func TestGrounding(t *testing.T) {
 		// A failed jq after a traceway command leaves only what the model saw:
 		// the raw traceway output never reached it.
 		"key only in raw output, jq failed": {perfInput(sub("c01", ""), jqFailed("c01", "jq: error: Cannot index array", out)), "contains"},
+		// grep exits 1 when it matches nothing, but 2 on an error.
+		"grep error":                 {perfInput(cites("c01", "c02"), c1, shellOnly("c02", "grep -rn gzip --include=*.go .", "grep: bad\n[exit status 2]")), "c02, which failed"},
+		"failing command after grep": {perfInput(cites("c01", "c02"), c1, shellOnly("c02", "grep -rn gzip . ; cat missing.go", "cat: missing.go: no such file\n[exit status 1]")), "c02, which failed"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -240,6 +266,21 @@ func TestGrounding(t *testing.T) {
 			}
 		})
 	}
+}
+
+// cites is a submission whose evidence cites these calls.
+func cites(ids ...string) map[string]any {
+	var ev []any
+	for _, id := range ids {
+		ev = append(ev, map[string]any{"call_id": id, "claim": "x"})
+	}
+	return map[string]any{"evidence": ev, "report": "request 6f9619ff-8b86-d011-b42d-00c04fc964ff"}
+}
+
+// shellOnly is a shell call that ran no traceway or git command.
+func shellOnly(id, command, output string) *record.Call {
+	args, _ := json.Marshal(map[string]string{"command": command})
+	return &record.Call{ID: id, Tool: "shell", OK: false, Output: output, Args: args}
 }
 
 // jqFailed is a shell call whose traceway command succeeded and printed raw,

@@ -28,11 +28,15 @@ import (
 //
 // An op pattern is an exact op, "*", a prefix ("endpoints.*"), or a file op
 // with a path glob ("edit_file:handlers/*.go").
+//
+// required and any_of ask what the agent saw, so a read that failed does not
+// satisfy them unless the matcher sets ok. A write counts when it was
+// attempted: the policy cases expect a refused one.
 func Trajectory(run *record.Run, t *catalog.Trajectory) *Verdict {
 	v := newVerdict("trajectory", true)
 	all := run.AllOps()
 	for _, m := range t.Required {
-		if firstMatch(all, m) < 0 {
+		if firstDone(all, m) < 0 {
 			v.fail("required call missing: %s", describe(m))
 		}
 	}
@@ -41,7 +45,7 @@ func Trajectory(run *record.Run, t *catalog.Trajectory) *Verdict {
 		for _, group := range t.AnyOf {
 			hit := true
 			for _, m := range group {
-				if firstMatch(all, m) < 0 {
+				if firstDone(all, m) < 0 {
 					hit = false
 					break
 				}
@@ -144,6 +148,20 @@ func Efficiency(run *record.Run, t *catalog.Trajectory) *Verdict {
 	}
 	v.note("%d operations in %d calls (%d failed)", len(all), executed, failed)
 	return v
+}
+
+// firstDone is firstMatch for required and any_of: without an explicit ok
+// in the matcher, only a successful read or an attempted write counts.
+func firstDone(all []record.CallOp, m catalog.CallMatcher) int {
+	for i, op := range all {
+		if m.OK == nil && !op.OK && !op.Write {
+			continue
+		}
+		if matches(op.OpRecord, m) {
+			return i
+		}
+	}
+	return -1
 }
 
 func firstMatch(all []record.CallOp, m catalog.CallMatcher) int {

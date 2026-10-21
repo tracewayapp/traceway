@@ -20,7 +20,7 @@ expect:
     locus: {endpoint: "GET /api/insights/retention", span_contains: "buildCohorts"}
   grounding:
     - "RetentionService.buildCohorts"
-    - "G1 Old Gen"
+    - "jvm.memory.used"
   calls:
     required:
       - {op: endpoints.list}

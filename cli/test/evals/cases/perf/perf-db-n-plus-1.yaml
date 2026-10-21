@@ -23,14 +23,16 @@ expect:
   calls:
     required:
       - {op: endpoints.list}
-      - {op: endpoints.show, args: {recorded_at: present}}
     any_of:
-      - [{op: metrics.query, args: {name: "~system\\.cpu"}}]
-      - [{op: endpoints.chart}]
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: metrics.query, args: {name: "~system\\.cpu"}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.chart}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: metrics.query, args: {name: "~system\\.cpu"}}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.chart}]
     forbidden:
       - {op: "*", write: true}
     order:
       - [endpoints.list, endpoints.show]
+      - [endpoints.list, traces.show]
     max_failed_calls: 4
     max_identical_repeats: 2
 judge:

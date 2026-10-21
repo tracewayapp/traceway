@@ -104,6 +104,9 @@ func TestParseCLI(t *testing.T) {
 		{"metrics query --name x --tag a=b --tag c=d", Op{Op: "metrics.query", Args: map[string]any{"name": "x", "tag_filters": []any{"a=b", "c=d"}}}},
 		{"endpoints mark-slow 'GET /x' --offset-ms 200", Op{Op: "endpoints.mark_slow", Args: map[string]any{"endpoint": "'GET", "offset_ms": "200"}, Write: true}},
 		{"post-mortems update 4 --content-file - --expected-updated-at T", Op{Op: "post_mortems.update", Args: map[string]any{"id": "4", "content_md": "-", "expected_updated_at": "T"}, Write: true}},
+		// Reading a command's usage is not running it.
+		{"endpoints chart --help", Op{Op: OpHelp, Args: map[string]any{"command": "endpoints chart"}}},
+		{"exceptions archive -h", Op{Op: OpHelp, Args: map[string]any{"command": "exceptions archive"}}},
 	}
 	for _, c := range cases {
 		got := ParseCLI(strings.Fields(c.argv))

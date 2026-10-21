@@ -28,6 +28,7 @@ expect:
     any_of:
       - [{op: traces.show, args: {recorded_at: present}}]
       - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: logs.query, args: {trace_id: present}}]
     forbidden:
       - {op: "*", write: true}
     max_failed_calls: 4

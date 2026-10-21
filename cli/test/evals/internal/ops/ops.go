@@ -98,6 +98,9 @@ const (
 	OpGit          = "git"
 	OpSubmit       = "submit"
 	OpUnknownCLI   = "traceway.unknown"
+	// OpHelp is any traceway invocation with --help: it reads the usage, not
+	// the data, so it must not satisfy a matcher for the command itself.
+	OpHelp = "traceway.help"
 )
 
 // boolFlags lists CLI flags that take no value.
@@ -186,6 +189,9 @@ func ParseCLI(argv []string) Op {
 			continue
 		}
 		words = append(words, a)
+	}
+	if flags["help"] != nil {
+		return Op{Op: OpHelp, Args: map[string]any{"command": strings.Join(words, " ")}}
 	}
 	var spec *Spec
 	for _, s := range cliSorted {

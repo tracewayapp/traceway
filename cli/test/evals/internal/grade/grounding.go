@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"mvdan.cc/sh/v3/syntax"
+
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/record"
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/tools"
 )
@@ -37,7 +39,7 @@ func Grounding(in *Input) *Verdict {
 				v.fail("evidence[%d] cites %q, which is not a call", i, id)
 			case c.Rejected:
 				v.fail("evidence[%d] cites %s, which was never executed", i, id)
-			case !anyOpOK(c) || (len(c.Ops) == 0 && !c.OK):
+			case !anyOpOK(c) || (len(c.Ops) == 0 && !c.OK && !grepFoundNothing(c)):
 				v.fail("evidence[%d] cites %s, which failed", i, id)
 			case c.Truncated:
 				v.fail("evidence[%d] cites %s, whose output was truncated", i, id)
@@ -100,6 +102,42 @@ func anyOpOK(c *record.Call) bool {
 		if op.OK {
 			return true
 		}
+	}
+	return false
+}
+
+// grepFoundNothing reports whether a shell call failed only because its last
+// command was a grep that matched nothing (exit 1; a grep error is 2). "No
+// such code" is evidence too.
+func grepFoundNothing(c *record.Call) bool {
+	if c.Tool != "shell" || !strings.HasSuffix(strings.TrimSpace(c.Output), "[exit status 1]") {
+		return false
+	}
+	var in struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(c.Args, &in) != nil {
+		return false
+	}
+	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(in.Command), "")
+	if err != nil || len(file.Stmts) == 0 {
+		return false
+	}
+	cmd := file.Stmts[len(file.Stmts)-1].Cmd
+	for {
+		b, ok := cmd.(*syntax.BinaryCmd)
+		if !ok || (b.Op != syntax.Pipe && b.Op != syntax.PipeAll) {
+			break
+		}
+		cmd = b.Y.Cmd
+	}
+	call, ok := cmd.(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return false
+	}
+	switch call.Args[0].Lit() {
+	case "grep", "egrep", "fgrep":
+		return true
 	}
 	return false
 }

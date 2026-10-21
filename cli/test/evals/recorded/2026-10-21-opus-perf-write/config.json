@@ -1,0 +1,14 @@
+{
+  "selection": {
+    "Preset": "full",
+    "Cases": "",
+    "Suites": "perf,write",
+    "Tags": "",
+    "Arms": "",
+    "Shard": ""
+  },
+  "models": "opus",
+  "runs": 1,
+  "judge": true,
+  "jobs": 3
+}

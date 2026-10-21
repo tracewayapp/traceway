@@ -1,0 +1,69 @@
+{
+  "selection": {
+    "Preset": "full",
+    "Cases": "",
+    "Suites": "perf,write",
+    "Tags": "",
+    "Arms": "",
+    "Shard": ""
+  },
+  "models": [
+    "opus"
+  ],
+  "runs": 1,
+  "maxCostUsd": 75,
+  "shards": [
+    {
+      "suite": "perf",
+      "units": 105,
+      "runs": 105,
+      "low": 27.798750000000002,
+      "high": 100.6005,
+      "capUsd": 60.11
+    },
+    {
+      "suite": "write",
+      "units": 26,
+      "runs": 26,
+      "low": 6.883500000000001,
+      "high": 24.9106,
+      "capUsd": 14.88
+    }
+  ],
+  "estimates": [
+    {
+      "model": "opus",
+      "modelId": "anthropic/claude-opus-5.5",
+      "runs": 131,
+      "low": 34.584,
+      "high": 125.23599999999999,
+      "worst": 248.89999999999998,
+      "source": "live",
+      "basis": "models.yaml"
+    }
+  ],
+  "judge": {
+    "model": "judge",
+    "modelId": "anthropic/claude-haiku-5.5",
+    "runs": 131,
+    "low": 0.09825,
+    "high": 0.27509999999999996,
+    "worst": 0.27509999999999996,
+    "source": "live",
+    "basis": "models.yaml"
+  },
+  "low": 34.68225,
+  "high": 125.51109999999998,
+  "matrix": {
+    "include": [
+      {
+        "cap": "60.11",
+        "shard": "perf"
+      },
+      {
+        "cap": "14.88",
+        "shard": "write"
+      }
+    ]
+  }
+}

@@ -10,6 +10,7 @@ The knowledge resources show `traceway` CLI commands in their examples. Every co
 | `traceway exceptions occurrence <id> --recorded-at <t>` | `get_exception_occurrence` |
 | `traceway logs query` | `query_logs` |
 | `traceway endpoints list` | `list_endpoints` |
+| `traceway endpoints requests <endpoint>` | `list_endpoint_requests` |
 | `traceway endpoints show <id> --recorded-at <t>` | `get_endpoint_request` |
 | `traceway endpoints chart` | `endpoints_chart` |
 | `traceway endpoints slow <endpoint>` | `get_slow_endpoint_config` |

@@ -83,6 +83,37 @@ func TestListRequests_sendOrderByColumns(t *testing.T) {
 	}
 }
 
+func TestListEndpointRequests_callsEndpointRoute(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/endpoints/endpoint" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("endpoint"); got != "GET /api/orders/:id" {
+			t.Errorf("endpoint = %q", got)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["orderBy"] != "recorded_at" || body["fromDate"] == nil {
+			t.Errorf("body = %v", body)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"6f9619ff-8b86-d011-b42d-00c04fc964ff","endpoint":"GET /api/orders/:id","duration":45000000,"recordedAt":"2026-10-20T10:00:00Z","statusCode":200}],"stats":{"count":1,"p95Duration":45},"pagination":{"page":1,"pageSize":20,"total":1,"totalPages":1}}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, WithJWT("tok"))
+	resp, err := c.ListEndpointRequests(context.Background(), "proj-1", "GET /api/orders/:id", ListEndpointRequestsRequest{
+		TimeRange:  TimeRange{From: time.Now().Add(-time.Hour), To: time.Now()},
+		Pagination: PaginationParams{Page: 1, PageSize: 20},
+		OrderBy:    "recordedAt",
+	})
+	if err != nil {
+		t.Fatalf("ListEndpointRequests: %v", err)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].Duration != 45*time.Millisecond || resp.Stats == nil || resp.Stats.P95Duration != 45 {
+		t.Errorf("resp = %+v", resp)
+	}
+}
+
 func TestGetEndpointChart_callsChartRoute(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/endpoints/chart" {

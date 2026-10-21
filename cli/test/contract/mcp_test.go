@@ -33,6 +33,7 @@ func TestContract_mcpToolSurface(t *testing.T) {
 	call("get_exception_occurrence", map[string]any{"id": seedExceptionID.String(), "recorded_at": at}, seedHash)
 	call("query_logs", map[string]any{"from": from, "to": to, "service_name": "contract-svc"}, "contract-svc")
 	call("list_endpoints", map[string]any{"from": from, "to": to}, "GET /api/contract")
+	call("list_endpoint_requests", map[string]any{"endpoint": "GET /api/contract", "from": from, "to": to}, seedEndpointID.String())
 	call("get_endpoint_request", map[string]any{"id": seedEndpointID.String(), "recorded_at": at}, seedEndpointID.String())
 	call("endpoints_chart", map[string]any{"from": from, "to": to}, "endpoints")
 	call("get_slow_endpoint_config", map[string]any{"endpoint": "GET /api/contract"}, "offsetMs")

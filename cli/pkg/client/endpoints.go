@@ -85,6 +85,62 @@ type Endpoint struct {
 	IsRoot       bool              `json:"isRoot"`
 }
 
+// ListEndpointRequestsRequest is the body for POST /api/endpoints/endpoint:
+// the individual requests of one endpoint, the ids endpoints show takes.
+type ListEndpointRequestsRequest struct {
+	TimeRange     TimeRange        `json:"-"`
+	Pagination    PaginationParams `json:"pagination"`
+	OrderBy       string           `json:"orderBy,omitempty"`
+	SortDirection string           `json:"sortDirection,omitempty"`
+	// Search matches request attribute values, such as a user id.
+	Search string `json:"search,omitempty"`
+}
+
+// MarshalJSON expands TimeRange into top-level fromDate/toDate and sends
+// OrderBy as the column name the backend sorts on.
+func (r ListEndpointRequestsRequest) MarshalJSON() ([]byte, error) {
+	type alias ListEndpointRequestsRequest
+	wire := struct {
+		FromDate time.Time `json:"fromDate"`
+		ToDate   time.Time `json:"toDate"`
+		alias
+	}{r.TimeRange.From, r.TimeRange.To, alias(r)}
+	wire.OrderBy = orderByColumn(r.OrderBy)
+	return jsonMarshalNoHTMLEscape(wire)
+}
+
+// EndpointRequestStats mirrors models.EndpointDetailStats. Unlike the
+// requests themselves, its durations are milliseconds.
+type EndpointRequestStats struct {
+	Count          int64   `json:"count"`
+	AvgDuration    float64 `json:"avgDuration"`
+	MedianDuration float64 `json:"medianDuration"`
+	P95Duration    float64 `json:"p95Duration"`
+	P99Duration    float64 `json:"p99Duration"`
+	Apdex          float64 `json:"apdex"`
+	ErrorRate      float64 `json:"errorRate"`
+	Throughput     float64 `json:"throughput"`
+	IsStream       bool    `json:"isStream"`
+}
+
+// ListEndpointRequestsResponse mirrors EndpointInstancesResponse.
+type ListEndpointRequestsResponse struct {
+	Data       []Endpoint            `json:"data"`
+	Stats      *EndpointRequestStats `json:"stats"`
+	Pagination Pagination            `json:"pagination"`
+}
+
+// ListEndpointRequests returns one page of an endpoint's requests. endpoint is
+// the name exactly as ListEndpoints returns it ("GET /api/orders/:id").
+func (c *Client) ListEndpointRequests(ctx context.Context, projectID, endpoint string, req ListEndpointRequestsRequest) (*ListEndpointRequestsResponse, error) {
+	path := "/api/endpoints/endpoint?projectId=" + url.QueryEscape(projectID) + "&endpoint=" + url.QueryEscape(endpoint)
+	var resp ListEndpointRequestsResponse
+	if err := c.do(ctx, http.MethodPost, path, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // EndpointDetailResponse is the body of POST /api/endpoints/:endpointId.
 type EndpointDetailResponse struct {
 	Endpoint        *Endpoint        `json:"endpoint"`

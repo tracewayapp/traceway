@@ -43,6 +43,7 @@ var specs = []Spec{
 	{Op: "exceptions.occurrence", CLI: []string{"exceptions", "occurrence"}, MCP: "get_exception_occurrence", Positional: []string{"id"}},
 	{Op: "logs.query", CLI: []string{"logs", "query"}, MCP: "query_logs", Rename: map[string]string{"service": "service_name"}},
 	{Op: "endpoints.list", CLI: []string{"endpoints", "list"}, MCP: "list_endpoints"},
+	{Op: "endpoints.requests", CLI: []string{"endpoints", "requests"}, MCP: "list_endpoint_requests", Positional: []string{"endpoint"}},
 	{Op: "endpoints.show", CLI: []string{"endpoints", "show"}, MCP: "get_endpoint_request", Positional: []string{"id"}},
 	{Op: "endpoints.chart", CLI: []string{"endpoints", "chart"}, MCP: "endpoints_chart"},
 	{Op: "endpoints.slow", CLI: []string{"endpoints", "slow"}, MCP: "get_slow_endpoint_config", Positional: []string{"endpoint"}},

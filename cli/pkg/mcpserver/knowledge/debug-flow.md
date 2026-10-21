@@ -81,7 +81,7 @@ SID=$(jq -r '.sessionId // empty' <<<"$OCC")
 **Check metrics for systemic causes** (spikes lining up with `firstSeen` suggest saturation rather than a code bug):
 
 ```bash
-traceway metrics query --name system.cpu.utilization --aggregation max --since 24h
+traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min --since 24h   # busy = 1 - idle
 traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
 ```
 

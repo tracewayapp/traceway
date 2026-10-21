@@ -14,13 +14,14 @@ import (
 // jqOutputs is the type each command prints with --output json. An example
 // piping a command that is missing here fails the test: add the command.
 var jqOutputs = map[string]any{
-	"endpoints list":  client.ListEndpointsResponse{},
-	"endpoints chart": client.EndpointChartResponse{},
-	"endpoints show":  client.EndpointDetailResponse{},
-	"metrics query":   client.QueryMetricsResponse{},
-	"exceptions list": client.ListExceptionsResponse{},
-	"exceptions show": client.GetExceptionResponse{},
-	"logs query":      client.QueryLogsResponse{},
+	"endpoints list":     client.ListEndpointsResponse{},
+	"endpoints requests": client.ListEndpointRequestsResponse{},
+	"endpoints chart":    client.EndpointChartResponse{},
+	"endpoints show":     client.EndpointDetailResponse{},
+	"metrics query":      client.QueryMetricsResponse{},
+	"exceptions list":    client.ListExceptionsResponse{},
+	"exceptions show":    client.GetExceptionResponse{},
+	"logs query":         client.QueryLogsResponse{},
 }
 
 // jqBuiltins are names a filter may use that are not output fields: the

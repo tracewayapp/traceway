@@ -53,9 +53,16 @@ func (s *server) addTools(srv *mcp.Server) {
 	}, s.listEndpoints)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:         "list_endpoint_requests",
+		OutputSchema: outSchema[client.ListEndpointRequestsResponse](),
+		Description:  "One endpoint's individual requests in a window, slowest first by default: each with its id, recordedAt, duration (nanoseconds), status code and traceId, plus the endpoint's stats (milliseconds). This is where a request id comes from: pass id and recordedAt to get_endpoint_request, or traceId and recordedAt to get_trace.",
+		Annotations:  readOnly(),
+	}, s.listEndpointRequests)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_endpoint_request",
 		OutputSchema: outSchema[client.EndpointDetailResponse](),
-		Description:  "Get one request (transaction) by id: the request, its span waterfall, and any linked exception/messages. In the waterfall, a gap before work starts is itself the finding: time spent queueing, waiting on a lock, or acquiring a pool connection.",
+		Description:  "Get one request (transaction) by id (from list_endpoint_requests or a distributed trace node): the request, its span waterfall, and any linked exception/messages. In the waterfall, a gap before work starts is itself the finding: time spent queueing, waiting on a lock, or acquiring a pool connection.",
 		Annotations:  readOnly(),
 	}, s.getEndpointRequest)
 
@@ -76,7 +83,7 @@ func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "query_metrics",
 		OutputSchema: outSchema[client.QueryMetricsResponse](),
-		Description:  "Query time-bucketed metric series (aggregations: avg, sum, count, min, max). There is NO quantile aggregation: latency percentiles come from list_endpoints only. Host metrics from the Traceway OTel Agent live under system.* names; runtime names include go.gc_pause, mem.used_pcnt, go.go_routines. OTLP histogram metrics are stored as two series, <name>.avg and <name>.count. An unknown name returns an empty series cleanly, so probing names is safe. A grouped query is cut to the first 200 groups (alphabetical) and that result carries truncatedGroups: true, while the top-level intervalMinutes is the bucket size actually used after the server widens it so no series exceeds 2000 points.",
+		Description:  "Query time-bucketed metric series (aggregations: avg, sum, count, min, max). There is NO quantile aggregation: latency percentiles come from list_endpoints only. Host metrics from the Traceway OTel Agent live under system.* names and are split by tags: system.cpu.utilization and system.memory.utilization have one series per state, so filter with tag_filters {state: idle} (busy CPU is 1 minus idle) or {state: used}, or group by state; never read them unfiltered. Runtime metrics use the OpenTelemetry names of the language (jvm.*, go.*, v8js.*, process.runtime.*). OTLP histogram metrics are stored as two series, <name>.avg and <name>.count. An unknown name returns an empty series cleanly, so probing names is safe. A grouped query is cut to the first 200 groups (alphabetical) and that result carries truncatedGroups: true, while the top-level intervalMinutes is the bucket size actually used after the server widens it so no series exceeds 2000 points.",
 		Annotations:  readOnly(),
 	}, s.queryMetrics)
 

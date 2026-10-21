@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -88,7 +89,7 @@ func TestListTools_surfaceAndAnnotations(t *testing.T) {
 	wantReadOnly := map[string]bool{
 		"list_projects": true, "list_exceptions": true, "get_exception": true,
 		"get_exception_occurrence": true, "query_logs": true, "list_endpoints": true,
-		"get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
+		"list_endpoint_requests": true, "get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
 		"query_metrics": true, "get_task": true, "get_ai_trace": true, "get_session": true,
 		"get_trace": true, "list_pages": true, "get_page": true,
 		"list_notification_rules": true, "list_checks": true, "get_check": true,
@@ -106,7 +107,7 @@ func TestListTools_writeServerAddsMutatingTools(t *testing.T) {
 	want := map[string]bool{
 		"list_projects": true, "list_exceptions": true, "get_exception": true,
 		"get_exception_occurrence": true, "query_logs": true, "list_endpoints": true,
-		"get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
+		"list_endpoint_requests": true, "get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
 		"query_metrics": true, "get_task": true, "get_ai_trace": true, "get_session": true,
 		"get_trace": true, "list_pages": true, "get_page": true,
 		"list_notification_rules": true, "list_checks": true, "get_check": true,
@@ -159,6 +160,43 @@ func TestInitialize_carriesInstructions(t *testing.T) {
 	}
 	if !strings.Contains(init.Instructions, "The connected Traceway instance is http") {
 		t.Errorf("instructions should name the instance origin: %s", init.Instructions)
+	}
+}
+
+func TestListEndpointRequests_wireShapeAndDefaults(t *testing.T) {
+	var gotPath string
+	var gotQuery url.Values
+	var gotBody map[string]any
+	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query()
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"6f9619ff-8b86-d011-b42d-00c04fc964ff","endpoint":"GET /api/orders","duration":597000000,"recordedAt":"2026-10-20T10:00:00Z","statusCode":200,"traceId":"ab69e041ab69e041ab69e041ab69e041"}],"stats":{"count":1},"pagination":{"page":1,"pageSize":20,"total":1,"totalPages":1}}`))
+	})
+	cs := connect(t, backend, "p-1")
+
+	res := callTool(t, cs, "list_endpoint_requests", map[string]any{"endpoint": "GET /api/orders", "since": "24h"})
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %s", resultText(t, res))
+	}
+	if gotPath != "/api/endpoints/endpoint" || gotQuery.Get("projectId") != "p-1" || gotQuery.Get("endpoint") != "GET /api/orders" {
+		t.Errorf("path = %q, query = %v", gotPath, gotQuery)
+	}
+	if gotBody["orderBy"] != "duration" || gotBody["sortDirection"] != "desc" || gotBody["fromDate"] == nil {
+		t.Errorf("defaults not applied: %v", gotBody)
+	}
+	if !strings.Contains(resultText(t, res), "6f9619ff-8b86-d011-b42d-00c04fc964ff") {
+		t.Errorf("result text missing the request id: %s", resultText(t, res))
+	}
+
+	res = callTool(t, cs, "list_endpoint_requests", map[string]any{"since": "24h"})
+	if !res.IsError || !strings.Contains(resultText(t, res), "endpoint") {
+		t.Errorf("a missing endpoint must be a usage error: %s", resultText(t, res))
+	}
+	res = callTool(t, cs, "list_endpoint_requests", map[string]any{"endpoint": "GET /api/orders", "order_by": "recordedAt"})
+	if res.IsError || gotBody["orderBy"] != "recorded_at" {
+		t.Errorf("order_by recordedAt sent %v: %s", gotBody["orderBy"], resultText(t, res))
 	}
 }
 

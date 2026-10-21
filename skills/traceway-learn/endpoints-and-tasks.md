@@ -73,6 +73,7 @@ A queue worker whose span is parented to the request that enqueued it shares tha
 |---|---|---|
 | Endpoints with percentiles and impact | `traceway endpoints list --since 24h [--order-by impact\|count\|p95\|lastSeen] [--search S]` | `list_endpoints` |
 | Latency over time (find when it changed) | `traceway endpoints chart [--metric-type total_time\|p50\|p95\|p99] [--interval-minutes N]` | `endpoints_chart` |
+| One endpoint's requests, slowest first (the ids `endpoints show` takes) | `traceway endpoints requests <endpoint> --since 24h [--order-by duration\|recordedAt\|statusCode] [--search S]` | `list_endpoint_requests` |
 | One request with its spans and errors | `traceway endpoints show <id> --recorded-at <t>` | `get_endpoint_request` |
 | An endpoint's expected-performance mark | `traceway endpoints slow <endpoint>` | `get_slow_endpoint_config` |
 | One task run | `traceway tasks show <id> --recorded-at <t>` | `get_task` |

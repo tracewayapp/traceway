@@ -22,6 +22,7 @@ func newEndpointsCmd() *cobra.Command {
 		Short: "Query HTTP endpoint performance",
 	}
 	cmd.AddCommand(newEndpointsListCmd())
+	cmd.AddCommand(newEndpointsRequestsCmd())
 	cmd.AddCommand(newEndpointsChartCmd())
 	cmd.AddCommand(newEndpointsSlowCmd())
 	cmd.AddCommand(newEndpointsShowCmd())
@@ -100,6 +101,78 @@ func runEndpointsList(cmd *cobra.Command, _ []string) error {
 				e.Impact,
 				e.LastSeen.Format("2006-01-02 15:04:05"),
 			)
+		}
+		return tw.Flush()
+	}
+}
+
+func newEndpointsRequestsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "requests <endpoint>",
+		Short: "List one endpoint's requests, slowest first, with the id and recordedAt endpoints show takes",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runEndpointsRequests,
+	}
+	addTimeRangeFlags(cmd)
+	addPaginationFlags(cmd)
+	cmd.Flags().String("search", "", "Match request attribute values, such as a user id")
+	cmd.Flags().String("order-by", "duration", "Sort field (duration, recordedAt, statusCode)")
+	cmd.Flags().String("sort-direction", "desc", "Sort direction: asc or desc")
+	return cmd
+}
+
+func runEndpointsRequests(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
+
+	sess, err := loadSession()
+	if err != nil {
+		return renderSessionError(cmd.ErrOrStderr(), mode, err)
+	}
+	tr, err := resolveTimeRange(cmd)
+	if err != nil {
+		return renderTimeRangeError(cmd.ErrOrStderr(), mode, err)
+	}
+	if err := validatePaginationFlags(cmd); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			paginationHint(appdir.Binary+" endpoints requests"))
+	}
+	page := resolvePagination(cmd)
+	search, _ := cmd.Flags().GetString("search")
+	orderBy, _ := cmd.Flags().GetString("order-by")
+	if err := validateEnumFlag("--order-by", orderBy, client.EndpointRequestsOrderByValues); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			enumFlagHint(appdir.Binary+" endpoints requests", "--order-by", client.EndpointRequestsOrderByValues))
+	}
+	sortDir, _ := cmd.Flags().GetString("sort-direction")
+	if err := validateEnumFlag("--sort-direction", sortDir, sortDirections); err != nil {
+		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
+			enumFlagHint(appdir.Binary+" endpoints requests", "--sort-direction", sortDirections))
+	}
+
+	c := sess.Client()
+	resp, err := c.ListEndpointRequests(ctx, sess.ProjectID, args[0], client.ListEndpointRequestsRequest{
+		TimeRange:     tr,
+		Pagination:    page,
+		Search:        search,
+		OrderBy:       orderBy,
+		SortDirection: sortDir,
+	})
+	if err != nil {
+		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
+	}
+
+	switch mode {
+	case output.ModeJSON:
+		return output.RenderJSON(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	case output.ModeYAML:
+		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
+	default:
+		tw := output.NewTabWriter(cmd.OutOrStdout())
+		_, _ = fmt.Fprintln(tw, "ID\tRECORDED AT\tDURATION\tSTATUS\tTRACE ID")
+		for _, e := range resp.Data {
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n",
+				e.Id, e.RecordedAt.Format(time.RFC3339Nano), formatDuration(e.Duration), e.StatusCode, e.TraceId)
 		}
 		return tw.Flush()
 	}
@@ -275,9 +348,9 @@ p50/p95/p99 stats by route, use "endpoints list --search <name>" instead.
 
 --recorded-at is REQUIRED. The endpoints table is daily-partitioned; the
 timestamp bounds the lookup to a window around it so ClickHouse prunes
-partitions instead of scanning all of them. Source it from the dashboard URL's
-t= param (/endpoints/<name>/<id>?t=...) or a distributed-trace node's
-recordedAt.`,
+partitions instead of scanning all of them. Take the id and recordedAt
+together from "endpoints requests <endpoint>", the dashboard URL's t= param
+(/endpoints/<name>/<id>?t=...) or a distributed-trace node's recordedAt.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runEndpointsShow,
 	}

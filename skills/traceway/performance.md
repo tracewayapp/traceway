@@ -15,21 +15,25 @@ All commands are read-only. Never archive or mutate anything during a performanc
    The rows are under `data`. `p50Duration`, `p95Duration`, `p99Duration` and `avgDuration` are nanoseconds, hence the `/ 1e6`.
    Read p50 vs p99 before anything else (see "Reading the latency shape").
 
-2. **Get a representative slow trace.** Drill into one slow request to see where the time goes. Capture an id and its `recordedAt` together, then:
+2. **Get a representative slow trace.** Drill into one slow request to see where the time goes. `endpoints requests` lists the endpoint's requests, slowest first; take an `id` and its `recordedAt` together, then open it:
    ```bash
-   traceway endpoints show <endpointId> --recorded-at <t>          # span waterfall for one request
-   traceway traces show <traceId> --recorded-at <t>                # cross-service timeline (traceId from endpoints show)
+   traceway endpoints requests "GET /api/checkout" --since 24h --page-size 5 --output json \
+     | jq '.data[] | {id, recordedAt, duration_ms: (.duration / 1e6), statusCode, traceId}'
+   traceway endpoints show <id> --recorded-at <recordedAt>         # span waterfall for one request
+   traceway traces show <traceId> --recorded-at <recordedAt>       # cross-service timeline
    ```
+   Open a typical slow request and the slowest one: if they differ, the tail has its own cause.
    `traces show` is the highest-value call when more than one service is involved: it stitches the whole logical request together end to end.
 
 3. **Find the long pole and match it to the checklist.** In the waterfall, identify the single span (or repeated group of spans) that dominates the duration. Classify it: is it a database call, an external/upstream call, in-process compute, or a *gap* before work starts (which means queueing, lock wait, or connection-pool exhaustion, not the work itself)? Then look it up in the checklist.
 
 4. **Separate code from saturation.** A slow endpoint can be a code bug or an overloaded host. Pull infrastructure and runtime metrics over the same window:
    ```bash
-   traceway metrics query --name system.cpu.utilization --aggregation max --since 24h
-   traceway metrics query --name mem.used --aggregation max --since 24h
-   traceway metrics query --name go.gc_pause --aggregation max --since 24h
+   traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min --group-by host.name --since 24h
+   traceway metrics query --name system.memory.utilization --tag state=used --aggregation max --group-by host.name --since 24h
+   traceway metrics query --name jvm.gc.duration.avg --aggregation max --since 24h
    ```
+   CPU and memory host metrics are split by a `state` tag, so always filter or group by it. `system.cpu.utilization` has one series per state (user, system, idle, wait, steal, ...) whose fractions add up to 1: an unfiltered query averages the states and reads as a flat fraction whatever the load. The busy share is 1 minus `state=idle`, and the minimum idle in a bucket is its peak load. Runtime metrics use the OpenTelemetry name for the language: `jvm.memory.used` and `jvm.gc.duration.avg` (JVM), `go.memory.used` and `go.memory.gc.goal` (Go), `v8js.memory.heap.used` (Node.js), `process.runtime.cpython.memory` (Python). Projects on the native protocol report `cpu.used_pcnt` and `mem.used`/`mem.total` instead.
    A metric spike that lines up with the latency rise points at saturation; flat metrics under rising latency point at a code or query problem.
 
 5. **Correlate with code and deploys.** Open the slow path in the source and read it. If p95 climbed at a specific time, check what shipped then (`git log --since ... --until ...` or deploy history). Latency that jumped at a release is a regression; latency that crept up without one is usually data growth.
@@ -77,8 +81,8 @@ Caveat: it always returns the *top 5* endpoints by that metric. If your suspect 
 
 **2. Infra and runtime over time: `metrics query --interval-minutes`.** For the *cause* behind a latency step (saturation, GC, throughput), bucket any metric the same way. The JSON is `{results: [{name, unit, series}]}`, one result per query, and `series` maps each group to its list of `{timestamp, value}` points (a single `__all__` group when ungrouped); read down the points for the bucket where the value steps up.
 ```bash
-traceway metrics query --name system.cpu.utilization --aggregation max --since 7d --interval-minutes 60 --output json \
-  | jq '.results[0].series | to_entries[] | .value[] | {t: .timestamp, v: .value}'
+traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min --since 7d --interval-minutes 60 --output json \
+  | jq '.results[0].series | to_entries[] | .value[] | {t: .timestamp, busy: (1 - .value)}'
 ```
 A flat line that steps up at the same bucket the latency jumped is the saturation signal; flat metrics under a latency step point at code.
 
@@ -119,9 +123,9 @@ Each row: the suspect, and how to confirm it from Traceway telemetry.
 | Suspect | How to confirm in Traceway |
 |---|---|
 | **Synchronous work that belongs in a background task** | A long handler span runs before the response returns, for work the user does not wait on (emails, exports, image processing). It should be a `CaptureTask`. |
-| **CPU-bound serialization** | A compute gap between IO spans (large JSON encode/decode); `system.cpu.utilization` up during the request. |
+| **CPU-bound serialization** | A compute gap between IO spans (large JSON encode/decode); busy CPU (1 minus `system.cpu.utilization` with `state=idle`) up during the request. |
 | **Inefficient algorithm / O(n^2) hot path** | Latency scales superlinearly with input size across traces; no IO to blame in the waterfall. |
-| **Unbounded in-memory work / large allocations** | `mem.used` and `go.num_gc` climb with p99; large compute spans. |
+| **Unbounded in-memory work / large allocations** | The runtime heap (`jvm.memory.used`, `go.memory.used`, `v8js.memory.heap.used`) and GC activity climb with p99; large compute spans. |
 | **Excessive logging / telemetry in the hot path** | Many log lines per request in `logs query`; logging spans visible in the waterfall. |
 
 ### Network, IO, and external dependencies
@@ -144,13 +148,13 @@ Each row: the suspect, and how to confirm it from Traceway telemetry.
 ### Infrastructure and saturation
 | Suspect | How to confirm in Traceway |
 |---|---|
-| **CPU saturation** | `system.cpu.utilization` (max) spike lines up with the latency rise across many endpoints at once. |
-| **Memory pressure / GC pauses** | `mem.used`, `go.gc_pause`, `go.num_gc` correlate with p99; pauses visible as gaps in the waterfall. |
+| **CPU saturation** | Busy CPU (1 minus `system.cpu.utilization` with `state=idle`) spikes in line with the latency rise across many endpoints at once. |
+| **Memory pressure / GC pauses** | `system.memory.utilization` (`state=used`), the runtime heap and GC time (`jvm.gc.duration.avg`, `go.memory.gc.goal`) correlate with p99; pauses visible as gaps in the waterfall. |
 | **Disk / IO bottleneck** | `system.disk.*` or IO-wait metrics up; slow IO spans with no CPU cost. |
 | **Undersized / noisy-neighbor instance** | Broad latency rise with no single span culprit; infra metrics elevated with no code change. |
 
 ## Notes on the signals
 
-- Host and runtime metrics live under `system.*` (Traceway OTel Agent) and the SDK runtime names (`go.gc_pause`, `mem.used`, `go.go_routines`). The server has no quantile aggregation for metric points: `p50/p95/p99` on `metrics query` silently return `avg`, so never present those as percentiles. Real latency percentiles come only from `endpoints list`, computed from raw request durations.
+- Host metrics live under `system.*` (OpenTelemetry hostmetrics, sent by the Traceway OTel Agent) and are split by tags such as `state`; runtime metrics use the OpenTelemetry names of the language (`jvm.*`, `go.*`, `v8js.*`, `process.runtime.*`). The server has no quantile aggregation for metric points: `p50/p95/p99` on `metrics query` silently return `avg`, so never present those as percentiles. Real latency percentiles come only from `endpoints list`, computed from raw request durations.
 - OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`. A bogus metric name returns an empty `series: {}` cleanly, so probing names is safe.
 - When the waterfall shows a gap with no span, that gap is the finding: it is time the request spent waiting (for a connection, a lock, the scheduler), not time spent doing work.

@@ -34,6 +34,7 @@ const TOOL_GROUPS = [
     label: "Performance",
     tools: [
       "list_endpoints",
+      "list_endpoint_requests",
       "endpoints_chart",
       "get_endpoint_request",
       "get_slow_endpoint_config",

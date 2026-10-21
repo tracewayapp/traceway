@@ -4,7 +4,7 @@ Write access lets an agent take the routine actions an on-call engineer takes du
 
 1. **The credential.** Only write credentials can write: a `tww_` personal access token, a `traceway-write login`, or an MCP client connected to the `/mcp/write` server. A `twp_` token, a `traceway login` and the `/mcp` server are read only, whatever the person's role.
 2. **The organization.** An admin has to turn on Settings > Agent Access. Until then every agent write is refused with a 403 that says so.
-3. **The person.** The write runs with the role of the person who created the credential, under the same rules as the dashboard. A `readonly` member's write token cannot archive issues, change alerts, run monitors or edit post-mortems. Acknowledging and resolving pages needs no write role, so any member's write token can do that.
+3. **The person.** The write runs with the role of the person who created the credential, under the same rules as the dashboard. A `readonly` member's write token cannot archive issues, change alerts, run monitors or edit post-mortems: the write is refused with a 403 that starts "Your role in this project is read-only". `projects list` (`list_projects`) shows the person's role in each project. Acknowledging and resolving pages needs no write role, so any member's write token can do that.
 
 Every write a write credential makes in the organization, accepted or refused because Agent Access is off, is recorded in the organization's agent activity log with the person, the credential, the project and the result.
 
@@ -30,7 +30,10 @@ Everything else (creating rules and channels, editing schedules and policies, st
 - **Say it before doing it.** One line naming the action, the record and the new value: "Snoozing rule 12 (Endpoint P95 on GET /api/search) for 60 minutes." The CLI asks for confirmation on a TTY and needs `--yes` otherwise. MCP clients run their own approval step.
 - **Prefer the reversible option.** Snooze rather than disable. Acknowledge rather than resolve while the problem is still live. Archive an issue rather than resolving its page with `--archive-issue` if you are unsure the page is done.
 - **Report what changed and how to undo it.**
-- **Treat a 403 as an answer.** "This credential is read-only" or "Agent write access is turned off" is a policy decision. Do not retry, switch credentials or look for another route. Tell the user what it said and who can change it.
+- **Treat a 403 as an answer.** Each one names its level, and each is a policy decision. Do not retry, switch credentials or look for another route. Tell the user what it said and who can change it:
+  - "This credential is read-only": the credential is a read one. The user needs a write credential (a `tww_` token, `traceway-write login`, or `/mcp/write`).
+  - "Agent write access is turned off": an organization admin turns it on in Settings > Agent Access.
+  - "Your role in this project is read-only": the credential can write, but the person's role in the project is `readonly`. Another credential will not help. An organization owner or admin can change the role in Settings > Team Members, or make the change themselves.
 
 ### Playbooks
 

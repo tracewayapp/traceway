@@ -10,6 +10,9 @@ import (
 type Project struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Role is the caller's effective role in the project (owner, admin,
+	// user, readonly); a readonly role refuses writes whatever the credential.
+	Role string `json:"role,omitempty"`
 }
 
 // ListProjects returns all projects visible to the authenticated user.

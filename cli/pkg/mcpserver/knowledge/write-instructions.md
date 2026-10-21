@@ -7,7 +7,7 @@ This server was started with write access, so it also has mutating tools: archiv
 - Before the call, state the exact change in one line: the tool, the record and the new value. Then make it.
 - Prefer the reversible option: snooze a noisy rule rather than disabling it, acknowledge a page before resolving it, archive rather than resolve with archive_issue.
 - After the call, report what changed and how to undo it.
-- A 403 that says the credential is read-only, or that agent write access is off for the organization, is a policy decision. Do not retry or look for another route. Tell the user what it said; an organization admin turns agent writes on in Settings > Agent Access.
+- A 403 is a policy decision; do not retry or look for another route. Tell the user what it said and who can change it. "This credential is read-only" means the client is not connected with a write credential. "Agent write access is turned off" means an organization admin has to turn it on in Settings > Agent Access. "Your role in this project is read-only" means the credential can write but the person's project role is readonly: another credential will not help, and an organization owner or admin can change the role in Settings > Team Members.
 - Every agent write is recorded in the organization's agent activity log with the credential that made it (the token, or the OAuth client).
 
 Read traceway://knowledge/operations before your first write: it covers the rules, what each write does, and playbooks for pages, alerts, monitors and post-mortems. For how each area of the product works, read traceway://knowledge/learn.

@@ -394,8 +394,8 @@ func TestContract_mcpOverStreamableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 21 {
-		t.Errorf("got %d tools, want 21", len(tools.Tools))
+	if len(tools.Tools) != 22 {
+		t.Errorf("got %d tools, want 22", len(tools.Tools))
 	}
 	for _, tool := range tools.Tools {
 		if !tool.Annotations.ReadOnlyHint {
@@ -536,8 +536,8 @@ func TestContract_mcpWriteMount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 31 {
-		t.Errorf("/mcp/write tools = %d, want 31", len(tools.Tools))
+	if len(tools.Tools) != 32 {
+		t.Errorf("/mcp/write tools = %d, want 32", len(tools.Tools))
 	}
 
 	archive := func() (*mcp.CallToolResult, string) {

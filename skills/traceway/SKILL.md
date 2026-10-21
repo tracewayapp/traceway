@@ -271,7 +271,7 @@ SID=$(jq -r '.sessionId // empty' <<<"$OCC")
 **Check metrics for systemic causes** (spikes lining up with `firstSeen` suggest saturation rather than a code bug):
 
 ```bash
-traceway metrics query --name system.cpu.utilization --aggregation max --since 24h
+traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min --since 24h   # busy = 1 - idle
 traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
 ```
 
@@ -340,7 +340,7 @@ The loop, using the read commands documented in this skill:
 3. **Pinpoint when it started: adjust the window down.** Do not investigate the default window blindly; narrow it until it brackets the onset. `traceway endpoints chart --metric-type p95 --interval-minutes <n>` returns latency over time for the top endpoints (`{timestamp, endpoint, value}` in ms): read down one endpoint's buckets for the step where p95 jumps. Confirm the cause with `traceway metrics query --name <metric> --interval-minutes <n>` (the infra/runtime curve). For a specific route not in the top 5, bisect `traceway endpoints list --search <name> --from <a> --to <b>` over adjacent windows. See `performance.md`, "Pinpointing when the slowness started".
 4. **Get a representative slow trace.** `traceway endpoints show <endpointId> --recorded-at <t>` for one request's span waterfall, or `traceway traces show <traceId> --recorded-at <t>` (the `traceId` that `endpoints show` prints) for the cross-service timeline. Take the trace from inside the slow window you just found; find the long pole.
 5. **Match the long pole to the checklist.** Is the dominant span a database call, an external call, in-process compute, or a *gap* before work starts (queueing / lock wait / pool exhaustion)? Look it up in `performance.md`.
-6. **Separate code from saturation.** Pull infra/runtime metrics over the same window: `traceway metrics query --name system.cpu.utilization --aggregation max`, then `mem.used`, `go.gc_pause`. A spike that lines up with the latency onset points at saturation, not a code bug.
+6. **Separate code from saturation.** Pull infra/runtime metrics over the same window: `traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min` (busy is 1 minus idle; the metric is split by `state`, so never read it unfiltered), then `system.memory.utilization` with `state=used` and the runtime's heap and GC metrics (`jvm.*`, `go.*`, `v8js.*`). A spike that lines up with the latency onset points at saturation, not a code bug.
 7. **Correlate with code and deploys.** With the onset time from step 3, check what shipped then: `git log --since '<onset - 30m>' --until '<onset + 30m>'` or the deploy history. A jump at a release is a regression; a gradual ramp with no deploy is data growth (N+1, missing index, no pagination).
 8. **Report.** The bottleneck, the evidence (endpoint percentiles, the onset time, the dominating span, any correlated metric anomaly), the root cause mapped to a checklist item, and a concrete fix, with the `endpoints show` / `traces show` references so the user can verify. If the endpoint is marked slow, state whether the latency exceeded the accepted offset.
 

@@ -76,6 +76,7 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `get_exception_occurrence` | One occurrence by id |
 | `query_logs` | Log search (severity, service, text, trace id) |
 | `list_endpoints` | Per-endpoint p50/p95/p99, counts, impact |
+| `list_endpoint_requests` | One endpoint's requests, slowest first |
 | `get_endpoint_request` | One request: span waterfall + linked errors |
 | `endpoints_chart` | Latency over time (find when it changed) |
 | `get_slow_endpoint_config` | Operator-accepted latency baseline |

@@ -80,9 +80,9 @@ func runProjectsList(cmd *cobra.Command, _ []string) error {
 		return output.RenderYAML(cmd.OutOrStdout(), projects, output.ParseFieldsFlag(flagFields))
 	default:
 		tw := output.NewTabWriter(cmd.OutOrStdout())
-		_, _ = fmt.Fprintln(tw, "ID\tNAME")
+		_, _ = fmt.Fprintln(tw, "ID\tNAME\tROLE")
 		for _, p := range projects {
-			_, _ = fmt.Fprintf(tw, "%s\t%s\n", p.ID, p.Name)
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", p.ID, p.Name, p.Role)
 		}
 		return tw.Flush()
 	}

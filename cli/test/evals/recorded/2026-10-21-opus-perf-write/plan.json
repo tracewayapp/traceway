@@ -11,7 +11,7 @@
     "opus"
   ],
   "runs": 1,
-  "maxCostUsd": 75,
+  "maxCostUsd": 28,
   "shards": [
     {
       "suite": "perf",
@@ -19,7 +19,7 @@
       "runs": 105,
       "low": 27.798750000000002,
       "high": 100.6005,
-      "capUsd": 60.11
+      "capUsd": 22.44
     },
     {
       "suite": "write",
@@ -27,7 +27,7 @@
       "runs": 26,
       "low": 6.883500000000001,
       "high": 24.9106,
-      "capUsd": 14.88
+      "capUsd": 5.55
     }
   ],
   "estimates": [
@@ -57,11 +57,11 @@
   "matrix": {
     "include": [
       {
-        "cap": "60.11",
+        "cap": "22.44",
         "shard": "perf"
       },
       {
-        "cap": "14.88",
+        "cap": "5.55",
         "shard": "write"
       }
     ]

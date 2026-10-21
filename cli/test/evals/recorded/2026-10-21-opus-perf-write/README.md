@@ -1,55 +1,63 @@
-# Opus 5.5, perf + write suites, 2026-10-21 (partial)
+# Opus 5.5, perf + write suites, 2026-10-21
 
 The Opus side of a Haiku vs Opus comparison, on the same selection as
 `2026-10-21-haiku-perf-write` (branch `evals/haiku-perf-write-2026-10-21`).
 
 - **Selection:** `--preset full --suites perf,write --models opus`, 1 repeat:
   131 runs (perf 35 cases × `cli+skill`/`cli-noskill`/`mcp`, write 13 cases ×
-  `cli-write+skill`/`mcp-write`). The debug and setup suites were left out:
-  they need Docker, which the machine did not have.
-- **Partial: 48 of 131 runs graded.** 83 runs ended in `infra_error` with
-  `openrouter HTTP 402` (`in_flight_budget_exhausted`): the OpenRouter account
-  ran out of credit. The harness cap ($75) was not reached. Graded perf runs
-  cover the first 14 cases alphabetically (`perf-app-*`, `perf-cache-*`,
-  `perf-ctl-*`); no `perf-db-*`, `perf-infra-*`, `perf-net-*` or `perf-xs-*`
-  case was graded. Write: 8 runs over 6 cases.
-- **Model settings:** the `opus` entry in `models.yaml` at `49c92139`
-  (reasoning effort medium, 16000 tokens per turn, Anthropic caching), the
-  same as Haiku's run. Judge: Haiku 5.5, as always.
-- **Where it ran:** a local `twevals run` (`-j 3`) at clean commit `49c92139`,
-  not the CLI Evals workflow, so it is not a baseline.
-- **Spend:** $15.75 ($15.70 agent, $0.05 judge); $13.87 on graded runs and
-  $1.83 on runs cut off by the 402.
+  `cli-write+skill`/`mcp-write`), every one graded. The debug and setup suites
+  were left out: they need Docker, which the machine did not have.
+- **Two invocations, one result.** The first pass (cap $75, at `49c92139`)
+  graded 48 runs before the OpenRouter account ran out of credit; the other
+  83 ended in `infra_error` (HTTP 402). After a top-up, `twevals resume` (cap
+  $28, at `69ab7bb4`, which only adds the earlier partial record) re-ran
+  exactly those 83 and merged them in. The harness, CLI, backend and skills
+  were the same throughout.
+- **Model settings:** the `opus` entry in `models.yaml` (reasoning effort
+  medium, 16000 tokens per turn, Anthropic caching), the same as Haiku's run.
+  Judge: Haiku 5.5, as always.
+- **Where it ran:** a local `twevals` run (`-j 3`), not the CLI Evals
+  workflow, so it is not a baseline.
+- **Spend:** $39.90 in all. $37.94 agent and $0.13 judge for the graded runs,
+  plus $1.83 on runs the 402 cut off (`replacedSpendUsd` in the header).
 
-## Results (graded runs only)
+## Results
 
-| Suite | Arm | Pass | Right answer and evidence (ignoring trajectory) |
-|---|---|---|---|
-| perf | cli+skill | 10/14 (71%) | 11/14 (79%) |
-| perf | cli-noskill | 7/13 (54%) | 11/13 (85%) |
-| perf | mcp | 12/13 (92%) | 13/13 (100%) |
-| write | cli-write+skill | 5/5 | 5/5 |
-| write | mcp-write | 3/3 | 3/3 |
+| Suite | Arm | Pass | Right answer and evidence (ignoring trajectory) | Haiku pass, same runs |
+|---|---|---|---|---|
+| perf | cli+skill | 18/35 (51%) | 29/35 (83%) | 13/35 |
+| perf | cli-noskill | 19/35 (54%) | 27/35 (77%) | 18/35 |
+| perf | mcp | 31/35 (89%) | 34/35 (97%) | 19/35 |
+| write | cli-write+skill | 11/13 (85%) | 13/13 | 10/13 |
+| write | mcp-write | 11/13 (85%) | 12/13 | 10/13 |
 
-On the same 48 case × arm pairs, Haiku passed 21 (44%) and gave the right
-answer on 36 (75%), against Opus's 37 (77%) and 43 (90%), at about 1/28 of
-the cost ($0.49 vs $13.87).
+Overall, 90/131 pass (Haiku 70) and 115 have the right answer (Haiku 98), at
+29× Haiku's agent cost ($37.94 vs $1.32) with similar token use.
 
-- **Repeat thrash on `cli+skill` is mostly Haiku's:** 8 of Haiku's 14 runs on
-  those pairs failed only `max_identical_repeats`, against 1 for Opus. Without
-  the skill, Opus re-fetches `endpoints chart` to apply a different `jq` filter
-  on 3 of 13 runs.
-- **Trajectory grader artifacts:** a shell loop whose `date -d` failed counts
-  every iteration as an identical call (7× and 15× on `cli-noskill`; Opus
-  noticed the failure and redid the loop), and different `git show` commands
-  share one op key (`git {"subcommand":"show"}`).
-- **Grounding:** `perf-app-large-alloc` fails on both CLI arms because no
-  cited output contains `G1 Old Gen`, as it did for Haiku on every arm. One
-  run cites a call marked failed only because a trailing `jq` exited 5.
-- **One malformed tool call:** on `perf-app-excessive-logging` (`cli+skill`),
-  `submit_perf_diagnosis` arrived with tool-call XML inside `locus`
-  (`"\n<parameter name=\"service\">listings-api"`), failing the answer grader
-  on an otherwise right diagnosis.
+- **Infrastructure cases:** 9/12 right answers against Haiku's 1/12.
+- **The skill's `endpoints list` jq examples use fields that do not exist.**
+  `cli/pkg/mcpserver/knowledge/performance.md:12` uses `p50, p95, p99,
+  errorCount` and `notifications.md:38` uses `p50, p95, p99`, but
+  `EndpointStats` has `p50Duration` and so on, in nanoseconds. The filters
+  print nulls. With the skill, Opus copied them in 27/35 perf runs and Haiku
+  in 33/35. Skill uplift on perf is -3pp for Opus and -14pp for Haiku.
+- **Repeat-limit failures mostly come from guessing the JSON shape.** A blind
+  `jq` filter returns nothing, the command is re-run with `head -c` to see the
+  shape, then re-run again with the right filter. This explains 25 of Opus's
+  26 re-fetches and 30 of Haiku's 33.
+- **Grader artifacts:**
+  - each iteration of one shell loop counts as an identical call;
+  - different `git show`/`git log` commands share one op key;
+  - grounding fails a cited call when only a trailing `jq` in it errored (5 of
+    6 such failures);
+  - `perf-db-missing-query-cache` fails on every arm because the answer names
+    `GET /api/me (and every other route ...)` instead of exactly
+    `GET /api/me`.
+- **Malformed tool arguments:** in 5 of 107 diagnoses, the nested `locus`
+  arrived as a string starting with tool-call XML. Three of them failed the
+  answer grader on a right diagnosis. Haiku did this 0 times in 138.
+- **Write:** `write-archive-ambiguous` archived without `ask_user` on both
+  arms.
 
-`summary.md` and `results.json` are the harness's own output, including the 83
-`infra_error` runs. Transcripts were not committed.
+`summary.md` and `results.json` are the harness's own output. Transcripts were
+not committed.

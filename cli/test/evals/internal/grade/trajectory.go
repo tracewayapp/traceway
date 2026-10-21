@@ -24,7 +24,7 @@ import (
 //	max_calls, max_failed_calls, max_identical_repeats  thrash detection
 //
 // An op pattern is an exact op, "*", a prefix ("endpoints.*"), or a file op
-// with a path glob ("edit_file:handlers/*.go"); "a|b" matches either.
+// with a path glob ("edit_file:handlers/*.go").
 func Trajectory(run *record.Run, t *catalog.Trajectory) *Verdict {
 	v := newVerdict("trajectory", true)
 	all := run.AllOps()
@@ -135,15 +135,6 @@ func firstMatch(all []record.CallOp, m catalog.CallMatcher) int {
 func Matches(op *record.OpRecord, m catalog.CallMatcher) bool { return matches(op, m) }
 
 func matches(op *record.OpRecord, m catalog.CallMatcher) bool {
-	if alts := strings.Split(m.Op, "|"); len(alts) > 1 {
-		for _, alt := range alts {
-			m.Op = alt
-			if matches(op, m) {
-				return true
-			}
-		}
-		return false
-	}
 	pattern, glob, _ := strings.Cut(m.Op, ":")
 	if !opPattern(pattern, op.Op.Op) {
 		return false

@@ -90,6 +90,7 @@ func pctSeedXSIOSWatchdog(s *seed.Scenario) error {
 		r.Gap(r.Ms(0.3, 0.8))
 		r.Gap(poolWait(r))
 		r.DB("INSERT INTO push_tokens (user_id, platform, token, updated_at) VALUES ($1, $2, $3, now()) ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, updated_at = now()", r.LogNormal(3*time.Millisecond, 10*time.Millisecond))
+		r.Status(204)
 	})
 	feed := api.Endpoint("GET", "/api/feed")
 	feed.Traffic(seed.Daily(1500), seed.Diurnal(), launches, seed.Over(window))

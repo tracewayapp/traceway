@@ -55,6 +55,7 @@ func pctLedgerService(s *seed.Scenario, p *seed.Project, window time.Duration) *
 		r.Gap(r.Ms(0.5, 1.4))
 		r.DB("INSERT INTO ledger_entries (org_id, account_id, posted_at, description, amount_cents, currency) VALUES ($1, $2, $3, $4, $5, $6)", r.LogNormal(4*time.Millisecond, 15*time.Millisecond))
 		r.DB("UPDATE account_balances SET balance_cents = balance_cents + $2, updated_at = now() WHERE account_id = $1", r.LogNormal(3*time.Millisecond, 12*time.Millisecond))
+		r.Status(201)
 	})
 	s.Background(api, seed.TypicalTraffic(6))
 	return api

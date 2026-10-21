@@ -67,6 +67,7 @@ func pctSeedMarkedSlowRegressed(s *seed.Scenario) error {
 		r.DB("INSERT INTO invoices (org_id, number, issued_at, customer_name, total_cents, status) VALUES ($1, $2, $3, $4, $5, 'open') RETURNING id", r.LogNormal(4*time.Millisecond, 14*time.Millisecond))
 		r.DB("INSERT INTO invoice_lines (invoice_id, sku, description, qty, unit_price_cents) SELECT $1, * FROM unnest($2::text[], $3::text[], $4::int[], $5::bigint[])", r.LogNormal(4*time.Millisecond, 15*time.Millisecond))
 		r.DB("INSERT INTO invoice_tax_lines (invoice_id, rate_code, rate_bps, amount_cents) SELECT $1, * FROM unnest($2::text[], $3::int[], $4::bigint[])", r.LogNormal(3*time.Millisecond, 12*time.Millisecond))
+		r.Status(201)
 	})
 	s.Background(api, seed.TypicalTraffic(6))
 	api.Host().CPU(seed.Flat(0.22, 0.34))

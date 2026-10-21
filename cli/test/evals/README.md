@@ -358,9 +358,7 @@ See `perf-db-n-plus-1.yaml` for the full shape. The keys:
 - `credential` (`scope: read`, `member: readonly`) and `agent_access: false`
   for the policy cases.
 - `expect.answer`, `expect.grounding`, `expect.calls`, `expect.state` (kinds
-  in `internal/grade/state.go`), `expect.code`, `expect.report`. An op in
-  `expect.calls` is an exact op, `*`, a prefix (`endpoints.*`), a file op with
-  a path glob (`edit_file:handlers/*.go`), or alternatives (`logs.query|traces.show`).
+  in `internal/grade/state.go`), `expect.code`, `expect.report`.
 - `judge.rubric` and `judge.expected`. Both are shown only to the judge.
 - `hooks`: harness actions after a matching call, such as editing a
   post-mortem behind the agent's back (`edit_post_mortem`, `stub_healthy`,

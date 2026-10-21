@@ -36,7 +36,7 @@ func TestTrajectory(t *testing.T) {
 		Required:  []catalog.CallMatcher{{Op: "endpoints.list"}, {Op: "endpoints.show", Args: map[string]any{"recorded_at": "present"}}, {Op: "read_file:internal/handlers/*.go"}},
 		AnyOf:     [][]catalog.CallMatcher{{{Op: "metrics.query", Args: map[string]any{"name": "~system\\.cpu"}}}},
 		Forbidden: []catalog.CallMatcher{{Op: "*", Write: bp(true)}},
-		Order:     [][]string{{"endpoints.list", "endpoints.show"}, {"traces.show|endpoints.list", "read_file"}},
+		Order:     [][]string{{"endpoints.list", "endpoints.show"}},
 	}
 	if v := Trajectory(run, spec); !v.Pass {
 		t.Fatalf("a good trajectory failed:\n%s", failures(v))
@@ -52,9 +52,6 @@ func TestTrajectory(t *testing.T) {
 		"wrong order": {func(r *record.Run, s *catalog.Trajectory) {
 			r.Calls[0], r.Calls[1] = r.Calls[1], r.Calls[0]
 		}, "came after"},
-		"no alternative before": {func(r *record.Run, s *catalog.Trajectory) {
-			s.Order = [][]string{{"logs.query|traces.show", "read_file"}}
-		}, "happened without logs.query|traces.show"},
 		"missing timestamp": {func(r *record.Run, s *catalog.Trajectory) {
 			r.Calls[1] = call("c02", true, "{}", "traceway endpoints show abc")
 		}, "required call missing: endpoints.show"},

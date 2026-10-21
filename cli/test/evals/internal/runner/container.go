@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -283,6 +284,19 @@ func verifySetup(ctx context.Context, opt Options, c *catalog.Case, work string,
 		return v
 	}
 	defer cs.Close()
+	// The run's port sat unused while the agent worked, so a parallel run's
+	// server may hold it by now; the app gets a fresh one.
+	fresh, err := env.FreePort()
+	if err != nil {
+		v.Pass, v.Failures = false, []string{err.Error()}
+		return v
+	}
+	cs.env = slices.Clone(cs.env)
+	for i, e := range cs.env {
+		if strings.HasPrefix(e, "PORT=") {
+			cs.env[i] = "PORT=" + strconv.Itoa(fresh)
+		}
+	}
 	logPath, pidPath := "/tmp/app.log", "/tmp/app.pid"
 	if cs.host {
 		logPath, pidPath = filepath.Join(filepath.Dir(work), "app.log"), filepath.Join(filepath.Dir(work), "app.pid")
@@ -351,6 +365,13 @@ func verifySetup(ctx context.Context, opt Options, c *catalog.Case, work string,
 		}
 		time.Sleep(wait)
 		log, _ := cs.Exec(ctx, "tail -c 3000 "+logPath, 10*time.Second)
+		// Whatever answered on the port, the hits only count if they reached
+		// the app started here.
+		if _, code := cs.Exec(ctx, "kill -0 $(cat "+pidPath+")", 10*time.Second); code != 0 {
+			v.Pass = false
+			v.Failures = append(v.Failures, "the app exited before the check ended: "+tail(log, 2000))
+			return v
+		}
 		v.Notes = append(v.Notes, "app log tail: "+tail(log, 1500))
 	}
 	return v

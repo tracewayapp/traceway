@@ -79,7 +79,7 @@ oracle:
       traceway traces show {{seed.warmRequest.traceId}} --recorded-at {{seed.warmRequest.recordedAt}} --output json
       | jq '[.nodes[] | {endpoint: .endpoint.endpoint, version: .endpoint.appVersion, duration_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: (.duration/1e6|round)}]}]'
   - shell: >-
-      traceway endpoints chart --metric-type p95 --since 48h --interval-minutes 10 --output json
+      traceway endpoints chart --metric-type p95 --since 48h --interval-minutes 20 --output json
       | jq '[.series[] | select(.endpoint == "GET /api/categories/{slug}/products" and .value > 200) | {t: .timestamp, p95_ms: (.value|round)}]'
   - shell: git log --format='%h %ad %s' --date=iso -3
   - read_file: cmd/server/main.go

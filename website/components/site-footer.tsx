@@ -40,6 +40,7 @@ const COLUMNS: Column[] = [
     links: [
       { label: "Blog", href: "/blog" },
       { label: "Release Notes", href: "/releases" },
+      { label: "Benchmarks", href: "/benchmarks" },
       { label: "Docs", href: "https://docs.tracewayapp.com", external: true },
       { label: "GitHub", href: GITHUB_URL, external: true },
       { label: "Discord", href: DISCORD_URL, external: true },

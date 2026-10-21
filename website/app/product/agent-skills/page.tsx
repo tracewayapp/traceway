@@ -86,7 +86,7 @@ export default function AgentSkillsPage() {
               Works with Claude Code, Cursor, Codex, and any agent that reads
               SKILL.md.
             </p>
-            <p className="mt-3 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
+            <p className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
               <Link
                 href={GITHUB_URL}
                 target="_blank"
@@ -94,6 +94,12 @@ export default function AgentSkillsPage() {
                 className="text-fg-2 hover:text-blue-bright transition-colors"
               >
                 View on GitHub →
+              </Link>
+              <Link
+                href="/benchmarks"
+                className="text-fg-2 hover:text-blue-bright transition-colors"
+              >
+                See the benchmarks →
               </Link>
             </p>
           </div>

@@ -335,6 +335,13 @@ export function SiteHeader() {
               Blog
             </Link>
             <Link
+              href="/benchmarks"
+              className="h-9 px-3 rounded-md hidden lg:inline-flex items-center text-[14px] font-medium transition-colors text-[color:var(--fg-1)] hover:text-[color:var(--fg-0)] hover:bg-[color:var(--ink-2)]"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Benchmarks
+            </Link>
+            <Link
               href="https://docs.tracewayapp.com"
               target="_blank"
               rel="noopener noreferrer"

@@ -1,0 +1,97 @@
+# Agent Benchmarks
+
+import { Callout } from "nextra/components";
+
+Traceway ships an [agent skill](https://github.com/tracewayapp/traceway/tree/main/skills/traceway) for the [CLI](/learn/cli) and an [MCP server](/learn/mcp). We measure how well AI agents use them with an eval harness that lives in the repository at [`cli/test/evals`](https://github.com/tracewayapp/traceway/tree/main/cli/test/evals). This page describes how the harness works and what the numbers on the [benchmarks page](https://tracewayapp.com/benchmarks) mean.
+
+<Callout type="info">
+The published results are local runs with one run per case, so any single case × setup cell is noisy. Trust the suite-level rates more than any one cell. Failures caused by our own cases or skill count as failures too; the benchmarks page lists the known ones.
+</Callout>
+
+## What one run is
+
+Every run is a fresh, isolated Traceway instance with one broken system in it:
+
+1. **A hermetic backend.** The harness starts the standalone backend in SQLite mode, registers an organization, and seeds it through the real ingest endpoints (OTLP and `/api/report`): weeks of traces, metrics, logs, issues, deploys and dashboard objects, ending at a fixed "now".
+2. **One defect, one distractor.** The seed breaks the system in exactly one way (an N+1 query, pool exhaustion, a noisy neighbor, a cache stampede, GC pauses, a missing index, ...) and plants one named distractor that looks like a plausible cause but isn't.
+3. **A prompt like a real one.** The agent gets the kind of message a person would send: "checkout got slow this week, find out why", a pasted alert, a dashboard URL, or a request to archive the errors from last week's incident.
+4. **Real tools only.** The agent works through real `traceway` commands in a sandboxed shell, or through the MCP server's tools. Nothing else knows the answer.
+5. **A structured answer.** The agent submits a diagnosis (or finishes a write task) with a report, citing the tool calls (`c04`, `c11`) its evidence comes from.
+6. **Deterministic grading.** The graders below score the run. A model never decides whether a run passed.
+
+## Suites
+
+| Suite | Cases | Measures |
+|---|---|---|
+| perf | 35 | Diagnosing latency: every row of the skill's bottleneck checklist, plus controls (a healthy endpoint, an endpoint inside its slow allowance, one past it, an onset outside the chart's top 5, an alert hand-off, the metric "p95" trap) and cross-surface cases where browser, Android and iOS crashes have a backend cause |
+| debug | 14 | Debugging an issue to its root cause and fixing the code, in Go, Python, Node, Android, iOS and Flutter. Hidden tests check the fix |
+| write | 13 | The write playbooks (pages, alerts, monitors, archiving, post-mortems including a concurrent-edit conflict, slow marks) and the 403 policy (agent access off, a read-only token, a read-only member) |
+| setup | 6 | Instrumenting an app with the setup skill until its telemetry arrives: Go net/http, Express, FastAPI, Next.js, a React SPA and a Go + React monorepo |
+
+## Setups
+
+Each case runs on several setups, so the skill and the two surfaces can be compared on the same cases:
+
+| Setup | The agent gets |
+|---|---|
+| `cli+skill` | The `traceway` CLI and the `traceway` skill |
+| `cli-noskill` | The CLI and nothing else: the control group for skill uplift |
+| `mcp` | The MCP server's tools and knowledge |
+| `cli-write+skill`, `mcp-write` | The write edition of the CLI with the `traceway-write` skill, or the `/mcp/write` server |
+| `cli+setup-skill` | The setup skill and a container shell with the app's toolchain |
+
+**Skill uplift** is the `cli+skill` pass rate minus `cli-noskill`, on the same cases. **CLI vs MCP** is `cli+skill` minus `mcp`.
+
+## Graders
+
+| Grader | Gates | Checks |
+|---|---|---|
+| `answer` | yes | The diagnosis: the right checklist row and not the distractor, the right endpoint or service, the onset within tolerance. For debug cases, the category, culprit file, symbol and line |
+| `grounding` | yes | Every cited call exists, succeeded, was not truncated, and its output contains the deciding signal. An id the model invented fails the run |
+| `trajectory` | yes | Required, forbidden and ordered operations, such as opening one slow request, never writing on a read-only task, or asking before an ambiguous bulk write. CLI and MCP calls map to the same operations, and many cases accept more than one route to the same evidence |
+| `report` | yes | Statements the report must make, such as naming the figure that decides the case |
+| `state` | yes | After a write or setup run, the backend and the workspace are exactly as expected: the right two issues archived, not three |
+| `hidden_tests` | per case | Debug fixes: hidden tests copied in after the run pass, and the diff touches the culprit |
+| `setup_verify` | yes | The instrumented app builds, starts against the backend and serves traffic |
+| `efficiency` | no | Call counts, failed calls and repeated calls, reported in their own table |
+| `judge` | no | Claude Haiku 5.5 scores the report from 0 to 1 against the case's rubric. It does not gate until it agrees with human labels on at least 85% of runs |
+
+### What counts as a pass
+
+A run passes when its answer is right, its evidence is grounded and its writes are safe. How the agent got there is not graded: re-running a command to check a JSON shape is not a wrong answer, so call counts are reported, never gated. Each case still has a hard budget (turns, tool calls, wall-clock time); a run that exhausts it counts as a fail.
+
+A run that hits an infrastructure error, or stops at the spending cap, is left out of the pass rates and can be resumed.
+
+The benchmarks page also shows **right answer and evidence**: runs whose answer, grounding, report and state graders all passed, whatever the trajectory grader said.
+
+## Keeping it honest
+
+- **The answer key never reaches the agent.** The cases live in `cli/test/evals`, never in a skill directory, because everything there ships to the agent under test. The seed's exposed ids, the rubric and the expected answer are shown only to the graders and the judge.
+- **No hints in the data.** A leakage lint fails the build when a seeded string (a span name, an attribute, a log line, a stack trace) or a prompt names the answer: `n+1`, `stampede`, `missing index`, `gc pause` and similar. Seeds use real library messages such as SQLAlchemy's `QueuePool limit of size 5 overflow 10 reached`.
+- **Every case is passable.** Each case has an oracle: a reference trajectory played by a fake model. It must pass on every setup the case lists, for $0, before the case is added, and `just eval-harness` replays every oracle after a harness change.
+- **A sandbox, not a host shell.** The agent's shell is an interpreter with the setup's `traceway` binary, `jq`, `awk`, read-only text utilities confined to the workspace and read-only `git`. Tool processes get a scrubbed environment, so no key or secret reaches them.
+- **The same conditions for every model.** `models.yaml` pins exact OpenRouter model ids, never a floating alias, with the same reasoning effort (medium), the same per-turn token limit (16k), the same prompts, tools and budgets. Requests go to the model's own vendor first, and every run records which provider served it.
+- **Compare like with like.** Results are only compared between runs on the same commit and the same graders. When a grader changes, saved transcripts are re-scored instead of comparing old numbers with new ones.
+
+## Spending controls
+
+Evals cost real money, so nothing runs them automatically:
+
+- The CLI Evals workflow has a single trigger, `workflow_dispatch`, and the paid job waits for a required reviewer. A test fails the build if the workflow gains any other trigger or anything else starts it.
+- `--max-cost-usd` is required and has no default. Each run reserves its share before it starts and stops before a model call that would cross it.
+- A local paid run needs `yes` typed on a terminal, after a free preflight that prints the live-price estimate.
+
+## Run it yourself
+
+From `cli/` in a checkout of the repository:
+
+| Command | Cost | What it does |
+|---|---|---|
+| `just eval-harness` | $0 | The harness tests, then every case's oracle on every setup, with the fake model |
+| `just eval-plan --preset smoke --max-cost-usd 30` | $0 | The run matrix and a live-price cost estimate |
+| `just eval-dispatch -f preset=smoke -f max_cost_usd=30` | paid | Starts the CLI Evals workflow, which still waits for approval |
+| `just eval-local --preset full --suites perf --models haiku --max-cost-usd 5` | paid | A local run, for harness development |
+
+The debug and setup suites need Docker: it runs the hidden tests of a model's fix with no network, and it hosts the setup suite's toolchains. Each run writes a `summary.md` (pass rates, skill uplift, CLI vs MCP, model vs model, efficiency, cost) and keeps every transcript. `twevals report <dir>... --out DIR` merges runs into one comparison.
+
+See the harness [README](https://github.com/tracewayapp/traceway/tree/main/cli/test/evals) for the case format, the seed DSL and how to add a case.

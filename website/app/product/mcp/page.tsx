@@ -113,7 +113,7 @@ export default function McpPage() {
             <p className="dim mt-5 font-mono text-[0.75rem]">
               Works with Claude Code, Claude Desktop, Cursor, and any MCP client.
             </p>
-            <p className="mt-3 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
+            <p className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
               <Link
                 href="https://docs.tracewayapp.com/learn/mcp"
                 target="_blank"
@@ -121,6 +121,12 @@ export default function McpPage() {
                 className="text-fg-2 hover:text-blue-bright transition-colors"
               >
                 Read the MCP docs →
+              </Link>
+              <Link
+                href="/benchmarks"
+                className="text-fg-2 hover:text-blue-bright transition-colors"
+              >
+                See the benchmarks →
               </Link>
             </p>
           </div>

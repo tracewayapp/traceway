@@ -35,7 +35,7 @@ To resolve, hand straight to the **Performance flow** scoped to that endpoint, u
 
 ```bash
 # 1. confirm the alert against current stats for that endpoint
-traceway endpoints list --search "<endpoint>" --since 1h --output json | jq '.data[0] | {p50, p95, p99, count, impact, impactReason}'
+traceway endpoints list --search "<endpoint>" --since 1h --output json | jq '.data[0] | {p50_ms: (.p50Duration / 1e6), p95_ms: (.p95Duration / 1e6), p99_ms: (.p99Duration / 1e6), count, impact, impactReason}'
 # 2. is this an accepted baseline? check whether an operator marked it slow
 traceway endpoints slow "<endpoint>" --output json    # {offsetMs, reason}; offsetMs 0 = not marked
 # 3. find when it crossed the threshold, then a slow trace (see Flow: Performance)

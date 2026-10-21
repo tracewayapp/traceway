@@ -10,8 +10,9 @@ All commands are read-only. Never archive or mutate anything during a performanc
 1. **Quantify and localize.** Find the slow endpoint(s) and read the shape of the latency:
    ```bash
    traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json \
-     | jq '.data[]? | {endpoint, count, p50, p95, p99, errorCount}'
+     | jq '.data[]? | {endpoint, count, p50_ms: (.p50Duration / 1e6), p95_ms: (.p95Duration / 1e6), p99_ms: (.p99Duration / 1e6), impact}'
    ```
+   The rows are under `data`. `p50Duration`, `p95Duration`, `p99Duration` and `avgDuration` are nanoseconds, hence the `/ 1e6`.
    Read p50 vs p99 before anything else (see "Reading the latency shape").
 
 2. **Get a representative slow trace.** Drill into one slow request to see where the time goes. Capture an id and its `recordedAt` together, then:
@@ -74,10 +75,10 @@ traceway endpoints chart --metric-type p95 --since 7d --interval-minutes 60 --ou
 ```
 Caveat: it always returns the *top 5* endpoints by that metric. If your suspect route is not in the top 5 it is folded into "Other"; fall back to method 3 for it.
 
-**2. Infra and runtime over time: `metrics query --interval-minutes`.** For the *cause* behind a latency step (saturation, GC, throughput), bucket any metric the same way. The returned `series` is a list of `{timestamp, value}` points; read down them for the bucket where the value steps up.
+**2. Infra and runtime over time: `metrics query --interval-minutes`.** For the *cause* behind a latency step (saturation, GC, throughput), bucket any metric the same way. The JSON is `{results: [{name, unit, series}]}`, one result per query, and `series` maps each group to its list of `{timestamp, value}` points (a single `__all__` group when ungrouped); read down the points for the bucket where the value steps up.
 ```bash
 traceway metrics query --name system.cpu.utilization --aggregation max --since 7d --interval-minutes 60 --output json \
-  | jq '.series | to_entries[] | .value[] | {t: .timestamp, v: .value}'
+  | jq '.results[0].series | to_entries[] | .value[] | {t: .timestamp, v: .value}'
 ```
 A flat line that steps up at the same bucket the latency jumped is the saturation signal; flat metrics under a latency step point at code.
 
@@ -85,9 +86,9 @@ A flat line that steps up at the same bucket the latency jumped is the saturatio
 ```bash
 # is the regression in the first or second half of the suspect day?
 traceway endpoints list --search "GET /api/checkout" --from 2026-06-25T00:00:00Z --to 2026-06-25T12:00:00Z \
-  --output json | jq '.data[0] | {p95, p99, count}'
+  --output json | jq '.data[0] | {p95_ms: (.p95Duration / 1e6), p99_ms: (.p99Duration / 1e6), count}'
 traceway endpoints list --search "GET /api/checkout" --from 2026-06-25T12:00:00Z --to 2026-06-26T00:00:00Z \
-  --output json | jq '.data[0] | {p95, p99, count}'
+  --output json | jq '.data[0] | {p95_ms: (.p95Duration / 1e6), p99_ms: (.p99Duration / 1e6), count}'
 ```
 A few bisection steps localize the jump to an hour or less. Watch `count` alongside p95: if the slow half also carries far more traffic, suspect load, not a code change.
 

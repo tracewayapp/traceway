@@ -26,6 +26,7 @@ Everything else (creating rules and channels, editing schedules and policies, st
 ### Rules for every write
 
 - **Only on request.** Investigating, debugging, summarizing or "taking a look" never implies a write. The user has to ask for the change.
+- **Ask when the request could mean more than the user knows.** When a write would cover several records and they differ in a way the user may not know (one is still occurring, has a different cause, or belongs to another team), list them, say how they differ, and ask which ones to change before writing anything. Do not settle it yourself, even by leaving the odd one out.
 - **Say it before doing it.** One line naming the action, the record and the new value: "Snoozing rule 12 (Endpoint P95 on GET /api/search) for 60 minutes." The CLI asks for confirmation on a TTY and needs `--yes` otherwise. MCP clients run their own approval step.
 - **Prefer the reversible option.** Snooze rather than disable. Acknowledge rather than resolve while the problem is still live. Archive an issue rather than resolving its page with `--archive-issue` if you are unsure the page is done.
 - **Report what changed and how to undo it.**

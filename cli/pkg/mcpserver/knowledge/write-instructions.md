@@ -3,6 +3,7 @@
 This server was started with write access, so it also has mutating tools: archive_exceptions, unarchive_exceptions, acknowledge_page, resolve_page, set_notification_rule_enabled, snooze_notification_rule, run_check, create_post_mortem, update_post_mortem and set_slow_endpoint. Every one of them changes what the whole team sees.
 
 - Only call a mutating tool when the user asked for that change. Investigating, debugging or summarizing never implies a write.
+- When a write would cover several records and they differ in a way the user may not know (one is still occurring, has a different cause, or belongs to another team), list them, say how they differ, and ask which ones to change before calling the tool. Do not settle it yourself, even by leaving the odd one out.
 - Before the call, state the exact change in one line: the tool, the record and the new value. Then make it.
 - Prefer the reversible option: snooze a noisy rule rather than disabling it, acknowledge a page before resolving it, archive rather than resolve with archive_issue.
 - After the call, report what changed and how to undo it.

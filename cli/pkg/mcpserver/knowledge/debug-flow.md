@@ -53,7 +53,7 @@ traceway exceptions list --since 24h --order-by lastSeen        # what is errori
 traceway logs query --since 24h --min-severity 17               # errors and worse
 traceway logs query --since 24h --search "payment declined"     # search log bodies
 traceway logs query --since 24h --service checkout-api --min-severity 13
-traceway endpoints list --since 24h --search "checkout"         # latency p50/p95/p99 and error counts, --order-by impact|count|p95|lastSeen
+traceway endpoints list --since 24h --search "checkout"         # latency p50/p95/p99, count and impact, --order-by impact|count|p95|lastSeen
 ```
 
 Severity is an OTel number, not a name: 1 TRACE, 5 DEBUG, 9 INFO, 13 WARN, 17 ERROR, 21 FATAL. The flag is `--min-severity 17`, never `--severity error`.

@@ -40,7 +40,7 @@ func InitRequireWriteAccess() {
 		}
 
 		if role == "readonly" || role == "" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Read-only access. Write operations are not permitted."})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Your role in this project is read-only, so write operations are not permitted. An organization owner or admin can change it in Settings > Team Members."})
 			return
 		}
 

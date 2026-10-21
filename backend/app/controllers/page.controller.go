@@ -225,7 +225,7 @@ func (c *pageController) Resolve(ctx *gin.Context) {
 			return
 		}
 		if role == "readonly" || role == "" {
-			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Read-only access. Archiving the issue is not permitted."})
+			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Your role in this project is read-only, so archiving the issue is not permitted."})
 			return
 		}
 		if err := telemetry.ExceptionStackTraceRepository.ArchiveByHashes(ctx, page.ProjectId, []string{hash}); err != nil {
@@ -353,7 +353,7 @@ func (c *pageController) BulkResolve(ctx *gin.Context) {
 			return
 		}
 		if role == "readonly" || role == "" {
-			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Read-only access. Archiving the issues is not permitted."})
+			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Your role in this project is read-only, so archiving the issues is not permitted."})
 			return
 		}
 		hashes := make([]string, 0, len(hashSet))

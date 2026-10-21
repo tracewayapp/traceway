@@ -183,9 +183,10 @@ Graders:
 
 | Grader | Gates | Checks |
 |---|---|---|
-| `answer` | yes | The structured answer: checklist row (and not the distractor), locus, onset; or the debug category, culprit file, symbol and line (±3) |
-| `trajectory` | yes | Required, alternative, forbidden and ordered operations, and thrash limits. CLI and MCP calls map to the same operations (`internal/ops`) |
-| `grounding` | yes | Cited calls exist, succeeded and were not truncated. Their output contains the deciding signal. No id in the answer was invented |
+| `answer` | yes | The structured answer: checklist row (and not the distractor), locus (text after the endpoint's route, such as "(and every route behind the guard)", is ignored), onset; or the debug category, culprit file, symbol and line (±3) |
+| `trajectory` | yes | Required, alternative, forbidden and ordered operations. CLI and MCP calls map to the same operations (`internal/ops`) |
+| `efficiency` | no | The thrash limits in `expect.calls`: `max_calls`, `max_failed_calls` and `max_identical_repeats`. An operation counts once per tool call, so one shell loop is one call, and a `git` op is keyed by its argv. Re-running a call to check a JSON shape is not a wrong answer, so these are counted in the summary's Efficiency table instead of failing the run. The case `budget` still stops a run that spins |
+| `grounding` | yes | Cited calls exist, succeeded and were not truncated. A shell call succeeded when one of its operations (a `traceway` or `git` command) did, even if a later command in it (a `jq`) failed; then only what the model saw counts. Their output contains the deciding signal. No id in the answer was invented |
 | `state` | yes | After write and setup runs: the backend and the workspace are in the expected state |
 | `hidden_tests` | per case | Hidden tests copied in after the run, and whether the diff (against the workspace before the run) touches the culprit |
 | `setup_verify` | yes | The instrumented app builds, starts against the backend, and serves traffic |
@@ -308,12 +309,6 @@ Backend facts that bite (each one cost a case author an afternoon):
   is the projects' default. An endpoint seeded on one never appears and
   `Verify` fails with "endpoints never became visible"; a failing one (status
   400 or more) is kept.
-- `endpoints list --order-by p95|lastSeen` does not sort: the CLI sends
-  `p95`/`lastSeen`, the SQLite/DuckDB repositories only know
-  `p95_duration`/`last_seen`, and the list falls back to impact order. Keep
-  a case's endpoint count at ten or fewer so the slow one is on the first page
-  whatever the order. This is a product bug, not a harness one; the evals
-  should catch the skill's reliance on it.
 - A log body search over more than 24 hours answers 422 unless another filter
   (service, severity, trace) narrows it.
 - MCP results are JSON and escape `&`, `<` and `>`; grounding compares them

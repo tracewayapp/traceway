@@ -173,6 +173,11 @@ func (t *Submit) validate(p map[string]any) []string {
 	switch t.Kind {
 	case SubmitPerf:
 		need("checklist_item", "locus", "evidence", "fix", "confidence", "report")
+		if raw, present := p["locus"]; present {
+			if _, ok := raw.(map[string]any); !ok {
+				probs = append(probs, "locus must be an object with endpoint, span, service and host")
+			}
+		}
 		if v := str("checklist_item"); v != "" && !checklist.IsID(v) {
 			probs = append(probs, fmt.Sprintf("checklist_item %q is not one of the allowed values", v))
 		}
@@ -221,5 +226,39 @@ func (t *Submit) validate(p map[string]any) []string {
 	if c := str("confidence"); c != "" && !slices.Contains([]string{"low", "medium", "high"}, c) {
 		probs = append(probs, "confidence must be low, medium or high")
 	}
+	for _, f := range markupFields(p, "") {
+		probs = append(probs, f+" contains tool-call markup (<parameter name=...>); send every field as plain JSON")
+	}
 	return probs
+}
+
+// markupFields lists the string fields that carry tool-call markup: a model
+// that serialized a nested object as its own tool-call syntax, which leaves
+// the object a string and its fields flattened to the top level.
+func markupFields(v any, at string) []string {
+	var out []string
+	switch t := v.(type) {
+	case string:
+		if strings.Contains(t, "<parameter name=") {
+			out = append(out, at)
+		}
+	case map[string]any:
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
+			name := k
+			if at != "" {
+				name = at + "." + k
+			}
+			out = append(out, markupFields(t[k], name)...)
+		}
+	case []any:
+		for i, x := range t {
+			out = append(out, markupFields(x, fmt.Sprintf("%s[%d]", at, i))...)
+		}
+	}
+	return out
 }

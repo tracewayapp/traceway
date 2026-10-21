@@ -59,41 +59,7 @@ func TestTrajectory(t *testing.T) {
 			r.Calls = r.Calls[:2]
 			r.Calls = append(r.Calls, call("c03", true, "{}", "traceway metrics query --name mem.used"))
 		}, "none of these alternatives"},
-		"thrash": {func(r *record.Run, s *catalog.Trajectory) {
-			s.MaxIdenticalRepeats = 1
-			r.Calls = append(r.Calls, call("c09", true, "{}", "traceway endpoints list --since 24h --output json"))
-		}, "same call ran 2 times"},
-		"thrash, read in chunks of the same window": {func(r *record.Run, s *catalog.Trajectory) {
-			s.MaxIdenticalRepeats = 1
-			read := func(id string) *record.Call {
-				return &record.Call{ID: id, Tool: "read_file", OK: true, Ops: []record.OpRecord{{Op: ops.Op{Op: ops.OpReadFile, Args: map[string]any{"path": "big.go", "offset": 2001}}, OK: true}}}
-			}
-			r.Calls = append(r.Calls, read("c11"), read("c12"))
-		}, "same call ran 2 times"},
-		"too many failures": {func(r *record.Run, s *catalog.Trajectory) {
-			s.MaxFailedCalls = 0
-			s.MaxFailedCalls = 1
-			r.Calls = append(r.Calls, call("c10", false, "x", "traceway logs query"))
-		}, "failed tool calls"},
 	}
-	// Reading a file in chunks and changing one file several times are not
-	// thrashing.
-	chunked := &record.Run{Calls: append([]*record.Call{}, run.Calls...)}
-	for i, off := range []int{0, 2001, 4001} {
-		args := map[string]any{"path": "big.go"}
-		if off > 0 {
-			args["offset"] = off
-		}
-		chunked.Calls = append(chunked.Calls,
-			&record.Call{ID: fmt.Sprintf("r%d", i), Tool: "read_file", OK: true, Ops: []record.OpRecord{{Op: ops.Op{Op: ops.OpReadFile, Args: args}, OK: true}}},
-			&record.Call{ID: fmt.Sprintf("e%d", i), Tool: "edit_file", OK: true, Ops: []record.OpRecord{{Op: ops.Op{Op: ops.OpEditFile, Args: map[string]any{"path": "big.go"}}, OK: true}}})
-	}
-	repeats := *spec
-	repeats.MaxIdenticalRepeats = 1
-	if v := Trajectory(chunked, &repeats); !v.Pass {
-		t.Fatalf("chunked reads and repeated edits counted as thrashing:\n%s", failures(v))
-	}
-
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			r := &record.Run{Calls: append([]*record.Call{}, run.Calls...)}
@@ -104,6 +70,71 @@ func TestTrajectory(t *testing.T) {
 				t.Fatalf("want failure %q, got pass=%v:\n%s", c.want, v.Pass, failures(v))
 			}
 		})
+	}
+}
+
+func TestEfficiency(t *testing.T) {
+	base := []*record.Call{
+		call("c01", true, "{}", "traceway endpoints list --since 24h"),
+		call("c02", false, "error", "traceway metrics query --name system.cpu.utilization"),
+	}
+	limits := &catalog.Trajectory{MaxIdenticalRepeats: 1, MaxFailedCalls: 1, MaxCalls: 10}
+	if v := Efficiency(&record.Run{Calls: base}, limits); !v.Pass || v.Gating {
+		t.Fatalf("pass=%v gating=%v:\n%s", v.Pass, v.Gating, failures(v))
+	}
+	read := func(id string, off int) *record.Call {
+		args := map[string]any{"path": "big.go"}
+		if off > 0 {
+			args["offset"] = off
+		}
+		return &record.Call{ID: id, Tool: "read_file", OK: true, Ops: []record.OpRecord{{Op: ops.Op{Op: ops.OpReadFile, Args: args}, OK: true}}}
+	}
+	edit := func(id string) *record.Call {
+		return &record.Call{ID: id, Tool: "edit_file", OK: true, Ops: []record.OpRecord{{Op: ops.Op{Op: ops.OpEditFile, Args: map[string]any{"path": "big.go"}}, OK: true}}}
+	}
+	git := func(id string, argv string) *record.Call {
+		a := strings.Fields(argv)
+		return &record.Call{ID: id, Tool: "shell", OK: true, Ops: []record.OpRecord{{Op: ops.Op{Op: ops.OpGit, Args: map[string]any{"subcommand": a[1]}}, Argv: a, OK: true}}}
+	}
+	var many []*record.Call
+	for i := range 9 {
+		many = append(many, call(fmt.Sprintf("x%d", i), true, "{}", fmt.Sprintf("traceway endpoints list --since %dh", i+1)))
+	}
+	cases := map[string]struct {
+		extra []*record.Call
+		want  string // "" = no limit exceeded
+	}{
+		"same call twice":        {[]*record.Call{call("c09", true, "{}", "traceway endpoints list --since 24h --output json")}, "same call ran 2 times"},
+		"same read window twice": {[]*record.Call{read("c11", 2001), read("c12", 2001)}, "same call ran 2 times"},
+		"too many failures":      {[]*record.Call{call("c10", false, "x", "traceway logs query")}, "failed tool calls"},
+		"too many calls":         {many, "more than max_calls"},
+		// Reading a file in chunks and changing one file several times are
+		// not thrashing.
+		"chunked reads and edits": {[]*record.Call{read("r0", 0), edit("e0"), read("r1", 2001), edit("e1"), read("r2", 4001), edit("e2")}, ""},
+		// One shell loop runs the same command on every iteration.
+		"one loop": {[]*record.Call{call("c20", true, "{}", "traceway endpoints list --search /api/x", "traceway endpoints list --search /api/x", "traceway endpoints list --search /api/x")}, ""},
+		// git records only the subcommand; different commits are different questions.
+		"git show of different commits": {[]*record.Call{git("g1", "git show 1a2b3c4"), git("g2", "git show 5d6e7f8"), git("g3", "git show 9a8b7c6")}, ""},
+		"git show of one commit twice":  {[]*record.Call{git("g1", "git show 1a2b3c4"), git("g2", "git show 1a2b3c4")}, "same call ran 2 times"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			v := Efficiency(&record.Run{Calls: append(append([]*record.Call{}, base...), c.extra...)}, limits)
+			if v.Gating {
+				t.Fatal("efficiency must not gate")
+			}
+			switch {
+			case c.want == "" && !v.Pass:
+				t.Fatalf("want no limit exceeded, got:\n%s", failures(v))
+			case c.want != "" && (v.Pass || !strings.Contains(failures(v), c.want)):
+				t.Fatalf("want %q, got pass=%v:\n%s", c.want, v.Pass, failures(v))
+			}
+		})
+	}
+	// A run over every limit still passes when nothing gating failed.
+	over := &record.Run{Calls: append(append([]*record.Call{}, base...), call("c09", true, "{}", "traceway endpoints list --since 24h"), call("c10", false, "x", "traceway logs query"))}
+	if !Passed([]*Verdict{Trajectory(over, limits), Efficiency(over, limits)}) {
+		t.Fatal("the thrash limits failed the run")
 	}
 }
 
@@ -153,6 +184,22 @@ func TestSameEndpoint(t *testing.T) {
 			t.Errorf("sameEndpoint(%q, %q) = %v", c.got, c.want, got)
 		}
 	}
+	for _, c := range []struct {
+		got, want string
+		same      bool
+	}{
+		{"GET /api/me (and every other route via the global APP_GUARD)", "GET /api/me", true},
+		{"GET /api/me(global guard)", "GET /api/me", true},
+		{"`GET /api/me` for every request", "GET /api/me", true},
+		{"/api/me, via the guard", "GET /api/me", false},
+		{"GET /api/me/settings (the guard)", "GET /api/me", false},
+		{"POST /api/me (the guard)", "GET /api/me", false},
+		{"every route (GET /api/me included)", "GET /api/me", false},
+	} {
+		if got := answerEndpoint(c.got, c.want); got != c.same {
+			t.Errorf("answerEndpoint(%q, %q) = %v", c.got, c.want, got)
+		}
+	}
 }
 
 func TestGrounding(t *testing.T) {
@@ -163,6 +210,10 @@ func TestGrounding(t *testing.T) {
 	}
 	if v := Grounding(perfInput(sub("c01", ""), c1)); !v.Pass {
 		t.Fatalf("grounded answer failed: %s", failures(v))
+	}
+	// The traceway command printed its data; only a jq later in the call exited non-zero.
+	if v := Grounding(perfInput(sub("c01", ""), jqFailed("c01", out+"\njq: error: Cannot iterate over null", out))); !v.Pass {
+		t.Fatalf("a trailing jq error failed a cited call: %s", failures(v))
 	}
 	tests := map[string]struct {
 		in   *Input
@@ -177,6 +228,9 @@ func TestGrounding(t *testing.T) {
 		"invented id, submit recorded": {perfInput(sub("c01", "and trace 4bf92f3577b34da6a3ce929d0e0e4736"), c1,
 			&record.Call{ID: "c02", Tool: "submit_perf_diagnosis", OK: true, Args: json.RawMessage(`{"report":"trace 4bf92f3577b34da6a3ce929d0e0e4736"}`)}), "no tool returned"},
 		"missing key": {perfInput(sub("c02", ""), c1, call("c02", true, `{"data":[]}`, "traceway endpoints list")), "contains"},
+		// A failed jq after a traceway command leaves only what the model saw:
+		// the raw traceway output never reached it.
+		"key only in raw output, jq failed": {perfInput(sub("c01", ""), jqFailed("c01", "jq: error: Cannot index array", out)), "contains"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -186,6 +240,14 @@ func TestGrounding(t *testing.T) {
 			}
 		})
 	}
+}
+
+// jqFailed is a shell call whose traceway command succeeded and printed raw,
+// and whose exit status is a later jq's failure.
+func jqFailed(id, seen, raw string) *record.Call {
+	c := call(id, true, raw, "traceway endpoints show 6f9619ff-8b86-d011-b42d-00c04fc964ff --recorded-at 2026-10-17T10:00:00Z")
+	c.OK, c.Output = false, seen
+	return c
 }
 
 func TestLeakageLint(t *testing.T) {

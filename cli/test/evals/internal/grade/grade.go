@@ -1,7 +1,7 @@
 // Package grade scores one run. Deterministic graders gate the result:
-// answer, trajectory, grounding, state and hidden tests. The LLM judge scores
-// report quality and does not gate until it is calibrated against human
-// labels.
+// answer, trajectory, grounding, state and hidden tests. Efficiency (the
+// thrash limits) is reported and does not gate. The LLM judge scores report
+// quality and does not gate until it is calibrated against human labels.
 package grade
 
 import (
@@ -86,7 +86,7 @@ func All(ctx context.Context, in *Input) []*Verdict {
 		out = append(out, Answer(in))
 	}
 	if in.Case.Expect.Calls != nil {
-		out = append(out, Trajectory(in.Run, in.Case.Expect.Calls))
+		out = append(out, Trajectory(in.Run, in.Case.Expect.Calls), Efficiency(in.Run, in.Case.Expect.Calls))
 	}
 	if in.Case.Suite == "perf" || in.Case.Suite == "debug" || len(in.Case.Expect.Grounding) > 0 {
 		out = append(out, Grounding(in))

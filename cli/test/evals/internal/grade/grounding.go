@@ -12,7 +12,8 @@ import (
 
 // Grounding checks that the evidence is real:
 //   - every evidence.call_id names a call that exists, succeeded and was
-//     not truncated;
+//     not truncated (a shell call succeeded when one of its operations did,
+//     even if a later command in it, such as jq, failed);
 //   - every grounding key appears in the output of at least one cited call
 //     (what the model saw, or the raw traceway output inside that call);
 //   - every UUID, 32-hex trace id or 16-hex hash in the answer appears in
@@ -36,7 +37,7 @@ func Grounding(in *Input) *Verdict {
 				v.fail("evidence[%d] cites %q, which is not a call", i, id)
 			case c.Rejected:
 				v.fail("evidence[%d] cites %s, which was never executed", i, id)
-			case !c.OK || !anyOpOK(c):
+			case !anyOpOK(c) || (len(c.Ops) == 0 && !c.OK):
 				v.fail("evidence[%d] cites %s, which failed", i, id)
 			case c.Truncated:
 				v.fail("evidence[%d] cites %s, whose output was truncated", i, id)
@@ -66,12 +67,19 @@ func Grounding(in *Input) *Verdict {
 }
 
 // callContains looks for a grounding key in what the model saw and in the
-// raw output of the call's successful operations. MCP results are JSON, which
-// escapes &, < and > (\u0026, \u003c, \u003e), so those are compared
-// unescaped.
+// raw output of the call's successful operations. When a later command in the
+// call failed, only what the model saw counts: the raw output may never have
+// reached it. MCP results are JSON, which escapes &, < and > (\u0026, \u003c,
+// \u003e), so those are compared unescaped.
 func callContains(c *record.Call, key string) bool {
-	if anyOpOK(c) && strings.Contains(unescapeJSON(c.Output), key) {
+	if !anyOpOK(c) {
+		return false
+	}
+	if strings.Contains(unescapeJSON(c.Output), key) {
 		return true
+	}
+	if !c.OK {
+		return false
 	}
 	for _, op := range c.Ops {
 		if op.OK && strings.Contains(unescapeJSON(op.Output), key) {

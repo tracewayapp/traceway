@@ -75,6 +75,14 @@ func Markdown(r *Results) string {
 			fmt.Fprintf(&b, "| %s | %s | %s | %.0f%% | %.0f%% | %+.0fpp |\n", d.Suite, d.A, d.B, d.RateA*100, d.RateB*100, d.Delta)
 		}
 	}
+	if len(a.Efficiency) > 0 {
+		b.WriteString("\n## Efficiency (reported, not part of the pass rate)\n\n| Model | Arm | Runs | Avg tool calls | Avg failed calls | Over a call limit |\n|---|---|---|---|---|---|\n")
+		for _, k := range sortedKeys(a.Efficiency) {
+			m, arm, _ := strings.Cut(k, "|")
+			e := a.Efficiency[k]
+			fmt.Fprintf(&b, "| %s | %s | %d | %.1f | %.1f | %d |\n", m, arm, e.Runs, e.AvgToolCalls, e.AvgFailedCalls, e.OverLimit)
+		}
+	}
 	if paid {
 		b.WriteString("\n## Cost (averages over passing runs)\n\n| Model | Passing runs | Avg cost | Avg tool calls | Avg input tokens | Avg output tokens | Cache hit rate | Total spend |\n|---|---|---|---|---|---|---|---|\n")
 		for _, m := range sortedKeys(a.Cost) {

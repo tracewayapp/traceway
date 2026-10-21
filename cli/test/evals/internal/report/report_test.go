@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tracewayapp/traceway/cli/test/evals/internal/grade"
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/runner"
 )
 
@@ -33,6 +34,30 @@ func TestAggregate(t *testing.T) {
 	}
 	if c := a.Cost["opus"]; c.PassingRuns != 3 || math.Abs(c.AvgCostUSD-0.6) > 1e-9 {
 		t.Fatalf("cost %+v", c)
+	}
+}
+
+// TestEfficiency: going over a thrash limit is counted beside the pass rate,
+// not in it.
+func TestEfficiency(t *testing.T) {
+	over := res("perf-a", "cli+skill", "opus", 1, "pass", 0.5)
+	over.Metrics.FailedCalls = 4
+	over.Graders = []*grade.Verdict{{Grader: "answer", Pass: true, Gating: true}, {Grader: "efficiency", Pass: false, Failures: []string{"the same call ran 3 times"}}}
+	runs := []*runner.Result{over, res("perf-b", "cli+skill", "opus", 1, "pass", 0.5)}
+	a := Aggregate(runs)
+	if r := a.Suites["perf|opus|cli+skill"]; r.Pass != 2 {
+		t.Fatalf("an efficiency miss changed the pass rate: %+v", r)
+	}
+	e := a.Efficiency["opus|cli+skill"]
+	if e == nil || e.Runs != 2 || e.OverLimit != 1 || e.AvgFailedCalls != 2 || len(a.TopFailing) != 0 {
+		t.Fatalf("efficiency %+v, top failing %+v", e, a.TopFailing)
+	}
+	out := Markdown(&Results{Runs: runs, Aggregates: a})
+	if !strings.Contains(out, "| opus | cli+skill | 2 | 10.0 | 2.0 | 1 |") {
+		t.Errorf("summary lacks the efficiency row:\n%s", out)
+	}
+	if strings.Contains(out, "efficiency:") {
+		t.Errorf("an efficiency miss was reported as a run's failure:\n%s", out)
 	}
 }
 

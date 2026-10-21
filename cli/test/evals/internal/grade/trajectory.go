@@ -21,7 +21,10 @@ import (
 //	any_of     at least one group is fully satisfied
 //	forbidden  no operation matches
 //	order      the first match of A precedes the first match of B
-//	max_calls, max_failed_calls, max_identical_repeats  thrash detection
+//
+// The thrash limits (max_calls, max_failed_calls, max_identical_repeats) are
+// reported by Efficiency instead: checking a JSON shape twice is not a wrong
+// answer. The case budget still stops a run that spins.
 //
 // An op pattern is an exact op, "*", a prefix ("endpoints.*"), or a file op
 // with a path glob ("edit_file:handlers/*.go").
@@ -80,6 +83,15 @@ func Trajectory(run *record.Run, t *catalog.Trajectory) *Verdict {
 			v.fail("%s (%s) came after %s (%s)", pair[0], all[a].Call.ID, pair[1], all[b].Call.ID)
 		}
 	}
+	return v
+}
+
+// Efficiency checks the thrash limits. It does not gate: a run that repeats
+// or retries calls still passes on its answer, evidence and writes, and the
+// limits it went over are listed here for the report.
+func Efficiency(run *record.Run, t *catalog.Trajectory) *Verdict {
+	v := newVerdict("efficiency", false)
+	all := run.AllOps()
 	executed := 0
 	failed := 0
 	for _, c := range run.Calls {
@@ -99,13 +111,25 @@ func Trajectory(run *record.Run, t *catalog.Trajectory) *Verdict {
 	}
 	if t.MaxIdenticalRepeats > 0 {
 		// Thrashing is asking the same question again. Changing a local file
-		// (several edits, or appending to one file) is not.
+		// (several edits, or appending to one file) is not, and neither is
+		// one shell loop that runs the same command on each iteration: an
+		// operation counts once per tool call.
 		counts := map[string]int{}
-		for _, op := range all {
-			if op.Op.Op == ops.OpWriteFile || op.Op.Op == ops.OpEditFile {
+		for _, c := range run.Calls {
+			if c.Rejected {
 				continue
 			}
-			counts[opKey(op.OpRecord)]++
+			seen := map[string]bool{}
+			for i := range c.Ops {
+				op := &c.Ops[i]
+				if op.Op.Op == ops.OpWriteFile || op.Op.Op == ops.OpEditFile {
+					continue
+				}
+				if k := opKey(op); !seen[k] {
+					seen[k] = true
+					counts[k]++
+				}
+			}
 		}
 		keys := make([]string, 0, len(counts))
 		for k := range counts {
@@ -282,7 +306,12 @@ func opString(op *record.OpRecord) string {
 }
 
 // opKey identifies a call for repeat detection, ignoring output-format flags.
+// A git op records only its subcommand, so its argv is the key: three
+// `git show` calls of different commits are three questions.
 func opKey(op *record.OpRecord) string {
+	if op.Op.Op == ops.OpGit && len(op.Argv) > 0 {
+		return op.Op.Op + " " + strings.Join(op.Argv, " ")
+	}
 	args := map[string]any{}
 	for k, v := range op.Args {
 		if k == "output" || k == "fields" {

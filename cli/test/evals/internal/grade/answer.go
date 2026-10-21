@@ -38,7 +38,7 @@ func Answer(in *Input) *Verdict {
 			if locus == nil {
 				locus = map[string]any{}
 			}
-			if exp.Locus.Endpoint != "" && !sameEndpoint(str(locus, "endpoint"), exp.Locus.Endpoint) {
+			if exp.Locus.Endpoint != "" && !answerEndpoint(str(locus, "endpoint"), exp.Locus.Endpoint) {
 				v.fail("locus.endpoint %q, want %q", str(locus, "endpoint"), exp.Locus.Endpoint)
 			}
 			if exp.Locus.SpanContains != "" && !containsFold(str(locus, "span"), exp.Locus.SpanContains) {
@@ -121,6 +121,26 @@ func sameEndpoint(got, want string) bool {
 	// method.
 	_, wr, _ := strings.Cut(w, " ")
 	return g == wr || strings.HasSuffix(g, " "+w)
+}
+
+// answerEndpoint is sameEndpoint for an answer, which may qualify the right
+// endpoint: "GET /api/me (and every route behind the same guard)". Text after
+// the route is ignored; the route itself must still match.
+func answerEndpoint(got, want string) bool {
+	return sameEndpoint(got, want) || sameEndpoint(withoutQualifier(got), want)
+}
+
+// withoutQualifier cuts an endpoint answer after its route, the first field
+// that starts with "/", and at a "(" inside that field.
+func withoutQualifier(s string) string {
+	fields := strings.Fields(s)
+	for i, f := range fields {
+		if strings.HasPrefix(strings.Trim(f, "`\"'"), "/") {
+			route, _, _ := strings.Cut(f, "(")
+			return strings.Join(append(fields[:i:i], route), " ")
+		}
+	}
+	return s
 }
 
 func containsFold(s, sub string) bool {

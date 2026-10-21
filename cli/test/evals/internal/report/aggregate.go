@@ -61,6 +61,19 @@ type Aggregates struct {
 	JudgeUSD    float64           `json:"judgeUsd"`
 	Statuses    map[string]int    `json:"statuses"`
 	TopFailing  []GraderCount     `json:"topFailingGraders"`
+	// Efficiency is keyed "model|arm". It sits beside the pass rate and is
+	// never part of it.
+	Efficiency map[string]*Effort `json:"efficiency"`
+}
+
+// Effort is how hard the runs of one model and arm worked.
+type Effort struct {
+	Runs           int     `json:"runs"`
+	AvgToolCalls   float64 `json:"avgToolCalls"`
+	AvgFailedCalls float64 `json:"avgFailedCalls"`
+	// OverLimit counts runs that went over a case's max_calls,
+	// max_failed_calls or max_identical_repeats.
+	OverLimit int `json:"overLimit"`
 }
 
 // GraderCount counts failing graders.
@@ -77,7 +90,7 @@ func Counted(r *runner.Result) bool {
 
 // Aggregate computes pass rates and deltas.
 func Aggregate(runs []*runner.Result) Aggregates {
-	a := Aggregates{Cases: map[string]*Rate{}, Suites: map[string]*Rate{}, Cost: map[string]*Costs{}, Statuses: map[string]int{}}
+	a := Aggregates{Cases: map[string]*Rate{}, Suites: map[string]*Rate{}, Cost: map[string]*Costs{}, Statuses: map[string]int{}, Efficiency: map[string]*Effort{}}
 	graderFails := map[string]int{}
 	cacheIn, cacheHit := map[string]int{}, map[string]int{}
 	for _, r := range runs {
@@ -115,11 +128,27 @@ func Aggregate(runs []*runner.Result) Aggregates {
 			c.AvgInputTokens += float64(r.Metrics.InputTokens)
 			c.AvgOutputTokens += float64(r.Metrics.OutputTokens)
 		}
+		ekey := r.Model + "|" + r.Arm
+		e := a.Efficiency[ekey]
+		if e == nil {
+			e = &Effort{}
+			a.Efficiency[ekey] = e
+		}
+		e.Runs++
+		e.AvgToolCalls += float64(r.Metrics.ToolCalls)
+		e.AvgFailedCalls += float64(r.Metrics.FailedCalls)
 		for _, g := range r.Graders {
 			if g.Gating && !g.Skipped && !g.Pass {
 				graderFails[g.Grader]++
 			}
+			if g.Grader == "efficiency" && !g.Pass {
+				e.OverLimit++
+			}
 		}
+	}
+	for _, e := range a.Efficiency {
+		e.AvgToolCalls /= float64(e.Runs)
+		e.AvgFailedCalls /= float64(e.Runs)
 	}
 	for m, c := range a.Cost {
 		if c.PassingRuns > 0 {

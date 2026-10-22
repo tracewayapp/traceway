@@ -30,6 +30,8 @@ const PAGE_URL = "https://tracewayapp.com/benchmarks";
 
 const MODEL_ORDER = ["haiku", "deepseek-flash", "opus"];
 const MODEL_SHORT = { haiku: "Haiku", "deepseek-flash": "DeepSeek", opus: "Opus" };
+const MODEL_VENDOR = { haiku: "Anthropic", "deepseek-flash": "DeepSeek", opus: "Anthropic" };
+const MODEL_WEIGHTS = { haiku: "proprietary", "deepseek-flash": "open", opus: "proprietary" };
 
 const SUITES = [
   {
@@ -405,6 +407,8 @@ function main() {
       key,
       label: yaml.label,
       short: MODEL_SHORT[key],
+      vendor: MODEL_VENDOR[key],
+      weights: MODEL_WEIGHTS[key],
       id: yaml.id,
       provider: providers[0]?.name ?? "",
       reasoningEffort: yaml.reasoning_effort,
@@ -704,6 +708,8 @@ function renderMarkdown(data) {
       key: m.key,
       label: m.label,
       short: m.short,
+      vendor: m.vendor,
+      weights: m.weights,
       id: m.id,
       provider: m.provider,
       providers: m.providers,

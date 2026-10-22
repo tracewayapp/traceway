@@ -1,14 +1,21 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, Gauge } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
-import { Chip } from "@/components/chip";
-import { Eyebrow } from "@/components/eyebrow";
 import { SectionHead } from "@/components/section-head";
 import { StatsStrip } from "@/components/stats-strip";
 import { FinalCTA } from "@/components/final-cta";
 import { AuroraBackground } from "@/components/aurora-background";
 import { BenchmarkCaseMatrix } from "@/components/benchmark-case-matrix";
+import {
+  BenchmarkComparisonTable,
+  type ComparisonRow,
+  type ComparisonValue,
+} from "@/components/benchmark-comparison-table";
+import {
+  BenchmarkIndexChart,
+  type IndexView,
+} from "@/components/benchmark-index-chart";
 import {
   BenchmarkCostChart,
   type CostPoint,
@@ -39,10 +46,9 @@ const joinList = (items: string[]) =>
     ? items.join("")
     : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 const modelCount = numberWord(models.length);
-const modelCountTitle = capitalize(modelCount);
 
 export const metadata: Metadata = {
-  title: "Benchmarks · Traceway",
+  title: "Traceway AI Benchmarks",
   description: `How well do AI agents debug production with Traceway? ${run.runsPerModel} seeded production failures, ${modelCount} models (${models.map((m) => m.label).join(", ")}), graded by deterministic code. Pass rates, costs and every case.`,
 };
 
@@ -52,39 +58,6 @@ const CARD_STYLE = {
   boxShadow:
     "0 1px 2px rgba(10,14,24,0.04), 0 12px 30px -18px rgba(10,14,24,0.14)",
 };
-
-const GRADERS = [
-  {
-    name: "answer",
-    gates: true,
-    body: "The structured answer names the right checklist row and endpoint, and not the case's named distractor.",
-  },
-  {
-    name: "grounding",
-    gates: true,
-    body: "Every claim cites a tool call id whose output exists, succeeded and contains the signal.",
-  },
-  {
-    name: "trajectory",
-    gates: true,
-    body: "The required, forbidden and ordered calls.",
-  },
-  {
-    name: "report",
-    gates: true,
-    body: "The required statements appear in the report.",
-  },
-  {
-    name: "state",
-    gates: true,
-    body: "For write cases, the system is exactly right afterwards.",
-  },
-  {
-    name: "judge",
-    gates: false,
-    body: `${run.judge.label} scores the report from 0 to 1 against a rubric. It never gates.`,
-  },
-];
 
 function totalsOf(key: ModelKey) {
   return modelByKey[key].totals;
@@ -162,17 +135,174 @@ const costPoints: CostPoint[] = [
 ];
 
 const maxCost = Math.max(...models.map((m) => m.totals.costUsd));
-const suiteSelection = suites
-  .map(
-    (s) =>
-      `the ${s.id} suite (${s.cases} cases × ${s.setups.length} setups = ${s.cases * s.setups.length} runs)`,
-  )
-  .join(" plus ");
 const issueRuns = (key: ModelKey) =>
   knownIssues.reduce((n, i) => n + i.byModel[key], 0);
 const issueGroups = groups
   .filter((g) => knownIssues.some((i) => cases.find((c) => c.id === i.case)?.group === g.id))
   .map((g) => g.label);
+
+const groupRightAnswer = (groupId: string, key: ModelKey) =>
+  cases
+    .filter((c) => c.group === groupId)
+    .flatMap((c) => Object.values(c.runs[key]))
+    .filter((r) => r.kind === "pass" || r.kind === "trajectory").length;
+
+const indexViews: IndexView[] = [
+  {
+    id: "overall",
+    tab: "All runs",
+    title: `by model, all ${run.runsPerModel} runs`,
+    bars: models.map((m) => ({
+      id: m.key,
+      model: m.key,
+      weights: m.weights,
+      label: m.label,
+      detail: m.vendor,
+      pass: m.totals.pass,
+      rightAnswerEvidence: m.totals.rightAnswerEvidence,
+      runs: m.totals.runs,
+    })),
+  },
+  {
+    id: "setup",
+    tab: "By suite and setup",
+    title: "by suite and setup",
+    bars: setups.flatMap((s) =>
+      models.map((m) => ({
+        id: `${s.suite}-${s.arm}-${m.key}`,
+        model: m.key,
+        weights: m.weights,
+        label: m.short,
+        detail: s.suite === "perf" ? `Perf · ${s.label}` : s.label,
+        pass: s.results[m.key].pass,
+        rightAnswerEvidence: s.results[m.key].rightAnswerEvidence,
+        runs: s.results[m.key].runs,
+      })),
+    ),
+  },
+  {
+    id: "group",
+    tab: "By case group",
+    title: "by case group",
+    bars: groups.flatMap((g) =>
+      models.map((m) => ({
+        id: `${g.id}-${m.key}`,
+        model: m.key,
+        weights: m.weights,
+        label: m.short,
+        detail: g.label,
+        pass: g.results[m.key].pass,
+        rightAnswerEvidence: groupRightAnswer(g.id, m.key),
+        runs: g.results[m.key].runs,
+      })),
+    ),
+  },
+];
+
+const indexSubtitle = `Traceway agent evals, run ${run.date}. ${suites
+  .map((s) => `${s.label} (${s.cases} cases)`)
+  .join(" and ")} on ${setups.length} setups, ${run.runsPerCase} run per case, graded by deterministic code.`;
+
+const byPass = [...models].sort((a, b) => b.totals.pass - a.totals.pass);
+const pctText = (pass: number, runs: number) =>
+  `${((100 * pass) / runs).toFixed(1)}%`;
+const passValue = (
+  r: { pass: number; runs: number },
+  note?: string,
+): ComparisonValue => ({
+  value: r.pass / r.runs,
+  text: pctText(r.pass, r.runs),
+  note,
+  title: `${r.pass} of ${r.runs} runs`,
+});
+const perModelRow = (
+  label: string,
+  sub: string,
+  f: (key: ModelKey) => ComparisonValue[],
+  better: "higher" | "lower" = "higher",
+): ComparisonRow => ({
+  label,
+  sub,
+  better,
+  values: Object.fromEntries(models.map((m) => [m.key, f(m.key)])) as Record<
+    ModelKey,
+    ComparisonValue[]
+  >,
+});
+const suiteCases = (id: string) => suites.find((s) => s.id === id)!.cases;
+const GROUP_ORDER = [
+  "perf-ctl",
+  "perf-db",
+  "perf-app",
+  "perf-net",
+  "perf-cache",
+  "perf-infra",
+  "perf-xs",
+];
+const smallestGroup = Math.min(
+  ...groups.map((g) => g.results[models[0].key].runs),
+);
+const comparisonRows: ComparisonRow[] = [
+  perModelRow(
+    "Performance diagnosis",
+    `perf · ${suiteCases("perf")} cases, CLI`,
+    (k) => [
+      passValue(setupResult("perf", "cli+skill", k), "with the skill"),
+      passValue(setupResult("perf", "cli-noskill", k), "without the skill"),
+    ],
+  ),
+  perModelRow(
+    "Performance diagnosis over MCP",
+    `perf · ${suiteCases("perf")} cases, MCP server`,
+    (k) => [passValue(setupResult("perf", "mcp", k))],
+  ),
+  perModelRow(
+    "Safe write actions",
+    `write · ${suiteCases("write")} cases`,
+    (k) => [
+      passValue(setupResult("write", "cli-write+skill", k), "write CLI + skill"),
+      passValue(setupResult("write", "mcp-write", k), "write MCP server"),
+    ],
+  ),
+  ...GROUP_ORDER.map((id) => {
+    const g = groupById[id];
+    return perModelRow(
+      g.label,
+      `${g.id}-* · ${g.cases} cases, ${g.results[models[0].key].runs} runs`,
+      (k) => [passValue(g.results[k])],
+    );
+  }),
+  perModelRow("Overall pass rate", `all ${run.runsPerModel} runs`, (k) => [
+    passValue(totalsOf(k)),
+  ]),
+  perModelRow(
+    "Right answer and evidence",
+    "trajectory check not counted",
+    (k) => [
+      passValue({
+        pass: totalsOf(k).rightAnswerEvidence,
+        runs: totalsOf(k).runs,
+      }),
+    ],
+  ),
+  perModelRow(
+    "Agent spend",
+    `all ${run.runsPerModel} runs, lower is better`,
+    (k) => [
+      { value: totalsOf(k).costUsd, text: formatUsd(totalsOf(k).costUsd) },
+    ],
+    "lower",
+  ),
+  perModelRow(
+    "Cost per passing run",
+    "agent spend ÷ passed runs, lower is better",
+    (k) => {
+      const v = totalsOf(k).costUsd / totalsOf(k).pass;
+      return [{ value: v, text: formatUsd(v) }];
+    },
+    "lower",
+  ),
+];
 
 export default function BenchmarksPage() {
   return (
@@ -181,48 +311,27 @@ export default function BenchmarksPage() {
         <AuroraBackground variant="hero" />
         <div className="wrap relative z-10">
           <div className="flex flex-col items-center text-center">
-            <Chip>
-              <Gauge className="h-3 w-3 inline mr-1" />
-              Agent benchmarks
-            </Chip>
-            <h1 className="mt-6 max-w-[24ch]">
-              The same {run.runsPerModel} broken production systems.{" "}
-              <em>{modelCountTitle} models.</em>
+            <h1 className="max-w-[24ch]">
+              Traceway <em>AI Benchmarks</em>
             </h1>
-            <p className="hero-sub text-pretty">
-              Each run gets a fresh Traceway backend seeded with the telemetry
-              of a system broken in one specific way, and a prompt like
-              &ldquo;checkout got slow, find out why&rdquo;. Code grades the
-              diagnosis. Here is every result.
+            <p className="hero-sub text-pretty" style={{ maxWidth: 720 }}>
+              We believe you should bring your own AI. Traceway isn&apos;t here
+              to sell you an agent. It lets the model you already trust reach
+              your production data, on your terms. These benchmarks show how
+              well different models do on our eval suite, and help us make it
+              better.
             </p>
             <div className="hero-cta-row justify-center">
               <Link
                 href={run.methodologyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn btn-accent"
+                className="btn btn-ghost"
               >
                 How we measure
                 <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="#matrix" className="btn btn-ghost">
-                See every case
-              </Link>
             </div>
-            <p className="dim mt-6 font-mono text-[0.75rem]">
-              Run {run.date} · commit {run.commit} · {run.runsPerCase} run per
-              case
-            </p>
-            <p className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
-              <Link
-                href={run.harnessUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-fg-2 hover:text-blue-bright transition-colors"
-              >
-                The eval harness on GitHub →
-              </Link>
-            </p>
           </div>
           <StatsStrip
             className="mx-auto max-w-4xl"
@@ -250,11 +359,53 @@ export default function BenchmarksPage() {
             }
             description={`Every model ran the same ${run.runsPerModel} runs. A run passes when its answer is right, its evidence is grounded and its writes are safe. Tool-call counts are reported but never gate.`}
           />
-          <div className="grid gap-5 md:grid-cols-3">
+          <BenchmarkIndexChart views={indexViews} subtitle={indexSubtitle} />
+          <div className="mt-8 grid gap-5 md:grid-cols-3">
             {models.map((m) => (
               <ModelCard key={m.key} model={m} badges={BADGES[m.key] ?? []} />
             ))}
           </div>
+        </section>
+
+        <section id="compare" className="wrap scroll-mt-20 py-16 md:py-20">
+          <SectionHead
+            eyebrow="At a glance"
+            title={
+              <>
+                Every benchmark, <em>side by side.</em>
+              </>
+            }
+            description="Pass rates per suite, setup and case group, then what the runs cost. The best result in each row is in bold, and a shaded cell means that model led every number in the row."
+          />
+          <BenchmarkComparisonTable
+            models={byPass.map((m) => ({
+              key: m.key,
+              label: m.label,
+              note: m.weights === "open" ? "open weights" : m.vendor,
+            }))}
+            rows={comparisonRows}
+          />
+          <p className="mt-4 text-[0.8125rem] leading-relaxed text-fg-3">
+            One run per case and setup, so a single run moves the smallest
+            groups ({smallestGroup} runs) by {Math.round(100 / smallestGroup)}{" "}
+            points. Hover a number for its run count. Open a{" "}
+            <Link
+              href="https://github.com/tracewayapp/traceway/pulls"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-bright hover:underline"
+            >
+              PR
+            </Link>{" "}
+            or email{" "}
+            <a
+              href="mailto:dusan@tracewayapp.com"
+              className="text-blue-bright hover:underline"
+            >
+              dusan@tracewayapp.com
+            </a>{" "}
+            if you&apos;d like to see your model featured.
+          </p>
         </section>
 
         <section id="findings" className="wrap scroll-mt-20 py-16 md:py-20">
@@ -595,10 +746,10 @@ export default function BenchmarksPage() {
           eyebrow="Methodology"
           title={
             <>
-              How the evals <em>work.</em>
+              How we <em>measure.</em>
             </>
           }
-          description="Traceway ships an agent skill, markdown that teaches an agent to debug production with the traceway CLI, and an MCP server with the same knowledge plus tools. The evals measure how well agents use them."
+          description={`Each task is a fresh Traceway backend seeded with weeks of telemetry from a system broken in one way, plus a planted red herring. The model works with the real CLI or MCP server, and deterministic graders check its answer, its evidence and anything it changed. All runs on ${run.date}, at commit ${run.commit}, ${run.runsPerCase} run per case.`}
           cta={
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               <Link
@@ -607,7 +758,7 @@ export default function BenchmarksPage() {
                 rel="noopener noreferrer"
                 className="btn btn-accent"
               >
-                How we measure
+                Methodology and every test case
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
@@ -621,131 +772,6 @@ export default function BenchmarksPage() {
             </div>
           }
         />
-        <div className="grid gap-x-14 gap-y-12 md:grid-cols-2">
-          <MethodBlock label="The cases">
-            <p className="muted text-pretty">
-              Each run gets a fresh Traceway backend, seeded with realistic
-              telemetry of a system broken in one specific way: an N+1 query,
-              pool exhaustion, a noisy neighbor, a cache stampede, GC pauses.
-              The model gets a prompt like &ldquo;checkout got slow, find out
-              why&rdquo; and has to diagnose it. Write cases ask it to act:
-              acknowledge a page, snooze an alert, run a monitor, archive
-              issues, write a post-mortem.
-            </p>
-            <p className="muted mt-4 text-pretty">
-              This run covers {suiteSelection}: {run.runsPerModel} runs per
-              model, {run.runsPerCase} per case.
-              {run.allGraded
-                ? " Every run was graded; none hit an infra error, its budget or the cost ceiling."
-                : ""}
-            </p>
-          </MethodBlock>
-
-          <MethodBlock label="The setups">
-            <ul className="feat-bullets mt-0!">
-              {setups.map((s) => (
-                <li key={`${s.suite}-${s.arm}`}>
-                  <span>
-                    <code>{s.arm}</code> {s.description}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </MethodBlock>
-
-          <MethodBlock label="The graders">
-            <ul className="feat-bullets mt-0!">
-              {GRADERS.map((g) => (
-                <li key={g.name}>
-                  <span>
-                    <code>{g.name}</code> {g.body}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="muted mt-4 text-pretty">
-              The graders are deterministic code, apart from the judge. A run
-              passes when its answer is right, its evidence is grounded and its
-              writes are safe. Tool-call counts are reported but never gate.
-            </p>
-          </MethodBlock>
-
-          <MethodBlock label="The models">
-            <ul className="feat-bullets mt-0!">
-              {models.map((m) => (
-                <li key={m.key}>
-                  <span>
-                    {m.label} <code>{m.id}</code>, served by{" "}
-                    {m.providers[0].name} on {m.providers[0].runs} of{" "}
-                    {m.totals.runs} runs
-                    {m.providers.length > 1
-                      ? `; ${m.providers
-                          .slice(1)
-                          .map((p) => `${p.runs} also had some turns on ${p.name}`)
-                          .join(", ")}`
-                      : ""}
-                    .
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="muted mt-4 text-pretty">
-              All through OpenRouter with the same settings: reasoning effort{" "}
-              {models[0].reasoningEffort},{" "}
-              {(models[0].maxTokensPerTurn / 1000).toFixed(0)}k max tokens per
-              turn, the same prompts, tools and budgets.
-            </p>
-          </MethodBlock>
-
-          <MethodBlock label="Caveats" className="md:col-span-2">
-            <ul className="feat-bullets mt-0!">
-              <li>
-                <span>
-                  One run per case, so a single cell is noisy. Read the totals
-                  and the groups before any one cell.
-                </span>
-              </li>
-              <li>
-                <span>
-                  Local runs on one machine, not the CI workflow&apos;s
-                  baselines.
-                </span>
-              </li>
-              <li>
-                <span>
-                  The debug and setup suites, which fix code and instrument
-                  apps, need Docker and were not run.
-                </span>
-              </li>
-              <li>
-                <span>
-                  The judge is {run.judge.label} for every model, including
-                  when it grades its own runs. It never gates a pass.
-                </span>
-              </li>
-              <li>
-                <span>
-                  Some failures are our own case and skill bugs, listed under
-                  Key findings. They are counted as failures here.
-                </span>
-              </li>
-              <li>
-                <span>
-                  All runs on {run.date}, at commit <code>{run.commit}</code> (
-                  {run.cliVersion}, {run.backendVersion}).{" "}
-                  <Link
-                    href={run.harnessUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-bright hover:underline"
-                  >
-                    Read the harness and the cases on GitHub →
-                  </Link>
-                </span>
-              </li>
-            </ul>
-          </MethodBlock>
-        </div>
       </section>
 
       <FinalCTA
@@ -1066,22 +1092,5 @@ function MetricRow({ label, values }: { label: string; values: string[] }) {
         </td>
       ))}
     </tr>
-  );
-}
-
-function MethodBlock({
-  label,
-  className,
-  children,
-}: {
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={className}>
-      <Eyebrow>{label}</Eyebrow>
-      <div className="mt-4">{children}</div>
-    </div>
   );
 }

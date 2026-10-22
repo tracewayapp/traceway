@@ -21,6 +21,8 @@ export type Model = {
   key: ModelKey;
   label: string;
   short: string;
+  vendor: string;
+  weights: "open" | "proprietary";
   id: string;
   provider: string;
   providers: { name: string; runs: number }[];

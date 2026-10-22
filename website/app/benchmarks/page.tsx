@@ -388,7 +388,7 @@ export default function BenchmarksPage() {
           <p className="mt-4 text-[0.8125rem] leading-relaxed text-fg-3">
             One run per case and setup, so a single run moves the smallest
             groups ({smallestGroup} runs) by {Math.round(100 / smallestGroup)}{" "}
-            points. Hover a number for its run count. Open a{" "}
+            points. Open a{" "}
             <Link
               href="https://github.com/tracewayapp/traceway/pulls"
               target="_blank"

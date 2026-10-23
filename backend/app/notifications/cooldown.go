@@ -110,6 +110,12 @@ func (m *dedupTracker) record(key string) {
 	m.seen[key] = time.Now()
 }
 
+func (m *dedupTracker) forget(key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.seen, key)
+}
+
 func (m *dedupTracker) purgeExpired(maxAge time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

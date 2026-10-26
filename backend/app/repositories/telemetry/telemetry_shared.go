@@ -13,6 +13,13 @@ type (
 	LogAttributeFilter     = shared.LogAttributeFilter
 	LogSearchParams        = shared.LogSearchParams
 	SpanLookup             = shared.SpanLookup
+	SLOBucket              = shared.SLOBucket
+	SLOBucketPoint         = shared.SLOBucketPoint
+	EndpointSLISpec        = shared.EndpointSLISpec
+	TaskSLISpec            = shared.TaskSLISpec
+	SpanSLISpec            = shared.SpanSLISpec
+	OtelSpanSearch         = shared.OtelSpanSearch
+	OtelAttributeFilter    = shared.OtelAttributeFilter
 )
 
 var (

@@ -71,6 +71,8 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[OutboxRuleEnqueue](driver)
 	lit.RegisterModel[OutboxHealthCounts](driver)
 	lit.RegisterModel[SyntheticCheck](driver)
+	lit.RegisterModel[SLO](driver)
+	lit.RegisterModel[NotificationRuleState](driver)
 	lit.RegisterModel[CheckRun](driver)
 	lit.RegisterModel[CheckRunHealthCounts](driver)
 	lit.RegisterModel[CheckIncident](driver)

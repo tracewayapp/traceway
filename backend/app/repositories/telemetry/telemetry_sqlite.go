@@ -18,4 +18,5 @@ var (
 	OtelSpanRepository            = sqliterepo.OtelSpanRepository
 	LegacyRepository              = sqliterepo.LegacyRepository
 	TaskRepository                = sqliterepo.TaskRepository
+	SLOBucketRepository           = sqliterepo.SLOBucketRepository
 )

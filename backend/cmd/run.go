@@ -31,6 +31,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/retention"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/services/mcpmount"
+	"github.com/tracewayapp/traceway/backend/app/slo"
 	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
@@ -189,6 +190,7 @@ func Run(opts ...Option) {
 	oncall.StartEscalator(ctx)
 	notifications.StartEvaluator(ctx)
 	synthetics.Start(ctx)
+	slo.Start(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
 	sourcemapbackfill.Start(ctx)

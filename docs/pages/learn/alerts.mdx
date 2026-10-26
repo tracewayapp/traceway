@@ -148,6 +148,8 @@ Rules belong to a project and only evaluate that project's data. Frontend projec
 | [AI Conversation Cost](#ai-conversation-cost) | A conversation's cumulative 24-hour cost exceeds a threshold | On ingest |
 | [AI Flagged Content](#ai-flagged-content) | An AI conversation matches a flagged content term | On ingest |
 | [Monitor Down](#monitor-down) | A monitor crosses its failure threshold | On state change |
+| [SLO Burn Rate](#slo-burn-rate) | An SLO burns its error budget faster than a threshold over both a long and a short window | Polled |
+| [SLO Budget Consumed](#slo-budget-consumed) | An SLO has consumed more than a share of its window's error budget | Polled |
 
 ### New Issue
 
@@ -316,6 +318,28 @@ Fires when a [monitor](/learn/monitors) transitions to down, which happens only 
 
 There are no rule-specific options. Pointing the rule at an escalation channel opens an [on-call page](/learn/on-call) instead of sending a message: the page deduplicates per monitor, re-fires never restart its escalation clock, and recovery resolves it automatically.
 
+### SLO Burn Rate
+
+Fires when an [SLO](/learn/slos) spends its error budget faster than the threshold over both the long and the short window, and sends a recovery notice once the long window drops below it. Both windows must burn: the short one keeps a burn that already ended from paging, the long one keeps a one-minute blip from paging. The rule fires once when the condition starts and again only after it cleared, so it never re-pages every poll. The recovery notice is always Info.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| SLO | required | The SLO to watch |
+| Long Window Minutes | 60 | Lookback of the long window |
+| Short Window Minutes | 5 | Lookback of the short window; must be shorter than the long one |
+| Burn Rate Threshold | 14.4 | Multiple of the rate that spends the budget exactly over the SLO window |
+
+The form offers three presets: Fast (14.4x over 1h / 5m, pages when 2% of a 30-day budget burns in an hour), Slow (6x over 6h / 30m) and Long (1x over 3d / 6h). Pointing the rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically.
+
+### SLO Budget Consumed
+
+Fires when an [SLO](/learn/slos) has consumed more than the configured share of its window's error budget, and sends a recovery notice when the budget climbs back above the line. Like SLO Burn Rate it fires on the transition only.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| SLO | required | The SLO to watch |
+| Consumed % | 80 | Share of the error budget that has to be gone |
+
 ## Evaluation Model and Cost
 
 Rules are evaluated in one of three ways:
@@ -345,6 +369,8 @@ Each rule type has a different evaluation cost against the telemetry database. T
 | Throughput Drop | Two counts: lookback plus baseline window | Low |
 | Task Failure Rate | Two queries joining tasks and exceptions over the window | Moderate |
 | Impact Score | One scan of the trailing 24 hours of requests | Highest |
+| SLO Burn Rate | Two sums over the SLO's precomputed buckets, no raw telemetry | Minimal |
+| SLO Budget Consumed | One sum over the SLO's precomputed buckets | Minimal |
 
 Cost-relevant behavior:
 
@@ -388,6 +414,8 @@ Each rule has a **Severity** setting that controls the severity attached to its 
 | Metric Threshold | Warning; Critical when the value deviates from the threshold by more than 20% |
 | AI Trace Cost | Warning; Critical at three times the threshold |
 | Monitor Down | Critical; the recovery notice is Info |
+| SLO Burn Rate | Warning; Critical when the long window burns at twice the threshold; the recovery notice is Info |
+| SLO Budget Consumed | Warning; Critical once the whole budget is consumed; the recovery notice is Info |
 
 You can override the automatic severity by setting it explicitly on a rule to **Critical**, **Warning**, or **Info**. This is useful when you want a normally-warning condition to page as critical, or to downgrade noisy rules to info.
 

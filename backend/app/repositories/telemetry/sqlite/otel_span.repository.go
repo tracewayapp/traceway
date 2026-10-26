@@ -153,6 +153,9 @@ var sqliteSearchDialect = shared.OtelSearchDialect{
 	NameLike:    "INSTR(LOWER(name), LOWER(?)) > 0",
 	Attribute:   `json_extract(span_attributes, '$."' || ? || '"') = ?`,
 	StartOrder:  "CAST(start_time_unix_nano AS INTEGER)",
+	Bucket:      epochBucket,
+	Count:       "COUNT(*)",
+	CountIf:     sumIf,
 }
 
 func (r *otelSpanRepository) Search(ctx context.Context, search shared.OtelSpanSearch) ([]models.OtelSpan, uint64, error) {

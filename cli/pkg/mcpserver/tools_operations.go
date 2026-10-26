@@ -27,7 +27,7 @@ func (s *server) addOperationReadTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "list_notification_rules",
 		OutputSchema: passThroughSchema,
-		Description:  "List the project's alert rules: id, name, ruleType (new_error, error_regression, error_rate_threshold, error_count_threshold, endpoint_p95_threshold, endpoint_p99_threshold, endpoint_error_rate, apdex_drop, throughput_drop, metric_threshold, no_data, task_duration_threshold, task_failure_rate, impact_score_*, ai_trace_cost, ai_conversation_cost, ai_flagged_content, check_down), enabled, snoozedUntil, threshold config and the channels they notify.",
+		Description:  "List the project's alert rules: id, name, ruleType (new_error, error_regression, error_rate_threshold, error_count_threshold, endpoint_p95_threshold, endpoint_p99_threshold, endpoint_error_rate, apdex_drop, throughput_drop, metric_threshold, no_data, task_duration_threshold, task_failure_rate, impact_score_*, ai_trace_cost, ai_conversation_cost, ai_flagged_content, check_down, slo_burn_rate, slo_budget_consumed), enabled, snoozedUntil, threshold config and the channels they notify.",
 		Annotations:  readOnly(),
 	}, s.listNotificationRules)
 

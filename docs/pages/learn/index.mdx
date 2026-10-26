@@ -38,6 +38,10 @@ Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root
 
 See [Data Flow](/learn/data-flow) for how these connect during request processing, task execution, and metrics collection, and [Project Structure](/learn/projects) for how to split an application across Traceway projects before you instrument it.
 
+## Objectives
+
+An [SLO](/learn/slos) holds any of the above to a target: the share of good requests of an endpoint, of spans matching a filter, of task runs, of monitor probes, or of metric time slices, over a rolling 7, 30 or 90 day window. The worker folds the raw rows into per-minute good/total buckets once, so the current SLI, the error budget and the burn rates are sums over buckets rather than scans, and the burn-rate [alert rules](/learn/alerts#slo-burn-rate) read the same buckets.
+
 ## Above a single project
 
 Everything above is scoped to one project. The [Organization Overview](/learn/organization-overview) sits above them all: every server reporting into the organization, every recently active issue, every monitor, and every open on-call page, each one a sidebar click apart. It is how a fleet of servers or a [Kubernetes cluster](/learn/kubernetes) is read at a glance before you drill into the project that owns the problem.

@@ -14,9 +14,10 @@ import (
 )
 
 type EvalResult struct {
-	Fired    bool
-	Message  Message
-	Messages []Message
+	Fired     bool
+	Recovered bool
+	Message   Message
+	Messages  []Message
 }
 
 type RuleEvaluator func(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error)
@@ -36,6 +37,8 @@ var polledEvaluators = map[string]RuleEvaluator{
 	"impact_score_critical":   evaluateImpactScoreCritical,
 	"impact_score_high":       evaluateImpactScoreHigh,
 	"impact_score_medium":     evaluateImpactScoreMedium,
+	"slo_burn_rate":           evaluateSLOBurnRate,
+	"slo_budget_consumed":     evaluateSLOBudgetConsumed,
 }
 
 // --- Error Rate Threshold ---

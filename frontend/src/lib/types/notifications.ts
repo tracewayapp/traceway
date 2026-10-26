@@ -49,4 +49,9 @@ export type NotificationRuleConfig = {
 	traceName?: string;
 	thresholdCost?: number;
 	terms?: string[];
+	sloId?: number;
+	longWindowMinutes?: number;
+	shortWindowMinutes?: number;
+	burnRateThreshold?: number;
+	consumedPercent?: number;
 };

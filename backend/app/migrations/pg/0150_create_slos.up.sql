@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS slos (
+    id SERIAL PRIMARY KEY,
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    sli_kind VARCHAR(20) NOT NULL,
+    sli_config JSONB NOT NULL DEFAULT '{}',
+    target_percent DOUBLE PRECISION NOT NULL,
+    window_days INT NOT NULL DEFAULT 30,
+    bucket_minutes INT NOT NULL DEFAULT 1,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    status VARCHAR(20) NOT NULL DEFAULT 'no_data',
+    current_sli DOUBLE PRECISION,
+    budget_remaining DOUBLE PRECISION,
+    burn_rate_1h DOUBLE PRECISION,
+    burn_rate_6h DOUBLE PRECISION,
+    computed_at TIMESTAMPTZ,
+    history_from TIMESTAMPTZ,
+    last_bucket_at TIMESTAMPTZ,
+    created_by INT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)

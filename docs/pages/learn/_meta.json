@@ -20,6 +20,7 @@
   "auto-fix": "Auto-Fix",
   "on-call": "On-Call",
   "monitors": "Monitors",
+  "slos": "SLOs",
   "incidents": "Incidents & Post-Mortems",
   "sso": "SSO",
   "cli": "CLI",

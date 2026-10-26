@@ -18,7 +18,9 @@ export const ruleTypeOptions = [
 	{ value: 'ai_trace_cost', label: 'AI Trace Cost' },
 	{ value: 'ai_conversation_cost', label: 'AI Conversation Cost' },
 	{ value: 'ai_flagged_content', label: 'AI Flagged Content' },
-	{ value: 'check_down', label: 'Monitor Down' }
+	{ value: 'check_down', label: 'Monitor Down' },
+	{ value: 'slo_burn_rate', label: 'SLO Burn Rate' },
+	{ value: 'slo_budget_consumed', label: 'SLO Budget Consumed' }
 ];
 
 export const ruleTypeLabels: Record<string, string> = Object.fromEntries(

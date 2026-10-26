@@ -563,3 +563,75 @@ func TestContactMethodMessage() Message {
 		},
 	}
 }
+
+func buildSLOBurnRateMessage(entity *models.SLO, longBurn, shortBurn float64, longMinutes, shortMinutes int, threshold float64, projectName string) Message {
+	severity := SeverityWarning
+	if longBurn >= threshold*2 {
+		severity = SeverityCritical
+	}
+	headline := fmt.Sprintf("The SLO %q is burning its error budget at %.1fx over the last %s and %.1fx over the last %s (threshold %.1fx).",
+		entity.Name, longBurn, windowLabel(longMinutes), shortBurn, windowLabel(shortMinutes), threshold)
+	return Message{
+		Subject:    fmt.Sprintf("[%s] SLO %q burn rate %.1fx", projectName, entity.Name, longBurn),
+		Body:       headline,
+		Severity:   severity,
+		URL:        fmt.Sprintf("/slos/%d", entity.Id),
+		DedupToken: SLODedupToken(entity.Id),
+		Email: alertEmail(models.EmailAlert{
+			ProjectName: projectName,
+			Headline:    headline,
+			ScopeLabel:  "SLO",
+			Scope:       entity.Name,
+			Observed:    fmt.Sprintf("%.1fx over %s, %.1fx over %s", longBurn, windowLabel(longMinutes), shortBurn, windowLabel(shortMinutes)),
+			Threshold:   fmt.Sprintf("%.1fx", threshold),
+			WindowMins:  longMinutes,
+		}),
+	}
+}
+
+func buildSLOBudgetConsumedMessage(entity *models.SLO, consumed, threshold float64, projectName string) Message {
+	severity := SeverityWarning
+	if consumed >= 100 {
+		severity = SeverityCritical
+	}
+	headline := fmt.Sprintf("The SLO %q has consumed %.1f%% of its %d-day error budget (threshold %.0f%%).", entity.Name, consumed, entity.WindowDays, threshold)
+	subject := fmt.Sprintf("[%s] SLO %q budget %.0f%% consumed", projectName, entity.Name, consumed)
+	if consumed >= 100 {
+		headline = fmt.Sprintf("The SLO %q has exhausted its %d-day error budget: %.0f%% consumed against a threshold of %.0f%%.", entity.Name, entity.WindowDays, consumed, threshold)
+		subject = fmt.Sprintf("[%s] SLO %q error budget exhausted", projectName, entity.Name)
+	}
+	return Message{
+		Subject:    subject,
+		Body:       headline,
+		Severity:   severity,
+		URL:        fmt.Sprintf("/slos/%d", entity.Id),
+		DedupToken: SLODedupToken(entity.Id),
+		Email: alertEmail(models.EmailAlert{
+			ProjectName: projectName,
+			Headline:    headline,
+			ScopeLabel:  "SLO",
+			Scope:       entity.Name,
+			Observed:    fmt.Sprintf("%.1f%% consumed", consumed),
+			Threshold:   fmt.Sprintf("%.0f%%", threshold),
+			WindowMins:  entity.WindowDays * 1440,
+		}),
+	}
+}
+
+func buildSLORecoveredMessage(entity *models.SLO, detail string, projectName string) Message {
+	headline := fmt.Sprintf("The SLO %q recovered. %s", entity.Name, detail)
+	return Message{
+		Subject:    fmt.Sprintf("[%s] SLO %q recovered", projectName, entity.Name),
+		Body:       headline,
+		Severity:   SeverityInfo,
+		Recovered:  true,
+		URL:        fmt.Sprintf("/slos/%d", entity.Id),
+		DedupToken: SLODedupToken(entity.Id),
+		Email: alertEmail(models.EmailAlert{
+			ProjectName: projectName,
+			Headline:    headline,
+			ScopeLabel:  "SLO",
+			Scope:       entity.Name,
+		}),
+	}
+}

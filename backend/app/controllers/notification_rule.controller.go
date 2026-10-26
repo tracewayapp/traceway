@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -41,6 +43,8 @@ var validRuleTypes = map[string]bool{
 	"ai_conversation_cost":    true,
 	"ai_flagged_content":      true,
 	"check_down":              true,
+	"slo_burn_rate":           true,
+	"slo_budget_consumed":     true,
 }
 
 func (ctrl *notificationRuleController) List(ctx *gin.Context) {
@@ -119,6 +123,10 @@ func (ctrl *notificationRuleController) Create(ctx *gin.Context) {
 	}
 	if channel == nil || channel.ProjectId != projectId {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel not found in this project."})
+		return
+	}
+	if message := validateSLORuleConfig(tx, projectId, req.RuleType, req.Config); message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
 
@@ -216,6 +224,10 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel not found in this project."})
 		return
 	}
+	if message := validateSLORuleConfig(tx, projectId, req.RuleType, req.Config); message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+		return
+	}
 
 	cooldown := req.CooldownMinutes
 	if cooldown <= 0 {
@@ -235,6 +247,10 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		return
 	}
 	notifications.ClearRuleState(id)
+	if err := transactional.NotificationRuleStateRepository.Delete(tx, id); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reset notification rule state: %w", err))
+		return
+	}
 
 	ctx.JSON(http.StatusOK, existing)
 }
@@ -373,3 +389,57 @@ func (ctrl *notificationRuleController) Snooze(ctx *gin.Context) {
 }
 
 var NotificationRuleController = notificationRuleController{}
+
+// validateSLORuleConfig checks the slo_* rule configs; other rule types are
+// not validated here. Returns the 422 message, or an empty string.
+func validateSLORuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, config json.RawMessage) string {
+	switch ruleType {
+	case "slo_burn_rate":
+		var cfg struct {
+			SloId              int     `json:"sloId"`
+			LongWindowMinutes  int     `json:"longWindowMinutes"`
+			ShortWindowMinutes int     `json:"shortWindowMinutes"`
+			BurnRateThreshold  float64 `json:"burnRateThreshold"`
+		}
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return "The rule configuration is not valid JSON."
+		}
+		if cfg.LongWindowMinutes < 5 || cfg.LongWindowMinutes > 10080 {
+			return "Long window must be between 5 minutes and 7 days."
+		}
+		if cfg.ShortWindowMinutes < 1 || cfg.ShortWindowMinutes >= cfg.LongWindowMinutes {
+			return "Short window must be at least 1 minute and shorter than the long window."
+		}
+		if cfg.BurnRateThreshold <= 0 {
+			return "Burn rate threshold must be above 0."
+		}
+		return validateRuleSLO(tx, projectId, cfg.SloId)
+	case "slo_budget_consumed":
+		var cfg struct {
+			SloId           int     `json:"sloId"`
+			ConsumedPercent float64 `json:"consumedPercent"`
+		}
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return "The rule configuration is not valid JSON."
+		}
+		if cfg.ConsumedPercent <= 0 || cfg.ConsumedPercent > 100 {
+			return "Budget consumed must be between 1 and 100 percent."
+		}
+		return validateRuleSLO(tx, projectId, cfg.SloId)
+	}
+	return ""
+}
+
+func validateRuleSLO(tx *sql.Tx, projectId uuid.UUID, sloId int) string {
+	if sloId < 1 {
+		return "Select an SLO."
+	}
+	entity, err := transactional.SLORepository.FindByIdForProject(tx, sloId, projectId)
+	if err != nil {
+		return "The SLO could not be verified."
+	}
+	if entity == nil {
+		return "SLO not found in this project."
+	}
+	return ""
+}

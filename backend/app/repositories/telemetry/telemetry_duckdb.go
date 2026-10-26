@@ -18,4 +18,5 @@ var (
 	OtelSpanRepository            = duckdbrepo.OtelSpanRepository
 	LegacyRepository              = duckdbrepo.LegacyRepository
 	TaskRepository                = duckdbrepo.TaskRepository
+	SLOBucketRepository           = duckdbrepo.SLOBucketRepository
 )

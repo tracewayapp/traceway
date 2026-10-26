@@ -283,6 +283,15 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/synthetics/checks/:id/series", middleware.UseAppAuth, middleware.RequireProjectAccess, SyntheticCheckController.Series)
 	router.GET("/synthetics/open-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SyntheticCheckController.OpenCount)
 
+	router.GET("/slos", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SLOController.List)
+	router.POST("/slos", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SLOController.Create)
+	router.GET("/slos/breached-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SLOController.BreachedCount)
+	router.POST("/slos/preview", middleware.UseAppAuth, middleware.RequireProjectAccess, SLOController.Preview)
+	router.GET("/slos/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SLOController.Get)
+	router.PUT("/slos/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SLOController.Update)
+	router.DELETE("/slos/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SLOController.Delete)
+	router.POST("/slos/:id/series", middleware.UseAppAuth, middleware.RequireProjectAccess, SLOController.Series)
+
 	// No Transactional on either runner route: Poll holds the request for up
 	// to 25s (a held transaction would starve the single-connection SQLite
 	// main DB) and Result finalizes through ProcessOutcome, which manages its

@@ -146,6 +146,9 @@ var duckdbSearchDialect = shared.OtelSearchDialect{
 	NameLike:   "contains(lower(name), lower(?))",
 	Attribute:  `json_extract_string(span_attributes, '$."' || ? || '"') = ?`,
 	StartOrder: "start_time_unix_nano",
+	Bucket:     epochBucket,
+	Count:      "CAST(COUNT(*) AS BIGINT)",
+	CountIf:    sumIf,
 }
 
 func (r *otelSpanRepository) Search(ctx context.Context, search shared.OtelSpanSearch) ([]models.OtelSpan, uint64, error) {

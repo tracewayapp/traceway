@@ -77,7 +77,9 @@ func evaluatePolledRules(ctx context.Context) {
 			continue
 		}
 
-		if !cooldowns.canFire(rule.Id, rule.CooldownMinutes) {
+		// Stateful rules check the cooldown themselves: skipping them here would
+		// delay their recovery notice by the cooldown.
+		if !statefulRuleTypes[rule.RuleType] && !cooldowns.canFire(rule.Id, rule.CooldownMinutes) {
 			continue
 		}
 
@@ -106,6 +108,10 @@ func evaluatePolledRules(ctx context.Context) {
 			continue
 		}
 
+		if result != nil && result.Recovered {
+			dispatchRecovery(rule, result.Message)
+			continue
+		}
 		if result != nil && result.Fired {
 			if len(result.Messages) > 0 {
 				for _, msg := range result.Messages {

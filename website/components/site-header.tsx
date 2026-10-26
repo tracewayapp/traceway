@@ -21,6 +21,7 @@ import {
   PhoneCall,
   Radar,
   Boxes,
+  Goal,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { DiscordIcon } from "@/components/discord-icon";
@@ -71,6 +72,12 @@ const PILLARS: NavItem[] = [
     description: "Uptime checks, status pages, incidents, and post-mortems.",
     href: "/product/monitors",
     icon: Radar,
+  },
+  {
+    title: "SLOs",
+    description: "Error budgets and burn-rate alerts over any indicator.",
+    href: "/product/slos",
+    icon: Goal,
   },
   {
     title: "On-Call",

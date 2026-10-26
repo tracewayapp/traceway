@@ -18,4 +18,5 @@ var (
 	OtelSpanRepository            = ch.OtelSpanRepository
 	LegacyRepository              = ch.LegacyRepository
 	TaskRepository                = ch.TaskRepository
+	SLOBucketRepository           = ch.SLOBucketRepository
 )

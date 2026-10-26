@@ -62,6 +62,8 @@ The numbers in brackets are what the evaluator uses when a setting is missing. T
 | **AI Conversation Cost** | One conversation's cost over 24 hours reaches the threshold | $5 | Warning, Critical at 3x |
 | **AI Flagged Content** | An AI call matches a flagged term. The terms come from the project's AI settings. | Optional term list (empty means any flagged match) | Warning |
 | **Monitor Down** | Any monitor in the project goes down, plus a recovery notice when it comes back | None | Critical, recovery Info |
+| **SLO Burn Rate** | An SLO spends its error budget faster than the threshold over both the long and the short window, plus a recovery notice once the long window calms down. Fires on the transition only. | SLO, long window 60 min, short window 5 min, threshold 14.4x; presets Fast 14.4x 1h/5m, Slow 6x 6h/30m, Long 1x 3d/6h | Warning, Critical at 2x the threshold, recovery Info |
+| **SLO Budget Consumed** | An SLO has used more than a share of its window's error budget, plus a recovery notice when the budget recovers. Fires on the transition only. | SLO, consumed 80% | Warning, Critical at 100%, recovery Info |
 
 The aggregation in Metric Threshold spans every series of the metric with no tag filter, so prefer `max` (or `min` for lower-is-bad metrics) where one bad host could hide in an average.
 
@@ -72,6 +74,7 @@ Apdex uses fixed bands: satisfied up to 750 ms, tolerating up to 1500 ms, anythi
 - **On ingest**: New Issue, Error Regression, AI Trace Cost, AI Conversation Cost, AI Flagged Content. These fire within seconds.
 - **On state change**: Monitor Down, the moment a probe flips the monitor.
 - **Polled**: everything else, every 60 seconds by default (self-hosted: `NOTIFICATION_POLL_SECONDS`).
+- **SLO rules** are polled too, but read the SLO's precomputed buckets (refreshed every `SLO_POLL_SECONDS`, 60 by default) instead of raw telemetry, and they are evaluated during their cooldown so a recovery notice is never delayed by it.
 
 Cooldowns differ by kind:
 

@@ -18,6 +18,12 @@
 		color: string;
 	};
 
+	type ReferenceLine = {
+		value: number;
+		label?: string;
+		color?: string;
+	};
+
 	type ServerData = {
 		serverName: string;
 		trend: DataPoint[];
@@ -38,7 +44,9 @@
 		areaFill = false,
 		sharedHoverTime = null,
 		isSourceChart = false,
-		onHoverTimeChange
+		onHoverTimeChange,
+		referenceLines = [],
+		yDomain = null
 	} = $props<{
 		series: Series[];
 		xDomain?: [Date, Date] | null;
@@ -55,6 +63,8 @@
 		sharedHoverTime?: Date | null;
 		isSourceChart?: boolean;
 		onHoverTimeChange?: (time: Date | null) => void;
+		referenceLines?: ReferenceLine[];
+		yDomain?: [number, number] | null;
 	}>();
 
 	const tz = $derived(getTimezone());
@@ -97,12 +107,14 @@
 
 	const yMin = $derived(() => {
 		const minVal = min(allData, (d: DataPoint) => d.value);
-		return typeof minVal === 'number' ? minVal : 0;
+		const base = typeof minVal === 'number' ? minVal : 0;
+		return referenceLines.reduce((low: number, r: ReferenceLine) => Math.min(low, r.value), base);
 	});
 
 	const yMax = $derived(() => {
 		const maxVal = max(allData, (d: DataPoint) => d.value);
-		return typeof maxVal === 'number' ? maxVal : 0;
+		const base = typeof maxVal === 'number' ? maxVal : 0;
+		return referenceLines.reduce((high: number, r: ReferenceLine) => Math.max(high, r.value), base);
 	});
 
 	// Add padding to y domain
@@ -113,7 +125,11 @@
 	// Scales
 	const xScale = $derived(scaleUtc().domain([xMin, xMax]).range([0, chartWidth]));
 
-	const yScale = $derived(scaleLinear().domain([yDomainMin, yDomainMax]).range([chartHeight, 0]));
+	const yScale = $derived(
+		scaleLinear()
+			.domain(yDomain ?? [yDomainMin, yDomainMax])
+			.range([chartHeight, 0])
+	);
 
 	// Generate Y axis ticks
 	const yTicks = $derived(() => yScale.ticks(4));
@@ -496,6 +512,33 @@
 							? ` ${yAxisUnit()}`
 							: ''}
 					</text>
+				{/each}
+
+				<!-- Reference lines, such as an SLO target -->
+				{#each referenceLines as reference, __index (__index)}
+					{@const referenceY = yScale(reference.value)}
+					{#if referenceY >= 0 && referenceY <= chartHeight}
+						<line
+							x1={0}
+							y1={referenceY}
+							x2={chartWidth}
+							y2={referenceY}
+							stroke={reference.color ?? 'var(--destructive)'}
+							stroke-width="1"
+							stroke-dasharray="6 3"
+						/>
+						{#if reference.label}
+							<text
+								x={chartWidth - 4}
+								y={referenceY - 4}
+								text-anchor="end"
+								fill={reference.color ?? 'var(--destructive)'}
+								font-size="10"
+							>
+								{reference.label}
+							</text>
+						{/if}
+					{/if}
 				{/each}
 
 				<!-- Y axis unit label -->

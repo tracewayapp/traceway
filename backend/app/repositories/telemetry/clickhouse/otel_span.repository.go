@@ -221,6 +221,9 @@ var clickhouseSearchDialect = shared.OtelSearchDialect{
 	NameLike:    "positionCaseInsensitive(name, ?) > 0",
 	Attribute:   "span_attributes[?] = ?",
 	StartOrder:  "start_time_unix_nano",
+	Bucket:      epochBucket,
+	Count:       "toInt64(count())",
+	CountIf:     countIf,
 	ReadSetting: otelSearchSettings,
 }
 

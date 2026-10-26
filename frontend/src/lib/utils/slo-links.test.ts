@@ -53,6 +53,9 @@ describe('badEventsHref', () => {
 		);
 		expect(badEventsHref({ sliKind: 'monitor', sliConfig: { checkIds: [7] } })).toBe('/monitors/7');
 		expect(
+			badEventsHref({ sliKind: 'session', sliConfig: { appVersion: '', includeMessages: false } })
+		).toBe('/sessions?preset=24h');
+		expect(
 			badEventsHref({
 				sliKind: 'metric',
 				sliConfig: {

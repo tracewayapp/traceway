@@ -2,7 +2,7 @@ import { api } from '$lib/api';
 import { projectsState } from '$lib/state/projects.svelte';
 import type { NotificationRuleConfig } from '$lib/types/notifications';
 
-export type SliKind = 'endpoint' | 'span' | 'task' | 'monitor' | 'metric';
+export type SliKind = 'endpoint' | 'span' | 'task' | 'monitor' | 'metric' | 'session';
 export type SloStatus = 'ok' | 'breached' | 'no_data';
 export type GoodCondition = 'availability' | 'latency';
 export type MetricAggregation = 'avg' | 'min' | 'max' | 'sum' | 'last';
@@ -45,12 +45,18 @@ export interface MetricSliConfig {
 	missingIsBad: boolean;
 }
 
+export interface SessionSliConfig {
+	appVersion: string;
+	includeMessages: boolean;
+}
+
 export type SliConfig =
 	| EndpointSliConfig
 	| SpanSliConfig
 	| TaskSliConfig
 	| MonitorSliConfig
-	| MetricSliConfig;
+	| MetricSliConfig
+	| SessionSliConfig;
 
 export interface SLO {
 	id: number;
@@ -105,8 +111,14 @@ export const SLI_KIND_LABELS: Record<SliKind, string> = {
 	span: 'Span',
 	task: 'Task',
 	monitor: 'Monitor',
-	metric: 'Metric'
+	metric: 'Metric',
+	session: 'Session'
 };
+
+// Browser and mobile SDKs report sessions and exceptions, nothing the other
+// kinds count; backend projects have no sessions.
+export const BACKEND_SLI_KINDS: SliKind[] = ['endpoint', 'span', 'task', 'monitor', 'metric'];
+export const FRONTEND_SLI_KINDS: SliKind[] = ['session'];
 
 export const SLO_WINDOW_OPTIONS = [
 	{ value: '7', label: '7 days' },

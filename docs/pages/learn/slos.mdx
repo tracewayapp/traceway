@@ -20,6 +20,9 @@ SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge
 | Task | Background task runs, all tasks or one by name | No exception was recorded on the run's own span | The task page |
 | Monitor | Probes of the selected [monitors](/learn/monitors) | The probe came back up; missed probes do not count | The monitor page |
 | Metric | Fixed time slices of a metric, 1 to 60 minutes long, optionally filtered by tags | The slice's aggregate (average, min, max, sum or last value) satisfies the comparison | Dashboards |
+| Session | Sessions reported by the browser and mobile SDKs, all versions or one app version | No exception was recorded in the session; captured messages count only if you say so | The sessions page |
+
+Browser and mobile projects (React, Vue, Svelte, jQuery, React Native, Flutter, Android, iOS) only report exceptions, sessions and recordings, so they get the session kind alone: the classic crash-free sessions objective, optionally per app version. Backend projects get the other five.
 
 The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Native `/api/report` runs are stored as server spans named after the endpoint, so they are covered too.
 

@@ -44,6 +44,9 @@ func ComputeBuckets(ctx context.Context, slo *models.SLO, from, to time.Time) ([
 		return monitorBuckets(ctx, slo, cfg.Monitor, from, to, bucketMinutes)
 	case models.SLIKindMetric:
 		return metricBuckets(ctx, slo, cfg.Metric, from, to, bucketMinutes)
+	case models.SLIKindSession:
+		spec := shared.SessionSLISpec{AppVersion: cfg.Session.AppVersion, IncludeMessages: cfg.Session.IncludeMessages}
+		return telemetry.SessionRepository.SLICounts(ctx, slo.ProjectId, spec, from, to, bucketMinutes)
 	}
 	return nil, fmt.Errorf("unknown SLI kind %q", slo.SliKind)
 }

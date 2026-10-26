@@ -63,12 +63,13 @@ export default function SlosPage() {
                 Endpoints, spans, tasks, monitors, <em>or a metric</em>
               </>
             }
-            description="Pick what a good event is and Traceway counts it. An endpoint is good when it answers below 500 or faster than a threshold. A task run is good when no exception landed on its span. A monitor probe is good when it came back up. A metric is sliced into one to sixty minute windows and each slice is good when its average, maximum or sum stays on the right side of a limit, with slices that have no data counting as bad if you want a missing heartbeat to hurt."
+            description="Pick what a good event is and Traceway counts it. An endpoint is good when it answers below 500 or faster than a threshold. A task run is good when no exception landed on its span. A monitor probe is good when it came back up. A metric is sliced into one to sixty minute windows and each slice is good when its average, maximum or sum stays on the right side of a limit, with slices that have no data counting as bad if you want a missing heartbeat to hurt. Browser and mobile projects get the indicator those platforms live by: crash-free sessions, optionally per app version."
             bullets={[
               "Availability or latency for endpoints and spans",
               "Task success from the exception on the run's own span",
               "Monitor uptime straight from the probe results",
               "Metric timeslices: over, under, or missing",
+              "Crash-free sessions for browser and mobile apps, per app version",
             ]}
             image={{
               src: "/images/slos-list.png",
@@ -207,7 +208,7 @@ export default function SlosPage() {
                 },
                 {
                   q: "Which indicators can I build an SLO on?",
-                  a: "Endpoint availability or latency, any span filter (service, name, kind, exact attribute values) for availability or latency, task success, monitor uptime, and metric timeslices where each slice is good when its aggregate is over or under a limit. Native SDK runs are stored as spans, so they are covered by the span kind.",
+                  a: "Endpoint availability or latency, any span filter (service, name, kind, exact attribute values) for availability or latency, task success, monitor uptime, and metric timeslices where each slice is good when its aggregate is over or under a limit. Native SDK runs are stored as spans, so they are covered by the span kind. Browser and mobile projects get crash-free sessions instead, since their SDKs report sessions and exceptions rather than spans.",
                 },
                 {
                   q: "What happens to the history when I change an SLO?",

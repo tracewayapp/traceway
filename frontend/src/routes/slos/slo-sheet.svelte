@@ -10,8 +10,10 @@
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import KeyValueRows from '$lib/components/synthetics/key-value-rows.svelte';
 	import TagFilter from '$lib/components/dashboard/tag-filter.svelte';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
 	import {
+		BACKEND_SLI_KINDS,
+		FRONTEND_SLI_KINDS,
 		SLI_KIND_LABELS,
 		SLO_WINDOW_OPTIONS,
 		type GoodCondition,
@@ -73,6 +75,9 @@
 	let sliceMinutes = $state('5');
 	let missingIsBad = $state(false);
 
+	let sessionAppVersion = $state('');
+	let includeMessages = $state(false);
+
 	let endpointOptions = $state<string[]>([]);
 	let taskOptions = $state<string[]>([]);
 	let serviceOptions = $state<string[]>([]);
@@ -86,16 +91,23 @@
 
 	let originalDefinition = $state('');
 
-	const kindOptions = (Object.keys(SLI_KIND_LABELS) as SliKind[]).map((kind) => ({
-		value: kind,
-		label: SLI_KIND_LABELS[kind]
-	}));
+	const isFrontendProject = $derived(
+		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
+	);
+	const defaultKind = $derived<SliKind>(isFrontendProject ? 'session' : 'endpoint');
+	const kindOptions = $derived.by(() => {
+		const kinds = isFrontendProject ? FRONTEND_SLI_KINDS : BACKEND_SLI_KINDS;
+		const list = slo && !kinds.includes(slo.sliKind) ? [...kinds, slo.sliKind] : kinds;
+		return list.map((kind) => ({ value: kind, label: SLI_KIND_LABELS[kind] }));
+	});
 	const kindHelp: Record<SliKind, string> = {
 		endpoint: 'Requests of one endpoint, or of every endpoint in the project.',
 		span: 'Any span matching the same filters the span explorer offers, so a queue consumer or an outbound call can have its own SLO.',
 		task: 'Background task runs. A run is bad when an exception was recorded on its own span.',
 		monitor: 'Probes of the selected monitors. Good means up; missed probes do not count.',
-		metric: 'Time slices of a metric. A slice is good when its aggregate satisfies the comparison.'
+		metric: 'Time slices of a metric. A slice is good when its aggregate satisfies the comparison.',
+		session:
+			'Sessions reported by the browser and mobile SDKs. A session is bad when an exception was recorded in it; captured messages only count if you say so.'
 	};
 	const goodOptions = [
 		{ value: 'availability', label: 'Request succeeded' },
@@ -133,7 +145,7 @@
 	function resetForm() {
 		name = '';
 		description = '';
-		sliKind = 'endpoint';
+		sliKind = defaultKind;
 		targetPercent = '99.9';
 		windowDays = '30';
 		enabled = true;
@@ -155,6 +167,8 @@
 		metricThreshold = '';
 		sliceMinutes = '5';
 		missingIsBad = false;
+		sessionAppVersion = '';
+		includeMessages = false;
 		preview = null;
 		previewError = '';
 		error = '';
@@ -198,6 +212,10 @@
 				metricThreshold = String(cfg.threshold ?? '');
 				sliceMinutes = String(s.bucketMinutes || 5);
 				missingIsBad = !!cfg.missingIsBad;
+				break;
+			case 'session':
+				sessionAppVersion = (cfg.appVersion as string) ?? '';
+				includeMessages = !!cfg.includeMessages;
 				break;
 		}
 		originalDefinition = JSON.stringify({
@@ -385,6 +403,8 @@
 					threshold: Number(metricThreshold) || 0,
 					missingIsBad
 				};
+			case 'session':
+				return { appVersion: sessionAppVersion.trim(), includeMessages };
 		}
 	}
 
@@ -793,6 +813,26 @@
 								disabled={loading}
 							/>
 							Slices without data count as bad
+						</label>
+					</div>
+				{:else if sliKind === 'session'}
+					<div class="grid gap-4 sm:grid-cols-2">
+						<div class="space-y-2">
+							<Label for="slo-app-version">App version</Label>
+							<Input
+								id="slo-app-version"
+								bind:value={sessionAppVersion}
+								placeholder="Leave empty for every version, or 1.4.2"
+								disabled={loading}
+							/>
+						</div>
+						<label class="flex cursor-pointer items-center gap-2 pt-7 text-sm">
+							<Checkbox
+								checked={includeMessages}
+								onCheckedChange={(checked) => (includeMessages = checked === true)}
+								disabled={loading}
+							/>
+							Captured messages count as failures
 						</label>
 					</div>
 				{/if}

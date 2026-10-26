@@ -210,6 +210,10 @@ export function sliSummary(slo: Pick<SLO, 'sliKind' | 'sliConfig' | 'bucketMinut
 			const ids = (cfg.checkIds as number[] | undefined) ?? [];
 			return ids.length === 1 ? '1 monitor' : `${ids.length} monitors`;
 		}
+		case 'session': {
+			const version = (cfg.appVersion as string) || 'all versions';
+			return `${version} · crash-free sessions${cfg.includeMessages ? ' (messages count)' : ''}`;
+		}
 		case 'metric': {
 			const operator =
 				{ gt: '>', gte: '≥', lt: '<', lte: '≤' }[cfg.operator as string] ?? cfg.operator;

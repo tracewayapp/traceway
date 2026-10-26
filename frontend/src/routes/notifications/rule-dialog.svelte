@@ -145,8 +145,11 @@
 		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
 
+	const frontendRuleTypes = new Set(['new_error', 'slo_burn_rate', 'slo_budget_consumed']);
 	const visibleRuleTypes = $derived(
-		isFrontendProject ? [{ value: 'new_error', label: 'New Issue' }] : ruleTypeOptions
+		isFrontendProject
+			? ruleTypeOptions.filter((o) => frontendRuleTypes.has(o.value))
+			: ruleTypeOptions
 	);
 
 	$effect(() => {

@@ -41,6 +41,17 @@ type SpanSLISpec struct {
 	LatencyThreshold time.Duration
 }
 
+// SessionSLISpec is the crash-free sessions indicator: a session is bad when an
+// exception was recorded in it, captured messages only when IncludeMessages.
+type SessionSLISpec struct {
+	AppVersion      string
+	IncludeMessages bool
+}
+
+// SessionExceptionSlack widens the exception window past the session start
+// window: a session lasts up to SessionMaxSpan and its exceptions land during it.
+const SessionExceptionSlack = 2 * time.Hour
+
 // TaskExceptionSlack widens the exception window past the task window: a task
 // is recorded at its start and its exception lands when it fails.
 const TaskExceptionSlack = 6 * time.Hour

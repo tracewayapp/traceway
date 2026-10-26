@@ -18,6 +18,7 @@ type (
 	EndpointSLISpec        = shared.EndpointSLISpec
 	TaskSLISpec            = shared.TaskSLISpec
 	SpanSLISpec            = shared.SpanSLISpec
+	SessionSLISpec         = shared.SessionSLISpec
 	OtelSpanSearch         = shared.OtelSpanSearch
 	OtelAttributeFilter    = shared.OtelAttributeFilter
 )

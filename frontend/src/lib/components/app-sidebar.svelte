@@ -57,8 +57,7 @@
 		'Profiles',
 		'Dashboards',
 		'AI Traces',
-		'Monitors',
-		'SLOs'
+		'Monitors'
 	]);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from

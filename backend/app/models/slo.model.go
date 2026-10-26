@@ -14,6 +14,7 @@ const (
 	SLIKindTask     = "task"
 	SLIKindMonitor  = "monitor"
 	SLIKindMetric   = "metric"
+	SLIKindSession  = "session"
 
 	SLOStatusOk       = "ok"
 	SLOStatusBreached = "breached"
@@ -124,6 +125,14 @@ type MonitorSLIConfig struct {
 	CheckIds []int `json:"checkIds"`
 }
 
+// SessionSLIConfig is the crash-free sessions indicator of browser and mobile
+// projects: a session is bad when an exception was recorded in it. Captured
+// messages only count when IncludeMessages is set.
+type SessionSLIConfig struct {
+	AppVersion      string `json:"appVersion"`
+	IncludeMessages bool   `json:"includeMessages"`
+}
+
 type MetricSLIConfig struct {
 	MetricName   string            `json:"metricName"`
 	Tags         map[string]string `json:"tags"`
@@ -140,6 +149,7 @@ type SLIConfig struct {
 	Task     *TaskSLIConfig
 	Monitor  *MonitorSLIConfig
 	Metric   *MetricSLIConfig
+	Session  *SessionSLIConfig
 }
 
 func ParseSLIConfig(kind string, raw []byte) (*SLIConfig, error) {
@@ -164,6 +174,9 @@ func ParseSLIConfig(kind string, raw []byte) (*SLIConfig, error) {
 	case SLIKindMetric:
 		cfg.Metric = &MetricSLIConfig{}
 		err = json.Unmarshal(raw, cfg.Metric)
+	case SLIKindSession:
+		cfg.Session = &SessionSLIConfig{}
+		err = json.Unmarshal(raw, cfg.Session)
 	default:
 		return nil, fmt.Errorf("unknown SLI kind %q", kind)
 	}
@@ -175,7 +188,7 @@ func ParseSLIConfig(kind string, raw []byte) (*SLIConfig, error) {
 
 func ValidSLIKind(kind string) bool {
 	switch kind {
-	case SLIKindEndpoint, SLIKindSpan, SLIKindTask, SLIKindMonitor, SLIKindMetric:
+	case SLIKindEndpoint, SLIKindSpan, SLIKindTask, SLIKindMonitor, SLIKindMetric, SLIKindSession:
 		return true
 	}
 	return false

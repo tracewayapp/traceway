@@ -72,7 +72,7 @@ type sloDefinition struct {
 func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw json.RawMessage, bucketMinutes int) (sloDefinition, string) {
 	def := sloDefinition{Kind: kind, BucketMinutes: 1}
 	if !models.ValidSLIKind(kind) {
-		return def, "SLI kind must be one of: endpoint, span, task, monitor, metric."
+		return def, "SLI kind must be one of: endpoint, span, task, monitor, metric, session."
 	}
 	if len(raw) == 0 {
 		return def, "SLI configuration is required."
@@ -176,6 +176,9 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 		}
 		def.BucketMinutes = bucketMinutes
 		canonical = c
+	case models.SLIKindSession:
+		cfg.Session.AppVersion = strings.TrimSpace(cfg.Session.AppVersion)
+		canonical = cfg.Session
 	}
 	encoded, err := json.Marshal(canonical)
 	if err != nil {

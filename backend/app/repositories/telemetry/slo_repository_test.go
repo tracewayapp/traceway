@@ -243,3 +243,44 @@ func TestOtelSpanRepository_SLICounts(t *testing.T) {
 	}
 	expectBucket(t, latency, base, 2, 3)
 }
+
+func TestSessionRepository_SLICounts(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	project := uuid.New()
+	base := sloTestBase()
+	clean := models.Session{Id: uuid.New(), ProjectId: project, StartedAt: base.Add(5 * time.Second), AppVersion: "1.4.2", Attributes: map[string]string{}}
+	crashed := models.Session{Id: uuid.New(), ProjectId: project, StartedAt: base.Add(10 * time.Second), AppVersion: "1.4.2", Attributes: map[string]string{}}
+	logged := models.Session{Id: uuid.New(), ProjectId: project, StartedAt: base.Add(15 * time.Second), AppVersion: "1.4.1", Attributes: map[string]string{}}
+	later := models.Session{Id: uuid.New(), ProjectId: project, StartedAt: base.Add(70 * time.Second), AppVersion: "1.4.2", Attributes: map[string]string{}}
+	if err := SessionRepository.Upsert(ctx, []models.Session{clean, crashed, logged, later}); err != nil {
+		t.Fatal(err)
+	}
+	crash := makeException(project, "crash", "boom", base.Add(20*time.Minute))
+	crash.SessionId = &crashed.Id
+	message := makeException(project, "note", "captured message", base.Add(40*time.Second))
+	message.SessionId = &logged.Id
+	message.IsMessage = true
+	if err := ExceptionStackTraceRepository.InsertAsync(ctx, []models.ExceptionStackTrace{crash, message}); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := SessionRepository.SLICounts(ctx, project, shared.SessionSLISpec{}, base, base.Add(2*time.Minute), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectBucket(t, all, base, 2, 3)
+	expectBucket(t, all, base.Add(time.Minute), 1, 1)
+
+	strict, err := SessionRepository.SLICounts(ctx, project, shared.SessionSLISpec{IncludeMessages: true}, base, base.Add(time.Minute), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectBucket(t, strict, base, 1, 3)
+
+	version, err := SessionRepository.SLICounts(ctx, project, shared.SessionSLISpec{AppVersion: "1.4.2"}, base, base.Add(time.Minute), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectBucket(t, version, base, 1, 2)
+}

@@ -182,8 +182,8 @@
 
 	<InfoCallout>
 		A service level objective holds an indicator, the share of good requests, spans, task runs,
-		probes or metric slices, to a target over a rolling window. The error budget is what the target
-		leaves over, and the burn rate says how fast it is being spent.
+		probes, metric slices or crash-free sessions, to a target over a rolling window. The error
+		budget is what the target leaves over, and the burn rate says how fast it is being spent.
 	</InfoCallout>
 
 	<SearchBar

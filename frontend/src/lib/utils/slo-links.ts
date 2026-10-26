@@ -13,6 +13,8 @@ export function badEventsLabel(slo: Pick<SLO, 'sliKind'>): string {
 			return 'View task runs';
 		case 'monitor':
 			return 'Open monitor';
+		case 'session':
+			return 'View sessions';
 		default:
 			return 'Open dashboards';
 	}
@@ -59,6 +61,8 @@ export function badEventsHref(slo: Pick<SLO, 'sliKind' | 'sliConfig'>): string {
 				? `/tasks/${encodeURIComponent(taskName)}?preset=${BAD_EVENTS_PRESET}`
 				: `/tasks?preset=${BAD_EVENTS_PRESET}`;
 		}
+		case 'session':
+			return `/sessions?preset=${BAD_EVENTS_PRESET}`;
 		case 'monitor': {
 			const ids = (cfg.checkIds as number[] | undefined) ?? [];
 			return ids.length === 1 ? `/monitors/${ids[0]}` : '/monitors';

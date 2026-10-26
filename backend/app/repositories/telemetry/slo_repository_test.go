@@ -41,7 +41,7 @@ func TestSLOBucketRepository_UpsertSumSeries(t *testing.T) {
 	ctx := context.Background()
 	project := uuid.New()
 	base := sloTestBase()
-	now := time.Now().UTC()
+	now := time.Now().UTC().Add(-time.Minute)
 	rows := []shared.SLOBucket{
 		{ProjectId: project, SLOId: 7, BucketStart: base, Good: 90, Total: 100, ComputedAt: now},
 		{ProjectId: project, SLOId: 7, BucketStart: base.Add(time.Minute), Good: 100, Total: 100, ComputedAt: now},
@@ -84,15 +84,30 @@ func TestSLOBucketRepository_UpsertSumSeries(t *testing.T) {
 	if err := SLOBucketRepository.DeleteBySLO(ctx, project, 7); err != nil {
 		t.Fatal(err)
 	}
+	good, total, err = SLOBucketRepository.SumRange(ctx, project, 7, base, base.Add(3*time.Minute))
+	if err != nil || good != 0 || total != 0 {
+		t.Fatalf("buckets survive delete: %d/%d, %v", good, total, err)
+	}
+	good, total, err = SLOBucketRepository.SumRange(ctx, project, 8, base, base.Add(time.Minute))
+	if err != nil || good != 1 || total != 1 {
+		t.Fatalf("delete touched another SLO: %d/%d, %v", good, total, err)
+	}
+	// A tick that started before the delete writes late; a later tick recomputes.
+	if err := SLOBucketRepository.Upsert(ctx, []shared.SLOBucket{{ProjectId: project, SLOId: 7, BucketStart: base.Add(time.Minute), Good: 1, Total: 1, ComputedAt: now}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SLOBucketRepository.Upsert(ctx, []shared.SLOBucket{{ProjectId: project, SLOId: 7, BucketStart: base, Good: 3, Total: 4, ComputedAt: time.Now().UTC().Add(time.Second)}}); err != nil {
+		t.Fatal(err)
+	}
+	good, total, err = SLOBucketRepository.SumRange(ctx, project, 7, base, base.Add(3*time.Minute))
+	wantGood, wantTotal := int64(4), int64(5)
+	if db.TelemetryBackendName() == "clickhouse" {
+		wantGood, wantTotal = 3, 4
+	}
+	if err != nil || good != wantGood || total != wantTotal {
+		t.Fatalf("after delete: %d/%d (%v), want %d/%d", good, total, err, wantGood, wantTotal)
+	}
 	if db.TelemetryBackendName() != "clickhouse" {
-		good, total, err = SLOBucketRepository.SumRange(ctx, project, 7, base, base.Add(3*time.Minute))
-		if err != nil || good != 0 || total != 0 {
-			t.Fatalf("buckets survive delete: %d/%d, %v", good, total, err)
-		}
-		good, total, err = SLOBucketRepository.SumRange(ctx, project, 8, base, base.Add(time.Minute))
-		if err != nil || good != 1 || total != 1 {
-			t.Fatalf("delete touched another SLO: %d/%d, %v", good, total, err)
-		}
 		if err := SLOBucketRepository.PruneBefore(ctx, base.Add(time.Minute)); err != nil {
 			t.Fatal(err)
 		}

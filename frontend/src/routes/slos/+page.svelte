@@ -16,8 +16,14 @@
 	import SloStatusBadge from '$lib/components/slos/slo-status-badge.svelte';
 	import SloSheet from './slo-sheet.svelte';
 	import { browser } from '$app/environment';
-	import { projectsState } from '$lib/state/projects.svelte';
-	import { slosState, SLI_KIND_LABELS, type SLO, type SliKind } from '$lib/state/slos.svelte';
+	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import {
+		slosState,
+		SLI_KIND_LABELS,
+		BACKEND_SLI_KINDS,
+		FRONTEND_SLI_KINDS,
+		type SLO
+	} from '$lib/state/slos.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { resolve } from '$app/paths';
 	import { updateUrl } from '$lib/utils/url-params';
@@ -54,13 +60,16 @@
 	let error = $state('');
 	let sheetOpen = $state(false);
 
-	const kindOptions = [
+	const isFrontendProject = $derived(
+		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
+	);
+	const kindOptions = $derived([
 		{ value: '', label: 'All kinds' },
-		...(Object.keys(SLI_KIND_LABELS) as SliKind[]).map((kind) => ({
+		...(isFrontendProject ? FRONTEND_SLI_KINDS : BACKEND_SLI_KINDS).map((kind) => ({
 			value: kind,
 			label: SLI_KIND_LABELS[kind]
 		}))
-	];
+	]);
 	let kindFilter = $state('');
 
 	function parseSearchFromUrl(): string {
@@ -204,7 +213,9 @@
 	{:else if slos.length === 0}
 		{#if projectsState.canWriteCurrentProject}
 			<EmptyState
-				message="No SLOs yet. Define a target for an endpoint, span, task, monitor or metric to start tracking its error budget."
+				message={isFrontendProject
+					? 'No SLOs yet. Define a crash-free sessions target to start tracking its error budget.'
+					: 'No SLOs yet. Define a target for an endpoint, span, task, monitor or metric to start tracking its error budget.'}
 				actionLabel="Create your first SLO"
 				onAction={() => (sheetOpen = true)}
 			/>

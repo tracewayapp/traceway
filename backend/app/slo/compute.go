@@ -96,7 +96,9 @@ func monitorBuckets(ctx context.Context, slo *models.SLO, cfg *models.MonitorSLI
 
 // metricBuckets is the timeslice SLI: every slice of the range is one unit,
 // good when the aggregate satisfies the comparison. A slice without samples
-// is bad when the SLO says so, otherwise it does not count.
+// is bad when the SLO says so and it starts after the definition took effect,
+// otherwise it does not count: a backfill must not turn the time before the
+// metric existed, or past the metric retention, into bad slices.
 func metricBuckets(ctx context.Context, slo *models.SLO, cfg *models.MetricSLIConfig, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	series, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, slo.ProjectId, cfg.MetricName, from, to, bucketMinutes, cfg.Aggregation, cfg.Tags, "", 1)
 	if err != nil {
@@ -109,6 +111,7 @@ func metricBuckets(ctx context.Context, slo *models.SLO, cfg *models.MetricSLICo
 		}
 	}
 	bucket := time.Duration(bucketMinutes) * time.Minute
+	missingFrom := slo.MissingCountsFrom()
 	result := make([]shared.SLOBucketPoint, 0, int(to.Sub(from)/bucket))
 	for at := from; at.Before(to); at = at.Add(bucket) {
 		point := shared.SLOBucketPoint{Bucket: at.UTC()}
@@ -117,7 +120,7 @@ func metricBuckets(ctx context.Context, slo *models.SLO, cfg *models.MetricSLICo
 			if metricSliceGood(value, cfg.Operator, cfg.Threshold) {
 				point.Good = 1
 			}
-		} else if cfg.MissingIsBad {
+		} else if cfg.MissingIsBad && !at.Before(missingFrom) {
 			point.Total = 1
 		}
 		result = append(result, point)

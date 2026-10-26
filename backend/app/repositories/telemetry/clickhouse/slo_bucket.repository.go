@@ -52,8 +52,14 @@ func (r *sloBucketRepository) Series(ctx context.Context, projectId uuid.UUID, s
 	return shared.ScanSLOBucketPoints(rows, from, to)
 }
 
+// DeleteBySLO overwrites every bucket of the SLO with an empty row stamped
+// now instead of running a mutation: FINAL keeps the newest computed_at, so
+// the empty rows also win over a late write from a tick that started earlier,
+// and the next computation, stamped later, wins over them. The TTL removes them.
 func (r *sloBucketRepository) DeleteBySLO(ctx context.Context, projectId uuid.UUID, sloId int) error {
-	return chdb.Conn.Exec(ctx, "ALTER TABLE slo_buckets DELETE WHERE project_id = ? AND slo_id = ?", projectId, int64(sloId))
+	return chdb.Conn.Exec(ctx,
+		"INSERT INTO slo_buckets (project_id, slo_id, bucket_start, good, total, computed_at) SELECT project_id, slo_id, bucket_start, 0, 0, ? FROM slo_buckets FINAL WHERE project_id = ? AND slo_id = ?",
+		time.Now().UTC(), projectId, int64(sloId))
 }
 
 // PruneBefore is a no-op on ClickHouse: the table TTL ages buckets out.

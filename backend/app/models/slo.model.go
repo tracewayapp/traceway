@@ -35,7 +35,10 @@ var (
 
 // SLO is a service level objective: an SLI definition (sli_kind + sli_config)
 // held to target_percent over a rolling window. The worker in app/slo keeps the
-// snapshot columns (status through last_bucket_at) current from slo_buckets.
+// snapshot columns (status through last_bucket_at, gap_from, gap_to) current
+// from slo_buckets. Revision grows on every edit so the worker can tell that
+// the row changed while it computed; sli_since is when the current definition
+// took effect, before which a metric slice without samples does not count.
 type SLO struct {
 	Id              int        `json:"id" lit:"id"`
 	ProjectId       uuid.UUID  `json:"projectId" lit:"project_id"`
@@ -55,6 +58,10 @@ type SLO struct {
 	ComputedAt      *time.Time `json:"computedAt" lit:"computed_at"`
 	HistoryFrom     *time.Time `json:"historyFrom" lit:"history_from"`
 	LastBucketAt    *time.Time `json:"lastBucketAt" lit:"last_bucket_at"`
+	SliSince        *time.Time `json:"sliSince" lit:"sli_since"`
+	GapFrom         *time.Time `json:"-" lit:"gap_from"`
+	GapTo           *time.Time `json:"-" lit:"gap_to"`
+	Revision        int        `json:"revision" lit:"revision"`
 	CreatedBy       *int       `json:"createdBy" lit:"created_by"`
 	CreatedAt       time.Time  `json:"createdAt" lit:"created_at"`
 	UpdatedAt       time.Time  `json:"updatedAt" lit:"updated_at"`
@@ -71,6 +78,15 @@ func (s *SLO) BucketDuration() time.Duration {
 	return time.Duration(s.BucketMinutes) * time.Minute
 }
 
+// MissingCountsFrom is the first instant a metric slice without samples can
+// count as bad: never before the current definition existed.
+func (s *SLO) MissingCountsFrom() time.Time {
+	if s.SliSince != nil {
+		return s.SliSince.UTC()
+	}
+	return s.CreatedAt.UTC()
+}
+
 func (s *SLO) Window() time.Duration {
 	return time.Duration(s.WindowDays) * 24 * time.Hour
 }
@@ -85,6 +101,8 @@ type SLOSnapshot struct {
 	ComputedAt      time.Time
 	HistoryFrom     *time.Time
 	LastBucketAt    *time.Time
+	GapFrom         *time.Time
+	GapTo           *time.Time
 }
 
 // NotificationRuleState is the durable firing state of a polled rule that

@@ -15,7 +15,7 @@ import (
 
 type sloRepository struct{}
 
-const sloColumns = "id, project_id, name, description, sli_kind, sli_config, target_percent, window_days, bucket_minutes, enabled, status, current_sli, budget_remaining, burn_rate_1h, burn_rate_6h, computed_at, history_from, last_bucket_at, created_by, created_at, updated_at"
+const sloColumns = "id, project_id, name, description, sli_kind, sli_config, target_percent, window_days, bucket_minutes, enabled, status, current_sli, budget_remaining, burn_rate_1h, burn_rate_6h, computed_at, history_from, last_bucket_at, sli_since, gap_from, gap_to, revision, created_by, created_at, updated_at"
 
 func nullableTime(t *time.Time) any {
 	if t == nil {
@@ -35,12 +35,13 @@ func (r *sloRepository) Create(tx *sql.Tx, slo *models.SLO) (int, error) {
 	return lit.Insert[models.SLO](tx, slo)
 }
 
-// Update writes the user-editable columns only. The snapshot columns belong to
-// the worker (UpdateSnapshot) and must not be reverted by a concurrent edit.
+// Update writes the user-editable columns only and bumps the revision. The
+// snapshot columns belong to the worker (UpdateSnapshot) and must not be
+// reverted by a concurrent edit.
 func (r *sloRepository) Update(tx *sql.Tx, slo *models.SLO) error {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		"UPDATE slos SET name = :name, description = :description, sli_kind = :sli_kind, sli_config = :sli_config, target_percent = :target_percent, window_days = :window_days, bucket_minutes = :bucket_minutes, enabled = :enabled, updated_at = :updated_at WHERE id = :id",
+		"UPDATE slos SET name = :name, description = :description, sli_kind = :sli_kind, sli_config = :sli_config, target_percent = :target_percent, window_days = :window_days, bucket_minutes = :bucket_minutes, enabled = :enabled, updated_at = :updated_at, revision = revision + 1 WHERE id = :id",
 		lit.P{
 			"name":           slo.Name,
 			"description":    slo.Description,
@@ -61,12 +62,12 @@ func (r *sloRepository) Update(tx *sql.Tx, slo *models.SLO) error {
 }
 
 // ResetHistory forgets every computed value after the SLI definition changed,
-// so the worker rebuilds the buckets from scratch.
-func (r *sloRepository) ResetHistory(tx *sql.Tx, id int) error {
+// so the worker rebuilds the buckets from scratch, and starts sli_since anew.
+func (r *sloRepository) ResetHistory(tx *sql.Tx, id int, now time.Time) error {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		"UPDATE slos SET status = 'no_data', current_sli = NULL, budget_remaining = NULL, burn_rate_1h = NULL, burn_rate_6h = NULL, computed_at = NULL, history_from = NULL, last_bucket_at = NULL WHERE id = :id",
-		lit.P{"id": id},
+		"UPDATE slos SET status = 'no_data', current_sli = NULL, budget_remaining = NULL, burn_rate_1h = NULL, burn_rate_6h = NULL, computed_at = NULL, history_from = NULL, last_bucket_at = NULL, gap_from = NULL, gap_to = NULL, sli_since = :sli_since WHERE id = :id",
+		lit.P{"id": id, "sli_since": now.UTC()},
 	)
 	if err != nil {
 		return err
@@ -74,10 +75,12 @@ func (r *sloRepository) ResetHistory(tx *sql.Tx, id int) error {
 	return lit.UpdateNative(tx, query, args...)
 }
 
-func (r *sloRepository) UpdateSnapshot(tx *sql.Tx, id int, snapshot models.SLOSnapshot) error {
+// UpdateSnapshot writes the worker's result only when the row is still at the
+// revision the worker computed, and reports whether it did.
+func (r *sloRepository) UpdateSnapshot(tx *sql.Tx, id int, revision int, snapshot models.SLOSnapshot) (bool, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
-		"UPDATE slos SET status = :status, current_sli = :current_sli, budget_remaining = :budget_remaining, burn_rate_1h = :burn_rate_1h, burn_rate_6h = :burn_rate_6h, computed_at = :computed_at, history_from = :history_from, last_bucket_at = :last_bucket_at WHERE id = :id",
+		"UPDATE slos SET status = :status, current_sli = :current_sli, budget_remaining = :budget_remaining, burn_rate_1h = :burn_rate_1h, burn_rate_6h = :burn_rate_6h, computed_at = :computed_at, history_from = :history_from, last_bucket_at = :last_bucket_at, gap_from = :gap_from, gap_to = :gap_to WHERE id = :id AND revision = :revision",
 		lit.P{
 			"status":           snapshot.Status,
 			"current_sli":      nullableFloat(snapshot.CurrentSli),
@@ -87,13 +90,21 @@ func (r *sloRepository) UpdateSnapshot(tx *sql.Tx, id int, snapshot models.SLOSn
 			"computed_at":      snapshot.ComputedAt.UTC(),
 			"history_from":     nullableTime(snapshot.HistoryFrom),
 			"last_bucket_at":   nullableTime(snapshot.LastBucketAt),
+			"gap_from":         nullableTime(snapshot.GapFrom),
+			"gap_to":           nullableTime(snapshot.GapTo),
 			"id":               id,
+			"revision":         revision,
 		},
 	)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return lit.UpdateNative(tx, query, args...)
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected > 0, err
 }
 
 func (r *sloRepository) Delete(tx *sql.Tx, id int, projectId uuid.UUID) error {

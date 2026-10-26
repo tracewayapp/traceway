@@ -33,6 +33,7 @@ const (
 	sloPreviewWindow   = 24 * time.Hour
 	sloMaxSeriesRange  = 91 * 24 * time.Hour
 	sloDefaultInterval = 60
+	sloMaxSeriesPoints = 2000
 )
 
 type sloRequest struct {
@@ -312,6 +313,7 @@ func (ctrl *sloController) Create(ctx *gin.Context) {
 		BucketMinutes: def.BucketMinutes,
 		Enabled:       enabled,
 		Status:        models.SLOStatusNoData,
+		SliSince:      &now,
 		CreatedBy:     createdBy,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -401,7 +403,7 @@ func (ctrl *sloController) Update(ctx *gin.Context) {
 		return
 	}
 	if definitionChanged {
-		if err := transactional.SLORepository.ResetHistory(tx, sloId); err != nil {
+		if err := transactional.SLORepository.ResetHistory(tx, sloId, existing.UpdatedAt); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reset SLO history: %w", err))
 			return
 		}
@@ -510,6 +512,9 @@ func (ctrl *sloController) Series(ctx *gin.Context) {
 	}
 	if interval > 1440 {
 		interval = 1440
+	}
+	if minimum := int((to.Sub(from).Minutes() + sloMaxSeriesPoints - 1) / sloMaxSeriesPoints); interval < minimum {
+		interval = minimum
 	}
 	points, err := telemetry.SLOBucketRepository.Series(ctx, projectId, sloId, from, to, interval)
 	if err != nil {

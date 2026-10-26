@@ -84,6 +84,7 @@
 
 	let buckets = $state<SloSeriesBucket[]>([]);
 	let seriesLoading = $state(true);
+	let seriesSequence = 0;
 	let rangeFrom = $state(initialRange.from);
 	let rangeTo = $state(initialRange.to);
 
@@ -149,6 +150,7 @@
 
 	async function loadSeries(pushToHistory: boolean, announceClamp: boolean) {
 		if (!slo) return;
+		const sequence = ++seriesSequence;
 		seriesLoading = true;
 		const picked = resolveRange();
 		const clamped = clampRangeToWindow(picked.from, picked.to, slo.windowDays, new Date());
@@ -177,12 +179,14 @@
 				},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== seriesSequence) return;
 			buckets = response.buckets || [];
 		} catch (e) {
+			if (sequence !== seriesSequence) return;
 			console.error('Failed to load SLO series:', e);
 			buckets = [];
 		} finally {
-			seriesLoading = false;
+			if (sequence === seriesSequence) seriesLoading = false;
 		}
 	}
 

@@ -125,7 +125,7 @@ A rule connects a condition to a channel. Every rule has:
 | Cooldown | Minimum time between notifications for the same condition (default 15 minutes) |
 | Severity | Auto (derived from the condition) or an explicit override |
 
-Rules belong to a project and only evaluate that project's data. Frontend projects only support the New Issue rule type; all other types monitor backend telemetry.
+Rules belong to a project and only evaluate that project's data. Frontend projects support the New Issue rule type and the two SLO rule types; all other types monitor backend telemetry.
 
 ## Rule Types
 
@@ -326,7 +326,7 @@ Fires when an [SLO](/learn/slos) spends its error budget faster than the thresho
 |--------|---------|-------------|
 | SLO | required | The SLO to watch |
 | Long Window Minutes | 60 | Lookback of the long window |
-| Short Window Minutes | 5 | Lookback of the short window; must be shorter than the long one |
+| Short Window Minutes | 5 | Lookback of the short window; must be shorter than the long one. On a metric SLO with longer slices, both windows are rounded up to whole slices |
 | Burn Rate Threshold | 14.4 | Multiple of the rate that spends the budget exactly over the SLO window |
 
 The form offers three presets: Fast (14.4x over 1h / 5m, pages when 2% of a 30-day budget burns in an hour), Slow (6x over 6h / 30m) and Long (1x over 3d / 6h). Pointing the rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically.

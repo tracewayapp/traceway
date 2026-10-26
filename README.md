@@ -301,7 +301,7 @@ Full documentation at **[docs.tracewayapp.com](https://docs.tracewayapp.com)**:
 - [**Embedded Mode**](https://docs.tracewayapp.com/learn/embedded-mode): Run Traceway inside your Go app
 - [**Kubernetes**](https://docs.tracewayapp.com/learn/kubernetes): Instrument a whole cluster with the manifests in [`examples/kubernetes`](./examples/kubernetes)
 - [**Organization Overview**](https://docs.tracewayapp.com/learn/organization-overview): Servers, issues, monitors, and on-call pages across every project, one sidebar click apart
-- [**SLOs**](https://docs.tracewayapp.com/learn/slos): Objectives, error budgets and burn-rate alerting over endpoints, spans, tasks, monitors and metrics
+- [**SLOs**](https://docs.tracewayapp.com/learn/slos): Objectives, error budgets and burn-rate alerting over endpoints, spans, tasks, monitors, metrics and crash-free sessions
 
 ## Community
 

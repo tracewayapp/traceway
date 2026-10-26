@@ -205,3 +205,56 @@ func TestSLOBudgetConsumedFiresAndRecovers(t *testing.T) {
 		t.Fatalf("an exhausted budget is critical: %+v, %v", result, err)
 	}
 }
+
+func TestSLOBurnRateShortWindowCoversOneSlice(t *testing.T) {
+	fixture := setupSLORuleDB(t, "slo_burn_rate", `{"sloId":1,"longWindowMinutes":60,"shortWindowMinutes":5,"burnRateThreshold":6}`, 0)
+	ctx := context.Background()
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		_, err := tx.Exec("UPDATE slos SET bucket_minutes = 60 WHERE id = ?", fixture.SLO.Id)
+		return struct{}{}, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastSlice := time.Now().UTC().Truncate(time.Hour).Add(-time.Hour)
+	bucket := shared.SLOBucket{ProjectId: fixture.ProjectId, SLOId: fixture.SLO.Id, BucketStart: lastSlice, Good: 0, Total: 1, ComputedAt: time.Now().UTC()}
+	if err := telemetry.SLOBucketRepository.Upsert(ctx, []shared.SLOBucket{bucket}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := evaluateSLOBurnRate(ctx, fixture.Rule, fixture.ProjectId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Fired {
+		t.Fatalf("a 5m short window on hourly slices must read the last slice and fire: %+v", result)
+	}
+}
+
+func TestSLORuleRecoversWhenSLODisabled(t *testing.T) {
+	fixture := setupSLORuleDB(t, "slo_burn_rate", `{"sloId":1,"longWindowMinutes":60,"shortWindowMinutes":5,"burnRateThreshold":6}`, 0)
+	ctx := context.Background()
+	seedBuckets(t, fixture, 60, 90, 100)
+	if result, err := evaluateSLOBurnRate(ctx, fixture.Rule, fixture.ProjectId); err != nil || !result.Fired {
+		t.Fatalf("expected a fire: %+v %v", result, err)
+	}
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		_, err := tx.Exec("UPDATE slos SET enabled = 0 WHERE id = ?", fixture.SLO.Id)
+		return struct{}{}, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := evaluateSLOBurnRate(ctx, fixture.Rule, fixture.ProjectId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Recovered || ruleState(t, fixture.Rule.Id) {
+		t.Fatalf("disabling the SLO must end the firing episode: %+v", result)
+	}
+	result, err = evaluateSLOBurnRate(ctx, fixture.Rule, fixture.ProjectId)
+	if err != nil || result.Recovered || result.Fired {
+		t.Fatalf("a disabled SLO stays quiet afterwards: %+v %v", result, err)
+	}
+}

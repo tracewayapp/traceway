@@ -1,6 +1,6 @@
 # SLOs
 
-A service level objective (SLO) holds a service level indicator (SLI) to a target over a rolling window. The SLI is the share of good events: requests that succeeded, spans that were fast enough, task runs without an exception, probes that came back up, or metric slices that stayed under a limit. The target says how many of them have to be good, such as 99.9% over the last 30 days. Everything the target leaves over is the error budget, and the burn rate says how fast that budget is being spent.
+A service level objective (SLO) holds a service level indicator (SLI) to a target over a rolling window. The SLI is the share of good events: requests that succeeded, spans that were fast enough, task runs without an exception, probes that came back up, metric slices that stayed under a limit, or sessions that ended without a crash. The target says how many of them have to be good, such as 99.9% over the last 30 days. Everything the target leaves over is the error budget, and the burn rate says how fast that budget is being spent.
 
 SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge counts the SLOs that are currently breached. Each SLO shows its current SLI, how much of the error budget is left, the burn rate over the last hour and the last six hours, and a status:
 
@@ -9,7 +9,7 @@ SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge
 | Meeting | The SLI over the window is at or above the target |
 | Breached | The SLI is below the target, so the error budget is overspent |
 | No data | Nothing matched the indicator in the window yet |
-| Paused | The SLO is disabled; nothing is computed and no rule evaluates it |
+| Paused | The SLO is disabled; nothing is computed, and an alert that was firing on it sends its recovery notice |
 
 ## SLI kinds
 
@@ -26,7 +26,7 @@ Browser and mobile projects (React, Vue, Svelte, jQuery, React Native, Flutter, 
 
 The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Native `/api/report` runs are stored as server spans named after the endpoint, so they are covered too.
 
-The metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat.
+The metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat. Empty slices count only from the moment the SLO was saved, or its indicator last changed. The backfill of older history never turns the time before the metric existed, or past its retention, into bad slices.
 
 Latency indicators leave streaming endpoints out, since a connection lifetime is not a response time. Healthy healthcheck requests are dropped at ingest, so a project-wide availability SLO only ever sees the failing probes; give healthcheck paths their own endpoint SLO if you need to track them.
 
@@ -55,11 +55,15 @@ The presets follow the Google SRE workbook:
 | Slow | 6h / 30m | 6x | 5% | 5 days |
 | Long | 3d / 6h | 1x | 10% | 30 days |
 
-Point the Fast preset at a paging channel and the Slow and Long ones at chat. Add SLO Budget Consumed at 80% as the planning signal that says the next deploy should be a careful one. Pointing either rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically. The rules fire once when the condition starts and again only after it cleared, so they do not re-page every poll.
+Point the Fast preset at a paging channel and the Slow and Long ones at chat. Add SLO Budget Consumed at 80% as the planning signal that says the next deploy should be a careful one. Pointing either rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically. The rules fire once when the condition starts and again only after it cleared, so they do not re-page every poll. Editing, disabling or deleting a rule resolves the page it opened, and so does disabling or deleting its SLO.
+
+On a metric SLO with slices longer than a minute, both windows are rounded up to whole slices, so a 5-minute short window over 60-minute slices reads the last hour. The rule form says so when it happens.
 
 ## How history is computed
 
-A background worker computes the indicator into buckets of one minute (or the metric slice length) and stores them next to the telemetry, so the SLI, the budget and the burn rates are sums over buckets rather than scans of raw data. Every poll recomputes the last ten minutes, so data that arrives a little late still lands in its bucket, and backfills older history in chunks until the whole window is covered. A new 90-day SLO fills over a few minutes; the detail page says how much of the range the history covers while it does.
+A background worker computes the indicator into buckets of one minute (or the metric slice length) and stores them next to the telemetry, so the SLI, the budget and the burn rates are sums over buckets rather than scans of raw data. Every poll recomputes the last ten minutes, so data that arrives a little late still lands in its bucket, and backfills older history in chunks until the whole window is covered. A new 90-day SLO fills over a few minutes; the detail page says how much of the range the history covers while it does. All SLOs share one five-second backfill budget per poll, so adding many at once never delays the refresh of the others.
+
+If the backend was down, the first poll after it recomputes the last 24 hours, and the rest of the gap is filled from the raw telemetry within the same backfill budget.
 
 Buckets are kept for 120 days whatever the raw telemetry retention is. On SQLite and DuckDB the raw retention defaults to 30 days (`SQLITE_RETENTION_DAYS`, `DUCKDB_RETENTION_DAYS`), so a 90-day window backfills only what is still retained, and buckets already computed survive the pruning of the raw rows. On ClickHouse, metric indicators backfill from the 1-minute rollups, which keep 30 days.
 

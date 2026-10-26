@@ -16,6 +16,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/notifications"
+	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	traceway "go.tracewayapp.com"
 )
@@ -234,6 +235,11 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		cooldown = 15
 	}
 
+	if err := resolveSLORulePage(tx, existing); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the page of the edited rule: %w", err))
+		return
+	}
+
 	existing.ChannelId = req.ChannelId
 	existing.Name = req.Name
 	existing.RuleType = req.RuleType
@@ -280,6 +286,10 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 		return
 	}
 
+	if err := resolveSLORulePage(tx, existing); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the page of the deleted rule: %w", err))
+		return
+	}
 	if err := transactional.NotificationRuleRepository.Delete(tx, id); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete notification rule: %w", err))
 		return
@@ -328,6 +338,12 @@ func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
 	newEnabled := !existing.Enabled
 	if req.Enabled != nil {
 		newEnabled = *req.Enabled
+	}
+	if !newEnabled {
+		if err := resolveSLORulePage(tx, existing); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the page of the disabled rule: %w", err))
+			return
+		}
 	}
 	if err := transactional.NotificationRuleRepository.UpdateEnabled(tx, id, newEnabled); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle notification rule: %w", err))
@@ -428,6 +444,20 @@ func validateSLORuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, con
 		return validateRuleSLO(tx, projectId, cfg.SloId)
 	}
 	return ""
+}
+
+// resolveSLORulePage closes the page an slo_* rule opened and forgets its
+// firing state when the rule stops being evaluated as it was (edited,
+// disabled or deleted): the recovery that would have resolved it never comes.
+func resolveSLORulePage(tx *sql.Tx, rule *models.NotificationRule) error {
+	sloId := sloRuleTarget(rule.RuleType, rule.Config)
+	if sloId == 0 {
+		return nil
+	}
+	if _, err := oncall.AutoResolveByDedupKeyTx(tx, rule.Id, notifications.SLODedupToken(sloId), time.Now().UTC()); err != nil {
+		return err
+	}
+	return transactional.NotificationRuleStateRepository.Delete(tx, rule.Id)
 }
 
 func validateRuleSLO(tx *sql.Tx, projectId uuid.UUID, sloId int) string {

@@ -12,7 +12,7 @@ import { AuroraBackground } from "@/components/aurora-background";
 export const metadata: Metadata = {
   title: "SLOs · Traceway",
   description:
-    "Service level objectives over the telemetry you already send: endpoint availability and latency, any span filter, task success, monitor uptime, or a metric held under a limit. Rolling windows, error budgets, burn rates, and multi-window burn-rate alerts that recover on their own.",
+    "Service level objectives over the telemetry you already send: endpoint availability and latency, any span filter, task success, monitor uptime, a metric held under a limit, or crash-free sessions. Rolling windows, error budgets, burn rates, and multi-window burn-rate alerts that recover on their own.",
 };
 
 export default function SlosPage() {
@@ -31,11 +31,11 @@ export default function SlosPage() {
           </h1>
           <p className="hero-sub">
             An SLO holds an indicator, the share of good requests, spans, task
-            runs, probes or metric slices, to a target over a rolling 7, 30 or
-            90 day window. What the target leaves over is the error budget, and
-            the burn rate says how fast you are spending it. Traceway computes
-            all of it from the spans, probes and metrics it already stores, so
-            there is nothing new to instrument.
+            runs, probes, metric slices or crash-free sessions, to a target over
+            a rolling 7, 30 or 90 day window. What the target leaves over is the
+            error budget, and the burn rate says how fast you are spending it.
+            Traceway computes all of it from the spans, probes, metrics and
+            sessions it already stores, so there is nothing new to instrument.
           </p>
           <div className="hero-cta-row">
             <Link
@@ -114,7 +114,7 @@ export default function SlosPage() {
             bullets={[
               "SLI and error budget charts with the target drawn in",
               "Burn rates over 1 hour and 6 hours, colour coded",
-              "View bad events: the explorer opens with the SLI filter applied",
+              "View bad events: one click to the requests, spans, task runs, probes or sessions behind the number",
               "Rolling 7, 30 or 90 day windows, changed without losing history",
             ]}
             image={{

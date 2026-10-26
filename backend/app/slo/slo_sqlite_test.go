@@ -132,13 +132,16 @@ func TestWorkerMetricTimeslices(t *testing.T) {
 	}
 	strict := createTestSLO(t, projectId, models.SLIKindMetric, `{"metricName":"cpu.used_pcnt","tags":{},"aggregation":"avg","operator":"lt","threshold":90,"missingIsBad":true}`, 99, 7, 5)
 	lenient := createTestSLO(t, projectId, models.SLIKindMetric, `{"metricName":"cpu.used_pcnt","tags":{},"aggregation":"avg","operator":"lt","threshold":90,"missingIsBad":false}`, 50, 7, 5)
+	since := lastClosed.Add(-30 * time.Minute)
+	strict.SliSince = &since
+	setSLISince(t, strict.Id, since)
 
 	RunOnce(ctx, now)
 
 	windowStart := lastClosed.Add(-7 * 24 * time.Hour)
 	good, total, err := telemetry.SLOBucketRepository.SumRange(ctx, projectId, strict.Id, windowStart, lastClosed)
-	if err != nil || total != 7*24*12 || good != 2 {
-		t.Fatalf("every empty slice is bad: %d/%d (%v), want 2/%d", good, total, err, 7*24*12)
+	if err != nil || total != 6 || good != 2 {
+		t.Fatalf("empty slices are bad only since the definition took effect: %d/%d (%v), want 2/6", good, total, err)
 	}
 	good, total, err = telemetry.SLOBucketRepository.SumRange(ctx, projectId, lenient.Id, windowStart, lastClosed)
 	if err != nil || total != 3 || good != 2 {
@@ -174,5 +177,118 @@ func TestWorkerMonitorUptime(t *testing.T) {
 	}
 	if got.Status != models.SLOStatusBreached {
 		t.Fatalf("75%% against 90%% is breached: %q", got.Status)
+	}
+}
+
+func setSLISince(t *testing.T, id int, since time.Time) {
+	t.Helper()
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		_, err := tx.Exec("UPDATE slos SET sli_since = ? WHERE id = ?", since.UTC(), id)
+		return struct{}{}, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWorkerDiscardsBucketsOfAnEditDuringTheTick(t *testing.T) {
+	projectId := setupSLODB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Minute).Add(30 * time.Second)
+	var endpoints []models.Endpoint
+	for minute := 1; minute <= 120; minute++ {
+		at := now.Add(-time.Duration(minute) * time.Minute)
+		bad := endpointAt(projectId, 500, at)
+		bad.Endpoint = "GET /old"
+		good := endpointAt(projectId, 200, at)
+		good.Endpoint = "GET /new"
+		endpoints = append(endpoints, bad, good)
+	}
+	if err := telemetry.EndpointRepository.InsertAsync(ctx, endpoints); err != nil {
+		t.Fatal(err)
+	}
+	entity := createTestSLO(t, projectId, models.SLIKindEndpoint, `{"endpoint":"GET /old","good":"availability"}`, 99, 7, 1)
+	loadedByTheTick := reloadSLO(t, entity.Id)
+
+	edited := reloadSLO(t, entity.Id)
+	edited.SliConfig = models.JSONText(`{"endpoint":"GET /new","good":"availability"}`)
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		if err := transactional.SLORepository.Update(tx, edited); err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, transactional.SLORepository.ResetHistory(tx, edited.Id, now)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := telemetry.SLOBucketRepository.DeleteBySLO(ctx, projectId, entity.Id); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ComputeOne(ctx, loadedByTheTick, now); err != nil {
+		t.Fatal(err)
+	}
+	if got := reloadSLO(t, entity.Id); got.LastBucketAt != nil {
+		t.Fatalf("the stale tick must not write its snapshot over the reset: %v", got.LastBucketAt)
+	}
+	RunOnce(ctx, now.Add(time.Minute))
+
+	got := reloadSLO(t, entity.Id)
+	if got.CurrentSli == nil || *got.CurrentSli != 100 {
+		t.Fatalf("the new definition only sees 200s: %v", got.CurrentSli)
+	}
+}
+
+func TestWorkerKeepsBucketsWhenOnlyTheTargetChangedDuringTheTick(t *testing.T) {
+	projectId := setupSLODB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Minute).Add(30 * time.Second)
+	if err := telemetry.EndpointRepository.InsertAsync(ctx, []models.Endpoint{endpointAt(projectId, 200, now.Add(-2*time.Minute))}); err != nil {
+		t.Fatal(err)
+	}
+	entity := createTestSLO(t, projectId, models.SLIKindEndpoint, `{"endpoint":"","good":"availability"}`, 99, 7, 1)
+	loadedByTheTick := reloadSLO(t, entity.Id)
+	edited := reloadSLO(t, entity.Id)
+	edited.TargetPercent = 95
+	if _, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		return struct{}{}, transactional.SLORepository.Update(tx, edited)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ComputeOne(ctx, loadedByTheTick, now); err != nil {
+		t.Fatal(err)
+	}
+	_, total, err := telemetry.SLOBucketRepository.SumRange(ctx, projectId, entity.Id, now.Add(-time.Hour), now)
+	if err != nil || total != 1 {
+		t.Fatalf("buckets of an unchanged definition stay: %d (%v)", total, err)
+	}
+}
+
+func TestWorkerFillsTheGapOfAnOutage(t *testing.T) {
+	projectId := setupSLODB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Minute).Add(30 * time.Second)
+	var endpoints []models.Endpoint
+	for hour := 1; hour <= 96; hour++ {
+		endpoints = append(endpoints, endpointAt(projectId, 500, now.Add(-time.Duration(hour)*time.Hour)))
+	}
+	if err := telemetry.EndpointRepository.InsertAsync(ctx, endpoints); err != nil {
+		t.Fatal(err)
+	}
+	entity := createTestSLO(t, projectId, models.SLIKindEndpoint, `{"endpoint":"","good":"availability"}`, 99, 7, 1)
+	if err := ComputeOne(ctx, entity, now.Add(-72*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	RunOnce(ctx, now)
+
+	got := reloadSLO(t, entity.Id)
+	if got.GapFrom != nil || got.GapTo != nil {
+		t.Fatalf("the gap is filled within one budget: %v %v", got.GapFrom, got.GapTo)
+	}
+	window, err := WindowSums(ctx, got, 7*24*time.Hour, now)
+	if err != nil || window.Total != 96 {
+		t.Fatalf("every request of the window counts after an outage: %d (%v)", window.Total, err)
 	}
 }

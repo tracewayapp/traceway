@@ -80,11 +80,13 @@ func evaluateSLOBurnRate(ctx context.Context, rule *models.NotificationRule, pro
 	if err != nil {
 		return nil, err
 	}
-	if !entity.Enabled {
-		return &EvalResult{}, nil
-	}
-
 	now := time.Now().UTC()
+	if !entity.Enabled {
+		return recoverDisabledSLO(rule, entity, projectId, now)
+	}
+	cfg.LongWindowMinutes = sliceAligned(cfg.LongWindowMinutes, entity.BucketMinutes)
+	cfg.ShortWindowMinutes = sliceAligned(cfg.ShortWindowMinutes, entity.BucketMinutes)
+
 	long, err := slo.WindowSums(ctx, entity, time.Duration(cfg.LongWindowMinutes)*time.Minute, now)
 	if err != nil {
 		return nil, err
@@ -125,11 +127,11 @@ func evaluateSLOBudgetConsumed(ctx context.Context, rule *models.NotificationRul
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now().UTC()
 	if !entity.Enabled {
-		return &EvalResult{}, nil
+		return recoverDisabledSLO(rule, entity, projectId, now)
 	}
 
-	now := time.Now().UTC()
 	window, err := slo.WindowSums(ctx, entity, entity.Window(), now)
 	if err != nil {
 		return nil, err
@@ -151,6 +153,26 @@ func evaluateSLOBudgetConsumed(ctx context.Context, rule *models.NotificationRul
 		return &EvalResult{Recovered: true, Message: buildSLORecoveredMessage(entity, detail, getProjectName(projectId))}, nil
 	}
 	return &EvalResult{}, nil
+}
+
+// sliceAligned rounds a window up to whole slices of the SLO: the buckets are
+// keyed by their start, so a window shorter than one slice would hold none
+// and could never fire.
+func sliceAligned(minutes, bucketMinutes int) int {
+	if bucketMinutes <= 1 {
+		return minutes
+	}
+	return (minutes + bucketMinutes - 1) / bucketMinutes * bucketMinutes
+}
+
+// recoverDisabledSLO ends a firing episode when its SLO is disabled; without
+// it the page the alert opened would stay open with nothing left to resolve it.
+func recoverDisabledSLO(rule *models.NotificationRule, entity *models.SLO, projectId uuid.UUID, now time.Time) (*EvalResult, error) {
+	_, recover, err := transitionRuleState(rule, false, true, now)
+	if err != nil || !recover {
+		return &EvalResult{}, err
+	}
+	return &EvalResult{Recovered: true, Message: buildSLORecoveredMessage(entity, "The SLO was disabled.", getProjectName(projectId))}, nil
 }
 
 // transitionRuleState moves the durable firing state of a rule. It fires only

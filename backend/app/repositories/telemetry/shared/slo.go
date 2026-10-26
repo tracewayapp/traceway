@@ -90,13 +90,15 @@ func SpanGoodCondition(spec SpanSLISpec) (string, []any) {
 }
 
 // OtelSLICountQuery counts the spans matching the search per bucket, and how
-// many of them satisfy good. Retried spans count once, like in Search.
+// many of them satisfy good. Retried spans count once, like in Search. Unlike
+// Search, the filter is applied before the retries are ranked: service, name,
+// kind and attributes are the same on every retry of a span, and ranking only
+// the matching spans, and only the columns the count needs, keeps the query
+// within the read limits on busy projects.
 func OtelSLICountQuery(search OtelSpanSearch, good string, goodArgs []any, bucketSeconds int, dialect OtelSearchDialect) (string, []any) {
 	predicate, args := otelSearchPredicate(search, dialect)
-	scope, scopeArgs := otelSearchPredicate(OtelSpanSearch{ProjectId: search.ProjectId, From: search.From, To: search.To}, dialect)
-	winners := OtelWinningRows("*", scope, dialect.WinnerOrder)
+	winners := OtelWinningRows("recorded_at, duration, status_code", predicate, dialect.WinnerOrder)
 	query := "SELECT " + dialect.Bucket("recorded_at", bucketSeconds) + " AS bucket, " + dialect.Count + ", " + dialect.CountIf(good) +
-		" FROM " + winners + " WHERE " + predicate + " GROUP BY bucket ORDER BY bucket ASC" + dialect.ReadSetting
-	all := append(append(append([]any{}, goodArgs...), scopeArgs...), args...)
-	return query, all
+		" FROM " + winners + " GROUP BY bucket ORDER BY bucket ASC" + dialect.ReadSetting
+	return query, append(append([]any{}, goodArgs...), args...)
 }

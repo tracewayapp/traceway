@@ -14,6 +14,7 @@
 	import type { NotificationChannelConfig, NotificationRuleConfig } from '$lib/types/notifications';
 	import { BURN_RATE_PRESETS } from '$lib/utils/slo-math';
 	import { SLI_KIND_LABELS, type SLO } from '$lib/state/slos.svelte';
+	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import { resolve } from '$app/paths';
 
 	interface NotificationChannel {
@@ -95,6 +96,7 @@
 	let consumedPercent = $state(80);
 	let slos = $state<SLO[]>([]);
 	let slosLoaded = $state(false);
+	let slosStatus = $state<'loading' | 'loaded' | 'error'>('loading');
 
 	const isEditing = $derived(rule !== null);
 
@@ -108,14 +110,28 @@
 		)?.id ?? 'custom'
 	);
 
+	const selectedSlo = $derived(slos.find((s) => String(s.id) === sloId));
+	const sloSliceMinutes = $derived(selectedSlo?.bucketMinutes ?? 1);
+	const roundsBurnWindows = $derived(
+		sloSliceMinutes > 1 &&
+			(shortWindowMinutes % sloSliceMinutes !== 0 || longWindowMinutes % sloSliceMinutes !== 0)
+	);
+
+	function roundUpToSlice(minutes: number): number {
+		return Math.ceil(minutes / sloSliceMinutes) * sloSliceMinutes;
+	}
+
 	async function loadSlos() {
+		slosStatus = 'loading';
 		try {
 			const response = await api.get('/slos', {
 				projectId: projectsState.currentProjectId ?? undefined
 			});
 			slos = response.slos ?? [];
+			slosStatus = 'loaded';
 		} catch {
 			slos = [];
+			slosStatus = 'error';
 		}
 	}
 
@@ -685,7 +701,9 @@
 								{/each}
 							</Select.Content>
 						</Select.Root>
-						{#if slos.length === 0}
+						{#if slosStatus === 'error'}
+							<p class="text-xs text-destructive">The SLOs could not be loaded.</p>
+						{:else if slosStatus === 'loaded' && slos.length === 0}
 							<p class="text-xs text-muted-foreground">
 								No SLOs in this project yet. Create one on the
 								<a class="text-primary underline-offset-2 hover:underline" href={resolve('/slos')}
@@ -735,6 +753,14 @@
 								budget exactly over the SLO window.
 							</p>
 						</div>
+						{#if roundsBurnWindows}
+							<WarningCallout title="Windows are rounded up to whole slices">
+								This SLO is measured in {sloSliceMinutes}-minute slices, so the rule reads the last
+								{windowLabel(roundUpToSlice(shortWindowMinutes))} and {windowLabel(
+									roundUpToSlice(longWindowMinutes)
+								)}.
+							</WarningCallout>
+						{/if}
 					{:else}
 						<div class="space-y-2">
 							<Label for="cfg-budget-consumed">Budget consumed (%)</Label>

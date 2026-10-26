@@ -40,7 +40,7 @@ See [Data Flow](/learn/data-flow) for how these connect during request processin
 
 ## Objectives
 
-An [SLO](/learn/slos) holds any of the above to a target: the share of good requests of an endpoint, of spans matching a filter, of task runs, of monitor probes, or of metric time slices, over a rolling 7, 30 or 90 day window. The worker folds the raw rows into per-minute good/total buckets once, so the current SLI, the error budget and the burn rates are sums over buckets rather than scans, and the burn-rate [alert rules](/learn/alerts#slo-burn-rate) read the same buckets.
+An [SLO](/learn/slos) holds any of the above to a target: the share of good requests of an endpoint, of spans matching a filter, of task runs, of monitor probes, of metric time slices, or of crash-free sessions, over a rolling 7, 30 or 90 day window. The worker folds the raw rows into per-minute good/total buckets once, so the current SLI, the error budget and the burn rates are sums over buckets rather than scans, and the burn-rate [alert rules](/learn/alerts#slo-burn-rate) read the same buckets.
 
 ## Above a single project
 

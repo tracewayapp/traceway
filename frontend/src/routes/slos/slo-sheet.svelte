@@ -218,12 +218,7 @@
 				includeMessages = !!cfg.includeMessages;
 				break;
 		}
-		originalDefinition = JSON.stringify({
-			sliKind: s.sliKind,
-			sliConfig: s.sliConfig,
-			bucketMinutes: s.bucketMinutes,
-			windowDays: s.windowDays
-		});
+		originalDefinition = currentDefinition() ?? '';
 	}
 
 	$effect(() => {
@@ -413,8 +408,7 @@
 			return JSON.stringify({
 				sliKind,
 				sliConfig: buildSliConfig(),
-				bucketMinutes: sliKind === 'metric' ? Number(sliceMinutes) : 1,
-				windowDays: Number(windowDays)
+				bucketMinutes: sliKind === 'metric' ? Number(sliceMinutes) : 1
 			});
 		} catch {
 			return null;

@@ -102,6 +102,10 @@ runs:
         PROJECT_ID: ${{ inputs.project_id }}
       run: |
         set -euo pipefail
+        if [ -z "$PROJECT_ID" ]; then
+          echo "::error::project_id is empty. It is normally read from an Actions variable: check that TRACEWAY_PROJECT_ID exists as a variable and not only as a secret, because a job calling a reusable workflow cannot read the secrets context from its with: block."
+          exit 1
+        fi
         printf '%s' "$TOKEN" | traceway login --url "$URL" --token-stdin
         traceway projects use "$PROJECT_ID"
 

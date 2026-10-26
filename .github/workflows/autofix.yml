@@ -9,14 +9,19 @@
 # token; every write (push, PR, comment, archive) happens in the publish step
 # from validated inputs. That split is the security model, not the agent's
 # tool allowlist.
-name: Traceway auto-fix
+name: Traceway auto-fix (reusable)
 
 on:
   workflow_call:
     inputs:
       issue_number:
+        # Deliberately a string. A caller composing this from
+        # github.event.issue.number and a workflow_dispatch input yields a
+        # string on dispatch, and a number-typed input rejects that during
+        # workflow validation, before any job exists — so the run reports only
+        # "a workflow file issue" with no logs and no annotation.
         description: Number of the issue the Traceway GitHub channel opened
-        type: number
+        type: string
         required: true
       allowed_authors:
         description: Comma-separated GitHub logins allowed to trigger a run (the owner of the channel's token); every other issue author is refused

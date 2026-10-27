@@ -22,9 +22,6 @@ func (r *notificationRuleStateRepository) Find(tx *sql.Tx, ruleId int) (*models.
 	)
 }
 
-// Transition records whether the rule is firing and reports whether this call
-// changed it, so two instances evaluating the same rule never both notify.
-// since is the start of the current firing episode and is cleared on recovery.
 func (r *notificationRuleStateRepository) Transition(tx *sql.Tx, ruleId int, firing bool, now time.Time) (bool, error) {
 	var since any
 	if firing {

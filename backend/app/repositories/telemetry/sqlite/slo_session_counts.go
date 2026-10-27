@@ -12,8 +12,6 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 )
 
-// SLICounts counts sessions per bucket in [from, to) by their start, and how
-// many finished without an exception recorded in them.
 func (r *sessionRepository) SLICounts(ctx context.Context, projectId uuid.UUID, spec shared.SessionSLISpec, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	pid := projectId.String()
 	failed := "id IN (SELECT session_id FROM exceptions_v2 WHERE project_id = ? AND session_id IS NOT NULL AND session_id != '' AND recorded_at >= ? AND recorded_at <= ?"

@@ -514,7 +514,6 @@
 					</text>
 				{/each}
 
-				<!-- Reference lines, such as an SLO target -->
 				{#each referenceLines as reference, __index (__index)}
 					{@const referenceY = yScale(reference.value)}
 					{#if referenceY >= 0 && referenceY <= chartHeight}

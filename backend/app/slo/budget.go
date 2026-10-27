@@ -1,7 +1,3 @@
-// Package slo computes service level objectives: it materializes per-bucket
-// good/total counts for every enabled SLO into the telemetry slo_buckets
-// table and keeps the snapshot columns on the slos row current. The budget
-// math here is pure so the notification rules and the tests share it.
 package slo
 
 import (
@@ -10,7 +6,6 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 )
 
-// Window is the good/total count of a time range.
 type Window struct {
 	Good  int64
 	Total int64
@@ -20,7 +15,6 @@ func (w Window) Bad() int64 {
 	return w.Total - w.Good
 }
 
-// SLI is the share of good events; ok is false when the window saw nothing.
 func (w Window) SLI() (float64, bool) {
 	if w.Total <= 0 {
 		return 0, false
@@ -28,8 +22,6 @@ func (w Window) SLI() (float64, bool) {
 	return float64(w.Good) / float64(w.Total), true
 }
 
-// BudgetRemaining is the share of the error budget left, in percent. It goes
-// negative once the window has more bad events than the target allows.
 func BudgetRemaining(w Window, target float64) (float64, bool) {
 	sli, ok := w.SLI()
 	if !ok || target >= 1 {
@@ -38,9 +30,6 @@ func BudgetRemaining(w Window, target float64) (float64, bool) {
 	return 100 * (1 - (1-sli)/(1-target)), true
 }
 
-// BurnRate is the observed bad rate over the allowed bad rate: 1 spends the
-// budget exactly over the window, 14.4 exhausts a 30-day budget in two days.
-// A window without events burns nothing.
 func BurnRate(w Window, target float64) float64 {
 	if w.Total <= 0 || target >= 1 {
 		return 0

@@ -21,12 +21,10 @@ func sumIf(condition string) string {
 	return "SUM(CASE WHEN " + condition + " THEN 1 ELSE 0 END)"
 }
 
-// distinctIf counts a retried export of the same entity once.
 func distinctIf(condition string) string {
 	return "COUNT(DISTINCT CASE WHEN " + condition + " THEN id END)"
 }
 
-// SLICounts counts requests per bucket in [from, to) and how many were good.
 func (e *endpointRepository) SLICounts(ctx context.Context, projectId uuid.UUID, spec shared.EndpointSLISpec, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	good := "status_code < 500"
 	var args []any
@@ -51,8 +49,6 @@ func (e *endpointRepository) SLICounts(ctx context.Context, projectId uuid.UUID,
 	return shared.ScanSLOBucketPoints(rows, from, to)
 }
 
-// SLICounts counts task runs per bucket in [from, to); a run is good unless an
-// exception was recorded on its own span.
 func (r *taskRepository) SLICounts(ctx context.Context, projectId uuid.UUID, spec shared.TaskSLISpec, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	pid := projectId.String()
 	failed := "(trace_id, span_id) IN (SELECT trace_id, span_id FROM exceptions_v2 WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?)"
@@ -72,7 +68,6 @@ func (r *taskRepository) SLICounts(ctx context.Context, projectId uuid.UUID, spe
 	return shared.ScanSLOBucketPoints(rows, from, to)
 }
 
-// SLICounts counts the spans matching the filter per bucket in [from, to) and how many were good.
 func (r *otelSpanRepository) SLICounts(ctx context.Context, spec shared.SpanSLISpec, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	search := spec.Filter
 	search.From, search.To = from, to

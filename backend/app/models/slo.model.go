@@ -33,12 +33,6 @@ var (
 	SLOMetricOperators    = map[string]bool{"gt": true, "gte": true, "lt": true, "lte": true}
 )
 
-// SLO is a service level objective: an SLI definition (sli_kind + sli_config)
-// held to target_percent over a rolling window. The worker in app/slo keeps the
-// snapshot columns (status through last_bucket_at, gap_from, gap_to) current
-// from slo_buckets. Revision grows on every edit so the worker can tell that
-// the row changed while it computed; sli_since is when the current definition
-// took effect, before which a metric slice without samples does not count.
 type SLO struct {
 	Id              int        `json:"id" lit:"id"`
 	ProjectId       uuid.UUID  `json:"projectId" lit:"project_id"`
@@ -78,8 +72,6 @@ func (s *SLO) BucketDuration() time.Duration {
 	return time.Duration(s.BucketMinutes) * time.Minute
 }
 
-// MissingCountsFrom is the first instant a metric slice without samples can
-// count as bad: never before the current definition existed.
 func (s *SLO) MissingCountsFrom() time.Time {
 	if s.SliSince != nil {
 		return s.SliSince.UTC()
@@ -91,7 +83,6 @@ func (s *SLO) Window() time.Duration {
 	return time.Duration(s.WindowDays) * 24 * time.Hour
 }
 
-// SLOSnapshot is what the worker writes back after each computation.
 type SLOSnapshot struct {
 	Status          string
 	CurrentSli      *float64
@@ -105,8 +96,6 @@ type SLOSnapshot struct {
 	GapTo           *time.Time
 }
 
-// NotificationRuleState is the durable firing state of a polled rule that
-// sends recovery notices (the slo_* rule types).
 type NotificationRuleState struct {
 	Id        int        `json:"id" lit:"id"`
 	RuleId    int        `json:"ruleId" lit:"rule_id"`
@@ -143,9 +132,6 @@ type MonitorSLIConfig struct {
 	CheckIds []int `json:"checkIds"`
 }
 
-// SessionSLIConfig is the crash-free sessions indicator of browser and mobile
-// projects: a session is bad when an exception was recorded in it. Captured
-// messages only count when IncludeMessages is set.
 type SessionSLIConfig struct {
 	AppVersion      string `json:"appVersion"`
 	IncludeMessages bool   `json:"includeMessages"`
@@ -160,7 +146,6 @@ type MetricSLIConfig struct {
 	MissingIsBad bool              `json:"missingIsBad"`
 }
 
-// SLIConfig is the parsed sli_config; exactly one field is set, chosen by SliKind.
 type SLIConfig struct {
 	Endpoint *EndpointSLIConfig
 	Span     *SpanSLIConfig

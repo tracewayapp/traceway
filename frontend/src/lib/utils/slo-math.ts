@@ -16,8 +16,6 @@ export interface BurnRatePreset {
 	burnRateThreshold: number;
 }
 
-// The Google SRE multi-window presets: each one fires when the share of a
-// 30-day budget it names has burned over its long window.
 export const BURN_RATE_PRESETS: BurnRatePreset[] = [
 	{
 		id: 'fast',
@@ -53,9 +51,6 @@ export function sliSeries(buckets: SloSeriesBucket[]): ChartPoint[] {
 		}));
 }
 
-// Cumulative share of the error budget consumed, relative to the budget the
-// traffic in the range allows: on the SLO's own window the last point is
-// 100 minus the budget remaining the backend reports.
 export function errorBudgetSeries(buckets: SloSeriesBucket[], targetPercent: number): ChartPoint[] {
 	const total = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
 	const allowedBad = (1 - targetPercent / 100) * total;
@@ -113,8 +108,6 @@ function decimalsOf(value: number): number {
 	return dot === -1 ? 0 : text.length - dot - 1;
 }
 
-// A 99.95% target needs two decimals to read against 99.99%; the SLI keeps at
-// least as many as the target.
 export function formatSloPercent(value: number | null, targetPercent: number): string {
 	if (value === null || Number.isNaN(value)) return '—';
 	return `${value.toFixed(Math.max(2, decimalsOf(targetPercent)))}%`;
@@ -166,8 +159,6 @@ export function sliChartDomain(points: ChartPoint[], targetPercent: number): [nu
 	return [Math.max(0, low - pad), 100];
 }
 
-// A badly breached SLO consumes thousands of percent; the chart keeps the
-// crossing of the 100% line readable and lets the series run off the top.
 export function budgetChartDomain(points: ChartPoint[]): [number, number] {
 	let high = 100;
 	for (const point of points) {
@@ -224,7 +215,6 @@ interface SpanSliAttributeLike {
 	value: string;
 }
 
-// Below -100% the budget is simply gone; the burn rate says how badly.
 export function formatBudgetRemaining(remaining: number | null): string {
 	if (remaining === null || Number.isNaN(remaining)) return '—';
 	if (remaining <= -100) return '-100%';

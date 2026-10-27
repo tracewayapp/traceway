@@ -17,7 +17,6 @@ type HealthStats struct {
 	LastTickAt    *time.Time `json:"lastTickAt"`
 }
 
-// HealthSnapshot powers the slo block of /api/health/deep.
 func HealthSnapshot() *HealthStats {
 	stats := &HealthStats{
 		ComputedTotal: atomic.LoadUint64(&computedTotal),

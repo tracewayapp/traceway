@@ -51,7 +51,6 @@ func TestSLOBucketRepository_UpsertSumSeries(t *testing.T) {
 	if err := SLOBucketRepository.Upsert(ctx, rows); err != nil {
 		t.Fatal(err)
 	}
-	// A recomputed bucket replaces the earlier row instead of adding to it.
 	if err := SLOBucketRepository.Upsert(ctx, []shared.SLOBucket{{ProjectId: project, SLOId: 7, BucketStart: base, Good: 95, Total: 100, ComputedAt: now.Add(time.Second)}}); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +99,6 @@ func TestSLOBucketRepository_UpsertSumSeries(t *testing.T) {
 	if err != nil || good != 1 || total != 1 {
 		t.Fatalf("delete touched another SLO: %d/%d, %v", good, total, err)
 	}
-	// A tick that started before the delete writes late; a later tick recomputes.
 	if err := SLOBucketRepository.Upsert(ctx, []shared.SLOBucket{{ProjectId: project, SLOId: 7, BucketStart: base.Add(time.Minute), Good: 1, Total: 1, ComputedAt: now}}); err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +236,6 @@ func TestOtelSpanRepository_SLICounts(t *testing.T) {
 	if _, err := OtelSpanRepository.InsertAsync(ctx, []models.OtelSpan{checkout, failed, slow, worker}); err != nil {
 		t.Fatal(err)
 	}
-	// A retried export stores the same span again; it must count once.
 	if _, err := OtelSpanRepository.InsertAsync(ctx, []models.OtelSpan{failed}); err != nil {
 		t.Fatal(err)
 	}

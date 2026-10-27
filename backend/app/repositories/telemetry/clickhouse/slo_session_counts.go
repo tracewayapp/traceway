@@ -11,9 +11,6 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 )
 
-// SLICounts counts sessions per bucket in [from, to) by their start, and how
-// many finished without an exception recorded in them. FINAL collapses the
-// start and end writes of a session into one row.
 func (r *sessionRepository) SLICounts(ctx context.Context, projectId uuid.UUID, spec shared.SessionSLISpec, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	failed := "id IN (SELECT assumeNotNull(session_id) FROM exceptions_v2 WHERE project_id = ? AND session_id IS NOT NULL AND recorded_at >= ? AND recorded_at <= ?"
 	if !spec.IncludeMessages {

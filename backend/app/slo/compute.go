@@ -12,8 +12,6 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 )
 
-// ComputeBuckets reads the SLI of slo straight from telemetry for [from, to),
-// one point per bucket. Both bounds must be bucket-aligned.
 func ComputeBuckets(ctx context.Context, slo *models.SLO, from, to time.Time) ([]shared.SLOBucketPoint, error) {
 	cfg, err := models.ParseSLIConfig(slo.SliKind, slo.SliConfig)
 	if err != nil {
@@ -63,8 +61,6 @@ func spanFilter(projectId uuid.UUID, cfg *models.SpanSLIConfig) shared.OtelSpanS
 	return filter
 }
 
-// monitorBuckets sums the selected checks' probes per bucket: good = up,
-// total = total - missed, the status page math.
 func monitorBuckets(ctx context.Context, slo *models.SLO, cfg *models.MonitorSLIConfig, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	sums := map[int64]*shared.SLOBucketPoint{}
 	for _, checkId := range cfg.CheckIds {
@@ -94,11 +90,6 @@ func monitorBuckets(ctx context.Context, slo *models.SLO, cfg *models.MonitorSLI
 	return result, nil
 }
 
-// metricBuckets is the timeslice SLI: every slice of the range is one unit,
-// good when the aggregate satisfies the comparison. A slice without samples
-// is bad when the SLO says so and it starts after the definition took effect,
-// otherwise it does not count: a backfill must not turn the time before the
-// metric existed, or past the metric retention, into bad slices.
 func metricBuckets(ctx context.Context, slo *models.SLO, cfg *models.MetricSLIConfig, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	series, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, slo.ProjectId, cfg.MetricName, from, to, bucketMinutes, cfg.Aggregation, cfg.Tags, "", 1)
 	if err != nil {

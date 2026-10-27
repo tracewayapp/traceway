@@ -406,8 +406,6 @@ func (ctrl *notificationRuleController) Snooze(ctx *gin.Context) {
 
 var NotificationRuleController = notificationRuleController{}
 
-// validateSLORuleConfig checks the slo_* rule configs; other rule types are
-// not validated here. Returns the 422 message, or an empty string.
 func validateSLORuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, config json.RawMessage) string {
 	switch ruleType {
 	case "slo_burn_rate":
@@ -446,9 +444,6 @@ func validateSLORuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, con
 	return ""
 }
 
-// resolveSLORulePage closes the page an slo_* rule opened and forgets its
-// firing state when the rule stops being evaluated as it was (edited,
-// disabled or deleted): the recovery that would have resolved it never comes.
 func resolveSLORulePage(tx *sql.Tx, rule *models.NotificationRule) error {
 	sloId := sloRuleTarget(rule.RuleType, rule.Config)
 	if sloId == 0 {

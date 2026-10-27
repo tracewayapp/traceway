@@ -20,8 +20,6 @@ export function badEventsLabel(slo: Pick<SLO, 'sliKind'>): string {
 	}
 }
 
-// Where the events behind the SLI live. The span explorer answers the exact
-// filter; the other pages open on the matching entity.
 export function badEventsHref(slo: Pick<SLO, 'sliKind' | 'sliConfig'>): string {
 	const cfg = slo.sliConfig as unknown as Record<string, unknown>;
 	switch (slo.sliKind) {

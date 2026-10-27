@@ -115,8 +115,6 @@ export const SLI_KIND_LABELS: Record<SliKind, string> = {
 	session: 'Session'
 };
 
-// Browser and mobile SDKs report sessions and exceptions, nothing the other
-// kinds count; backend projects have no sessions.
 export const BACKEND_SLI_KINDS: SliKind[] = ['endpoint', 'span', 'task', 'monitor', 'metric'];
 export const FRONTEND_SLI_KINDS: SliKind[] = ['session'];
 
@@ -130,14 +128,10 @@ class SlosState {
 	breachedCount = $state(0);
 
 	async refreshBreachedCount() {
-		try {
-			const res = await api.get('/slos/breached-count', {
-				projectId: projectsState.currentProjectId ?? undefined
-			});
-			this.breachedCount = res.count ?? 0;
-		} catch {
-			// badge stays at its last value
-		}
+		const res = await api
+			.get('/slos/breached-count', { projectId: projectsState.currentProjectId ?? undefined })
+			.catch(() => null);
+		if (res) this.breachedCount = res.count ?? 0;
 	}
 }
 

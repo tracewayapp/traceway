@@ -15,10 +15,6 @@ import (
 	traceway "go.tracewayapp.com"
 )
 
-// statefulRuleTypes fire on the transition into the condition and send a
-// recovery notice on the way out. Their firing state lives in
-// notification_rule_states so it survives restarts, and the polled loop
-// evaluates them during their cooldown so a recovery is never delayed by it.
 var statefulRuleTypes = map[string]bool{
 	"slo_burn_rate":       true,
 	"slo_budget_consumed": true,
@@ -31,8 +27,6 @@ const (
 	defaultBudgetConsumedPercent  = 80
 )
 
-// SLODedupToken is the DedupToken of every message about one SLO, so a
-// recovery can find the page the alert opened.
 func SLODedupToken(sloId int) string {
 	return fmt.Sprintf("slo:%d", sloId)
 }
@@ -99,8 +93,6 @@ func evaluateSLOBurnRate(ctx context.Context, rule *models.NotificationRule, pro
 	longBurn := slo.BurnRate(long, target)
 	shortBurn := slo.BurnRate(short, target)
 	met := long.Total > 0 && longBurn >= cfg.BurnRateThreshold && shortBurn >= cfg.BurnRateThreshold
-	// Either window below the threshold ends the episode: the short one resets
-	// the alert soon after the burn stops, as in the SRE workbook.
 	clear := longBurn < cfg.BurnRateThreshold || shortBurn < cfg.BurnRateThreshold
 
 	fire, recover, err := transitionRuleState(rule, met, clear, now)
@@ -134,8 +126,6 @@ func evaluateSLOBudgetConsumed(_ context.Context, rule *models.NotificationRule,
 		return recoverDisabledSLO(rule, entity, projectId, now)
 	}
 
-	// The worker's snapshot already holds the budget of the whole window;
-	// summing the window again on every poll would double the read cost.
 	ok := entity.BudgetRemaining != nil
 	consumed := 0.0
 	if ok {
@@ -161,9 +151,6 @@ func evaluateSLOBudgetConsumed(_ context.Context, rule *models.NotificationRule,
 	return &EvalResult{}, nil
 }
 
-// sliceAligned rounds a window up to whole slices of the SLO: the buckets are
-// keyed by their start, so a window shorter than one slice would hold none
-// and could never fire.
 func sliceAligned(minutes, bucketMinutes int) int {
 	if bucketMinutes <= 1 {
 		return minutes
@@ -171,8 +158,6 @@ func sliceAligned(minutes, bucketMinutes int) int {
 	return (minutes + bucketMinutes - 1) / bucketMinutes * bucketMinutes
 }
 
-// recoverDisabledSLO ends a firing episode when its SLO is disabled; without
-// it the page the alert opened would stay open with nothing left to resolve it.
 func recoverDisabledSLO(rule *models.NotificationRule, entity *models.SLO, projectId uuid.UUID, now time.Time) (*EvalResult, error) {
 	_, recover, err := transitionRuleState(rule, false, true, now)
 	if err != nil || !recover {
@@ -181,9 +166,6 @@ func recoverDisabledSLO(rule *models.NotificationRule, entity *models.SLO, proje
 	return &EvalResult{Recovered: true, Message: buildSLORecoveredMessage(entity, "The SLO was disabled.", getProjectName(projectId))}, nil
 }
 
-// transitionRuleState moves the durable firing state of a rule. It fires only
-// when the rule is not firing yet and its cooldown allows it, so a condition
-// met during the cooldown fires on the first tick after it, never silently.
 func transitionRuleState(rule *models.NotificationRule, met bool, clear bool, now time.Time) (fire bool, recover bool, err error) {
 	state, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.NotificationRuleState, error) {
 		return transactional.NotificationRuleStateRepository.Find(tx, rule.Id)
@@ -212,9 +194,6 @@ func transitionRuleState(rule *models.NotificationRule, met bool, clear bool, no
 	return fire, recover, nil
 }
 
-// dispatchRecovery sends the notice that closes an alert. Escalation-channel
-// rules must not dispatch: that would open a fresh page that stays open
-// forever. The page the alert opened is auto-resolved instead.
 func dispatchRecovery(rule *models.NotificationRuleWithChannel, msg Message) {
 	if rule.ChannelType == "escalation" {
 		if pageResolver == nil {

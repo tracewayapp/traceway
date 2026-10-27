@@ -35,9 +35,6 @@ func (r *sloRepository) Create(tx *sql.Tx, slo *models.SLO) (int, error) {
 	return lit.Insert[models.SLO](tx, slo)
 }
 
-// Update writes the user-editable columns only and bumps the revision. The
-// snapshot columns belong to the worker (UpdateSnapshot) and must not be
-// reverted by a concurrent edit.
 func (r *sloRepository) Update(tx *sql.Tx, slo *models.SLO) error {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
@@ -61,8 +58,6 @@ func (r *sloRepository) Update(tx *sql.Tx, slo *models.SLO) error {
 	return lit.UpdateNative(tx, query, args...)
 }
 
-// ResetHistory forgets every computed value after the SLI definition changed,
-// so the worker rebuilds the buckets from scratch, and starts sli_since anew.
 func (r *sloRepository) ResetHistory(tx *sql.Tx, id int, now time.Time) error {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
@@ -75,8 +70,6 @@ func (r *sloRepository) ResetHistory(tx *sql.Tx, id int, now time.Time) error {
 	return lit.UpdateNative(tx, query, args...)
 }
 
-// UpdateSnapshot writes the worker's result only when the row is still at the
-// revision the worker computed, and reports whether it did.
 func (r *sloRepository) UpdateSnapshot(tx *sql.Tx, id int, revision int, snapshot models.SLOSnapshot) (bool, error) {
 	query, args, err := lit.ParseNamedQuery(
 		db.Driver,
@@ -135,7 +128,6 @@ func (r *sloRepository) FindByProject(tx *sql.Tx, projectId uuid.UUID) ([]*model
 	)
 }
 
-// FindEnabled lists every enabled SLO across all projects for the worker.
 func (r *sloRepository) FindEnabled(tx *sql.Tx) ([]*models.SLO, error) {
 	return lit.SelectNamed[models.SLO](
 		tx,

@@ -70,7 +70,6 @@ func setupSLORuleDB(t *testing.T, ruleType, config string, cooldownMinutes int) 
 	return fixture
 }
 
-// seedBuckets writes minutes of buckets ending at the last closed minute, each with the given counts.
 func seedBuckets(t *testing.T, fixture *sloRuleFixture, minutes int, good, total int64) {
 	t.Helper()
 	end := time.Now().UTC().Truncate(time.Minute)
@@ -97,7 +96,6 @@ func ruleState(t *testing.T, ruleId int) bool {
 func TestSLOBurnRateFiresOnceAndRecovers(t *testing.T) {
 	fixture := setupSLORuleDB(t, "slo_burn_rate", `{"sloId":1,"longWindowMinutes":60,"shortWindowMinutes":5,"burnRateThreshold":6}`, 0)
 	ctx := context.Background()
-	// 10% bad against a 1% allowance is a 10x burn.
 	seedBuckets(t, fixture, 60, 90, 100)
 
 	result, err := evaluateSLOBurnRate(ctx, fixture.Rule, fixture.ProjectId)
@@ -142,7 +140,6 @@ func TestSLOBurnRateFiresOnceAndRecovers(t *testing.T) {
 func TestSLOBurnRateCriticalAndShortWindow(t *testing.T) {
 	fixture := setupSLORuleDB(t, "slo_burn_rate", `{"sloId":1,"longWindowMinutes":60,"shortWindowMinutes":5,"burnRateThreshold":6}`, 0)
 	ctx := context.Background()
-	// 20x over the hour, but the last five minutes are clean: no fire.
 	seedBuckets(t, fixture, 60, 80, 100)
 	end := time.Now().UTC().Truncate(time.Minute)
 	var clean []shared.SLOBucket
@@ -185,7 +182,6 @@ func TestSLOBurnRateHonoursCooldown(t *testing.T) {
 	}
 }
 
-// setBudgetRemaining writes the snapshot value the budget rule reads; nil is no data.
 func setBudgetRemaining(t *testing.T, fixture *sloRuleFixture, remaining *float64) {
 	t.Helper()
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {

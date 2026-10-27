@@ -13,8 +13,6 @@ import (
 
 type sloBucketRepository struct{}
 
-// Upsert goes through ExecContext with ON CONFLICT: existing buckets are
-// recomputed, and the Appender is insert-only.
 const sloBucketUpsert = "INSERT INTO slo_buckets (project_id, slo_id, bucket_start, good, total, computed_at) VALUES (?, ?, ?, ?, ?, ?) " +
 	"ON CONFLICT (project_id, slo_id, bucket_start) DO UPDATE SET good = excluded.good, total = excluded.total, computed_at = excluded.computed_at"
 
@@ -35,7 +33,6 @@ func (r *sloBucketRepository) Upsert(ctx context.Context, buckets []shared.SLOBu
 	return tx.Commit()
 }
 
-// SumRange sums the buckets in [from, to).
 func (r *sloBucketRepository) SumRange(ctx context.Context, projectId uuid.UUID, sloId int, from, to time.Time) (int64, int64, error) {
 	var good, total int64
 	err := db.TelemetryDB.QueryRowContext(ctx,
@@ -44,7 +41,6 @@ func (r *sloBucketRepository) SumRange(ctx context.Context, projectId uuid.UUID,
 	return good, total, err
 }
 
-// SnapshotSums sums [from, to), [sixHoursFrom, to) and [hourFrom, to) in one read.
 func (r *sloBucketRepository) SnapshotSums(ctx context.Context, projectId uuid.UUID, sloId int, from, to, sixHoursFrom, hourFrom time.Time) (shared.SLOSnapshotSums, error) {
 	var sums shared.SLOSnapshotSums
 	six, hour := sixHoursFrom.UTC(), hourFrom.UTC()
@@ -57,7 +53,6 @@ func (r *sloBucketRepository) SnapshotSums(ctx context.Context, projectId uuid.U
 	return sums, err
 }
 
-// Series re-buckets the stored buckets to intervalMinutes for a chart.
 func (r *sloBucketRepository) Series(ctx context.Context, projectId uuid.UUID, sloId int, from, to time.Time, intervalMinutes int) ([]shared.SLOBucketPoint, error) {
 	query := "SELECT " + epochBucket("bucket_start", intervalMinutes*60) + " AS bucket, CAST(SUM(total) AS BIGINT), CAST(SUM(good) AS BIGINT) FROM slo_buckets " +
 		"WHERE project_id = ? AND slo_id = ? AND bucket_start >= ? AND bucket_start < ? GROUP BY bucket ORDER BY bucket ASC"

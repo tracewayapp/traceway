@@ -59,17 +59,12 @@ type sloPreviewRequest struct {
 	BucketMinutes int             `json:"bucketMinutes"`
 }
 
-// sloDefinition is the validated, canonical form of a request's SLI part.
 type sloDefinition struct {
 	Kind          string
 	Config        json.RawMessage
 	BucketMinutes int
 }
 
-// validateSLIDefinition normalizes and checks the SLI part of a request and
-// returns a 422 message when it is invalid. tx may be nil (preview), in which
-// case monitor ownership is not checked: the probe query is project-scoped
-// anyway, so a foreign check id only ever counts nothing.
 func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw json.RawMessage, bucketMinutes int) (sloDefinition, string) {
 	def := sloDefinition{Kind: kind, BucketMinutes: 1}
 	if !models.ValidSLIKind(kind) {
@@ -243,7 +238,6 @@ func sloIdFromPath(ctx *gin.Context) (projectId uuid.UUID, sloId int, ok bool) {
 	return pid, id, true
 }
 
-// sloRuleTarget returns the SLO a rule references, or 0 for other rule types.
 func sloRuleTarget(ruleType string, config json.RawMessage) int {
 	if !strings.HasPrefix(ruleType, "slo_") {
 		return 0
@@ -382,9 +376,6 @@ func (ctrl *sloController) Update(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
-	// Buckets depend on the SLI definition and the slice length only; the
-	// target and the window are applied on read, so changing them keeps the
-	// history.
 	definitionChanged := existing.SliKind != def.Kind || existing.BucketMinutes != def.BucketMinutes || !sameSLIConfig(existing, def)
 
 	existing.Name = req.Name
@@ -403,8 +394,6 @@ func (ctrl *sloController) Update(ctx *gin.Context) {
 		return
 	}
 	if definitionChanged {
-		// The worker deletes the old buckets itself before it writes new ones;
-		// a delete from here could land after them.
 		if err := transactional.SLORepository.ResetHistory(tx, sloId, existing.UpdatedAt); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reset SLO history: %w", err))
 			return
@@ -419,8 +408,6 @@ func (ctrl *sloController) Update(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, updated)
 }
 
-// sameSLIConfig compares the stored config with a freshly validated one in
-// canonical form, so key order and omitted defaults do not count as a change.
 func sameSLIConfig(existing *models.SLO, def sloDefinition) bool {
 	stored, message := validateSLIDefinition(nil, existing.ProjectId, existing.SliKind, json.RawMessage(existing.SliConfig), existing.BucketMinutes)
 	if message != "" {
@@ -444,8 +431,6 @@ func (ctrl *sloController) Delete(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "SLO not found"})
 		return
 	}
-	// Rules that reference the SLO would error on every poll; a page one of
-	// them opened would survive with nothing left to ever resolve it.
 	rules, err := transactional.NotificationRuleRepository.FindByProjectWithChannel(tx, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load notification rules for SLO cleanup: %w", err))
@@ -478,8 +463,6 @@ func (ctrl *sloController) Delete(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
-// Series is a telemetry read: buckets are keyed by project, so no main-DB
-// lookup is needed to scope them.
 func (ctrl *sloController) Series(ctx *gin.Context) {
 	projectId, sloId, ok := sloIdFromPath(ctx)
 	if !ok {
@@ -519,8 +502,6 @@ func (ctrl *sloController) Series(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"buckets": points})
 }
 
-// Preview computes the SLI of a definition over the last 24 hours straight
-// from telemetry, so the sheet can show what an SLO would see before saving.
 func (ctrl *sloController) Preview(ctx *gin.Context) {
 	projectId, err := middleware.GetProjectId(ctx)
 	if err != nil {

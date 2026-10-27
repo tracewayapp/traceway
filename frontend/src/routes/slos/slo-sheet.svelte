@@ -222,8 +222,6 @@
 		originalDefinition = currentDefinition() ?? '';
 	}
 
-	// untrack: populating writes the form fields, and currentDefinition reads
-	// them back, which would make the effect re-run on its own writes.
 	$effect(() => {
 		const current = slo;
 		if (open && current) {

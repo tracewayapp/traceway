@@ -105,7 +105,6 @@ func TestWorkerComputesEndpointAvailability(t *testing.T) {
 		t.Fatalf("window sums = %d/%d (%v), want 180/200", good, total, err)
 	}
 
-	// Late data lands in its bucket, and recomputing never double counts.
 	late := endpointAt(projectId, 200, now.Add(-3*time.Minute).Add(20*time.Second))
 	if err := telemetry.EndpointRepository.InsertAsync(ctx, []models.Endpoint{late}); err != nil {
 		t.Fatal(err)

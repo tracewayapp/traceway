@@ -19,32 +19,20 @@ import (
 )
 
 const (
-	advisoryLockId = 824737005 // synthetics: 824737004, outbox: 824737003, escalator: 824737002, backfill: 824737001
+	advisoryLockId = 824737005
 
-	// lateDataWindow is how far behind the newest computed bucket every tick
-	// recomputes, so a span or exception that arrives a few minutes late still
-	// lands in its bucket.
 	lateDataWindow = 10 * time.Minute
 
-	// lateArrivalInterval is how often the longer horizon of lateArrivalHorizon
-	// is recomputed; doing it every tick would multiply the reads of those kinds.
 	lateArrivalInterval = 15 * time.Minute
 
-	// maxCatchUp bounds the recompute a tick does before anything else. Older
-	// buckets of a longer outage are recorded as a gap and filled within the
-	// backfill budget.
 	maxCatchUp = 24 * time.Hour
 
 	backfillChunk       = 6 * time.Hour
-	metricBackfillChunk = 24 * time.Hour // ClickHouse reads the 1m rollups past 6h, which outlive the 7-day raw TTL
-	// backfillBudget is shared by all SLOs of one tick, so a burst of new SLOs
-	// cannot hold back the recompute and the snapshot of every other one.
-	backfillBudget    = 5 * time.Second
-	maxBackfillChunks = 48
+	metricBackfillChunk = 24 * time.Hour
+	backfillBudget      = 5 * time.Second
+	maxBackfillChunks   = 48
 
-	computeWorkers = 4
-	// insertBatchRows caps one bucket insert. A tick writes all its SLOs in as
-	// few inserts as this allows: ClickHouse makes a part of every insert.
+	computeWorkers  = 4
 	insertBatchRows = 50_000
 
 	bucketRetention = 120 * 24 * time.Hour
@@ -58,8 +46,6 @@ var (
 	lastLateArrivalAt = map[int]time.Time{}
 )
 
-// Wake computes the SLOs on the next loop iteration instead of waiting for
-// the tick. Call after the transaction that created or changed an SLO commits.
 func Wake() {
 	select {
 	case wakeCh <- struct{}{}:
@@ -89,9 +75,6 @@ func Start(ctx context.Context) {
 	}()
 }
 
-// RunOnce is one worker tick. The main-DB transaction only loads the SLOs:
-// the telemetry reads run with no transaction held, because the SQLite main
-// DB has a single connection. Exported so tests can drive the worker.
 func RunOnce(ctx context.Context, now time.Time) {
 	release, ok := acquireWorkerLock(ctx)
 	if !ok {
@@ -121,9 +104,6 @@ func RunOnce(ctx context.Context, now time.Time) {
 	}
 }
 
-// acquireWorkerLock lets one Postgres instance compute at a time. It is a
-// session lock on a dedicated connection held for the whole tick: a
-// transaction lock would be released as soon as the SLOs are loaded.
 func acquireWorkerLock(ctx context.Context) (func(), bool) {
 	if db.IsSQLite() {
 		return func() {}, true
@@ -144,7 +124,6 @@ func acquireWorkerLock(ctx context.Context) (func(), bool) {
 	return func() {
 		if _, err := conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", int64(advisoryLockId)); err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to release slo worker lock: %w", err))
-			// A pooled connection would keep holding the lock; drop it instead.
 			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
 		}
 		conn.Close()
@@ -163,9 +142,6 @@ type tickResult struct {
 	err         error
 }
 
-// computeAll runs one tick over slos in three phases: read every SLO's
-// buckets from telemetry, write them all in as few inserts as possible, then
-// write each snapshot. The order of slos decides who gets the backfill budget first.
 func computeAll(ctx context.Context, slos []*models.SLO, now time.Time) {
 	deadline := time.Now().Add(backfillBudget)
 	horizons := recomputeHorizons(slos, now)
@@ -215,10 +191,6 @@ func forEach(n int, fn func(i int)) {
 	wg.Wait()
 }
 
-// lateArrivalHorizon is how long the buckets of a kind keep changing. A
-// session or a task is counted at its start and turns bad when its exception
-// lands, up to the slack its SLI query allows; a recompute every
-// lateArrivalInterval must still cover the end of that slack.
 func lateArrivalHorizon(kind string) time.Duration {
 	switch kind {
 	case models.SLIKindSession:
@@ -229,9 +201,6 @@ func lateArrivalHorizon(kind string) time.Duration {
 	return lateDataWindow
 }
 
-// recomputeHorizons picks how far back each SLO recomputes this tick: the
-// late-arrival horizon of its kind once every lateArrivalInterval, otherwise
-// lateDataWindow.
 func recomputeHorizons(slos []*models.SLO, now time.Time) map[int]time.Duration {
 	horizons := make(map[int]time.Duration, len(slos))
 	seen := make(map[int]time.Time, len(slos))
@@ -252,14 +221,9 @@ func recomputeHorizons(slos []*models.SLO, now time.Time) map[int]time.Duration 
 	return horizons
 }
 
-// computeBuckets reads the buckets this tick refreshes for one SLO: the
-// recent ones, a gap left by an outage and older history within the budget.
 func computeBuckets(ctx context.Context, slo *models.SLO, now, deadline time.Time, horizon time.Duration) *tickResult {
 	result := &tickResult{slo: slo}
 	if slo.LastBucketAt == nil {
-		// A new SLO, or one whose definition changed: the old buckets are
-		// deleted before any new one is written, so a delete can never land
-		// after the buckets of the new definition.
 		if err := telemetry.SLOBucketRepository.DeleteBySLO(ctx, slo.ProjectId, slo.Id); err != nil {
 			result.err = err
 			return result
@@ -303,8 +267,6 @@ func computeBuckets(ctx context.Context, slo *models.SLO, now, deadline time.Tim
 		}
 	}
 
-	// Backfill failures do not hold back the snapshot of what was computed:
-	// they are reported after it, and the next tick resumes where this one stopped.
 	if gapFrom != nil && gapFrom.Before(windowStart) {
 		gapFrom = copyTime(&windowStart)
 	}
@@ -342,9 +304,6 @@ func computeBuckets(ctx context.Context, slo *models.SLO, now, deadline time.Tim
 	return result
 }
 
-// storeBuckets writes the buckets of every computed SLO. Rows are stamped at
-// write time, after any delete of the same tick, so the newest computation
-// always wins on ClickHouse.
 func storeBuckets(ctx context.Context, results []*tickResult) error {
 	batch := make([]shared.SLOBucket, 0, insertBatchRows)
 	flush := func() error {
@@ -399,11 +358,6 @@ func window(count shared.SLOCount) Window {
 	return Window{Good: count.Good, Total: count.Total}
 }
 
-// discardStale runs when the SLO was edited or deleted while this tick
-// computed it. An edit that changed the definition reset the history, so the
-// next tick deletes these buckets before it writes new ones; an edit of the
-// target or the window leaves them valid. Only a deleted SLO is cleaned up
-// here, since its own delete may have run before this tick wrote.
 func discardStale(ctx context.Context, stale *models.SLO) error {
 	current, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.SLO, error) {
 		return transactional.SLORepository.FindById(tx, stale.Id)
@@ -427,8 +381,6 @@ func sumRange(ctx context.Context, slo *models.SLO, from, to time.Time) (Window,
 	return Window{Good: good, Total: total}, err
 }
 
-// WindowSums returns the good/total counts of an SLO over [to - length, to),
-// read from the stored buckets. The notification rules evaluate from it.
 func WindowSums(ctx context.Context, slo *models.SLO, length time.Duration, now time.Time) (Window, error) {
 	to := now.Truncate(slo.BucketDuration())
 	return sumRange(ctx, slo, to.Add(-length), to)

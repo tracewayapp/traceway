@@ -131,6 +131,31 @@ func TestSLOBucketRepository_UpsertSumSeries(t *testing.T) {
 	}
 }
 
+func TestSLOBucketRepository_DeleteRightAfterTheWrite(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	project := uuid.New()
+	base := sloTestBase()
+	var rows []shared.SLOBucket
+	for minute := 0; minute < 30; minute++ {
+		rows = append(rows, shared.SLOBucket{ProjectId: project, SLOId: 3, BucketStart: base.Add(time.Duration(minute) * time.Minute), Good: 1, Total: 1, ComputedAt: time.Now().UTC()})
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := SLOBucketRepository.Upsert(ctx, rows); err != nil {
+			t.Fatal(err)
+		}
+		if err := SLOBucketRepository.DeleteBySLO(ctx, project, 3); err != nil {
+			t.Fatal(err)
+		}
+		if _, total, err := SLOBucketRepository.SumRange(ctx, project, 3, base, base.Add(time.Hour)); err != nil || total != 0 {
+			t.Fatalf("attempt %d: a delete in the same second as the write left %d events (%v)", attempt, total, err)
+		}
+		for i := range rows {
+			rows[i].ComputedAt = time.Now().UTC()
+		}
+	}
+}
+
 func TestEndpointRepository_SLICounts(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()

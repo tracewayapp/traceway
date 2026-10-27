@@ -20,8 +20,7 @@ import (
 func setupSLODB(t *testing.T) uuid.UUID {
 	t.Helper()
 	dbtest.SetupSQLite(t)
-	lastLateArrivalAt = map[int]time.Time{}
-	lastLateCrashAt = map[int]time.Time{}
+	windowCaches = map[int]*windowCache{}
 	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
 		return transactional.ProjectRepository.Create(tx, "slo-test", "gin")
 	})

@@ -60,8 +60,8 @@ func (r *sloBucketRepository) Series(ctx context.Context, projectId uuid.UUID, s
 
 func (r *sloBucketRepository) DeleteBySLO(ctx context.Context, projectId uuid.UUID, sloId int) error {
 	return chdb.Conn.Exec(ctx,
-		"INSERT INTO slo_buckets (project_id, slo_id, bucket_start, good, total, computed_at) SELECT project_id, slo_id, bucket_start, 0, 0, ? FROM (SELECT project_id, slo_id, bucket_start, good, total FROM slo_buckets FINAL WHERE project_id = ? AND slo_id = ?) WHERE good != 0 OR total != 0",
-		time.Now().UTC(), projectId, int64(sloId))
+		"INSERT INTO slo_buckets (project_id, slo_id, bucket_start, good, total, computed_at) SELECT project_id, slo_id, bucket_start, 0, 0, fromUnixTimestamp64Milli(?) FROM slo_buckets FINAL WHERE project_id = ? AND slo_id = ? AND (good != 0 OR total != 0)",
+		time.Now().UnixMilli(), projectId, int64(sloId))
 }
 
 func (r *sloBucketRepository) PruneBefore(ctx context.Context, cutoff time.Time) error {

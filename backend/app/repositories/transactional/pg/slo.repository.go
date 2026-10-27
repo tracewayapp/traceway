@@ -136,6 +136,14 @@ func (r *sloRepository) FindEnabled(tx *sql.Tx) ([]*models.SLO, error) {
 	)
 }
 
+func (r *sloRepository) FindEnabledFreshness(tx *sql.Tx) ([]*models.SLOFreshness, error) {
+	return lit.SelectNamed[models.SLOFreshness](
+		tx,
+		"SELECT id, window_days, computed_at, history_from, last_bucket_at, gap_from, created_at FROM slos WHERE enabled = true",
+		lit.P{},
+	)
+}
+
 func (r *sloRepository) CountBreachedByProject(tx *sql.Tx, projectId uuid.UUID) (int, error) {
 	result, err := lit.SelectSingleNamed[models.CountResult](
 		tx,

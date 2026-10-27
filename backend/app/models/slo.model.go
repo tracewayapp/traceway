@@ -98,6 +98,16 @@ type SLOSnapshot struct {
 	GapTo           *time.Time
 }
 
+type SLOFreshness struct {
+	Id           int        `lit:"id"`
+	WindowDays   int        `lit:"window_days"`
+	ComputedAt   *time.Time `lit:"computed_at"`
+	HistoryFrom  *time.Time `lit:"history_from"`
+	LastBucketAt *time.Time `lit:"last_bucket_at"`
+	GapFrom      *time.Time `lit:"gap_from"`
+	CreatedAt    time.Time  `lit:"created_at"`
+}
+
 type NotificationRuleState struct {
 	Id        int        `json:"id" lit:"id"`
 	RuleId    int        `json:"ruleId" lit:"rule_id"`

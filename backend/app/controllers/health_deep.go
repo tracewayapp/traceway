@@ -76,7 +76,11 @@ func (h healthDeepController) Get(c *gin.Context) {
 	} else {
 		traceway.CaptureException(fmt.Errorf("failed to load synthetics health: %w", err))
 	}
-	resp.SLO = slo.HealthSnapshot()
+	sloStats, err := slo.HealthSnapshot(c.Request.Context())
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to load slo health: %w", err))
+	}
+	resp.SLO = sloStats
 
 	if resp.TelemetryBackend == "clickhouse" && !resp.CHReachable {
 		c.JSON(http.StatusServiceUnavailable, resp)

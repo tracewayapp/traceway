@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS slo_workers (
+    owner TEXT PRIMARY KEY,
+    seen_at TIMESTAMPTZ NOT NULL
+)

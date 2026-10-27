@@ -69,7 +69,7 @@ On a metric SLO with slices longer than a minute, both windows are rounded up to
 
 A background worker computes the indicator into buckets of one minute (or the metric slice length) and stores them next to the telemetry, so the SLI, the budget and the burn rates are sums over buckets rather than scans of raw data. Every poll recomputes the last ten minutes, so data that arrives a little late still lands in its bucket, and backfills older history in chunks until the whole window is covered. A new 90-day SLO fills over a few minutes; the detail page says how much of the range the history covers while it does. All SLOs share one five-second backfill budget per poll, so adding many at once never delays the refresh of the others.
 
-Data that arrives late is picked up too. Every 15 minutes the worker recomputes the last hour and a quarter, which catches requests longer than ten minutes (a span is counted at its start but exported at its end) and batches an exporter retried after an outage. Sessions and task runs are counted at their start but turn bad when their exception arrives, so their buckets stay open longer: every 15 minutes the worker recomputes about the last two and a half hours of a session SLO and the last six and a half hours of a task SLO. A crash that is uploaded on the next app launch is caught too: once a day the worker recomputes the last three days of every session SLO, so a crash counts when the app is opened again within two days, and usually up to three.
+Data that arrives late is picked up too. Every 15 minutes, at a moment that differs per SLO so they never all run together, the worker recomputes the last hour and a quarter, which catches requests longer than ten minutes (a span is counted at its start but exported at its end) and batches an exporter retried after an outage. Sessions and task runs are counted at their start but turn bad when their exception arrives, so their buckets stay open longer: every 15 minutes the worker recomputes about the last two and a half hours of a session SLO and the last six and a half hours of a task SLO. A crash that is uploaded on the next app launch is caught too: once a day the worker recomputes the last three days of every session SLO, so a crash counts when the app is opened again within two days, and usually up to three.
 
 If the backend was down, the first poll after it recomputes the last 24 hours, and the rest of the gap is filled from the raw telemetry within the same backfill budget.
 
@@ -78,5 +78,13 @@ Buckets are kept for 120 days whatever the raw telemetry retention is. On SQLite
 ## Configuration
 
 ```bash
-SLO_POLL_SECONDS=60   # how often buckets are refreshed and statuses recomputed; values below 5 fall back to 60
+SLO_POLL_SECONDS=60               # how often buckets are refreshed and statuses recomputed; values below 5 fall back to 60
+SLO_COMPUTE_WORKERS=4             # SLOs computed at once per instance (max 64)
+SLO_COMPUTE_TIMEOUT_SECONDS=30    # an SLO whose queries take longer is skipped for that tick and retried on the next
 ```
+
+With several backend instances on Postgres, the instances split the SLOs between them: SLOs are spread over 64 shards, and each instance leases an equal share. When an instance stops, the others take over its shards within about five minutes.
+
+Each poll re-reads only the recent hours of an SLO's buckets and keeps the older part of the window in memory, so a 90-day SLO costs about as much as a 7-day one. The whole window is re-read once an hour per SLO, and whenever older buckets change.
+
+To watch the worker, turn on [self-monitoring](/server/capacity-monitoring#slo-worker-every-30s). It reports how far behind the SLOs are, how long ticks take and which SLO was slowest, so you can alert when SLOs fall behind. `/api/health/deep` shows the same numbers in its `slo` block.

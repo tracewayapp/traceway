@@ -87,6 +87,24 @@ Not emitted in SQLite mode.
 | `traceway.sourcemap.disk.entries` / `disk.bytes` | Local `.tw` files cached on disk and their total size (only reported when `SOURCEMAP_CACHE_TYPE=disk`) |
 | `traceway.sourcemap.disk.hits.delta` / `disk.evictions.delta` | Memory misses served by a local `.tw` file, and local files evicted by the byte cap, since the last tick |
 
+### SLO worker (every 30s)
+
+The [SLO](/learn/slos) worker recomputes every enabled SLO each `SLO_POLL_SECONDS`. The freshness metrics are read from the main database, so every instance reports the same values, and they also fire when the worker has stopped entirely. The tick metrics describe the last tick of the reporting instance.
+
+| Metric | Meaning |
+|--------|---------|
+| `traceway.slo.enabled` | Enabled SLOs across all projects |
+| `traceway.slo.max_staleness_sec` | Seconds since the least recently computed SLO was computed. It sits near `SLO_POLL_SECONDS` when the worker keeps up, and grows when ticks fall behind or an SLO keeps failing |
+| `traceway.slo.stale` | SLOs not computed in the last 5 minutes |
+| `traceway.slo.backfill_pending` | SLOs whose history does not cover their window yet, or that still have an outage gap to fill |
+| `traceway.slo.tick.running_sec` | How long the current tick has been running, 0 between ticks. A value that keeps growing is a stuck tick |
+| `traceway.slo.tick.duration_ms` | Duration of the last tick, split into `tick.compute_ms` (raw telemetry queries), `tick.store_ms` (bucket inserts) and `tick.snapshot_ms` (window sums and status updates) |
+| `traceway.slo.tick.slos` / `tick.buckets` | SLOs this instance computed in the last tick, and the buckets it wrote |
+| `traceway.slo.tick.full_snapshots` | SLOs whose whole window was re-read in the last tick. The rest only read their recent hours, so this should stay a small share of `tick.slos` |
+| `traceway.slo.tick.slowest_ms` | The slowest SLO of the last tick, tagged `kind`. Its id and project are in the `slo.lastTick.slowest` block of `/api/health/deep` |
+| `traceway.slo.computed.delta` / `errors.delta` / `timeouts.delta` | SLOs computed, failed, and stopped by `SLO_COMPUTE_TIMEOUT_SECONDS` since the last report. Each failure and timeout is also captured as an exception naming the SLO |
+| `traceway.slo.shards_owned` / `instances` | SLO shards leased by this instance, and the backend instances sharing them (Postgres builds; a single instance owns all 64) |
+
 ## Source map cache sizing
 
 Symbolication resolves stack frames against object storage at `sourcemaps/{projectId}/{filename}`, with one in-memory LRU of built resolvers in front of it. A resolver keeps only a flat token table plus interned file and function names; the raw `.map` and bundle bytes are held only while building. Concurrent requests for the same map share one storage read and one build, so a given map exists in memory at most once. The cache cap is on the estimated in-memory size, not the raw file size.
@@ -139,6 +157,9 @@ Two more rule types complete the picture:
 | `traceway.ch.disk.used_pcnt` | max | gt | 80 | 15 | warning | ClickHouse disk filling up |
 | `traceway.ch.pool.open` | avg | gte | 15 | 10 | warning | Connection pool saturated; check `insert_ms` next |
 | `traceway.recordings.dropped.delta` | max | gt | 0 | 5 | warning | Recording segments being dropped (ingestion overload) |
+| `traceway.slo.max_staleness_sec` | max | gt | 600 | 10 | warning | SLOs are 10 minutes behind: ticks take too long or the worker stopped. Check `tick.duration_ms` and `tick.slowest_ms` |
+| `traceway.slo.timeouts.delta` | max | gt | 0 | 15 | warning | An SLO query hit `SLO_COMPUTE_TIMEOUT_SECONDS`; the exception names it |
+| `traceway.slo.tick.running_sec` | max | gt | 300 | 10 | warning | A single SLO tick has been running for 5 minutes |
 | `traceway.sourcemap.load_failures.delta` | max | gt | 0 | 10 | warning | Source map loads failing (storage errors/timeouts); traces stored unsymbolicated |
 | `cpu.used_pcnt` | avg | gt | 80 | 10 | warning | Backend CPU-bound |
 | `traceway.proc.rss_mb` | avg | gt | 80% of host RAM | 10 | warning | Memory pressure / OOM risk (e.g. 800 on a 1 GB box) |

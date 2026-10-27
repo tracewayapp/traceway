@@ -3,8 +3,10 @@ package slo
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,8 +21,6 @@ import (
 )
 
 const (
-	advisoryLockId = 824737005
-
 	lateDataWindow = 10 * time.Minute
 
 	lateArrivalInterval = 15 * time.Minute
@@ -35,19 +35,20 @@ const (
 	backfillBudget      = 5 * time.Second
 	maxBackfillChunks   = 48
 
-	computeWorkers  = 4
-	insertBatchRows = 50_000
+	defaultComputeWorkers = 4
+	maxComputeWorkers     = 64
+	defaultComputeTimeout = 30
+	computeGroupSize      = 200
+	insertBatchRows       = 50_000
 
 	bucketRetention = 120 * 24 * time.Hour
 	pruneInterval   = 24 * time.Hour
 )
 
 var (
-	wakeCh            = make(chan struct{}, 1)
-	lastPruneAt       time.Time
-	tickCount         int
-	lastLateArrivalAt = map[int]time.Time{}
-	lastLateCrashAt   = map[int]time.Time{}
+	wakeCh      = make(chan struct{}, 1)
+	lastPruneAt time.Time
+	tickCount   int
 )
 
 func Wake() {
@@ -61,9 +62,29 @@ func pollInterval() time.Duration {
 	return config.PollSeconds(config.Config.SLOPollSeconds, 60)
 }
 
+func computeWorkers() int {
+	return boundedSetting(config.Config.SLOComputeWorkers, defaultComputeWorkers, maxComputeWorkers)
+}
+
+func computeTimeout() time.Duration {
+	return time.Duration(boundedSetting(config.Config.SLOComputeTimeoutSecs, defaultComputeTimeout, 3600)) * time.Second
+}
+
+func boundedSetting(value string, fallback, max int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 1 {
+		return fallback
+	}
+	if parsed > max {
+		return max
+	}
+	return parsed
+}
+
 func Start(ctx context.Context) {
 	go func() {
 		defer traceway.Recover()
+		defer releaseShards()
 		ticker := time.NewTicker(pollInterval())
 		defer ticker.Stop()
 		RunOnce(ctx, time.Now().UTC())
@@ -80,26 +101,45 @@ func Start(ctx context.Context) {
 }
 
 func RunOnce(ctx context.Context, now time.Time) {
-	release, ok := acquireWorkerLock(ctx)
-	if !ok {
+	shards, err := claimShards(ctx)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to lease SLO shards: %w", err))
 		return
 	}
-	defer release()
-	slos, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SLO, error) {
+	if shards.size() == 0 {
+		pruneWindowCaches(nil)
+		return
+	}
+	started := time.Now()
+	tickStarted.Store(started.UnixNano())
+	defer tickStarted.Store(0)
+	enabled, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SLO, error) {
 		return transactional.SLORepository.FindEnabled(tx)
 	})
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to load enabled SLOs: %w", err))
 		return
 	}
+	slos := make([]*models.SLO, 0, len(enabled))
+	keep := make(map[int]bool, len(enabled))
+	for _, slo := range enabled {
+		if shards.owns(slo.Id) {
+			slos = append(slos, slo)
+			keep[slo.Id] = true
+		}
+	}
+	pruneWindowCaches(keep)
 	if len(slos) > 0 {
 		offset := tickCount % len(slos)
 		slos = append(slos[offset:], slos[:offset]...)
 	}
 	tickCount++
-	computeAll(ctx, slos, now)
+	stats := computeAll(ctx, slos, now)
+	stats.At = now
+	stats.DurationMs = millisSince(started)
+	recordTick(stats)
 	lastTickUnix.Store(now.Unix())
-	if now.Sub(lastPruneAt) >= pruneInterval {
+	if shards.owns(0) && now.Sub(lastPruneAt) >= pruneInterval {
 		if err := telemetry.SLOBucketRepository.PruneBefore(ctx, now.Add(-bucketRetention)); err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to prune slo buckets: %w", err))
 		} else {
@@ -108,51 +148,53 @@ func RunOnce(ctx context.Context, now time.Time) {
 	}
 }
 
-func acquireWorkerLock(ctx context.Context) (func(), bool) {
-	if db.IsSQLite() {
-		return func() {}, true
-	}
-	conn, err := db.DB.Conn(ctx)
-	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to open slo worker lock connection: %w", err))
-		return nil, false
-	}
-	var locked bool
-	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", int64(advisoryLockId)).Scan(&locked); err != nil || !locked {
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to take slo worker lock: %w", err))
-		}
-		conn.Close()
-		return nil, false
-	}
-	return func() {
-		if _, err := conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", int64(advisoryLockId)); err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to release slo worker lock: %w", err))
-			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
-		}
-		conn.Close()
-	}, true
-}
-
 type tickResult struct {
-	slo         *models.SLO
-	buckets     []shared.SLOBucketPoint
-	lastClosed  time.Time
-	windowStart time.Time
-	historyFrom time.Time
-	gapFrom     *time.Time
-	gapTo       *time.Time
-	backfillErr error
-	err         error
+	slo           *models.SLO
+	buckets       []shared.SLOBucketPoint
+	lastClosed    time.Time
+	windowStart   time.Time
+	historyFrom   time.Time
+	gapFrom       *time.Time
+	gapTo         *time.Time
+	earliestWrite *time.Time
+	backfillErr   error
+	err           error
+	elapsed       time.Duration
+	timedOut      bool
+	fullSnapshot  bool
 }
 
-func computeAll(ctx context.Context, slos []*models.SLO, now time.Time) {
+func computeAll(ctx context.Context, slos []*models.SLO, now time.Time) *TickStats {
+	stats := &TickStats{SLOs: len(slos)}
 	deadline := time.Now().Add(backfillBudget)
-	horizons := recomputeHorizons(slos, now)
-	results := make([]*tickResult, len(slos))
-	forEach(len(slos), func(i int) {
-		results[i] = computeBuckets(ctx, slos[i], now, deadline, horizons[slos[i].Id])
+	workers, timeout := computeWorkers(), computeTimeout()
+	for start := 0; start < len(slos); start += computeGroupSize {
+		end := min(start+computeGroupSize, len(slos))
+		computeGroup(ctx, slos[start:end], now, deadline, workers, timeout, stats)
+		if end < len(slos) {
+			if err := renewShards(ctx); err != nil {
+				traceway.CaptureException(fmt.Errorf("failed to renew SLO shard leases: %w", err))
+			}
+		}
+	}
+	return stats
+}
+
+func computeGroup(ctx context.Context, group []*models.SLO, now, deadline time.Time, workers int, timeout time.Duration, stats *TickStats) {
+	results := make([]*tickResult, len(group))
+	phase := time.Now()
+	forEach(len(group), workers, func(i int) {
+		began := time.Now()
+		sloCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		result := computeBuckets(sloCtx, group[i], now, deadline, recomputeHorizon(group[i], now))
+		result.timedOut = timedOut(sloCtx, result.err) || timedOut(sloCtx, result.backfillErr)
+		result.elapsed = time.Since(began)
+		results[i] = result
 	})
+	stats.ComputeMs += millisSince(phase)
+
+	phase = time.Now()
 	if err := storeBuckets(ctx, results); err != nil {
 		for _, result := range results {
 			if result != nil && result.err == nil {
@@ -160,28 +202,70 @@ func computeAll(ctx context.Context, slos []*models.SLO, now time.Time) {
 			}
 		}
 	}
-	forEach(len(results), func(i int) {
-		if results[i] != nil && results[i].err == nil {
-			results[i].err = writeSnapshot(ctx, results[i], now)
+	stats.StoreMs += millisSince(phase)
+
+	phase = time.Now()
+	forEach(len(results), workers, func(i int) {
+		result := results[i]
+		if result == nil || result.err != nil {
+			return
 		}
+		began := time.Now()
+		sloCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		result.err = writeSnapshot(sloCtx, result, now)
+		result.timedOut = result.timedOut || timedOut(sloCtx, result.err)
+		result.elapsed += time.Since(began)
 	})
+	stats.SnapshotMs += millisSince(phase)
+
 	for i, result := range results {
-		err := fmt.Errorf("panicked")
-		if result != nil {
-			err = result.err
-		}
-		if err != nil {
+		if result == nil {
 			atomic.AddUint64(&errorsTotal, 1)
-			traceway.CaptureException(fmt.Errorf("failed to compute SLO %d (%s): %w", slos[i].Id, slos[i].SliKind, err))
+			stats.Errors++
+			traceway.CaptureException(fmt.Errorf("failed to compute SLO %d (%s): panicked", group[i].Id, group[i].SliKind))
+			continue
+		}
+		stats.Buckets += len(result.buckets)
+		if result.fullSnapshot {
+			stats.FullSnapshots++
+		}
+		if stats.Slowest == nil || durationMs(result.elapsed) > stats.Slowest.DurationMs {
+			stats.Slowest = &SlowestSLO{Id: result.slo.Id, ProjectId: result.slo.ProjectId, Kind: result.slo.SliKind, DurationMs: durationMs(result.elapsed)}
+		}
+		if result.timedOut {
+			atomic.AddUint64(&timeoutsTotal, 1)
+			stats.Timeouts++
+		}
+		if result.err != nil {
+			atomic.AddUint64(&errorsTotal, 1)
+			stats.Errors++
+			if result.timedOut {
+				traceway.CaptureException(fmt.Errorf("SLO %d (%s) of project %s timed out after %s: %w", result.slo.Id, result.slo.SliKind, result.slo.ProjectId, timeout, result.err))
+			} else {
+				traceway.CaptureException(fmt.Errorf("failed to compute SLO %d (%s): %w", result.slo.Id, result.slo.SliKind, result.err))
+			}
 			continue
 		}
 		atomic.AddUint64(&computedTotal, 1)
 	}
 }
 
-func forEach(n int, fn func(i int)) {
+func timedOut(ctx context.Context, err error) bool {
+	return err != nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded))
+}
+
+func durationMs(d time.Duration) float64 {
+	return float64(d) / float64(time.Millisecond)
+}
+
+func millisSince(t time.Time) float64 {
+	return durationMs(time.Since(t))
+}
+
+func forEach(n, workers int, fn func(i int)) {
 	var wg sync.WaitGroup
-	slots := make(chan struct{}, computeWorkers)
+	slots := make(chan struct{}, workers)
 	for i := 0; i < n; i++ {
 		wg.Add(1)
 		slots <- struct{}{}
@@ -203,38 +287,6 @@ func lateArrivalHorizon(kind string) time.Duration {
 		return shared.TaskExceptionSlack + lateArrivalInterval + lateDataWindow
 	}
 	return lateExportSlack + lateArrivalInterval
-}
-
-func recomputeHorizons(slos []*models.SLO, now time.Time) map[int]time.Duration {
-	horizons := make(map[int]time.Duration, len(slos))
-	seen := make(map[int]time.Time, len(slos))
-	crashSeen := make(map[int]time.Time)
-	for _, slo := range slos {
-		horizons[slo.Id] = lateDataWindow
-		if slo.SliKind == models.SLIKindSession {
-			last, ok := lastLateCrashAt[slo.Id]
-			if !ok || now.Sub(last) >= lateCrashInterval {
-				horizons[slo.Id] = lateCrashHorizon
-				crashSeen[slo.Id] = now
-				seen[slo.Id] = now
-				continue
-			}
-			crashSeen[slo.Id] = last
-		}
-		long := lateArrivalHorizon(slo.SliKind)
-		if long == lateDataWindow {
-			continue
-		}
-		last, ok := lastLateArrivalAt[slo.Id]
-		if !ok || now.Sub(last) >= lateArrivalInterval {
-			horizons[slo.Id] = long
-			last = now
-		}
-		seen[slo.Id] = last
-	}
-	lastLateArrivalAt = seen
-	lastLateCrashAt = crashSeen
-	return horizons
 }
 
 func computeBuckets(ctx context.Context, slo *models.SLO, now, deadline time.Time, horizon time.Duration) *tickResult {
@@ -339,6 +391,10 @@ func storeBuckets(ctx context.Context, results []*tickResult) error {
 			continue
 		}
 		for _, point := range result.buckets {
+			if result.earliestWrite == nil || point.Bucket.Before(*result.earliestWrite) {
+				at := point.Bucket
+				result.earliestWrite = &at
+			}
 			batch = append(batch, shared.SLOBucket{ProjectId: result.slo.ProjectId, SLOId: result.slo.Id, BucketStart: point.Bucket, Good: point.Good, Total: point.Total})
 			if len(batch) == insertBatchRows {
 				if err := flush(); err != nil {
@@ -352,21 +408,26 @@ func storeBuckets(ctx context.Context, results []*tickResult) error {
 
 func writeSnapshot(ctx context.Context, result *tickResult, now time.Time) error {
 	slo := result.slo
-	sums, err := telemetry.SLOBucketRepository.SnapshotSums(ctx, slo.ProjectId, slo.Id, result.windowStart, result.lastClosed, result.lastClosed.Add(-6*time.Hour), result.lastClosed.Add(-time.Hour))
+	sums, err := readWindowSums(ctx, result, now)
 	if err != nil {
+		storeWindowCache(slo.Id, nil)
 		return err
 	}
-	snapshot := Snapshot(window(sums.Window), window(sums.LastHour), window(sums.LastSixHours), slo.Target(), now, &result.historyFrom, &result.lastClosed)
+	result.fullSnapshot = sums.full
+	snapshot := Snapshot(sums.window, sums.lastHour, sums.lastSixHours, slo.Target(), now, &result.historyFrom, &result.lastClosed)
 	snapshot.GapFrom, snapshot.GapTo = result.gapFrom, result.gapTo
 	applied, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
 		return transactional.SLORepository.UpdateSnapshot(tx, slo.Id, slo.Revision, snapshot)
 	})
 	if err != nil {
+		storeWindowCache(slo.Id, nil)
 		return err
 	}
 	if !applied {
+		storeWindowCache(slo.Id, nil)
 		return discardStale(ctx, slo)
 	}
+	storeWindowCache(slo.Id, sums.cache)
 	return result.backfillErr
 }
 

@@ -65,17 +65,17 @@ type sloDefinition struct {
 	BucketMinutes int
 }
 
-func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw json.RawMessage, bucketMinutes int) (sloDefinition, string) {
+func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw json.RawMessage, bucketMinutes int) (sloDefinition, string, error) {
 	def := sloDefinition{Kind: kind, BucketMinutes: 1}
 	if !models.ValidSLIKind(kind) {
-		return def, "SLI kind must be one of: endpoint, span, task, monitor, metric, session."
+		return def, "SLI kind must be one of: endpoint, span, task, monitor, metric, session.", nil
 	}
 	if len(raw) == 0 {
-		return def, "SLI configuration is required."
+		return def, "SLI configuration is required.", nil
 	}
 	cfg, err := models.ParseSLIConfig(kind, raw)
 	if err != nil {
-		return def, "The SLI configuration is not valid JSON."
+		return def, "The SLI configuration is not valid JSON.", nil
 	}
 	var canonical any
 	switch kind {
@@ -83,7 +83,7 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 		c := cfg.Endpoint
 		c.Endpoint = strings.TrimSpace(c.Endpoint)
 		if message := validateGoodCondition(c.Good, c.LatencyThresholdMs); message != "" {
-			return def, message
+			return def, message, nil
 		}
 		if c.Good != models.SLOGoodLatency {
 			c.LatencyThresholdMs = 0
@@ -94,28 +94,28 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 		c.ServiceName = strings.TrimSpace(c.ServiceName)
 		c.Name = strings.TrimSpace(c.Name)
 		if c.Kind != nil && (*c.Kind < 0 || *c.Kind > 5) {
-			return def, "Span kind must be between 0 and 5."
+			return def, "Span kind must be between 0 and 5.", nil
 		}
 		if len(c.Attributes) > models.SLOMaxSpanAttributeFilters {
-			return def, fmt.Sprintf("At most %d attribute filters are allowed.", models.SLOMaxSpanAttributeFilters)
+			return def, fmt.Sprintf("At most %d attribute filters are allowed.", models.SLOMaxSpanAttributeFilters), nil
 		}
 		attributes := make([]models.SpanSLIAttribute, 0, len(c.Attributes))
 		for _, attribute := range c.Attributes {
 			key := strings.TrimSpace(attribute.Key)
 			if key == "" {
-				return def, "Attribute filters need a key."
+				return def, "Attribute filters need a key.", nil
 			}
 			if strings.ContainsAny(key, `"\`) || len(key) > 256 {
-				return def, "Attribute keys cannot contain quotes or backslashes."
+				return def, "Attribute keys cannot contain quotes or backslashes.", nil
 			}
 			if attribute.Value == "" {
-				return def, "An attribute filter needs a value."
+				return def, "An attribute filter needs a value.", nil
 			}
 			attributes = append(attributes, models.SpanSLIAttribute{Key: key, Value: attribute.Value})
 		}
 		c.Attributes = attributes
 		if message := validateGoodCondition(c.Good, c.LatencyThresholdMs); message != "" {
-			return def, message
+			return def, message, nil
 		}
 		if c.Good != models.SLOGoodLatency {
 			c.LatencyThresholdMs = 0
@@ -127,10 +127,10 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 	case models.SLIKindMonitor:
 		c := cfg.Monitor
 		if len(c.CheckIds) == 0 {
-			return def, "Select at least one monitor."
+			return def, "Select at least one monitor.", nil
 		}
 		if len(c.CheckIds) > models.SLOMaxMonitors {
-			return def, fmt.Sprintf("At most %d monitors are allowed.", models.SLOMaxMonitors)
+			return def, fmt.Sprintf("At most %d monitors are allowed.", models.SLOMaxMonitors), nil
 		}
 		seen := map[int]bool{}
 		ids := make([]int, 0, len(c.CheckIds))
@@ -142,16 +142,16 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 			if tx != nil {
 				check, err := transactional.SyntheticCheckRepository.FindByIdForProject(tx, id, projectId)
 				if err != nil {
-					return def, "The monitors could not be verified."
+					return def, "", err
 				}
 				if check == nil {
-					return def, fmt.Sprintf("Monitor %d was not found in this project.", id)
+					return def, fmt.Sprintf("Monitor %d was not found in this project.", id), nil
 				}
 			}
 			ids = append(ids, id)
 		}
 		if len(ids) == 0 {
-			return def, "Select at least one monitor."
+			return def, "Select at least one monitor.", nil
 		}
 		c.CheckIds = ids
 		canonical = c
@@ -159,25 +159,25 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 		c := cfg.Metric
 		c.MetricName = strings.TrimSpace(c.MetricName)
 		if c.MetricName == "" {
-			return def, "Metric name is required."
+			return def, "Metric name is required.", nil
 		}
 		if !models.SLOMetricAggregations[c.Aggregation] {
-			return def, "Aggregation must be one of: avg, min, max, sum, last."
+			return def, "Aggregation must be one of: avg, min, max, sum, last.", nil
 		}
 		if !models.SLOMetricOperators[c.Operator] {
-			return def, "Operator must be one of: gt, gte, lt, lte."
+			return def, "Operator must be one of: gt, gte, lt, lte.", nil
 		}
 		var threshold struct {
 			Threshold *float64 `json:"threshold"`
 		}
 		if json.Unmarshal(raw, &threshold) != nil || threshold.Threshold == nil {
-			return def, "Threshold is required."
+			return def, "Threshold is required.", nil
 		}
 		if c.Tags == nil {
 			c.Tags = map[string]string{}
 		}
 		if len(c.Tags) > models.SLOMaxMetricTagFilters {
-			return def, fmt.Sprintf("At most %d tag filters are allowed.", models.SLOMaxMetricTagFilters)
+			return def, fmt.Sprintf("At most %d tag filters are allowed.", models.SLOMaxMetricTagFilters), nil
 		}
 		validSlice := false
 		for _, minutes := range models.SLOMetricSliceMinutes {
@@ -186,7 +186,7 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 			}
 		}
 		if !validSlice {
-			return def, "Slice length must be 1, 5, 15 or 60 minutes."
+			return def, "Slice length must be 1, 5, 15 or 60 minutes.", nil
 		}
 		def.BucketMinutes = bucketMinutes
 		canonical = c
@@ -196,10 +196,10 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 	}
 	encoded, err := json.Marshal(canonical)
 	if err != nil {
-		return def, "The SLI configuration could not be encoded."
+		return def, "", err
 	}
 	def.Config = encoded
-	return def, ""
+	return def, "", nil
 }
 
 func validateGoodCondition(good string, latencyThresholdMs float64) string {
@@ -215,20 +215,20 @@ func validateGoodCondition(good string, latencyThresholdMs float64) string {
 	return "Good condition must be availability or latency."
 }
 
-func validateSLORequest(tx *sql.Tx, projectId uuid.UUID, req *sloRequest) (sloDefinition, string) {
+func validateSLORequest(tx *sql.Tx, projectId uuid.UUID, req *sloRequest) (sloDefinition, string, error) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Description = strings.TrimSpace(req.Description)
 	if req.Name == "" {
-		return sloDefinition{}, "Name is required."
+		return sloDefinition{}, "Name is required.", nil
 	}
 	if len(req.Name) > 200 {
-		return sloDefinition{}, "Name must be 200 characters or fewer."
+		return sloDefinition{}, "Name must be 200 characters or fewer.", nil
 	}
 	if len(req.Description) > 2000 {
-		return sloDefinition{}, "Description must be 2000 characters or fewer."
+		return sloDefinition{}, "Description must be 2000 characters or fewer.", nil
 	}
 	if req.TargetPercent <= 0 || req.TargetPercent >= 100 {
-		return sloDefinition{}, "Target must be above 0 and below 100 percent."
+		return sloDefinition{}, "Target must be above 0 and below 100 percent.", nil
 	}
 	validWindow := false
 	for _, days := range models.SLOWindowDays {
@@ -237,7 +237,7 @@ func validateSLORequest(tx *sql.Tx, projectId uuid.UUID, req *sloRequest) (sloDe
 		}
 	}
 	if !validWindow {
-		return sloDefinition{}, "Window must be 7, 30 or 90 days."
+		return sloDefinition{}, "Window must be 7, 30 or 90 days.", nil
 	}
 	return validateSLIDefinition(tx, projectId, req.SliKind, req.SliConfig, req.BucketMinutes)
 }
@@ -299,7 +299,11 @@ func (ctrl *sloController) Create(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
-	def, message := validateSLORequest(tx, projectId, &req)
+	def, message, err := validateSLORequest(tx, projectId, &req)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate SLO: %w", err))
+		return
+	}
 	if message != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
@@ -389,7 +393,11 @@ func (ctrl *sloController) Update(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "SLO not found"})
 		return
 	}
-	def, message := validateSLORequest(tx, projectId, &req)
+	def, message, err := validateSLORequest(tx, projectId, &req)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate SLO: %w", err))
+		return
+	}
 	if message != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
@@ -427,7 +435,7 @@ func (ctrl *sloController) Update(ctx *gin.Context) {
 }
 
 func sameSLIConfig(existing *models.SLO, def sloDefinition) bool {
-	stored, message := validateSLIDefinition(nil, existing.ProjectId, existing.SliKind, json.RawMessage(existing.SliConfig), existing.BucketMinutes)
+	stored, message, _ := validateSLIDefinition(nil, existing.ProjectId, existing.SliKind, json.RawMessage(existing.SliConfig), existing.BucketMinutes)
 	if message != "" {
 		return false
 	}
@@ -531,13 +539,18 @@ func (ctrl *sloController) Preview(ctx *gin.Context) {
 		middleware.RejectBindError(ctx, err, "Invalid request body")
 		return
 	}
-	def, message := validateSLIDefinition(nil, projectId, req.SliKind, req.SliConfig, req.BucketMinutes)
+	def, message, err := validateSLIDefinition(nil, projectId, req.SliKind, req.SliConfig, req.BucketMinutes)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate the SLO preview: %w", err))
+		return
+	}
 	if message != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
 	draft := &models.SLO{ProjectId: projectId, SliKind: def.Kind, SliConfig: models.JSONText(def.Config), BucketMinutes: def.BucketMinutes}
 	to := time.Now().UTC().Truncate(draft.BucketDuration())
+	draft.SliSince = &to
 	from := to.Add(-sloPreviewWindow)
 	points, err := slo.ComputeBuckets(ctx, draft, from, to)
 	if err != nil {

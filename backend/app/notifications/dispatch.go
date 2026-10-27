@@ -94,7 +94,9 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 		return false
 	}
 
-	cooldowns.recordFire(rule.Id)
+	if !msg.Recovered {
+		cooldowns.recordFire(rule.Id)
+	}
 	outbox.Wake()
 	return true
 }

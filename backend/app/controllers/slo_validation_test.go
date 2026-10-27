@@ -18,7 +18,7 @@ func TestValidateSLIDefinitionRequiresAMetricThreshold(t *testing.T) {
 			cfg["threshold"] = threshold
 		}
 		raw, _ := json.Marshal(cfg)
-		_, message := validateSLIDefinition(nil, uuid.New(), "metric", raw, 5)
+		_, message, _ := validateSLIDefinition(nil, uuid.New(), "metric", raw, 5)
 		if name == "missing" && message != "Threshold is required." {
 			t.Fatalf("missing threshold: got %q", message)
 		}
@@ -28,7 +28,7 @@ func TestValidateSLIDefinitionRequiresAMetricThreshold(t *testing.T) {
 	}
 
 	raw := json.RawMessage(`{"metricName":"cpu.used_pcnt","aggregation":"avg","operator":"lt","threshold":null}`)
-	if _, message := validateSLIDefinition(nil, uuid.New(), "metric", raw, 5); message != "Threshold is required." {
+	if _, message, _ := validateSLIDefinition(nil, uuid.New(), "metric", raw, 5); message != "Threshold is required." {
 		t.Fatalf("null threshold: got %q", message)
 	}
 }
@@ -52,7 +52,7 @@ func TestValidateSLIDefinitionSpanAttributesMatchTheExplorer(t *testing.T) {
 		`{"attributes":[{"key":"tenant","value":"acme"}],"good":"availability"}`: "",
 	}
 	for raw, want := range cases {
-		if _, got := validateSLIDefinition(nil, uuid.New(), "span", json.RawMessage(raw), 1); got != want {
+		if _, got, _ := validateSLIDefinition(nil, uuid.New(), "span", json.RawMessage(raw), 1); got != want {
 			t.Fatalf("%s: got %q, want %q", raw, got, want)
 		}
 	}
@@ -64,7 +64,7 @@ func TestValidateSLIDefinitionCapsMonitors(t *testing.T) {
 		ids[i] = i + 1
 	}
 	raw, _ := json.Marshal(map[string]any{"checkIds": ids})
-	if _, got := validateSLIDefinition(nil, uuid.New(), "monitor", raw, 1); got != "At most 50 monitors are allowed." {
+	if _, got, _ := validateSLIDefinition(nil, uuid.New(), "monitor", raw, 1); got != "At most 50 monitors are allowed." {
 		t.Fatalf("got %q", got)
 	}
 }

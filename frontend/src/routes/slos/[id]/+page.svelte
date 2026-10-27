@@ -54,6 +54,7 @@
 		formatBudgetRemaining,
 		formatBurnRate,
 		formatSloPercent,
+		SLO_BUCKET_RETENTION_DAYS,
 		sliChartDomain,
 		budgetChartDomain,
 		sliSeries,
@@ -266,7 +267,12 @@
 	]);
 	const coverage = $derived.by(() => {
 		if (!slo?.historyFrom) return null;
-		const historyFrom = new Date(slo.historyFrom);
+		const historyFrom = new Date(
+			Math.max(
+				new Date(slo.historyFrom).getTime(),
+				Date.now() - SLO_BUCKET_RETENTION_DAYS * 86400000
+			)
+		);
 		if (historyFrom.getTime() <= rangeFrom.getTime()) return null;
 		const coveredDays = Math.max(0, (rangeTo.getTime() - historyFrom.getTime()) / 86400000);
 		const rangeDays = (rangeTo.getTime() - rangeFrom.getTime()) / 86400000;

@@ -40,6 +40,8 @@ export const BURN_RATE_PRESETS: BurnRatePreset[] = [
 	}
 ];
 
+export const SLO_BUCKET_RETENTION_DAYS = 120;
+
 const INTERVAL_STEPS = [1, 5, 15, 30, 60, 120, 240, 480, 720, 1440];
 
 export function sliSeries(buckets: SloSeriesBucket[]): ChartPoint[] {

@@ -42,7 +42,7 @@ func setupSLORuleDB(t *testing.T, ruleType, config string, cooldownMinutes int) 
 		now := time.Now().UTC()
 		entity := &models.SLO{
 			ProjectId: project.Id, Name: "Checkout availability", SliKind: models.SLIKindEndpoint, SliConfig: models.JSONText(`{"endpoint":"","good":"availability"}`),
-			TargetPercent: 99, WindowDays: 7, BucketMinutes: 1, Enabled: true, Status: models.SLOStatusNoData, CreatedAt: now, UpdatedAt: now,
+			TargetPercent: 99, WindowDays: 7, BucketMinutes: 1, Enabled: true, Status: models.SLOStatusNoData, LastBucketAt: &now, CreatedAt: now, UpdatedAt: now,
 		}
 		sloId, err := transactional.SLORepository.Create(tx, entity)
 		if err != nil {
@@ -182,6 +182,30 @@ func TestSLOBurnRateHonoursCooldown(t *testing.T) {
 	}
 }
 
+func TestSLORecoveryDoesNotRestartTheCooldown(t *testing.T) {
+	fixture := setupSLORuleDB(t, "slo_burn_rate", `{"sloId":1,"longWindowMinutes":60,"shortWindowMinutes":5,"burnRateThreshold":6}`, 15)
+	ctx := context.Background()
+	seedBuckets(t, fixture, 60, 90, 100)
+	evaluatePolledRules(ctx)
+	if !ruleState(t, fixture.Rule.Id) {
+		t.Fatal("expected the first fire")
+	}
+	cooldowns.mu.Lock()
+	cooldowns.fired[fixture.Rule.Id] = time.Now().Add(-40 * time.Minute)
+	cooldowns.mu.Unlock()
+
+	seedBuckets(t, fixture, 60, 100, 100)
+	evaluatePolledRules(ctx)
+	if ruleState(t, fixture.Rule.Id) {
+		t.Fatal("expected the recovery")
+	}
+	seedBuckets(t, fixture, 60, 90, 100)
+	evaluatePolledRules(ctx)
+	if !ruleState(t, fixture.Rule.Id) {
+		t.Fatal("a burn 40 minutes after the last alert must fire again; the recovery notice is not a fire")
+	}
+}
+
 func setBudgetRemaining(t *testing.T, fixture *sloRuleFixture, remaining *float64) {
 	t.Helper()
 	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
@@ -285,6 +309,28 @@ func TestSLOBudgetConsumedRecoveryWithoutData(t *testing.T) {
 	}
 	if !strings.Contains(result.Message.Body, "no data") || strings.Contains(result.Message.Body, "100.0%") {
 		t.Fatalf("the recovery must not claim the budget is consumed: %q", result.Message.Body)
+	}
+}
+
+func TestSLORuleHoldsWhileTheHistoryIsRecomputed(t *testing.T) {
+	fixture := setupSLORuleDB(t, "slo_budget_consumed", `{"sloId":1,"consumedPercent":80}`, 0)
+	ctx := context.Background()
+	setBudgetRemaining(t, fixture, budget(10))
+	if result, err := evaluateSLOBudgetConsumed(ctx, fixture.Rule, fixture.ProjectId); err != nil || !result.Fired {
+		t.Fatalf("expected a fire: %+v, %v", result, err)
+	}
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		return struct{}{}, transactional.SLORepository.ResetHistory(tx, fixture.SLO.Id, time.Now().UTC())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := evaluateSLOBudgetConsumed(ctx, fixture.Rule, fixture.ProjectId)
+	if err != nil || result.Recovered || result.Fired {
+		t.Fatalf("a definition change must not send a recovery before the worker recomputed the SLO: %+v, %v", result, err)
+	}
+	if !ruleState(t, fixture.Rule.Id) {
+		t.Fatal("the rule keeps firing until the recomputed snapshot says otherwise")
 	}
 }
 

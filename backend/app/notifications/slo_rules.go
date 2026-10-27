@@ -78,6 +78,9 @@ func evaluateSLOBurnRate(ctx context.Context, rule *models.NotificationRule, pro
 	if !entity.Enabled {
 		return recoverDisabledSLO(rule, entity, projectId, now)
 	}
+	if entity.LastBucketAt == nil {
+		return &EvalResult{}, nil
+	}
 	cfg.LongWindowMinutes = sliceAligned(cfg.LongWindowMinutes, entity.BucketMinutes)
 	cfg.ShortWindowMinutes = sliceAligned(cfg.ShortWindowMinutes, entity.BucketMinutes)
 
@@ -124,6 +127,9 @@ func evaluateSLOBudgetConsumed(_ context.Context, rule *models.NotificationRule,
 	now := time.Now().UTC()
 	if !entity.Enabled {
 		return recoverDisabledSLO(rule, entity, projectId, now)
+	}
+	if entity.LastBucketAt == nil {
+		return &EvalResult{}, nil
 	}
 
 	ok := entity.BudgetRemaining != nil

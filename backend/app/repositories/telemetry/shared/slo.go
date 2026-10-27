@@ -71,8 +71,11 @@ func ScanSLOBucketPoints(rows bucketRows, from, to time.Time) ([]SLOBucketPoint,
 			return nil, err
 		}
 		at := time.Unix(bucket, 0).UTC()
-		if at.Before(from) || !at.Before(to) {
+		if !at.Before(to) {
 			continue
+		}
+		if at.Before(from) {
+			at = from
 		}
 		points = append(points, SLOBucketPoint{Bucket: at, Good: good, Total: total})
 	}

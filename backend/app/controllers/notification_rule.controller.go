@@ -127,7 +127,12 @@ func (ctrl *notificationRuleController) Create(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel not found in this project."})
 		return
 	}
-	if message := validateSLORuleConfig(tx, projectId, req.RuleType, req.Config); message != "" {
+	message, err := validateSLORuleConfig(tx, projectId, req.RuleType, req.Config)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate the SLO rule: %w", err))
+		return
+	}
+	if message != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
@@ -226,7 +231,12 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel not found in this project."})
 		return
 	}
-	if message := validateSLORuleConfig(tx, projectId, req.RuleType, req.Config); message != "" {
+	message, err := validateSLORuleConfig(tx, projectId, req.RuleType, req.Config)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate the SLO rule: %w", err))
+		return
+	}
+	if message != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
 		return
 	}
@@ -412,7 +422,7 @@ func (ctrl *notificationRuleController) Snooze(ctx *gin.Context) {
 
 var NotificationRuleController = notificationRuleController{}
 
-func validateSLORuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, config json.RawMessage) string {
+func validateSLORuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, config json.RawMessage) (string, error) {
 	switch ruleType {
 	case "slo_burn_rate":
 		var cfg struct {
@@ -422,16 +432,16 @@ func validateSLORuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, con
 			BurnRateThreshold  float64 `json:"burnRateThreshold"`
 		}
 		if err := json.Unmarshal(config, &cfg); err != nil {
-			return "The rule configuration is not valid JSON."
+			return "The rule configuration is not valid JSON.", nil
 		}
 		if cfg.LongWindowMinutes < 5 || cfg.LongWindowMinutes > 10080 {
-			return "Long window must be between 5 minutes and 7 days."
+			return "Long window must be between 5 minutes and 7 days.", nil
 		}
 		if cfg.ShortWindowMinutes < 1 || cfg.ShortWindowMinutes >= cfg.LongWindowMinutes {
-			return "Short window must be at least 1 minute and shorter than the long window."
+			return "Short window must be at least 1 minute and shorter than the long window.", nil
 		}
 		if cfg.BurnRateThreshold <= 0 {
-			return "Burn rate threshold must be above 0."
+			return "Burn rate threshold must be above 0.", nil
 		}
 		return validateRuleSLO(tx, projectId, cfg.SloId)
 	case "slo_budget_consumed":
@@ -440,14 +450,14 @@ func validateSLORuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, con
 			ConsumedPercent float64 `json:"consumedPercent"`
 		}
 		if err := json.Unmarshal(config, &cfg); err != nil {
-			return "The rule configuration is not valid JSON."
+			return "The rule configuration is not valid JSON.", nil
 		}
 		if cfg.ConsumedPercent <= 0 || cfg.ConsumedPercent > 100 {
-			return "Budget consumed must be between 1 and 100 percent."
+			return "Budget consumed must be between 1 and 100 percent.", nil
 		}
 		return validateRuleSLO(tx, projectId, cfg.SloId)
 	}
-	return ""
+	return "", nil
 }
 
 func resolveSLORulePage(tx *sql.Tx, rule *models.NotificationRule) error {
@@ -469,16 +479,16 @@ func sameRuleConfig(a, b json.RawMessage) bool {
 	return reflect.DeepEqual(left, right)
 }
 
-func validateRuleSLO(tx *sql.Tx, projectId uuid.UUID, sloId int) string {
+func validateRuleSLO(tx *sql.Tx, projectId uuid.UUID, sloId int) (string, error) {
 	if sloId < 1 {
-		return "Select an SLO."
+		return "Select an SLO.", nil
 	}
 	entity, err := transactional.SLORepository.FindByIdForProject(tx, sloId, projectId)
 	if err != nil {
-		return "The SLO could not be verified."
+		return "", err
 	}
 	if entity == nil {
-		return "SLO not found in this project."
+		return "SLO not found in this project.", nil
 	}
-	return ""
+	return "", nil
 }

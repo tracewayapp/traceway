@@ -9,7 +9,7 @@ Alerts are how Traceway tells people that something happened. They live under **
 | **Rules** | When to notify. Each rule watches one condition and sends to exactly one channel. A channel can serve many rules. |
 | **History** | Every notification that was sent, with its status |
 
-Rules and channels belong to a project and only see that project's data. Channels have their own On/Off switch, and a rule only runs while its channel is on. Changing them needs write access on the project. Browser and mobile projects only offer the New Issue rule type.
+Rules and channels belong to a project and only see that project's data. Channels have their own On/Off switch, and a rule only runs while its channel is on. Changing them needs write access on the project. Browser and mobile projects only offer the New Issue rule type and the two SLO rule types.
 
 ## Channels
 
@@ -63,7 +63,7 @@ The numbers in brackets are what the evaluator uses when a setting is missing. T
 | **AI Flagged Content** | An AI call matches a flagged term. The terms come from the project's AI settings. | Optional term list (empty means any flagged match) | Warning |
 | **Monitor Down** | Any monitor in the project goes down, plus a recovery notice when it comes back | None | Critical, recovery Info |
 | **SLO Burn Rate** | An SLO spends its error budget faster than the threshold over both the long and the short window, plus a recovery notice once either window calms down. Fires on the transition only. | SLO, long window 60 min, short window 5 min, threshold 14.4x; presets Fast 14.4x 1h/5m, Slow 6x 6h/30m, Long 1x 3d/6h; both windows round up to whole slices of a metric SLO | Warning, Critical at 2x the threshold, recovery Info |
-| **SLO Budget Consumed** | An SLO has used more than a share of its window's error budget, plus a recovery notice when the budget recovers. Fires on the transition only. | SLO, consumed 80% | Warning, Critical at 100%, recovery Info |
+| **SLO Budget Consumed** | An SLO has used at least a share of its window's error budget, plus a recovery notice when the budget recovers. Fires on the transition only. | SLO, consumed 80% | Warning, Critical at 100%, recovery Info |
 
 The aggregation in Metric Threshold spans every series of the metric with no tag filter, so prefer `max` (or `min` for lower-is-bad metrics) where one bad host could hide in an average.
 
@@ -74,14 +74,14 @@ Apdex uses fixed bands: satisfied up to 750 ms, tolerating up to 1500 ms, anythi
 - **On ingest**: New Issue, Error Regression, AI Trace Cost, AI Conversation Cost, AI Flagged Content. These fire within seconds.
 - **On state change**: Monitor Down, the moment a probe flips the monitor.
 - **Polled**: everything else, every 60 seconds by default (self-hosted: `NOTIFICATION_POLL_SECONDS`).
-- **SLO rules** are polled too, but read the SLO's precomputed buckets (refreshed every `SLO_POLL_SECONDS`, 60 by default) instead of raw telemetry, and they are evaluated during their cooldown so a recovery notice is never delayed by it.
+- **SLO rules** are polled too, but read the SLO's precomputed buckets (refreshed every `SLO_POLL_SECONDS`, 60 by default) instead of raw telemetry, and they are evaluated during their cooldown so a recovery notice is never delayed by it. A recovery notice does not restart the cooldown.
 
 Cooldowns differ by kind:
 
 - **Polled rules** have one cooldown per rule. After it fires, it is not evaluated again until the cooldown ends. This cooldown survives restarts.
 - **Ingest and monitor rules** cool down per item: per exception hash, trace name, conversation or monitor. Two different new errors a minute apart both alert. The same error does not alert again within its cooldown. This memory is in process only, so a restart can let the same item alert once more.
 - The cooldown cannot be 0. Empty or 0 becomes 15 minutes.
-- **Editing** a rule resets its cooldown and its per-item memory, so the new settings apply at once. Toggling it does not.
+- **Changing** a rule's type, channel or condition resets its cooldown and its per-item memory, so the new settings apply at once. Renaming it, changing its cooldown or severity, or toggling it does not.
 
 Delivery goes through a durable queue. Failed sends are retried after 1, 5, 15 and 60 minutes, five attempts in all. A queued message keeps the channel settings it was sent with.
 

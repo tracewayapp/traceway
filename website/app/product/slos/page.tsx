@@ -64,13 +64,13 @@ export default function SlosPage() {
                 <em>or crash-free sessions</em>
               </>
             }
-            description="Pick what a good event is and Traceway counts it. An endpoint is good when it answers below 500 or faster than a threshold. A task run is good when no exception landed on its span. A monitor probe is good when it came back up. A metric is sliced into one to sixty minute windows and each slice is good when its average, minimum, maximum, sum or last value stays on the right side of a limit, with slices that have no data counting as bad if you want a missing heartbeat to hurt."
+            description="Pick what a good event is and Traceway counts it. An endpoint is good when it answers below 500 or faster than a threshold. A task run is good when no exception landed on its span. A monitor probe is good when it came back up. A metric is cut into slices of 1, 5, 15 or 60 minutes. Each slice is good when its average, minimum, maximum, sum or last value stays on the right side of a limit. Slices without data can count as bad, so a missing heartbeat hurts."
             bullets={[
               "Availability or latency for endpoints and spans",
               "Task success from the exception on the run's own span",
               "Monitor uptime straight from the probe results",
               "Metric timeslices: over, under, or missing",
-              "Crash-free sessions for browser and mobile apps, per app version",
+              "Crash-free sessions for browser apps, per app version",
             ]}
             image={{
               src: "/images/slos-list.png",
@@ -82,22 +82,22 @@ export default function SlosPage() {
         <section className="wrap">
           <FeatureRow
             reverse
-            eyebrow="Browser and mobile apps"
+            eyebrow="Browser apps"
             title={
               <>
                 Crash-free sessions, <em>per release</em>
               </>
             }
-            description="Browser and mobile projects get the objective those platforms live by: the share of sessions that ended without an exception. Pin it to one app version and every rollout gets its own budget, so a release that crashes more than the last one shows up as a breach rather than a hunch. Native crashes uploaded on the next app launch still count, because the worker goes back over the last three days of sessions once a day."
+            description="Browser projects get the objective front ends live by: the share of sessions that ended without an exception. Create one per app version and each release gets its own budget, so a release that crashes more than the last one shows up as a breach rather than a hunch. Sessions come from always-on session recording in the browser SDK."
             bullets={[
               "All versions, or one app version per objective",
               "Captured messages count only if you say so",
-              "Works for React, Vue, Svelte, React Native, Flutter, Android and iOS",
+              "Works for React, Vue, Svelte and jQuery with always-on recording",
               "Burn-rate and budget alerts like every other objective",
             ]}
             image={{
               src: "/images/slos-sessions.png",
-              alt: "Crash-free session SLOs of a Flutter app in Traceway, one per release, with the error budget left and the burn rate of each",
+              alt: "Crash-free session SLOs of a web app in Traceway, per release and across all versions, with the error budget left and the burn rate of each",
             }}
           />
         </section>
@@ -116,7 +116,7 @@ export default function SlosPage() {
               "Service, name, kind and up to ten attribute filters",
               "Good when the span status is not error, or faster than a threshold",
               "Preview the last 24 hours before saving",
-              "Native SDK runs are stored as spans too, so they count",
+              "Works on any OpenTelemetry span, entry point or not",
             ]}
             image={{
               src: "/images/slos-sheet.png",
@@ -134,11 +134,11 @@ export default function SlosPage() {
                 Stop arguing about <em>whether 99.5% is bad</em>
               </>
             }
-            description="With a 99.9% target over 30 days and a million requests, a thousand may fail. The detail page shows the current SLI against the target, how much of that budget is left, and the burn rate over the last hour and the last six hours: 1x spends the budget exactly at the end of the window, 14.4x empties a 30-day budget in two days. Charts plot the SLI against the target line and the cumulative share of the budget the range has used. One click opens the requests, spans, task runs or monitor behind the number."
+            description="With a 99.9% target over 30 days and a million requests, a thousand may fail. The detail page shows the current SLI against the target, how much of that budget is left, and the burn rate over the last hour and the last six hours: 1x spends the budget exactly at the end of the window, 14.4x empties a 30-day budget in two days. Charts plot the SLI against the target line and the cumulative share of the budget the range has used. One click opens the endpoint, task, monitor or sessions page, or the failing spans in the explorer."
             bullets={[
               "SLI and error budget charts with the target drawn in",
-              "Burn rates over 1 hour and 6 hours, colour coded",
-              "View bad events: one click to the requests, spans, task runs, probes or sessions behind the number",
+              "Burn rates over 1 hour and 6 hours, color coded",
+              "One click to the endpoint, task, monitor or sessions page, or the failing spans",
               "Rolling 7, 30 or 90 day windows, changed without losing history",
             ]}
             image={{
@@ -180,10 +180,10 @@ export default function SlosPage() {
                 Buckets, not scans, <em>on SQLite as well as ClickHouse</em>
               </>
             }
-            description="A background worker folds the raw rows into per-minute good/total buckets, refreshes the last ten minutes on every poll so late data still lands in its bucket, and backfills the whole window in chunks after you create or change an objective. The SLI, the budget, the burn rates and the alert rules are sums over those buckets. That is what makes a 90-day objective cheap on an embedded SQLite or DuckDB instance, and it means the history survives the pruning of the raw telemetry behind it."
+            description="A background worker folds the raw rows into good/total buckets, one per minute or per metric slice. It refreshes the recent buckets as late data arrives, and backfills the whole window in chunks after you create or change an objective. The SLI, the budget, the burn rates and the alert rules are sums over those buckets. That is what makes a 90-day objective cheap on an embedded SQLite or DuckDB instance, and it means the history survives the pruning of the raw telemetry behind it."
             bullets={[
-              "Per-minute buckets on ClickHouse, SQLite and DuckDB",
-              "Late data within ten minutes is absorbed, idempotently",
+              "Per-minute buckets (per slice for metrics) on ClickHouse, SQLite and DuckDB",
+              "Late data within the last hour and a quarter is absorbed, longer for sessions and tasks",
               "History kept for 120 days whatever the raw retention is",
               "A breached objective still shows where the budget crossed zero",
             ]}
@@ -232,7 +232,7 @@ export default function SlosPage() {
                 },
                 {
                   q: "Which indicators can I build an SLO on?",
-                  a: "Endpoint availability or latency, any span filter (service, name, kind, exact attribute values) for availability or latency, task success, monitor uptime, and metric timeslices where each slice is good when its aggregate is over or under a limit. Native SDK runs are stored as spans, so they are covered by the span kind. Browser and mobile projects get crash-free sessions instead, since their SDKs report sessions and exceptions rather than spans.",
+                  a: "Endpoint availability or latency, any span filter (service, name, kind, exact attribute values) for availability or latency, task success, monitor uptime, and metric timeslices where each slice is good when its aggregate is over or under a limit. Endpoints and tasks are promoted from spans, so the span kind covers them too. Browser projects get crash-free sessions instead, since their SDK reports sessions and exceptions rather than spans.",
                 },
                 {
                   q: "What happens to the history when I change an SLO?",
@@ -240,11 +240,11 @@ export default function SlosPage() {
                 },
                 {
                   q: "Does it work on the SQLite build?",
-                  a: "Yes. The worker computes per-minute buckets on ClickHouse, SQLite and DuckDB alike, and reads sum over buckets rather than scanning raw rows. Buckets are kept for 120 days, so a 90-day objective keeps its history even where the raw telemetry retention is 30 days; what cannot be backfilled is the part of the window older than what is still retained when the SLO is created.",
+                  a: "Yes. The worker computes per-minute (or per-slice) buckets on ClickHouse, SQLite and DuckDB alike, and reads sum over buckets rather than scanning raw rows. Buckets are kept for 120 days, so a 90-day objective keeps its history even where the raw telemetry retention is 30 days; what cannot be backfilled is the part of the window older than what is still retained when the SLO is created.",
                 },
                 {
                   q: "Can an AI agent read my SLOs?",
-                  a: "The list, detail, series and breached-count routes are on the agent allowlist, so a read credential, the CLI or the MCP server can inspect them. Dedicated CLI commands and MCP tools are next on the list.",
+                  a: "The list, detail, series and breached-count routes are on the agent allowlist, so a read token can call them directly. The CLI and the MCP server do not cover SLOs yet.",
                 },
               ]}
             />

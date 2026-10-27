@@ -149,7 +149,7 @@ Rules belong to a project and only evaluate that project's data. Frontend projec
 | [AI Flagged Content](#ai-flagged-content) | An AI conversation matches a flagged content term | On ingest |
 | [Monitor Down](#monitor-down) | A monitor crosses its failure threshold | On state change |
 | [SLO Burn Rate](#slo-burn-rate) | An SLO burns its error budget faster than a threshold over both a long and a short window | Polled |
-| [SLO Budget Consumed](#slo-budget-consumed) | An SLO has consumed more than a share of its window's error budget | Polled |
+| [SLO Budget Consumed](#slo-budget-consumed) | An SLO has consumed at least a share of its window's error budget | Polled |
 
 ### New Issue
 
@@ -333,7 +333,7 @@ The form offers three presets: Fast (14.4x over 1h / 5m, pages when 2% of a 30-d
 
 ### SLO Budget Consumed
 
-Fires when an [SLO](/learn/slos) has consumed more than the configured share of its window's error budget, and sends a recovery notice when the budget climbs back above the line. Like SLO Burn Rate it fires on the transition only.
+Fires when an [SLO](/learn/slos) has consumed at least the configured share of its window's error budget, and sends a recovery notice when the budget climbs back above the line. Like SLO Burn Rate it fires on the transition only.
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -374,7 +374,7 @@ Each rule type has a different evaluation cost against the telemetry database. T
 
 Cost-relevant behavior:
 
-- Rules that are snoozed or still in cooldown are skipped entirely, including their queries. Longer cooldowns directly reduce evaluation load.
+- Rules that are snoozed or still in cooldown are skipped entirely, including their queries. Longer cooldowns directly reduce evaluation load. SLO rules are the exception: they are evaluated during their cooldown so a recovery notice is never delayed, which costs little since they only read precomputed buckets.
 - The three Impact Score levels share one 24-hour scan per project per poll cycle through a 30-second cache, so adding all three costs the same as adding one.
 - On-ingest rules deduplicate per error hash, so a busy error stops generating lookups once it has alerted until its cooldown expires.
 - Polled query cost scales with the lookback window. The defaults keep windows short; a 24-hour lookback on a high-traffic project costs proportionally more.
@@ -384,10 +384,10 @@ Cost-relevant behavior:
 
 **Cooldown** prevents a rule from firing repeatedly for the same ongoing condition. The default is 15 minutes, configurable per rule.
 
-- For polled rules the cooldown is rule-wide: after a notification is delivered, the rule is not evaluated again until the cooldown expires.
+- For polled rules the cooldown is rule-wide: after a notification is delivered, the rule is not evaluated again until the cooldown expires. SLO rules keep being evaluated, so their recovery notice is sent at once; the cooldown only holds back a new fire, and a recovery notice does not restart it.
 - For on-ingest rules the cooldown is per condition: per error hash for New Issue and Error Regression, per trace name for AI Trace Cost. Different errors can alert back-to-back; the same error cannot.
 
-Rule-level cooldowns are persisted with the notification history, so a server restart does not cause every rule to re-fire. Per-error cooldown state is held in memory and resets on restart, meaning an already-alerted error can alert once more after a restart. Editing a rule resets its cooldown and per-error state so the new configuration takes effect immediately.
+Rule-level cooldowns are persisted with the notification history, so a server restart does not cause every rule to re-fire. Per-error cooldown state is held in memory and resets on restart, meaning an already-alerted error can alert once more after a restart. Changing a rule's type, channel or condition resets its cooldown and per-error state so the new configuration takes effect immediately. Renaming it or changing its cooldown or severity keeps them.
 
 **Snooze** temporarily mutes a rule for a set duration from the dashboard. Snoozed rules are not evaluated at all. Use it during deployments, maintenance windows, or known incidents.
 

@@ -2,7 +2,7 @@
 
 A service level objective (SLO) holds a service level indicator (SLI) to a target over a rolling window. The SLI is the share of good events: requests that succeeded, spans that were fast enough, task runs without an exception, probes that came back up, metric slices that stayed under a limit, or sessions that ended without a crash. The target says how many of them have to be good, such as 99.9% over the last 30 days. Everything the target leaves over is the error budget, and the burn rate says how fast that budget is being spent.
 
-SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge counts the SLOs that are currently breached. Each SLO shows its current SLI, how much of the error budget is left, the burn rate over the last hour and the last six hours, and a status:
+SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge counts the SLOs that are currently breached. Each row shows the current SLI, how much of the error budget is left, the burn rate over the last hour and a status. The detail page adds the burn rate over the last six hours. The statuses are:
 
 | Status | Meaning |
 |--------|---------|
@@ -15,22 +15,28 @@ SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge
 
 | Kind | Counts | Good when | View bad events opens |
 |------|--------|-----------|-----------------------|
-| Endpoint | Requests of one endpoint, or of every endpoint in the project | The status is below 500, or the request was faster than a threshold | The endpoint page |
-| Span | Spans matching the same filters the [span explorer](/learn/spans) offers: service, name, kind and exact attribute values | The span status is not error, or the span was faster than a threshold | The span explorer, prefiltered |
-| Task | Background task runs, all tasks or one by name | No exception was recorded on the run's own span | The task page |
-| Monitor | Probes of the selected [monitors](/learn/monitors) | The probe came back up; missed probes do not count | The monitor page |
-| Metric | Fixed time slices of a metric, 1 to 60 minutes long, optionally filtered by tags | The slice's aggregate (average, min, max, sum or last value) satisfies the comparison | Dashboards |
-| Session | Sessions reported by the browser and mobile SDKs, all versions or one app version | No exception was recorded in the session; captured messages count only if you say so | The sessions page |
+| Endpoint | Requests of one endpoint, or of every endpoint in the project | The status is below 500, or the request took at most a threshold | The endpoint page, or the endpoints list for all endpoints |
+| Span | Spans matching the same filters the [span explorer](/learn/spans) offers: service, name, kind and exact attribute values | The span status is not error, or the span took at most a threshold | The span explorer, prefiltered |
+| Task | Background task runs, all tasks or one by name | No exception or captured message was recorded on the run's own span | The task page, or the tasks list for all tasks |
+| Monitor | Probes of the selected [monitors](/learn/monitors) | The probe came back up; missed probes do not count | The monitor page, or the monitors list for several monitors |
+| Metric | Fixed time slices of a metric (1, 5, 15 or 60 minutes), optionally filtered by tags | The slice's aggregate (average, min, max, sum or last value) satisfies the comparison | Dashboards |
+| Session | Sessions reported by the SDK, all versions or one app version | No exception was recorded in the session; captured messages count only if you say so | The sessions page |
 
-Browser and mobile projects (React, Vue, Svelte, jQuery, React Native, Flutter, Android, iOS) only report exceptions, sessions and recordings, so they get the session kind alone: the classic crash-free sessions objective, optionally per app version. Backend projects get the other five.
+Browser and mobile projects (React, Vue, Svelte, jQuery, React Native, Flutter, Android, iOS) do not report spans, so they get the session kind alone: the classic crash-free sessions objective, optionally per app version. Backend projects get the other five.
 
-The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Requests and tasks reported by the Traceway SDKs are stored as spans named after the endpoint or task, so they are covered too.
+The session kind counts the sessions an SDK reports. The browser SDK reports one per visit when [always-on session recording](/client/js-sdk/session-replay#always-on-session-recording) is on (`recordAllSessions: true`). Without it, and in the mobile SDKs today, no sessions are reported and a session SLO stays at No data.
+
+The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Endpoints and tasks are promoted from spans, so a span SLO covers them too.
 
 The metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat. Empty slices count only from the moment the SLO was saved, or its indicator last changed. The backfill of older history never turns the time before the metric existed, or past its retention, into bad slices.
 
-Latency indicators leave streaming endpoints out, since a connection lifetime is not a response time. Healthy healthcheck requests are dropped at ingest, so a project-wide availability SLO only ever sees the failing probes; give healthcheck paths their own endpoint SLO if you need to track them.
+Endpoint latency indicators leave streaming endpoints out, since a connection lifetime is not a response time. They also ignore the status code, so a fast 500 counts as good; pair a latency SLO with an availability one.
 
-The sheet has a **Preview last 24h** button that runs the indicator straight against your telemetry, so you can see the share of good events and the counts before saving.
+When **Drop healthy healthcheck requests** is on (the default, see [Healthchecks](/learn/healthchecks)), healthy probes are never stored, so an endpoint SLO only sees the failing ones. To hold a health endpoint to a target, use a monitor SLO, or turn the toggle off for that project.
+
+The sheet has a **Preview last 24h** button that runs the indicator straight against your telemetry, so you can see the share of good events and the counts before saving. Like a newly saved SLO, the preview does not count empty metric slices as bad.
+
+An SLO can watch at most 50 monitors, 20 metric tags and 10 span attribute filters.
 
 ## Windows and the error budget
 
@@ -45,7 +51,7 @@ Changing the target or the window applies at once and keeps the history, since b
 Two [alert rule](/learn/alerts) types read the SLO:
 
 - **SLO Burn Rate** fires when the budget burns faster than a threshold over both a long and a short window. The short window stops a burn that already ended from paging, the long window stops a one-minute blip from paging. It sends a recovery notice once either window drops below the threshold, so the alert ends soon after the burn stops.
-- **SLO Budget Consumed** fires when more than a share of the window's budget is gone, and sends a recovery notice when the budget climbs back above the line.
+- **SLO Budget Consumed** fires when a share of the window's budget or more is gone, and sends a recovery notice when the budget climbs back above the line.
 
 The presets follow the Google SRE workbook:
 
@@ -55,7 +61,7 @@ The presets follow the Google SRE workbook:
 | Slow | 6h / 30m | 6x | 5% | 5 days |
 | Long | 3d / 6h | 1x | 10% | 30 days |
 
-Point the Fast preset at a paging channel and the Slow and Long ones at chat. Add SLO Budget Consumed at 80% as the planning signal that says the next deploy should be a careful one. Pointing either rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically. The rules fire once when the condition starts and again only after it cleared, so they do not re-page every poll. Editing, disabling or deleting a rule resolves the page it opened, and so does disabling or deleting its SLO.
+Point the Fast preset at a paging channel and the Slow and Long ones at chat. Add SLO Budget Consumed at 80% as the planning signal that says the next deploy should be a careful one. Pointing either rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically. The rules fire once when the condition starts and again only after it cleared, so they do not re-page every poll. A rule is still evaluated during its cooldown so the recovery is never delayed; the cooldown only holds back a new fire, and a recovery notice does not restart it. Changing a rule's type, channel or condition, disabling it or deleting it resolves the page it opened, and so does disabling or deleting its SLO. Deleting an SLO also deletes the rules that read it. While a changed SLO is being recomputed, its rules keep their state, so a definition change does not send a false recovery.
 
 On a metric SLO with slices longer than a minute, both windows are rounded up to whole slices, so a 5-minute short window over 60-minute slices reads the last hour. The rule form says so when it happens.
 
@@ -63,14 +69,14 @@ On a metric SLO with slices longer than a minute, both windows are rounded up to
 
 A background worker computes the indicator into buckets of one minute (or the metric slice length) and stores them next to the telemetry, so the SLI, the budget and the burn rates are sums over buckets rather than scans of raw data. Every poll recomputes the last ten minutes, so data that arrives a little late still lands in its bucket, and backfills older history in chunks until the whole window is covered. A new 90-day SLO fills over a few minutes; the detail page says how much of the range the history covers while it does. All SLOs share one five-second backfill budget per poll, so adding many at once never delays the refresh of the others.
 
-Data that arrives late is picked up too. Every 15 minutes the worker recomputes the last hour and a quarter, which catches requests longer than ten minutes (a span is counted at its start but exported at its end) and batches an exporter retried after an outage. Sessions and task runs are counted at their start but turn bad when their exception arrives, so their buckets stay open longer: every 15 minutes the worker recomputes the last two and a half hours of a session SLO and the last six and a half hours of a task SLO. Native mobile crashes are uploaded on the next app launch, so once a day the worker also recomputes the last three days of every session SLO. A crash counts as long as the app is opened again within three days.
+Data that arrives late is picked up too. Every 15 minutes the worker recomputes the last hour and a quarter, which catches requests longer than ten minutes (a span is counted at its start but exported at its end) and batches an exporter retried after an outage. Sessions and task runs are counted at their start but turn bad when their exception arrives, so their buckets stay open longer: every 15 minutes the worker recomputes about the last two and a half hours of a session SLO and the last six and a half hours of a task SLO. A crash that is uploaded on the next app launch is caught too: once a day the worker recomputes the last three days of every session SLO, so a crash counts when the app is opened again within two days, and usually up to three.
 
 If the backend was down, the first poll after it recomputes the last 24 hours, and the rest of the gap is filled from the raw telemetry within the same backfill budget.
 
-Buckets are kept for 120 days whatever the raw telemetry retention is. On SQLite and DuckDB the raw retention defaults to 30 days (`SQLITE_RETENTION_DAYS`, `DUCKDB_RETENTION_DAYS`), so a 90-day window backfills only what is still retained, and buckets already computed survive the pruning of the raw rows. On ClickHouse, metric indicators backfill from the 1-minute rollups, which keep 30 days.
+Buckets are kept for 120 days whatever the raw telemetry retention is. On SQLite and DuckDB the raw retention defaults to 30 days (`SQLITE_RETENTION_DAYS`, `DUCKDB_RETENTION_DAYS`), so a 90-day window backfills only what is still retained, and buckets already computed survive the pruning of the raw rows. On ClickHouse, metric indicators backfill from the 1-minute rollups, which keep 30 days. The last value aggregation reads the raw points instead, which keep 7 days.
 
 ## Configuration
 
 ```bash
-SLO_POLL_SECONDS=60   # how often buckets are refreshed and statuses recomputed; minimum 5
+SLO_POLL_SECONDS=60   # how often buckets are refreshed and statuses recomputed; values below 5 fall back to 60
 ```

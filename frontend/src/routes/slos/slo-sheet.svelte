@@ -427,8 +427,9 @@
 		previewing = true;
 		previewError = '';
 		preview = null;
+		const definition = currentDefinition();
 		try {
-			preview = await api.post(
+			const result = await api.post(
 				'/slos/preview',
 				{
 					sliKind,
@@ -437,8 +438,9 @@
 				},
 				projectQuery()
 			);
+			if (currentDefinition() === definition) preview = result;
 		} catch (e) {
-			previewError = getErrorMessage(e) || 'Preview failed';
+			if (currentDefinition() === definition) previewError = getErrorMessage(e) || 'Preview failed';
 		} finally {
 			previewing = false;
 		}

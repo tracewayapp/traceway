@@ -80,6 +80,13 @@ func TestSLOBucketRepository_UpsertSumSeries(t *testing.T) {
 	expectBucket(t, series, base, 195, 200)
 	expectBucket(t, series, base.Add(2*time.Minute), 50, 100)
 
+	series, err = SLOBucketRepository.Series(ctx, project, 7, base.Add(time.Minute), base.Add(4*time.Minute), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectBucket(t, series, base.Add(time.Minute), 100, 100)
+	expectBucket(t, series, base.Add(2*time.Minute), 50, 100)
+
 	sums, err := SLOBucketRepository.SnapshotSums(ctx, project, 7, base, base.Add(3*time.Minute), base.Add(time.Minute), base.Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)

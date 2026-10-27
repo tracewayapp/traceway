@@ -403,19 +403,14 @@ func (ctrl *sloController) Update(ctx *gin.Context) {
 		return
 	}
 	if definitionChanged {
+		// The worker deletes the old buckets itself before it writes new ones;
+		// a delete from here could land after them.
 		if err := transactional.SLORepository.ResetHistory(tx, sloId, existing.UpdatedAt); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reset SLO history: %w", err))
 			return
 		}
-		middleware.OnCommit(ctx, func() {
-			if err := telemetry.SLOBucketRepository.DeleteBySLO(context.Background(), projectId, sloId); err != nil {
-				traceway.CaptureException(fmt.Errorf("failed to delete buckets of changed SLO %d: %w", sloId, err))
-			}
-			slo.Wake()
-		})
-	} else {
-		middleware.OnCommit(ctx, slo.Wake)
 	}
+	middleware.OnCommit(ctx, slo.Wake)
 	updated, err := transactional.SLORepository.FindByIdForProject(tx, sloId, projectId)
 	if err != nil || updated == nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reload SLO: %w", err))

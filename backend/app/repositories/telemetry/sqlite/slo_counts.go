@@ -21,6 +21,11 @@ func sumIf(condition string) string {
 	return "SUM(CASE WHEN " + condition + " THEN 1 ELSE 0 END)"
 }
 
+// distinctIf counts a retried export of the same entity once.
+func distinctIf(condition string) string {
+	return "COUNT(DISTINCT CASE WHEN " + condition + " THEN id END)"
+}
+
 // SLICounts counts requests per bucket in [from, to) and how many were good.
 func (e *endpointRepository) SLICounts(ctx context.Context, projectId uuid.UUID, spec shared.EndpointSLISpec, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
 	good := "status_code < 500"
@@ -36,7 +41,7 @@ func (e *endpointRepository) SLICounts(ctx context.Context, projectId uuid.UUID,
 		where += " AND endpoint = ?"
 		args = append(args, spec.Endpoint)
 	}
-	query := "SELECT " + epochBucket("recorded_at", bucketMinutes*60) + " AS bucket, COUNT(*), " + sumIf(good) +
+	query := "SELECT " + epochBucket("recorded_at", bucketMinutes*60) + " AS bucket, COUNT(DISTINCT id), " + distinctIf(good) +
 		" FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?" + where + " GROUP BY bucket ORDER BY bucket ASC"
 	rows, err := db.TelemetryDB.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -57,7 +62,7 @@ func (r *taskRepository) SLICounts(ctx context.Context, projectId uuid.UUID, spe
 		where = " AND task_name = ?"
 		args = append(args, spec.TaskName)
 	}
-	query := "SELECT " + epochBucket("recorded_at", bucketMinutes*60) + " AS bucket, COUNT(*), " + sumIf("NOT ("+failed+")") +
+	query := "SELECT " + epochBucket("recorded_at", bucketMinutes*60) + " AS bucket, COUNT(DISTINCT id), " + distinctIf("NOT ("+failed+")") +
 		" FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?" + where + " GROUP BY bucket ORDER BY bucket ASC"
 	rows, err := db.TelemetryDB.QueryContext(ctx, query, args...)
 	if err != nil {

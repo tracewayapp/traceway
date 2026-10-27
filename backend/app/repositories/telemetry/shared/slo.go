@@ -17,6 +17,18 @@ type SLOBucket struct {
 	ComputedAt  time.Time
 }
 
+type SLOCount struct {
+	Good  int64
+	Total int64
+}
+
+// SLOSnapshotSums are the three ranges a snapshot needs, read in one query.
+type SLOSnapshotSums struct {
+	Window       SLOCount
+	LastSixHours SLOCount
+	LastHour     SLOCount
+}
+
 type SLOBucketPoint struct {
 	Bucket time.Time `json:"bucket"`
 	Good   int64     `json:"good"`

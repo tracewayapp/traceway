@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Select from '$lib/components/ui/select';
@@ -221,11 +222,14 @@
 		originalDefinition = currentDefinition() ?? '';
 	}
 
+	// untrack: populating writes the form fields, and currentDefinition reads
+	// them back, which would make the effect re-run on its own writes.
 	$effect(() => {
-		if (open && slo) {
-			populateFromSlo(slo);
-		} else if (open && !slo) {
-			resetForm();
+		const current = slo;
+		if (open && current) {
+			untrack(() => populateFromSlo(current));
+		} else if (open && !current) {
+			untrack(resetForm);
 		}
 		if (!open) {
 			loadedPickers = {};

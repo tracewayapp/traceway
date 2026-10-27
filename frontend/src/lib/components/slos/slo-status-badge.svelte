@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { SloStatus } from '$lib/state/slos.svelte';
+	import StatusPill from '$lib/components/traceway/status-pill.svelte';
 
 	interface Props {
 		status: SloStatus;
@@ -7,28 +8,14 @@
 	}
 
 	let { status, enabled = true }: Props = $props();
-
-	const pillBase = 'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium';
 </script>
 
 {#if !enabled}
-	<span class="{pillBase} bg-muted text-muted-foreground">
-		<span class="h-1.5 w-1.5 rounded-full bg-muted-foreground/60"></span>
-		Paused
-	</span>
+	<StatusPill tone="neutral" dot label="Paused" />
 {:else if status === 'ok'}
-	<span class="{pillBase} bg-green-500/15 text-green-600 dark:text-green-400">
-		<span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
-		Meeting
-	</span>
+	<StatusPill tone="success" dot label="Meeting" />
 {:else if status === 'breached'}
-	<span class="{pillBase} bg-red-500/15 text-red-600 dark:text-red-400">
-		<span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
-		Breached
-	</span>
+	<StatusPill tone="danger" dot label="Breached" />
 {:else}
-	<span class="{pillBase} bg-muted text-muted-foreground">
-		<span class="h-1.5 w-1.5 rounded-full bg-muted-foreground/60"></span>
-		No data
-	</span>
+	<StatusPill tone="neutral" dot label="No data" />
 {/if}

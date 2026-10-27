@@ -99,7 +99,9 @@ func evaluateSLOBurnRate(ctx context.Context, rule *models.NotificationRule, pro
 	longBurn := slo.BurnRate(long, target)
 	shortBurn := slo.BurnRate(short, target)
 	met := long.Total > 0 && longBurn >= cfg.BurnRateThreshold && shortBurn >= cfg.BurnRateThreshold
-	clear := longBurn < cfg.BurnRateThreshold
+	// Either window below the threshold ends the episode: the short one resets
+	// the alert soon after the burn stops, as in the SRE workbook.
+	clear := longBurn < cfg.BurnRateThreshold || shortBurn < cfg.BurnRateThreshold
 
 	fire, recover, err := transitionRuleState(rule, met, clear, now)
 	if err != nil {
@@ -109,13 +111,13 @@ func evaluateSLOBurnRate(ctx context.Context, rule *models.NotificationRule, pro
 	case fire:
 		return &EvalResult{Fired: true, Message: buildSLOBurnRateMessage(entity, longBurn, shortBurn, cfg.LongWindowMinutes, cfg.ShortWindowMinutes, cfg.BurnRateThreshold, getProjectName(projectId))}, nil
 	case recover:
-		detail := fmt.Sprintf("The burn rate over the last %s is back to %.1fx (threshold %.1fx).", windowLabel(cfg.LongWindowMinutes), longBurn, cfg.BurnRateThreshold)
+		detail := fmt.Sprintf("The burn rate is back to %.1fx over the last %s and %.1fx over the last %s (threshold %.1fx).", longBurn, windowLabel(cfg.LongWindowMinutes), shortBurn, windowLabel(cfg.ShortWindowMinutes), cfg.BurnRateThreshold)
 		return &EvalResult{Recovered: true, Message: buildSLORecoveredMessage(entity, detail, getProjectName(projectId))}, nil
 	}
 	return &EvalResult{}, nil
 }
 
-func evaluateSLOBudgetConsumed(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error) {
+func evaluateSLOBudgetConsumed(_ context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error) {
 	var cfg sloBudgetConsumedConfig
 	if err := json.Unmarshal(rule.Config, &cfg); err != nil {
 		return nil, fmt.Errorf("invalid slo_budget_consumed config: %w", err)
@@ -132,12 +134,13 @@ func evaluateSLOBudgetConsumed(ctx context.Context, rule *models.NotificationRul
 		return recoverDisabledSLO(rule, entity, projectId, now)
 	}
 
-	window, err := slo.WindowSums(ctx, entity, entity.Window(), now)
-	if err != nil {
-		return nil, err
+	// The worker's snapshot already holds the budget of the whole window;
+	// summing the window again on every poll would double the read cost.
+	ok := entity.BudgetRemaining != nil
+	consumed := 0.0
+	if ok {
+		consumed = 100 - *entity.BudgetRemaining
 	}
-	remaining, ok := slo.BudgetRemaining(window, entity.Target())
-	consumed := 100 - remaining
 	met := ok && consumed >= cfg.ConsumedPercent
 	clear := !ok || consumed < cfg.ConsumedPercent
 
@@ -150,6 +153,9 @@ func evaluateSLOBudgetConsumed(ctx context.Context, rule *models.NotificationRul
 		return &EvalResult{Fired: true, Message: buildSLOBudgetConsumedMessage(entity, consumed, cfg.ConsumedPercent, getProjectName(projectId))}, nil
 	case recover:
 		detail := fmt.Sprintf("%.1f%% of the %d-day error budget is consumed, below the %.0f%% line again.", consumed, entity.WindowDays, cfg.ConsumedPercent)
+		if !ok {
+			detail = fmt.Sprintf("The SLO has no data in its %d-day window.", entity.WindowDays)
+		}
 		return &EvalResult{Recovered: true, Message: buildSLORecoveredMessage(entity, detail, getProjectName(projectId))}, nil
 	}
 	return &EvalResult{}, nil
@@ -197,10 +203,10 @@ func transitionRuleState(rule *models.NotificationRule, met bool, clear bool, no
 	default:
 		return false, false, nil
 	}
-	_, err = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
-		return struct{}{}, transactional.NotificationRuleStateRepository.Set(tx, rule.Id, fire, now)
+	changed, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+		return transactional.NotificationRuleStateRepository.Transition(tx, rule.Id, fire, now)
 	})
-	if err != nil {
+	if err != nil || !changed {
 		return false, false, err
 	}
 	return fire, recover, nil

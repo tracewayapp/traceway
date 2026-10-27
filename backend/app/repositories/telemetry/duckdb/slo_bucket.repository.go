@@ -44,6 +44,19 @@ func (r *sloBucketRepository) SumRange(ctx context.Context, projectId uuid.UUID,
 	return good, total, err
 }
 
+// SnapshotSums sums [from, to), [sixHoursFrom, to) and [hourFrom, to) in one read.
+func (r *sloBucketRepository) SnapshotSums(ctx context.Context, projectId uuid.UUID, sloId int, from, to, sixHoursFrom, hourFrom time.Time) (shared.SLOSnapshotSums, error) {
+	var sums shared.SLOSnapshotSums
+	six, hour := sixHoursFrom.UTC(), hourFrom.UTC()
+	err := db.TelemetryDB.QueryRowContext(ctx,
+		"SELECT COALESCE(CAST(SUM(good) AS BIGINT), 0), COALESCE(CAST(SUM(total) AS BIGINT), 0), COALESCE(CAST(SUM(CASE WHEN bucket_start >= ? THEN good ELSE 0 END) AS BIGINT), 0), COALESCE(CAST(SUM(CASE WHEN bucket_start >= ? THEN total ELSE 0 END) AS BIGINT), 0), "+
+			"COALESCE(CAST(SUM(CASE WHEN bucket_start >= ? THEN good ELSE 0 END) AS BIGINT), 0), COALESCE(CAST(SUM(CASE WHEN bucket_start >= ? THEN total ELSE 0 END) AS BIGINT), 0) "+
+			"FROM slo_buckets WHERE project_id = ? AND slo_id = ? AND bucket_start >= ? AND bucket_start < ?",
+		six, six, hour, hour, projectId.String(), int64(sloId), from.UTC(), to.UTC()).
+		Scan(&sums.Window.Good, &sums.Window.Total, &sums.LastSixHours.Good, &sums.LastSixHours.Total, &sums.LastHour.Good, &sums.LastHour.Total)
+	return sums, err
+}
+
 // Series re-buckets the stored buckets to intervalMinutes for a chart.
 func (r *sloBucketRepository) Series(ctx context.Context, projectId uuid.UUID, sloId int, from, to time.Time, intervalMinutes int) ([]shared.SLOBucketPoint, error) {
 	query := "SELECT " + epochBucket("bucket_start", intervalMinutes*60) + " AS bucket, CAST(SUM(total) AS BIGINT), CAST(SUM(good) AS BIGINT) FROM slo_buckets " +

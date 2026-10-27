@@ -42,7 +42,8 @@ func TestResolveSLORulePageClosesTheAlertPage(t *testing.T) {
 		if err != nil {
 			return seeded{}, err
 		}
-		return seeded{rule, pageId}, transactional.NotificationRuleStateRepository.Set(tx, rule.Id, true, now)
+		_, err = transactional.NotificationRuleStateRepository.Transition(tx, rule.Id, true, now)
+		return seeded{rule, pageId}, err
 	})
 	if err != nil {
 		t.Fatal(err)

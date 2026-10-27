@@ -44,7 +44,7 @@ Changing the target or the window applies at once and keeps the history, since b
 
 Two [alert rule](/learn/alerts) types read the SLO:
 
-- **SLO Burn Rate** fires when the budget burns faster than a threshold over both a long and a short window. The short window stops a burn that already ended from paging, the long window stops a one-minute blip from paging. It sends a recovery notice once the long window drops below the threshold.
+- **SLO Burn Rate** fires when the budget burns faster than a threshold over both a long and a short window. The short window stops a burn that already ended from paging, the long window stops a one-minute blip from paging. It sends a recovery notice once either window drops below the threshold, so the alert ends soon after the burn stops.
 - **SLO Budget Consumed** fires when more than a share of the window's budget is gone, and sends a recovery notice when the budget climbs back above the line.
 
 The presets follow the Google SRE workbook:
@@ -61,7 +61,7 @@ On a metric SLO with slices longer than a minute, both windows are rounded up to
 
 ## How history is computed
 
-A background worker computes the indicator into buckets of one minute (or the metric slice length) and stores them next to the telemetry, so the SLI, the budget and the burn rates are sums over buckets rather than scans of raw data. Every poll recomputes the last ten minutes, so data that arrives a little late still lands in its bucket, and backfills older history in chunks until the whole window is covered. A new 90-day SLO fills over a few minutes; the detail page says how much of the range the history covers while it does. All SLOs share one five-second backfill budget per poll, so adding many at once never delays the refresh of the others.
+A background worker computes the indicator into buckets of one minute (or the metric slice length) and stores them next to the telemetry, so the SLI, the budget and the burn rates are sums over buckets rather than scans of raw data. Every poll recomputes the last ten minutes, so data that arrives a little late still lands in its bucket, and backfills older history in chunks until the whole window is covered. Sessions and task runs are counted at their start but turn bad when their exception arrives, so their buckets stay open longer: every 15 minutes the worker recomputes the last two and a half hours of a session SLO and the last six and a half hours of a task SLO. A crash reported later than that, such as a native crash uploaded days later on the next app launch, does not count. A new 90-day SLO fills over a few minutes; the detail page says how much of the range the history covers while it does. All SLOs share one five-second backfill budget per poll, so adding many at once never delays the refresh of the others.
 
 If the backend was down, the first poll after it recomputes the last 24 hours, and the rest of the gap is filled from the raw telemetry within the same backfill budget.
 

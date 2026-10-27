@@ -76,8 +76,8 @@ export function budgetTone(remaining: number | null): SloTone {
 
 export function burnTone(rate: number | null): SloTone {
 	if (rate === null) return 'neutral';
-	if (rate >= 14.4) return 'danger';
-	if (rate >= 6) return 'warning';
+	if (rate >= BURN_RATE_PRESETS[0].burnRateThreshold) return 'danger';
+	if (rate >= BURN_RATE_PRESETS[1].burnRateThreshold) return 'warning';
 	return 'success';
 }
 
@@ -139,11 +139,7 @@ export function clampRangeToWindow(
 ): { from: Date; to: Date; clamped: boolean } {
 	const windowMs = windowDays * 24 * 60 * 60 * 1000;
 	let clamped = false;
-	let clampedTo = to;
-	if (clampedTo.getTime() > now.getTime()) {
-		clampedTo = now;
-		clamped = true;
-	}
+	const clampedTo = to.getTime() > now.getTime() ? now : to;
 	let clampedFrom = from;
 	const earliest = new Date(clampedTo.getTime() - windowMs);
 	if (clampedFrom.getTime() < earliest.getTime()) {

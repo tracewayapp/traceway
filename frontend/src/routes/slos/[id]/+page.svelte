@@ -190,6 +190,11 @@
 		}
 	}
 
+	async function reloadAfterSave() {
+		await loadSlo();
+		if (slo) loadSeries(false, false);
+	}
+
 	async function loadAll() {
 		loading = true;
 		error = '';
@@ -488,7 +493,7 @@
 		</Card.Root>
 	</div>
 
-	<SloSheet bind:open={editOpen} {slo} onSaved={() => loadAll()} />
+	<SloSheet bind:open={editOpen} {slo} onSaved={reloadAfterSave} />
 
 	<ConfirmDeleteDialog
 		bind:open={deleteOpen}

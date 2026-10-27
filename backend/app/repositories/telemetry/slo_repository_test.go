@@ -81,6 +81,14 @@ func TestSLOBucketRepository_UpsertSumSeries(t *testing.T) {
 	expectBucket(t, series, base, 195, 200)
 	expectBucket(t, series, base.Add(2*time.Minute), 50, 100)
 
+	sums, err := SLOBucketRepository.SnapshotSums(ctx, project, 7, base, base.Add(3*time.Minute), base.Add(time.Minute), base.Add(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sums.Window != (shared.SLOCount{Good: 245, Total: 300}) || sums.LastSixHours != (shared.SLOCount{Good: 150, Total: 200}) || sums.LastHour != (shared.SLOCount{Good: 50, Total: 100}) {
+		t.Fatalf("snapshot sums = %+v", sums)
+	}
+
 	if err := SLOBucketRepository.DeleteBySLO(ctx, project, 7); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +144,8 @@ func TestEndpointRepository_SLICounts(t *testing.T) {
 	}
 	stream := makeEndpoint(project, "GET /events", 30*time.Second, 200, second.Add(20*time.Second))
 	stream.IsStream = true
-	endpoints = append(endpoints, stream)
+	retried := endpoints[3]
+	endpoints = append(endpoints, stream, retried)
 	if err := EndpointRepository.InsertAsync(ctx, endpoints); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +193,7 @@ func TestTaskRepository_SLICounts(t *testing.T) {
 	healthy.TraceId, healthy.SpanId = hexId(uuid.New()), hexId(uuid.New())
 	other := makeTask(project, "rebuild-index", time.Second, base.Add(30*time.Second))
 	other.TraceId, other.SpanId = hexId(uuid.New()), hexId(uuid.New())
-	if err := TaskRepository.InsertAsync(ctx, []models.Task{failing, healthy, other}); err != nil {
+	if err := TaskRepository.InsertAsync(ctx, []models.Task{failing, healthy, other, healthy}); err != nil {
 		t.Fatal(err)
 	}
 	onTask := makeException(project, "hash-a", "boom", base.Add(5*time.Minute))

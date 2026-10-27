@@ -320,7 +320,7 @@ There are no rule-specific options. Pointing the rule at an escalation channel o
 
 ### SLO Burn Rate
 
-Fires when an [SLO](/learn/slos) spends its error budget faster than the threshold over both the long and the short window, and sends a recovery notice once the long window drops below it. Both windows must burn: the short one keeps a burn that already ended from paging, the long one keeps a one-minute blip from paging. The rule fires once when the condition starts and again only after it cleared, so it never re-pages every poll. The recovery notice is always Info.
+Fires when an [SLO](/learn/slos) spends its error budget faster than the threshold over both the long and the short window, and sends a recovery notice once either window drops below it. Both windows must burn: the short one keeps a burn that already ended from paging, the long one keeps a one-minute blip from paging. The short window also ends the alert soon after the burn stops, so the Long preset does not stay firing for days. The rule fires once when the condition starts and again only after it cleared, so it never re-pages every poll. The recovery notice is always Info.
 
 | Option | Default | Description |
 |--------|---------|-------------|

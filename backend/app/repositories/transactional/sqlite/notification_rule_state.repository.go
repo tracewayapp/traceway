@@ -22,22 +22,33 @@ func (r *notificationRuleStateRepository) Find(tx *sql.Tx, ruleId int) (*models.
 	)
 }
 
-// Set records whether the rule is firing. since is the start of the current
-// firing episode and is cleared on recovery.
-func (r *notificationRuleStateRepository) Set(tx *sql.Tx, ruleId int, firing bool, now time.Time) error {
+// Transition records whether the rule is firing and reports whether this call
+// changed it, so two instances evaluating the same rule never both notify.
+// since is the start of the current firing episode and is cleared on recovery.
+func (r *notificationRuleStateRepository) Transition(tx *sql.Tx, ruleId int, firing bool, now time.Time) (bool, error) {
 	var since any
 	if firing {
 		since = now.UTC()
 	}
-	query, args, err := lit.ParseNamedQuery(
-		db.Driver,
-		"INSERT INTO notification_rule_states (rule_id, firing, since, updated_at) VALUES (:rule_id, :firing, :since, :updated_at) ON CONFLICT(rule_id) DO UPDATE SET firing = excluded.firing, since = excluded.since, updated_at = excluded.updated_at",
-		lit.P{"rule_id": ruleId, "firing": firing, "since": since, "updated_at": now.UTC()},
-	)
-	if err != nil {
-		return err
+	params := lit.P{"rule_id": ruleId, "firing": firing, "since": since, "updated_at": now.UTC()}
+	changed, err := execAffected(tx, "UPDATE notification_rule_states SET firing = :firing, since = :since, updated_at = :updated_at WHERE rule_id = :rule_id AND firing <> :firing", params)
+	if err != nil || changed {
+		return changed, err
 	}
-	return lit.UpdateNative(tx, query, args...)
+	return execAffected(tx, "INSERT INTO notification_rule_states (rule_id, firing, since, updated_at) VALUES (:rule_id, :firing, :since, :updated_at) ON CONFLICT(rule_id) DO NOTHING", params)
+}
+
+func execAffected(tx *sql.Tx, namedQuery string, params lit.P) (bool, error) {
+	query, args, err := lit.ParseNamedQuery(db.Driver, namedQuery, params)
+	if err != nil {
+		return false, err
+	}
+	result, err := tx.Exec(query, args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected > 0, err
 }
 
 func (r *notificationRuleStateRepository) Delete(tx *sql.Tx, ruleId int) error {

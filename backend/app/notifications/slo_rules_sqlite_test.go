@@ -5,6 +5,7 @@ package notifications
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,22 +185,37 @@ func TestSLOBurnRateHonoursCooldown(t *testing.T) {
 	}
 }
 
+// setBudgetRemaining writes the snapshot value the budget rule reads; nil is no data.
+func setBudgetRemaining(t *testing.T, fixture *sloRuleFixture, remaining *float64) {
+	t.Helper()
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		_, err := tx.Exec("UPDATE slos SET budget_remaining = ? WHERE id = ?", remaining, fixture.SLO.Id)
+		return struct{}{}, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func budget(remaining float64) *float64 {
+	return &remaining
+}
+
 func TestSLOBudgetConsumedFiresAndRecovers(t *testing.T) {
 	fixture := setupSLORuleDB(t, "slo_budget_consumed", `{"sloId":1,"consumedPercent":80}`, 0)
 	ctx := context.Background()
-	// 0.85% bad of a 1% allowance: 85% of the budget is gone.
-	seedBuckets(t, fixture, 100, 9915, 10000)
+	setBudgetRemaining(t, fixture, budget(15))
 
 	result, err := evaluateSLOBudgetConsumed(ctx, fixture.Rule, fixture.ProjectId)
 	if err != nil || !result.Fired || result.Message.Severity != SeverityWarning {
 		t.Fatalf("expected a warning fire: %+v, %v", result, err)
 	}
-	seedBuckets(t, fixture, 100, 9950, 10000)
+	setBudgetRemaining(t, fixture, budget(50))
 	result, err = evaluateSLOBudgetConsumed(ctx, fixture.Rule, fixture.ProjectId)
 	if err != nil || !result.Recovered {
 		t.Fatalf("half the budget back is a recovery: %+v, %v", result, err)
 	}
-	seedBuckets(t, fixture, 100, 9800, 10000)
+	setBudgetRemaining(t, fixture, budget(-100))
 	result, err = evaluateSLOBudgetConsumed(ctx, fixture.Rule, fixture.ProjectId)
 	if err != nil || !result.Fired || result.Message.Severity != SeverityCritical {
 		t.Fatalf("an exhausted budget is critical: %+v, %v", result, err)
@@ -256,5 +272,56 @@ func TestSLORuleRecoversWhenSLODisabled(t *testing.T) {
 	result, err = evaluateSLOBurnRate(ctx, fixture.Rule, fixture.ProjectId)
 	if err != nil || result.Recovered || result.Fired {
 		t.Fatalf("a disabled SLO stays quiet afterwards: %+v %v", result, err)
+	}
+}
+
+func TestSLOBudgetConsumedRecoveryWithoutData(t *testing.T) {
+	fixture := setupSLORuleDB(t, "slo_budget_consumed", `{"sloId":1,"consumedPercent":80}`, 0)
+	ctx := context.Background()
+	setBudgetRemaining(t, fixture, budget(10))
+	if result, err := evaluateSLOBudgetConsumed(ctx, fixture.Rule, fixture.ProjectId); err != nil || !result.Fired {
+		t.Fatalf("expected a fire: %+v, %v", result, err)
+	}
+	setBudgetRemaining(t, fixture, nil)
+	result, err := evaluateSLOBudgetConsumed(ctx, fixture.Rule, fixture.ProjectId)
+	if err != nil || !result.Recovered {
+		t.Fatalf("an SLO without data recovers: %+v, %v", result, err)
+	}
+	if !strings.Contains(result.Message.Body, "no data") || strings.Contains(result.Message.Body, "100.0%") {
+		t.Fatalf("the recovery must not claim the budget is consumed: %q", result.Message.Body)
+	}
+}
+
+func TestSLOBurnRateRecoversOnTheShortWindow(t *testing.T) {
+	fixture := setupSLORuleDB(t, "slo_burn_rate", `{"sloId":1,"longWindowMinutes":60,"shortWindowMinutes":5,"burnRateThreshold":6}`, 0)
+	ctx := context.Background()
+	seedBuckets(t, fixture, 60, 90, 100)
+	if result, err := evaluateSLOBurnRate(ctx, fixture.Rule, fixture.ProjectId); err != nil || !result.Fired {
+		t.Fatalf("expected a fire: %+v, %v", result, err)
+	}
+	seedBuckets(t, fixture, 5, 100, 100)
+	result, err := evaluateSLOBurnRate(ctx, fixture.Rule, fixture.ProjectId)
+	if err != nil || !result.Recovered {
+		t.Fatalf("a clean short window ends the episode although the hour still burns: %+v, %v", result, err)
+	}
+}
+
+func TestSLORuleStateTransitionsOnce(t *testing.T) {
+	fixture := setupSLORuleDB(t, "slo_burn_rate", `{"sloId":1}`, 0)
+	now := time.Now().UTC()
+	transition := func(firing bool) bool {
+		changed, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+			return transactional.NotificationRuleStateRepository.Transition(tx, fixture.Rule.Id, firing, now)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return changed
+	}
+	if !transition(true) || transition(true) {
+		t.Fatal("only the first of two instances may record the fire")
+	}
+	if !transition(false) || transition(false) {
+		t.Fatal("only the first of two instances may record the recovery")
 	}
 }

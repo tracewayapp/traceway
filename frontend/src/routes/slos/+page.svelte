@@ -5,6 +5,7 @@
 	import * as Table from '$lib/components/ui/table';
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { SearchBar } from '$lib/components/ui/search-bar';
@@ -209,7 +210,7 @@
 			<LoadingCircle size="xlg" />
 		</div>
 	{:else if error}
-		<div class="rounded-md border py-16 text-center text-red-500">{error}</div>
+		<ErrorDisplay status={400} title="Error" description={error} onRetry={() => loadData(false)} />
 	{:else if slos.length === 0}
 		{#if projectsState.canWriteCurrentProject}
 			<EmptyState

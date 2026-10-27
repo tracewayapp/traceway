@@ -60,6 +60,10 @@ describe('slo-math', () => {
 		expect(clamped.from.toISOString()).toBe('2026-10-18T12:00:00.000Z');
 		const kept = clampRangeToWindow(new Date('2026-10-24T00:00:00Z'), now, 7, now);
 		expect(kept.clamped).toBe(false);
+		const endOfToday = new Date(now.getTime() + 11 * 60 * 60 * 1000);
+		const trimmed = clampRangeToWindow(new Date('2026-10-24T00:00:00Z'), endOfToday, 7, now);
+		expect(trimmed.clamped).toBe(false);
+		expect(trimmed.to.toISOString()).toBe(now.toISOString());
 	});
 
 	it('never buckets finer than the SLO slices', () => {

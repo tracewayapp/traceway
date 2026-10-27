@@ -702,7 +702,16 @@
 							</Select.Content>
 						</Select.Root>
 						{#if slosStatus === 'error'}
-							<p class="text-xs text-destructive">The SLOs could not be loaded.</p>
+							<p class="text-xs text-destructive">
+								The SLOs could not be loaded.
+								<button
+									type="button"
+									class="underline underline-offset-2"
+									onclick={() => loadSlos()}
+								>
+									Retry
+								</button>
+							</p>
 						{:else if slosStatus === 'loaded' && slos.length === 0}
 							<p class="text-xs text-muted-foreground">
 								No SLOs in this project yet. Create one on the

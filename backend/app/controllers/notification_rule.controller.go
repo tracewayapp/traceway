@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -235,9 +236,12 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		cooldown = 15
 	}
 
-	if err := resolveSLORulePage(tx, existing); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the page of the edited rule: %w", err))
-		return
+	conditionChanged := existing.RuleType != req.RuleType || existing.ChannelId != req.ChannelId || !sameRuleConfig(existing.Config, req.Config)
+	if conditionChanged {
+		if err := resolveSLORulePage(tx, existing); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the page of the edited rule: %w", err))
+			return
+		}
 	}
 
 	existing.ChannelId = req.ChannelId
@@ -252,10 +256,12 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update notification rule: %w", err))
 		return
 	}
-	notifications.ClearRuleState(id)
-	if err := transactional.NotificationRuleStateRepository.Delete(tx, id); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reset notification rule state: %w", err))
-		return
+	if conditionChanged {
+		notifications.ClearRuleState(id)
+		if err := transactional.NotificationRuleStateRepository.Delete(tx, id); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reset notification rule state: %w", err))
+			return
+		}
 	}
 
 	ctx.JSON(http.StatusOK, existing)
@@ -453,6 +459,14 @@ func resolveSLORulePage(tx *sql.Tx, rule *models.NotificationRule) error {
 		return err
 	}
 	return transactional.NotificationRuleStateRepository.Delete(tx, rule.Id)
+}
+
+func sameRuleConfig(a, b json.RawMessage) bool {
+	var left, right any
+	if json.Unmarshal(a, &left) != nil || json.Unmarshal(b, &right) != nil {
+		return false
+	}
+	return reflect.DeepEqual(left, right)
 }
 
 func validateRuleSLO(tx *sql.Tx, projectId uuid.UUID, sloId int) string {

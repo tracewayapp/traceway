@@ -111,7 +111,7 @@
 			'Sessions reported by the browser and mobile SDKs. A session is bad when an exception was recorded in it; captured messages only count if you say so.'
 	};
 	const goodOptions = [
-		{ value: 'availability', label: 'Request succeeded' },
+		{ value: 'availability', label: 'Status below 500' },
 		{ value: 'latency', label: 'Faster than a threshold' }
 	];
 	const spanGoodOptions = [
@@ -240,7 +240,7 @@
 	});
 
 	$effect(() => {
-		void sliKind;
+		void currentDefinition();
 		preview = null;
 		previewError = '';
 	});
@@ -397,7 +397,7 @@
 					tags: metricTags,
 					aggregation: metricAggregation,
 					operator: metricOperator,
-					threshold: Number(metricThreshold) || 0,
+					threshold: String(metricThreshold ?? '').trim() === '' ? null : Number(metricThreshold),
 					missingIsBad
 				};
 			case 'session':

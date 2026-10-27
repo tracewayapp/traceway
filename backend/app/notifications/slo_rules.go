@@ -194,6 +194,15 @@ func transitionRuleState(rule *models.NotificationRule, met bool, clear bool, no
 	return fire, recover, nil
 }
 
+func rollBackRuleState(ruleId int) {
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+		return transactional.NotificationRuleStateRepository.Transition(tx, ruleId, false, time.Now().UTC())
+	})
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to roll back the state of rule %d after a failed send: %w", ruleId, err))
+	}
+}
+
 func dispatchRecovery(rule *models.NotificationRuleWithChannel, msg Message) {
 	if rule.ChannelType == "escalation" {
 		if pageResolver == nil {

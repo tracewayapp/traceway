@@ -105,6 +105,12 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 			if key == "" {
 				return def, "Attribute filters need a key."
 			}
+			if strings.ContainsAny(key, `"\`) || len(key) > 256 {
+				return def, "Attribute keys cannot contain quotes or backslashes."
+			}
+			if attribute.Value == "" {
+				return def, "An attribute filter needs a value."
+			}
 			attributes = append(attributes, models.SpanSLIAttribute{Key: key, Value: attribute.Value})
 		}
 		c.Attributes = attributes
@@ -122,6 +128,9 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 		c := cfg.Monitor
 		if len(c.CheckIds) == 0 {
 			return def, "Select at least one monitor."
+		}
+		if len(c.CheckIds) > models.SLOMaxMonitors {
+			return def, fmt.Sprintf("At most %d monitors are allowed.", models.SLOMaxMonitors)
 		}
 		seen := map[int]bool{}
 		ids := make([]int, 0, len(c.CheckIds))
@@ -158,8 +167,17 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 		if !models.SLOMetricOperators[c.Operator] {
 			return def, "Operator must be one of: gt, gte, lt, lte."
 		}
+		var threshold struct {
+			Threshold *float64 `json:"threshold"`
+		}
+		if json.Unmarshal(raw, &threshold) != nil || threshold.Threshold == nil {
+			return def, "Threshold is required."
+		}
 		if c.Tags == nil {
 			c.Tags = map[string]string{}
+		}
+		if len(c.Tags) > models.SLOMaxMetricTagFilters {
+			return def, fmt.Sprintf("At most %d tag filters are allowed.", models.SLOMaxMetricTagFilters)
 		}
 		validSlice := false
 		for _, minutes := range models.SLOMetricSliceMinutes {

@@ -115,8 +115,8 @@ func evaluatePolledRules(ctx context.Context) {
 				for _, msg := range result.Messages {
 					dispatch(rule, msg)
 				}
-			} else {
-				dispatch(rule, result.Message)
+			} else if !dispatch(rule, result.Message) && statefulRuleTypes[rule.RuleType] {
+				rollBackRuleState(rule.Id)
 			}
 		}
 	}

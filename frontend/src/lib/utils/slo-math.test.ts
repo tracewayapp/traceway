@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
 	budgetTone,
+	burnTone,
 	calculateSloInterval,
 	clampRangeToWindow,
 	defaultPresetForWindow,
 	errorBudgetSeries,
+	formatBudgetRemaining,
 	formatSloPercent,
 	sliSeries,
 	sliSummary
@@ -48,6 +50,9 @@ describe('slo-math', () => {
 		expect(formatSloPercent(99.9512, 99.9)).toBe('99.95%');
 		expect(formatSloPercent(99.9512, 99.999)).toBe('99.951%');
 		expect(formatSloPercent(null, 99.9)).toBe('—');
+		expect(formatSloPercent(99.8996, 99.9)).toBe('99.89%');
+		expect(formatSloPercent(99.95, 99.9)).toBe('99.95%');
+		expect(formatSloPercent(100, 99.9)).toBe('100.00%');
 	});
 
 	it('maps windows to presets and clamps ranges', () => {
@@ -113,5 +118,19 @@ describe('slo-math', () => {
 		expect(
 			sliSummary({ sliKind: 'monitor', bucketMinutes: 1, sliConfig: { checkIds: [1, 2] } })
 		).toBe('2 monitors');
+	});
+
+	it('colours any burn that outpaces the window as a warning', () => {
+		expect(burnTone(0.8)).toBe('success');
+		expect(burnTone(1.3)).toBe('warning');
+		expect(burnTone(14.4)).toBe('danger');
+		expect(burnTone(null)).toBe('neutral');
+	});
+
+	it('shows an overspent budget at its real size', () => {
+		expect(formatBudgetRemaining(33.94)).toBe('33.9%');
+		expect(formatBudgetRemaining(-100)).toBe('-100%');
+		expect(formatBudgetRemaining(-9900)).toBe('-9,900%');
+		expect(formatBudgetRemaining(null)).toBe('—');
 	});
 });

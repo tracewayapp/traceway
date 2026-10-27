@@ -321,3 +321,27 @@ func TestSLORuleStateTransitionsOnce(t *testing.T) {
 		t.Fatal("only the first of two instances may record the recovery")
 	}
 }
+
+func TestSLORuleRetriesWhenTheSendFails(t *testing.T) {
+	fixture := setupSLORuleDB(t, "slo_burn_rate", `{"sloId":1,"longWindowMinutes":60,"shortWindowMinutes":5,"burnRateThreshold":6}`, 0)
+	seedBuckets(t, fixture, 60, 90, 100)
+	if _, err := db.DB.Exec(`UPDATE notification_channels SET channel_type = 'escalation', config = '{"policyId":1}'`); err != nil {
+		t.Fatal(err)
+	}
+	previous := pageOpener
+	pageOpener = nil
+	t.Cleanup(func() { pageOpener = previous })
+
+	evaluatePolledRules(context.Background())
+	if ruleState(t, fixture.Rule.Id) {
+		t.Fatal("a rule whose page could not be opened must not stay firing")
+	}
+
+	result, err := evaluateSLOBurnRate(context.Background(), fixture.Rule, fixture.ProjectId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Fired {
+		t.Fatalf("the next poll should try again: %+v", result)
+	}
+}

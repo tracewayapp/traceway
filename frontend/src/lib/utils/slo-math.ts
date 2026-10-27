@@ -72,7 +72,7 @@ export function budgetTone(remaining: number | null): SloTone {
 export function burnTone(rate: number | null): SloTone {
 	if (rate === null) return 'neutral';
 	if (rate >= BURN_RATE_PRESETS[0].burnRateThreshold) return 'danger';
-	if (rate >= BURN_RATE_PRESETS[1].burnRateThreshold) return 'warning';
+	if (rate >= 1) return 'warning';
 	return 'success';
 }
 
@@ -110,7 +110,9 @@ function decimalsOf(value: number): number {
 
 export function formatSloPercent(value: number | null, targetPercent: number): string {
 	if (value === null || Number.isNaN(value)) return '—';
-	return `${value.toFixed(Math.max(2, decimalsOf(targetPercent)))}%`;
+	const decimals = Math.max(2, decimalsOf(targetPercent));
+	const factor = 10 ** decimals;
+	return `${(Math.floor(value * factor + 1e-6) / factor).toFixed(decimals)}%`;
 }
 
 export function formatBurnRate(rate: number | null): string {
@@ -217,6 +219,6 @@ interface SpanSliAttributeLike {
 
 export function formatBudgetRemaining(remaining: number | null): string {
 	if (remaining === null || Number.isNaN(remaining)) return '—';
-	if (remaining <= -100) return '-100%';
+	if (remaining <= -100) return `${Math.round(remaining).toLocaleString('en-US')}%`;
 	return `${remaining.toFixed(1)}%`;
 }

@@ -41,7 +41,7 @@ export interface MetricSliConfig {
 	tags: Record<string, string>;
 	aggregation: MetricAggregation;
 	operator: MetricOperator;
-	threshold: number;
+	threshold: number | null;
 	missingIsBad: boolean;
 }
 

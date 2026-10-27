@@ -78,11 +78,11 @@ func (r *checkResultRepository) FindByCheck(ctx context.Context, projectId uuid.
 
 	if from != nil {
 		where += " AND recorded_at >= ?"
-		args = append(args, from.UTC().Format(time.RFC3339Nano))
+		args = append(args, sqlitetypes.NewSQLiteTime(*from))
 	}
 	if to != nil {
 		where += " AND recorded_at <= ?"
-		args = append(args, to.UTC().Format(time.RFC3339Nano))
+		args = append(args, sqlitetypes.NewSQLiteTime(*to))
 	}
 
 	var total int64
@@ -134,7 +134,7 @@ func (r *checkResultRepository) AggregatesByProject(ctx context.Context, project
 	WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY check_id`
 
-	rows, err := db.TelemetryDB.QueryContext(ctx, query, projectId.String(), from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano))
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, projectId.String(), sqlitetypes.NewSQLiteTime(from), sqlitetypes.NewSQLiteTime(to))
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func (r *checkResultRepository) SeriesByCheck(ctx context.Context, projectId uui
 	WHERE project_id = ? AND check_id = ? AND recorded_at >= ? AND recorded_at <= ?
 	GROUP BY bucket ORDER BY bucket ASC`
 
-	rows, err := db.TelemetryDB.QueryContext(ctx, query, bucketSeconds, bucketSeconds, projectId.String(), checkId, from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano))
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, bucketSeconds, bucketSeconds, projectId.String(), checkId, sqlitetypes.NewSQLiteTime(from), sqlitetypes.NewSQLiteTime(to))
 	if err != nil {
 		return nil, err
 	}

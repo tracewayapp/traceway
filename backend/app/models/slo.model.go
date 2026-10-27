@@ -24,6 +24,8 @@ const (
 	SLOGoodLatency      = "latency"
 
 	SLOMaxSpanAttributeFilters = 10
+	SLOMaxMonitors             = 50
+	SLOMaxMetricTagFilters     = 20
 )
 
 var (

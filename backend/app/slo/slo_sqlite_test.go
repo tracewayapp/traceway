@@ -21,6 +21,7 @@ func setupSLODB(t *testing.T) uuid.UUID {
 	t.Helper()
 	dbtest.SetupSQLite(t)
 	lastLateArrivalAt = map[int]time.Time{}
+	lastLateCrashAt = map[int]time.Time{}
 	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
 		return transactional.ProjectRepository.Create(tx, "slo-test", "gin")
 	})
@@ -314,6 +315,34 @@ func TestWorkerCountsASessionCrashThatArrivesLate(t *testing.T) {
 	got := reloadSLO(t, entity.Id)
 	if got.CurrentSli == nil || *got.CurrentSli != 90 {
 		t.Fatalf("a crash 30 minutes into a session must still count: %v", derefSLI(got.CurrentSli))
+	}
+}
+
+func TestWorkerCountsAMobileCrashUploadedTheNextDay(t *testing.T) {
+	projectId := setupSLODB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Minute).Add(-48 * time.Hour).Add(30 * time.Second)
+	start := now.Add(-2 * time.Minute)
+	sessions := make([]models.Session, 0, 10)
+	for i := 0; i < 10; i++ {
+		sessions = append(sessions, models.Session{Id: uuid.New(), ProjectId: projectId, StartedAt: start.Add(time.Duration(i) * time.Second), Attributes: map[string]string{}})
+	}
+	if err := telemetry.SessionRepository.Upsert(ctx, sessions); err != nil {
+		t.Fatal(err)
+	}
+	entity := createTestSLO(t, projectId, models.SLIKindSession, `{}`, 99, 7, 1)
+	RunOnce(ctx, now)
+	RunOnce(ctx, now.Add(time.Hour))
+
+	crash := models.ExceptionStackTrace{Id: uuid.New(), ProjectId: projectId, ExceptionHash: "crash", StackTrace: "SIGSEGV", RecordedAt: start.Add(40 * time.Second), SessionId: &sessions[0].Id}
+	if err := telemetry.ExceptionStackTraceRepository.InsertAsync(ctx, []models.ExceptionStackTrace{crash}); err != nil {
+		t.Fatal(err)
+	}
+	RunOnce(ctx, now.Add(25*time.Hour))
+
+	got := reloadSLO(t, entity.Id)
+	if got.CurrentSli == nil || *got.CurrentSli != 90 {
+		t.Fatalf("a crash uploaded on the next launch must still count: %v", derefSLI(got.CurrentSli))
 	}
 }
 

@@ -24,6 +24,9 @@ const (
 	lateDataWindow = 10 * time.Minute
 
 	lateArrivalInterval = 15 * time.Minute
+	lateExportSlack     = time.Hour
+	lateCrashInterval   = 24 * time.Hour
+	lateCrashHorizon    = 72 * time.Hour
 
 	maxCatchUp = 24 * time.Hour
 
@@ -44,6 +47,7 @@ var (
 	lastPruneAt       time.Time
 	tickCount         int
 	lastLateArrivalAt = map[int]time.Time{}
+	lastLateCrashAt   = map[int]time.Time{}
 )
 
 func Wake() {
@@ -198,14 +202,25 @@ func lateArrivalHorizon(kind string) time.Duration {
 	case models.SLIKindTask:
 		return shared.TaskExceptionSlack + lateArrivalInterval + lateDataWindow
 	}
-	return lateDataWindow
+	return lateExportSlack + lateArrivalInterval
 }
 
 func recomputeHorizons(slos []*models.SLO, now time.Time) map[int]time.Duration {
 	horizons := make(map[int]time.Duration, len(slos))
 	seen := make(map[int]time.Time, len(slos))
+	crashSeen := make(map[int]time.Time)
 	for _, slo := range slos {
 		horizons[slo.Id] = lateDataWindow
+		if slo.SliKind == models.SLIKindSession {
+			last, ok := lastLateCrashAt[slo.Id]
+			if !ok || now.Sub(last) >= lateCrashInterval {
+				horizons[slo.Id] = lateCrashHorizon
+				crashSeen[slo.Id] = now
+				seen[slo.Id] = now
+				continue
+			}
+			crashSeen[slo.Id] = last
+		}
 		long := lateArrivalHorizon(slo.SliKind)
 		if long == lateDataWindow {
 			continue
@@ -218,6 +233,7 @@ func recomputeHorizons(slos []*models.SLO, now time.Time) map[int]time.Duration 
 		seen[slo.Id] = last
 	}
 	lastLateArrivalAt = seen
+	lastLateCrashAt = crashSeen
 	return horizons
 }
 

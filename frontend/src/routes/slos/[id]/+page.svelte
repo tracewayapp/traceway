@@ -84,6 +84,7 @@
 
 	let buckets = $state<SloSeriesBucket[]>([]);
 	let seriesLoading = $state(true);
+	let seriesError = $state('');
 	let seriesSequence = 0;
 	let rangeFrom = $state(initialRange.from);
 	let rangeTo = $state(initialRange.to);
@@ -153,9 +154,12 @@
 		const sequence = ++seriesSequence;
 		seriesLoading = true;
 		const picked = resolveRange();
-		const clamped = clampRangeToWindow(picked.from, picked.to, slo.windowDays, new Date());
+		let clamped = clampRangeToWindow(picked.from, picked.to, slo.windowDays, new Date());
 		if (clamped.clamped) {
-			selectedPreset = null;
+			if (selectedPreset) {
+				selectedPreset = defaultPresetForWindow(slo.windowDays);
+				clamped = { ...resolveRange(), clamped: true };
+			}
 			applyRange(clamped.from, clamped.to);
 			if (announceClamp) {
 				toast.info(`Range limited to the SLO's ${slo.windowDays}-day window`);
@@ -181,10 +185,11 @@
 			);
 			if (sequence !== seriesSequence) return;
 			buckets = response.buckets || [];
+			seriesError = '';
 		} catch (e) {
 			if (sequence !== seriesSequence) return;
-			console.error('Failed to load SLO series:', e);
 			buckets = [];
+			seriesError = getErrorMessage(e) || 'Failed to load the history of this SLO';
 		} finally {
 			if (sequence === seriesSequence) seriesLoading = false;
 		}
@@ -402,7 +407,7 @@
 			title="SLI"
 			loading={seriesLoading}
 			empty={sliPoints.length === 0}
-			emptyMessage="No events in this range"
+			emptyMessage={seriesError || 'No events in this range'}
 		>
 			{#snippet icon()}
 				<ChartLine class="h-3.5 w-3.5 text-muted-foreground" />
@@ -419,7 +424,7 @@
 			title="Error budget consumed"
 			loading={seriesLoading}
 			empty={budgetPoints.length === 0}
-			emptyMessage="No events in this range"
+			emptyMessage={seriesError || 'No events in this range'}
 		>
 			{#snippet icon()}
 				<PiggyBank class="h-3.5 w-3.5 text-muted-foreground" />

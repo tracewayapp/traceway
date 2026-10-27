@@ -57,13 +57,14 @@ export default function SlosPage() {
       <div className="band-light">
         <section className="wrap">
           <FeatureRow
-            eyebrow="Five kinds of indicator"
+            eyebrow="Six kinds of indicator"
             title={
               <>
-                Endpoints, spans, tasks, monitors, <em>or a metric</em>
+                Endpoints, spans, tasks, monitors, metrics{" "}
+                <em>or crash-free sessions</em>
               </>
             }
-            description="Pick what a good event is and Traceway counts it. An endpoint is good when it answers below 500 or faster than a threshold. A task run is good when no exception landed on its span. A monitor probe is good when it came back up. A metric is sliced into one to sixty minute windows and each slice is good when its average, maximum or sum stays on the right side of a limit, with slices that have no data counting as bad if you want a missing heartbeat to hurt. Browser and mobile projects get the indicator those platforms live by: crash-free sessions, optionally per app version."
+            description="Pick what a good event is and Traceway counts it. An endpoint is good when it answers below 500 or faster than a threshold. A task run is good when no exception landed on its span. A monitor probe is good when it came back up. A metric is sliced into one to sixty minute windows and each slice is good when its average, minimum, maximum, sum or last value stays on the right side of a limit, with slices that have no data counting as bad if you want a missing heartbeat to hurt."
             bullets={[
               "Availability or latency for endpoints and spans",
               "Task success from the exception on the run's own span",
@@ -81,6 +82,28 @@ export default function SlosPage() {
         <section className="wrap">
           <FeatureRow
             reverse
+            eyebrow="Browser and mobile apps"
+            title={
+              <>
+                Crash-free sessions, <em>per release</em>
+              </>
+            }
+            description="Browser and mobile projects get the objective those platforms live by: the share of sessions that ended without an exception. Pin it to one app version and every rollout gets its own budget, so a release that crashes more than the last one shows up as a breach rather than a hunch. Native crashes uploaded on the next app launch still count, because the worker goes back over the last three days of sessions once a day."
+            bullets={[
+              "All versions, or one app version per objective",
+              "Captured messages count only if you say so",
+              "Works for React, Vue, Svelte, React Native, Flutter, Android and iOS",
+              "Burn-rate and budget alerts like every other objective",
+            ]}
+            image={{
+              src: "/images/slos-sessions.png",
+              alt: "Crash-free session SLOs of a Flutter app in Traceway, one per release, with the error budget left and the burn rate of each",
+            }}
+          />
+        </section>
+
+        <section className="wrap">
+          <FeatureRow
             eyebrow="Any span can carry an objective"
             title={
               <>
@@ -104,6 +127,7 @@ export default function SlosPage() {
 
         <section className="wrap">
           <FeatureRow
+            reverse
             eyebrow="Error budget and burn rate"
             title={
               <>
@@ -126,7 +150,6 @@ export default function SlosPage() {
 
         <section className="wrap">
           <FeatureRow
-            reverse
             eyebrow="Alert on the burn, not the blip"
             title={
               <>
@@ -150,6 +173,7 @@ export default function SlosPage() {
 
         <section className="wrap">
           <FeatureRow
+            reverse
             eyebrow="Computed once, read a thousand times"
             title={
               <>
@@ -165,7 +189,7 @@ export default function SlosPage() {
             ]}
             image={{
               src: "/images/slos-detail-breached.png",
-              alt: "A breached Traceway SLO showing an overspent error budget and a 99x burn rate",
+              alt: "A breached Traceway task SLO with an overspent error budget and the budget chart crossing the exhausted line",
             }}
           />
         </section>

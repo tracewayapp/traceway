@@ -49,6 +49,24 @@ func OnCheckStateChange(transition synthetics.StateTransition) {
 		if rule.RuleType != "check_down" {
 			continue
 		}
+		dedupKey := checkDownDedupKey(rule.Id, transition.Check.Id)
+
+		// Ending an outage is not a notification, so a snooze does not hold it
+		// back: the next outage must alert, and the page this one opened must
+		// close. Escalation-channel rules never dispatch a recovery, which
+		// would open a fresh "recovered" page that stays open forever.
+		if recovered {
+			dedup.forget(dedupKey)
+			if rule.ChannelType == "escalation" {
+				if pageResolver != nil {
+					if err := pageResolver(rule.Id, checkPageDedupToken(transition.Check.Id)); err != nil {
+						traceway.CaptureException(fmt.Errorf("failed to auto-resolve page for recovered check %d (rule=%d): %w", transition.Check.Id, rule.Id, err))
+					}
+				}
+				continue
+			}
+		}
+
 		if rule.SnoozedUntil != nil && rule.SnoozedUntil.After(time.Now()) {
 			continue
 		}
@@ -57,30 +75,17 @@ func OnCheckStateChange(transition synthetics.StateTransition) {
 		}
 
 		if wentDown {
-			dedupKey := checkDownDedupKey(rule.Id, transition.Check.Id)
 			if dedup.isDuplicate(dedupKey, time.Duration(rule.CooldownMinutes)*time.Minute) {
 				continue
 			}
 			msg := buildCheckDownMessage(&transition.Check, transition.ErrorMsg, projectName)
-			// Record before dispatch: a persistently failing dispatch retries
-			// once per cooldown window, never on every transition.
+			// Record before dispatch: one outage alerts once, whether or not
+			// the dispatch succeeded.
 			dedup.record(dedupKey)
 			dispatch(rule, msg)
 			continue
 		}
 
-		// Recovery. Escalation-channel rules must NOT dispatch: dispatch would
-		// open a fresh "recovered" page that stays open forever. Auto-resolve
-		// the down page instead.
-		if rule.ChannelType == "escalation" {
-			if pageResolver == nil {
-				continue
-			}
-			if err := pageResolver(rule.Id, checkPageDedupToken(transition.Check.Id)); err != nil {
-				traceway.CaptureException(fmt.Errorf("failed to auto-resolve page for recovered check %d (rule=%d): %w", transition.Check.Id, rule.Id, err))
-			}
-			continue
-		}
 		dispatch(rule, buildCheckRecoveredMessage(&transition.Check, projectName))
 	}
 }

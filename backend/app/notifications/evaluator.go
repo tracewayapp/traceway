@@ -106,11 +106,19 @@ func evaluatePolledRules(ctx context.Context) {
 			continue
 		}
 
-		if result != nil && result.Recovered {
+		if result == nil {
+			continue
+		}
+		if result.Recovered {
 			dispatchRecovery(rule, result.Message)
 			continue
 		}
-		if result != nil && result.Fired {
+		for _, msg := range result.Recoveries {
+			if !dispatchRecovery(rule, msg) {
+				reopenFiring(rule.Id, msg.DedupToken)
+			}
+		}
+		if result.Fired {
 			if len(result.Messages) > 0 {
 				for _, msg := range result.Messages {
 					dispatch(rule, msg)

@@ -209,17 +209,20 @@ func rollBackRuleState(ruleId int) {
 	}
 }
 
-func dispatchRecovery(rule *models.NotificationRuleWithChannel, msg Message) {
+// dispatchRecovery reports whether the recovery was delivered or its page
+// resolved.
+func dispatchRecovery(rule *models.NotificationRuleWithChannel, msg Message) bool {
 	if rule.ChannelType == "escalation" {
 		if pageResolver == nil {
-			return
+			return false
 		}
 		if err := pageResolver(rule.Id, msg.DedupToken); err != nil {
 			traceway.CaptureException(fmt.Errorf("failed to auto-resolve page for recovered rule %d: %w", rule.Id, err))
+			return false
 		}
-		return
+		return true
 	}
-	dispatch(rule, msg)
+	return dispatch(rule, msg)
 }
 
 func windowLabel(minutes int) string {

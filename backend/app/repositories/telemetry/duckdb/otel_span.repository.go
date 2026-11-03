@@ -198,3 +198,37 @@ func (r *otelSpanRepository) FindOTLP(ctx context.Context, project uuid.UUID, tr
 	}
 	return value, nil
 }
+
+// FindSessionClientSpans returns the requests a browser session made in a time window (CLIENT spans), oldest first.
+func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]shared.SessionSpan, error) {
+	rows, err := db.TelemetryDB.QueryContext(ctx, `SELECT trace_id, span_id, name, start_time_unix_nano, duration, status_code,
+			COALESCE(json_extract_string(span_attributes, '$."http.request.method"'), ''),
+			COALESCE(json_extract_string(span_attributes, '$."url.full"'), ''),
+			COALESCE(json_extract_string(span_attributes, '$."http.response.status_code"'), ''),
+			COALESCE(json_extract_string(span_attributes, '$."error.type"'), '')
+		FROM spans_v2
+		WHERE project_id = ? AND json_extract_string(span_attributes, '$."session.id"') = ?
+			AND recorded_at >= ? AND recorded_at <= ? AND span_kind = 3
+		ORDER BY start_time_unix_nano ASC LIMIT ?`,
+		projectId.String(), sessionId, duckdbOtelCodec.Time(from), duckdbOtelCodec.Time(to), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	spans := []shared.SessionSpan{}
+	for rows.Next() {
+		var span shared.SessionSpan
+		var start uint64
+		var duration int64
+		var status int64
+		if err := rows.Scan(&span.TraceId, &span.SpanId, &span.Name, &start, &duration, &status,
+			&span.Method, &span.URL, &span.HTTPStatus, &span.ErrorType); err != nil {
+			return nil, err
+		}
+		span.StartTime = shared.OtelNanosToTime(start)
+		span.Duration = time.Duration(duration)
+		span.StatusCode = int32(status)
+		spans = append(spans, span)
+	}
+	return spans, rows.Err()
+}

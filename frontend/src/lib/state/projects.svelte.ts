@@ -37,6 +37,9 @@ export const FRONTEND_FRAMEWORKS: Framework[] = [
 	'android',
 	'ios'
 ];
+// Browser frameworks whose SDK (@tracewayapp/frontend 2.x) takes remote collection settings over OpAMP.
+export const SDK_CONFIG_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery'];
+
 export const JS_FRAMEWORKS: Framework[] = [
 	'react',
 	'svelte',

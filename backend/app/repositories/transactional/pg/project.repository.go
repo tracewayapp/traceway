@@ -303,6 +303,8 @@ func (p *projectRepository) Delete(tx *sql.Tx, id uuid.UUID) error {
 		"source_maps",
 		"metric_registry",
 		"project_user_roles",
+		"sdk_config_rules",
+		"sdk_captures",
 	}
 	for _, table := range related {
 		if err := lit.DeleteNamed(db.Driver, tx, "DELETE FROM "+table+" WHERE project_id = :project_id", lit.P{"project_id": id}); err != nil {

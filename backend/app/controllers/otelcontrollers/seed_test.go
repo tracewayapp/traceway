@@ -45,7 +45,7 @@ func TestOtelSymbolicateJs_NoTokenSkipsStorageLookups(t *testing.T) {
 
 	raw := "Error: boom\n    at t (https://cdn.example.com/assets/minified.js:1:11)"
 
-	got := otelSymbolicateJs(nil, projectId, context.Background(), raw, "webjs", "")
+	got := otelSymbolicateJs(nil, projectId, context.Background(), raw, "webjs", "", nil)
 	if got != "Error: boom\nt()\n    https://cdn.example.com/assets/minified.js:1:11" {
 		t.Errorf("expected canonicalized-but-unresolved trace, got %q", got)
 	}
@@ -53,7 +53,7 @@ func TestOtelSymbolicateJs_NoTokenSkipsStorageLookups(t *testing.T) {
 		t.Errorf("expected ZERO storage reads without a source map token, got %d", store.reads)
 	}
 
-	got = otelSymbolicateJs(tokenProject(projectId), projectId, context.Background(), raw, "webjs", "")
+	got = otelSymbolicateJs(tokenProject(projectId), projectId, context.Background(), raw, "webjs", "", nil)
 	if !strings.Contains(got, "original.js") {
 		t.Errorf("expected resolved trace once the token exists, got %q", got)
 	}

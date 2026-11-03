@@ -143,6 +143,10 @@ func main() {
 	// AI chat live in .env.
 	_ = godotenv.Load()
 
+	if err := os.MkdirAll("storage", 0o755); err != nil {
+		panic(fmt.Errorf("create storage directory: %w", err))
+	}
+
 	go tracewaybackend.Run(
 		tracewaybackend.WithSQLitePath("./storage/traceway.db"),
 		tracewaybackend.WithPort(8082),

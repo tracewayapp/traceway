@@ -36,6 +36,7 @@ var (
 	SetupTokenRepository            = pgrepo.SetupTokenRepository
 	SLORepository                   = pgrepo.SLORepository
 	StatusPageRepository            = pgrepo.StatusPageRepository
+	SdkConfigRepository             = pgrepo.SdkConfigRepository
 	SyntheticCheckRepository        = pgrepo.SyntheticCheckRepository
 	SyntheticRunnerRepository       = pgrepo.SyntheticRunnerRepository
 	TeamRepository                  = pgrepo.TeamRepository

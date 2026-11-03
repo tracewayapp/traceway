@@ -8,8 +8,12 @@ import (
 
 const mcpAllowHeaders = "Authorization, Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID"
 
+const reportAllowHeaders = "Content-Type, Content-Encoding, Authorization"
+
 var (
-	CORSReport    = cors("POST, OPTIONS", "Content-Type, Content-Encoding, Authorization", "", "")
+	// Browser SDKs read Retry-After to back off on 503, and the max age keeps a preflight from preceding every export.
+	CORSReport    = cors("POST, OPTIONS", reportAllowHeaders, "Retry-After", "7200")
+	OpampCors     = cors("POST, OPTIONS", reportAllowHeaders+", OpAMP-Instance-UID", "Retry-After", "7200")
 	MCPCors       = cors("GET, POST, DELETE, OPTIONS", mcpAllowHeaders, "Mcp-Session-Id, WWW-Authenticate", "600")
 	WellKnownCors = cors("GET, OPTIONS", mcpAllowHeaders, "", "600")
 	OAuthCors     = cors("POST, OPTIONS", mcpAllowHeaders, "", "600")

@@ -1,126 +1,60 @@
 # Session Replay
 
-Session Replay records DOM changes and user interactions in the browser, then attaches the recording to captured exceptions. This lets you see exactly what happened leading up to an error.
-
-## How It Works
-
-Session Replay uses [rrweb](https://github.com/rrweb-io/rrweb) to record the DOM. Recordings are split into segments that rotate on a fixed interval. When an exception is captured, all current segments are attached to it and sent to Traceway.
-
-Recordings appear on the exception detail page in the Traceway dashboard as a **Session Replay** card.
-
-## Enabled by Default
-
-Session Replay is enabled by default when using `@tracewayapp/frontend` in a browser environment. No additional configuration is needed.
-
-```javascript
-import { init } from "@tracewayapp/frontend";
-
-// Session Replay is active
-init("your-token@https://traceway.example.com/api/report");
-```
-
-## Disabling Session Replay
-
-```javascript
-import { init } from "@tracewayapp/frontend";
-
-init("your-token@https://traceway.example.com/api/report", {
-  sessionRecording: false,
-});
-```
+The 2.x browser SDK records DOM events with rrweb. Replay is buffered on the device by default. Accepted errors upload up to 10 minutes of buffered breadcrumbs; the built-in exception trigger also requests a 30-second replay clip, with a 5-second cooldown and at most 20 clips per session. The session page can show the surrounding uploaded segments and breadcrumbs.
 
 ## Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `sessionRecording` | `boolean` | `true` | Enable or disable session recording |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | Duration of each recording segment in milliseconds |
-| `recordAllSessions` | `boolean` | `false` | Always-on session recording: upload every segment regardless of whether an exception fires. See [Always-on Session Recording](#always-on-session-recording) |
-
-## Privacy & Masking
-
-Because Session Replay runs on [rrweb](https://github.com/rrweb-io/rrweb) under the hood, you can drop rrweb's standard class hooks onto any element in your app to keep sensitive content out of recordings. No SDK configuration is needed. These classes are honored automatically.
-
-### `rr-mask`: block all text in an element
-
-Add `class="rr-mask"` to any element whose **text content** should never be recorded. The element is still captured (layout, clicks, and scrolls all work in the replay), but every character of text (including the text of child elements) is replaced with asterisks.
-
-```html
-<!-- Name visible in the app, hidden in replays -->
-<span class="rr-mask">{user.fullName}</span>
-
-<!-- The entire row's text is masked -->
-<tr class="rr-mask">
-  <td>{invoice.number}</td>
-  <td>{invoice.amount}</td>
-</tr>
-```
-
-Use this for anything you treat as PII or regulated data: names, emails, customer IDs, dollar amounts, addresses, health info, chat content, support tickets.
-
-### `rr-block`: hide the element entirely
-
-Add `class="rr-block"` when you don't want the element visible at all in the replay. It's replaced by a neutral gray placeholder with the same dimensions. Good for avatars, user-uploaded images, or custom widgets that shouldn't be reconstructed.
-
-```html
-<img class="rr-block" src={user.avatarUrl} />
-```
-
-### `rr-ignore`: don't record input values
-
-Add `class="rr-ignore"` on form inputs when you want interaction events (focus, blur, click) captured but **not the characters the user typed**.
-
-```html
-<input class="rr-ignore" type="text" name="search" />
-```
-
-### What's masked by default
-
-Exactly one thing is masked without any markup on your side:
-
-- `<input type="password">`. The value is never captured.
-
-Nothing else is automatic. The recorder does not recognize attributes such as `data-sensitive` or `aria-masked`, so text inside those elements is recorded in full. Every other piece of sensitive content needs one of the `rr-*` classes above.
-
-## Segment Rotation
-
-Recordings are split into segments to limit memory usage. Every 30 seconds (by default), the current segment is finalized and a new one begins with a fresh DOM snapshot.
-
-You can adjust the segment duration:
+| Option | Default | Meaning |
+|---|---|---|
+| `sessionRecording` | `true` | Allow replay at all; remote settings cannot override `false` |
+| `sessionRecordingSegmentDuration` | `30000` | Segment duration in milliseconds |
+| `recordAllSessions` | `false` | Stream completed replay segments and breadcrumbs by default |
+| `sessions` | `true` | Report session lifecycle events, independently of replay |
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
-  sessionRecordingSegmentDuration: 60000, // 60 seconds per segment
+import { init } from "@tracewayapp/frontend";
+
+init(connectionString, {
+  sessionRecordingSegmentDuration: 30000,
 });
 ```
 
-A longer segment duration means fewer rows and fewer S3 reads when reassembling a session, at the cost of replay granularity. The default of 30 s is calibrated for typical browser apps.
+Sessions are recorded even when replay is buffered or disabled, unless `sessions: false` is set. A session belongs to one tab and can continue across page loads. It ends after 15 minutes without activity or 60 minutes in total; subsequent activity opens another session.
 
-## Always-on Session Recording
+## Remote control
 
-By default the recorder only ships clips when an exception fires. Pass `recordAllSessions: true` to upload **every** segment continuously and produce a parent `sessions` row in the dashboard:
+[Data Collection rules](/learn/remote-config/setup) can switch replay between `off`, `buffer`, and `stream`, set session sampling, and start targeted captures. Turning replay off discards its buffered and queued segments. Cancelling a capture removes its streaming override at the next successful poll; another capture or rule can still keep replay streaming.
 
-```javascript
-init("your-token@https://traceway.example.com/api/report", {
-  recordAllSessions: true,
-});
-```
+The default replay buffer holds completed segments within an 8 MiB estimate and a ten-minute age window. The active segment is separate. Replay stays in memory and does not survive a full page navigation. A lookback can only include data the device actually retained. Session sampling controls continuous streaming; unsampled sessions can still provide a buffered error clip.
 
-What changes when always-on is enabled:
+## Privacy
 
-- A persistent `sessionId` is generated at SDK init (or after bfcache restore).
-- Each rrweb segment is uploaded as it rotates, linked to the parent session via `sessionId` + `segmentIndex`.
-- Sessions end on **15 min inactivity**, **60 min max duration**, or `pagehide`. The closing payload is dispatched via `fetch keepalive` with raw JSON so it survives navigation.
-- Logs and actions are flushed onto each segment as it rotates (drained from the rolling buffer to avoid double-counting).
-- Exceptions captured during the session still produce their own clip on the issue page **and** stamp the parent `sessionId` so the dashboard renders a "View full session →" link.
+Inputs are masked by default. A rule can change `replay.maskAllInputs`; applying a change restarts rrweb and discards incompatible buffered or queued replay. Already-sent requests cannot be recalled. Set `sessionRecording: false` in the application when replay must never run.
 
-Sessions appear on the dedicated **Sessions** page in the dashboard, with attribute filters (`userId=…`, `tenant=…`, etc.) and full-session replay. See [Sessions](/learn/sessions) for the full feature description.
+## Breadcrumbs
 
-## Viewing Recordings
+Console output, navigation, clicks and app events are OTLP log records, while requests are OTLP CLIENT spans. They carry `session.id` and are read alongside replay in the dashboard. Replay files contain rrweb events, rather than duplicate copies of these breadcrumbs.
 
-When an exception includes session recording data, a **Session Replay** card appears on the exception detail page in the Traceway dashboard. The replay shows DOM state and user interactions leading up to the error.
+SDK 1.x and mobile recordings that contain embedded breadcrumbs remain readable. See [Sessions](/learn/sessions) and the [remote settings reference](/learn/remote-config/reference) for collection and retention details.
 
-## Next Steps
+## What “error-only” does and does not mean
 
-- [Exceptions](/client/js-sdk/exceptions): capturing errors with the JS SDK
-- [Initialization](/client/js-sdk/initialization): all SDK configuration options
+Error-only describes **uploading**, not when recording starts. rrweb observes the page before an error and retains a bounded local buffer. Healthy visits still incur browser CPU and memory costs. Breadcrumb buffers and retry queues may also be retained in browser storage when persistence is enabled. Input masking is enabled by default, but it is not a substitute for reviewing what your app renders or for obtaining any consent your application requires. Initialize after consent if required, and set `sessionRecording: false` when recording must never run. The collection kill switch prevents export; it cannot retract already uploaded data.
+
+The error view explains why a replay is absent: disabled collection, a disabled trigger, cooldown, clip limit, sampling, unavailable buffer, or exhausted collection budget. “Requested” means the SDK attempted collection; it is not a delivery guarantee. Open the session to find nearby clips. Completed segments remain in the bounded replay buffer so a second error can reference overlapping context. A replay can start before the requested window because playback needs a full snapshot.
+
+## Failures that do not throw
+
+A failed payment, stuck spinner, incorrect result, or abandoned flow might never throw an exception. Add explicit business events such as `track("checkout_failed", { reason: "payment_declined" })`, then configure an event trigger for the context you need. Use `captureMessage` for a failure that should become an issue. Avoid logging sensitive payment or user content.
+
+These signals cover known failure modes; they do not automatically detect all unsuccessful user experiences. Use normal performance measurements and product outcomes alongside exceptions.
+
+## Collection budget and gaps
+
+Each browser session has a shared diagnostic budget of **50 MiB of uncompressed serialized data and 10,000 events**, including rrweb events. The budget covers ordinary diagnostic streaming and targeted captures together, survives page reloads when session storage is available, and resets for a new session. It is a per-browser-session ceiling, not a project-wide cost cap; repeated sessions and transport retries still consume bandwidth.
+
+Lower the ceiling with `collectionLimits: { maxBytes: 10 * 1024 * 1024, maxEvents: 5000 }`. Remote configuration cannot raise it. Errors, web vitals, and lifecycle/control metadata are exempt. Error burst/duplicate protection applies separately.
+
+`traceway.collection.health` reports accepted bytes/events, dropped diagnostics and suppressed errors without waiting for another exception. Session metadata carries the counters too. `traceway.context.evicted` identifies lost buffered breadcrumbs. A missing summary is possible if the browser closes before it can send. The session overview exposes drop counts; these are counts reported by that running client, not estimates of project-wide loss.
+
+Replay requests rejected permanently or exhausted after retries increment `traceway.replay.failed_segments`, included in health logs and session metadata. The session overview displays failed replay uploads separately from budget drops. An unload-time failure may occur too late to report its counter.

@@ -62,6 +62,7 @@ type Cfg struct {
 	SymbolicatorParser       string
 
 	NotificationPollSeconds string
+	OpampPollSeconds        string
 	OncallPollSeconds       string
 	OutboxPollSeconds       string
 	SLOPollSeconds          string
@@ -141,6 +142,18 @@ func PollSeconds(value string, defaultSeconds int) time.Duration {
 		}
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+// OpampHeartbeatSeconds is the poll interval OpAMP clients are told to use. Every browser profile of every
+// instrumented app polls, so it is an operator setting with a floor, not a per-project one.
+func OpampHeartbeatSeconds() uint64 {
+	seconds := 300
+	if Config != nil && Config.OpampPollSeconds != "" {
+		if parsed, err := strconv.Atoi(Config.OpampPollSeconds); err == nil {
+			seconds = min(max(parsed, 60), 86400)
+		}
+	}
+	return uint64(seconds)
 }
 
 const maxConfigurableMB = 1 << 20
@@ -265,6 +278,7 @@ func LoadFromEnv() *Cfg {
 		SymbolicatorParser:       os.Getenv("SYMBOLICATOR_PARSER"),
 
 		NotificationPollSeconds: os.Getenv("NOTIFICATION_POLL_SECONDS"),
+		OpampPollSeconds:        os.Getenv("OPAMP_POLL_INTERVAL_SECONDS"),
 		OncallPollSeconds:       os.Getenv("ONCALL_POLL_SECONDS"),
 		OutboxPollSeconds:       os.Getenv("OUTBOX_POLL_SECONDS"),
 		SLOPollSeconds:          os.Getenv("SLO_POLL_SECONDS"),

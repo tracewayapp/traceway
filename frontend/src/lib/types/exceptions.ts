@@ -78,6 +78,9 @@ export interface SessionNetworkEvent {
 	requestBytes?: number;
 	responseBytes?: number;
 	error?: string;
+	/** Set on requests read from the session's telemetry: the client span, linkable to its trace. */
+	traceId?: string;
+	spanId?: string;
 }
 
 export interface SessionNavigationEvent {

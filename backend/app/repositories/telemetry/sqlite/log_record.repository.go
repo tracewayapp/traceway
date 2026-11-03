@@ -8,6 +8,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -211,6 +212,26 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 		return nil, err
 	}
 
+	records := make([]models.LogRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, row.toModel())
+	}
+	return records, nil
+}
+
+// FindBySessionId returns a browser session's log records in a time window, oldest first: its console lines,
+// navigation, clicks and custom events. Without statistics the planner prefers (project_id, timestamp), which also
+// serves the ORDER BY but reads every log of the project in the window, so the session index is named.
+func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
+	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB,
+		`SELECT `+logRecordColumns+` FROM log_records INDEXED BY idx_log_records_session
+		WHERE project_id = :project_id AND json_extract(log_attributes, '$."session.id"') = :session_id
+			AND timestamp >= :from AND timestamp <= :to
+		ORDER BY timestamp ASC LIMIT :limit`,
+		lit.P{"project_id": projectId, "session_id": sessionId, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to), "limit": limit})
+	if err != nil {
+		return nil, err
+	}
 	records := make([]models.LogRecord, 0, len(rows))
 	for _, row := range rows {
 		records = append(records, row.toModel())

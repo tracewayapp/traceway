@@ -18,30 +18,40 @@ import { init } from "@tracewayapp/frontend";
 init("your-token@https://traceway.example.com/api/report", {
   debug: true,
   version: "1.2.3",
-  debounceMs: 2000,
+  exportDelayMs: 2000,
+  serviceName: "shop-web",
+  environment: "production",
 });
 ```
 
 ## Options Reference
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log dropped events and failed uploads to the browser console. Captured events are not logged |
-| `debounceMs` | `number` | `1500` | Milliseconds to wait before sending batched events |
-| `retryDelayMs` | `number` | `10000` | Milliseconds to wait before retrying failed uploads |
-| `version` | `string` | `undefined` | Your application version (shown in Traceway dashboard) |
-| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Patterns to filter out errors before capture. See [Error Filtering](#error-filtering) |
-| `beforeCapture` | `(exception) => boolean` | `undefined` | Callback to programmatically suppress errors. Return `false` to drop. See [Error Filtering](#error-filtering) |
-| `sessionRecording` | `boolean` | `true` | Enable the rrweb session recorder. Required for both per-exception clips and always-on session recording |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | Length of each rrweb segment in milliseconds. Always-on recording uploads one row per segment, so a longer value means fewer rows and S3 reads at the cost of replay granularity |
-| `attributes` | `Record<string, string>` | `{}` | Initial context for sessions and exceptions, such as `userId`, `email`, or `tenant`. Use `setAttributes` to update after login and `clearAttributes` on logout |
-| `recordAllSessions` | `boolean` | `false` | Always-on session recording: upload every segment continuously and create a parent `sessions` row, not just exception-bound clips. See [Sessions](/learn/sessions) for the full feature |
-| `captureLogs` | `boolean` | `true` | Mirror `console.{debug,log,info,warn,error}` into the rolling log buffer that ships with each clip / segment |
-| `captureNetwork` | `boolean` | `true` | Record `fetch` and `XMLHttpRequest` calls as network actions |
-| `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions as navigation actions |
-| `eventsWindowMs` | `number` | `10000` (`30000` w/ `recordAllSessions`) | Rolling window the log/action buffers retain |
-| `eventsMaxCount` | `number` | `200` (`600` w/ `recordAllSessions`) | Hard cap on entries kept independently in the log and action buffers |
-| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` response with status >= 500 as a synthetic exception. 4xx is never included, and it is wired into the `fetch` wrapper only, so `XMLHttpRequest` (including `$.ajax()` and browser Axios) does not trigger it |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `serviceName` | the page's host name | `service.name` of this app |
+| `version` | `""` | `service.version`; rules can target releases with it |
+| `environment` | none | `deployment.environment.name` |
+| `attributes` | `{}` | Initial global attributes, see `setAttribute` |
+| `debug` | `false` | Print debug info to the console |
+| `ignoreErrors` | sensible defaults | `string \| RegExp` patterns matched against `Type: message`; matching exceptions are dropped |
+| `beforeCapture` | none | `({ type, message, stack, attributes }) => boolean`; return `false` to drop |
+| `remoteConfig` | `true` | Fetch collection settings from Traceway over OpAMP (see below) |
+| `sessionRecording` | `true` | Allow rrweb session replay at all |
+| `sessionRecordingSegmentDuration` | `30000` | Replay segment length (ms) |
+| `baselineSampleRate` | `0` | Stable healthy-session breadcrumb/request sample, from 0 to 1; does not stream replay |
+| `errorLimits` | `{ maxPerMinute: 60, duplicateWindowMs: 1000 }` | Per-client rolling error limit and duplicate suppression |
+| `recordAllSessions` | `false` | Stream every replay segment and every breadcrumb by default instead of keeping them for error clips |
+| `sessions` | `true` | Record session start and end |
+| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions`, `captureWebVitals`, `captureResourceTiming` | `true` | Allow a signal at all |
+| `captureHttpServerErrors` | `false` | Report fetch / XHR responses with status >= 500 as message issues |
+| `propagateTraceHeaderCorsUrls` | none | Cross-origin URLs that get the W3C `traceparent` header (same-origin requests always do) |
+| `exportDelayMs` | `1000` | Delay between OTLP exports |
+
+The `capture*`, `sessionRecording` and `sessions` options are **ceilings**: remote settings can switch a signal off or
+keep it on the device, but never turn on what `init()` turned off. The `DEFAULT_IGNORE_PATTERNS` export contains the
+built-in `ignoreErrors` list.
+
+The 2.x SDK replaces `debounceMs` with `exportDelayMs`. `retryDelayMs`, `eventsWindowMs`, and `eventsMaxCount` were removed; use remote buffer byte/age settings for retention. Remote configuration is enabled by default and needs a server with the Data Collection feature. See [Remote SDK Config](/learn/remote-config/setup).
 
 ## Auto-Capture Behavior
 
@@ -115,7 +125,7 @@ init("your-token@https://traceway.example.com/api/report", {
 
 ### beforeCapture Callback
 
-For fine-grained control, use the `beforeCapture` callback. It receives the full exception object (including any attributes) and should return `false` to suppress:
+For fine-grained control, use the `beforeCapture` callback. It receives `{ type, message, stack, attributes }` and should return `false` to suppress:
 
 ```javascript
 init("your-token@https://traceway.example.com/api/report", {
@@ -125,7 +135,7 @@ init("your-token@https://traceway.example.com/api/report", {
     if (exception.attributes?.status === "401") return false;
 
     // Suppress errors from third-party scripts
-    if (exception.stackTrace.includes("third-party.js")) return false;
+    if (exception.stack?.includes("third-party.js")) return false;
 
     return true;
   },
@@ -136,9 +146,7 @@ init("your-token@https://traceway.example.com/api/report", {
 
 ## Debug Mode
 
-When `debug: true` is set, the SDK logs what it throws away: errors suppressed by `ignoreErrors`, a `beforeCapture` callback that threw, and failed uploads. Captured events produce no console output at all, so an empty console does not mean the SDK is broken.
-
-To confirm an event was captured, watch for the `POST` to `/api/report` in the Network tab, or call `await flush()` and open the Issues page.
+`debug: true` reports callback errors and rejected remote-config credentials. To verify ingestion, watch `POST /api/otel/v1/logs` and `POST /api/otel/v1/traces` in the Network tab, or call `await flush()` and open the Issues page. Replay uses `/api/recordings`.
 
 ```javascript
 init("your-token@https://traceway.example.com/api/report", {
@@ -158,7 +166,7 @@ import {
   clearAttributes,
 } from "@tracewayapp/frontend";
 
-setAttribute("userId", "u_42");
+setAttribute("user.id", "u_42");
 setAttributes({ tenant: "acme", plan: "pro" });
 
 // On logout / tenant switch:
@@ -167,7 +175,7 @@ clearAttributes();
 
 Layering on each event: **defaults < global scope < per-call**. `captureExceptionWithAttributes(err, { … })` still wins over global keys for the specific exception.
 
-If `recordAllSessions: true` is on, calling `setAttribute*` mid-session also pushes a refresh upsert so the live session row picks up the new attributes immediately rather than waiting for close. See [Sessions](/learn/sessions) for the full attribute model.
+When sessions are enabled, calling `setAttribute*` mid-session also pushes a refresh upsert so the live session row picks up the new attributes immediately rather than waiting for close. See [Sessions](/learn/sessions) for the full attribute model.
 
 ## Multiple Environments
 
@@ -180,3 +188,34 @@ const connectionString = process.env.NODE_ENV === "production"
 
 init(connectionString);
 ```
+
+### Sending telemetry to another platform
+
+The optional `telemetry` setting sends logs and traces to an OTLP/HTTP JSON receiver while Traceway continues to provide OpAMP configuration and session replay storage:
+
+```ts
+Traceway.init('PROJECT_TOKEN@https://traceway.example.com', {
+  telemetry: {
+    url: 'https://collector.example.com/otlp',
+    headers: { Authorization: 'Bearer BROWSER_INGEST_TOKEN' },
+  },
+});
+```
+
+The SDK appends `/v1/logs` and `/v1/traces` to this base URL. Omit `telemetry` to keep the existing Traceway destinations. The URL must use HTTP(S), without embedded credentials, a query, or a fragment. Headers are optional; the Traceway project token is never forwarded to the external receiver. The receiver must allow your application's origin, POST requests, and configured headers through CORS. Use only credentials intended for browser exposure, or put authentication behind your own ingestion proxy.
+
+Live exports, restored lookback buffers, and durable retries use the same destination and headers. Persistent queues are isolated by destination: changing the URL does not forward an old destination's buffered data to the new one. OpAMP and replay uploads still use the original Traceway connection string. Session start, update, and end events are also copied to Traceway so recordings remain discoverable there. Logs and spans carry the same `session.id` at both destinations; use that ID to open `/sessions/{session.id}?projectId={projectId}` on your Traceway dashboard. Custom `logExporter`/`spanExporter` overrides take precedence for live exports; persisted records are delivered directly through the configured HTTP destination.
+
+Traceway collection rules still govern what leaves the browser. Sending telemetry exclusively elsewhere means Traceway cannot display that telemetry in its issues and session timelines; forward a copy to Traceway if you need both dashboards. Replay remains Traceway-specific, outside OTLP.
+
+Existing SDKs can continue posting the legacy `/api/report` payload. The dashboard reads both legacy recording-embedded logs/actions and v2 OTLP breadcrumbs, including sessions with both formats. No historical-data migration is required.
+
+Exception events use OTLP logs with `eventName: "exception"` and structured `exception.type`, `exception.message`, `exception.stacktrace`, `traceway.exception.id`, and `session.id` attributes. When available, the SDK includes source-map debug IDs. Traceway symbolicates the stack before storing the log and creating/grouping its issue, using uploaded matching source maps. An external collector receives the original stack: Traceway cannot symbolicate exceptions routed exclusively to another platform.
+
+## Production collection policy
+
+Production defaults keep session lifecycle metadata and web vitals on, with healthy breadcrumbs and replay buffered locally. An accepted exception uploads the preceding 30 seconds; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
+
+Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. Configure `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` to tune these limits; they reset when the SDK is recreated.
+
+For an optional stable sample of healthy-session breadcrumbs and request spans, use `baselineSampleRate: 0.01` (1%). The default is 0. Selection uses the session ID and persists across page reloads within that session. It does not enable replay or override explicitly disabled signals, signal filters, or exporter limits. Web vitals remain enabled independently, so performance diagnosis is not restricted to sessions with errors.

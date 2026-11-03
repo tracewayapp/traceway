@@ -22,17 +22,17 @@ import (
 // a connection; a request that cannot get a slot within the wait window is
 // rejected with 503 + Retry-After, which SDKs and OTLP collectors retry.
 func newIngestAdmission(capacity int, wait time.Duration) gin.HandlerFunc {
-	return newAdmissionGate(capacity, wait, "ingest saturated, retry later", db.RecordIngestRejected)
+	return newAdmissionGate(capacity, wait, "ingest saturated, retry later", db.RecordIngestRejected, "2")
 }
 
-func newAdmissionGate(capacity int, wait time.Duration, message string, onReject func()) gin.HandlerFunc {
+func newAdmissionGate(capacity int, wait time.Duration, message string, onReject func(), retryAfter string) gin.HandlerFunc {
 	slots := make(chan struct{}, capacity)
 	waiters := make(chan struct{}, max(4*capacity, 16))
 	reject := func(c *gin.Context) {
 		if onReject != nil {
 			onReject()
 		}
-		c.Header("Retry-After", "2")
+		c.Header("Retry-After", retryAfter)
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": message})
 	}
 	return func(c *gin.Context) {
@@ -101,7 +101,7 @@ func IngestAdmission(c *gin.Context) {
 }
 
 var uploadAdmission = sync.OnceValue(func() gin.HandlerFunc {
-	return newAdmissionGate(uploadCapacityFromEnv(), 30*time.Second, "upload queue saturated, retry later", nil)
+	return newAdmissionGate(uploadCapacityFromEnv(), 30*time.Second, "upload queue saturated, retry later", nil, "2")
 })
 
 func uploadCapacityFromEnv() int {
@@ -116,4 +116,24 @@ func uploadCapacityFromEnv() int {
 
 func UploadAdmission(c *gin.Context) {
 	uploadAdmission()(c)
+}
+
+func opampCapacityFromEnv() int {
+	n := max(runtime.NumCPU()*4, 8)
+	if v := os.Getenv("OPAMP_MAX_CONCURRENT"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+	return n
+}
+
+// OpAMP polls get their own gate so a wave of polls cannot starve ingest, or the other way round. A rejected poll
+// waits a minute: the client keeps its last config meanwhile, so nothing is lost by backing off.
+var opampAdmission = sync.OnceValue(func() gin.HandlerFunc {
+	return newAdmissionGate(opampCapacityFromEnv(), time.Second, "remote config is busy, retry later", nil, "60")
+})
+
+func OpampAdmission(c *gin.Context) {
+	opampAdmission()(c)
 }

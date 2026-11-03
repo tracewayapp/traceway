@@ -7,6 +7,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/app/controllers/opampcontrollers"
 	"github.com/tracewayapp/traceway/backend/app/controllers/otelcontrollers"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 
@@ -61,6 +62,9 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.OPTIONS("/report", middleware.CORSReport)
 	router.POST("/report", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.ClientController.Report)
 
+	router.OPTIONS("/recordings", middleware.CORSReport)
+	router.POST("/recordings", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.RecordingsController.Ingest)
+
 	router.OPTIONS("/profiles/ingest", middleware.CORSReport)
 	router.POST("/profiles/ingest", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.ProfileIngestController.Ingest)
 
@@ -73,6 +77,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportMetrics)
 	otelGroup.POST("/v1/logs", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportLogs)
 	otelGroup.POST("/v1development/profiles", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportProfiles)
+	otelGroup.OPTIONS("/v1/opamp", middleware.OpampCors)
+	otelGroup.POST("/v1/opamp", middleware.OpampCors, middleware.UseClientAuth, middleware.OpampAdmission, opampcontrollers.OpampController.Poll)
 
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)
 	router.POST("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, ProjectController.CreateProject)
@@ -147,6 +153,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/sessions", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionController.FindAllSessions)
 	router.POST("/sessions/:sessionId", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionDetail)
 	router.GET("/sessions/:sessionId/recording", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionRecording)
+	router.GET("/sessions/:sessionId/timeline", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionTimelineController.Timeline)
 
 	router.POST("/profiles/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.FindGroupedByService)
 	router.POST("/profiles/series", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.GetSeries)
@@ -331,6 +338,16 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/post-mortems", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Create)
 	router.PUT("/post-mortems/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Update)
 	router.DELETE("/post-mortems/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Delete)
+
+	router.GET("/sdk-config/rules", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SdkConfigController.ListRules)
+	router.POST("/sdk-config/rules", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.CreateRule)
+	router.PUT("/sdk-config/rules/reorder", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.ReorderRules)
+	router.PUT("/sdk-config/rules/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.UpdateRule)
+	router.DELETE("/sdk-config/rules/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.DeleteRule)
+	router.POST("/sdk-config/preview", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SdkConfigController.Preview)
+	router.GET("/sdk-config/captures", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SdkConfigController.ListCaptures)
+	router.POST("/sdk-config/captures", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.CreateCapture)
+	router.DELETE("/sdk-config/captures/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.CancelCapture)
 	// Anonymous, rate-limited, cached ~30s per slug; no Transactional (it
 	// reads main DB + telemetry through its own short transactions).
 	router.GET("/status/:slug", middleware.RateLimitPerIP(30, time.Minute), StatusPageController.Public)

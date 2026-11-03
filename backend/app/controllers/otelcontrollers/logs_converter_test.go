@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/app/models"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -70,7 +72,7 @@ func TestConvertLogs_SymbolicatesExceptionStacktrace(t *testing.T) {
 		strKV("exception.stacktrace", rawStack),
 	)
 
-	records := convertLogs(tokenProject(projectId), context.Background(), projectId, req)
+	records := convertLogs(context.Background(), tokenProject(projectId), projectId, "", req).Records
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
@@ -90,7 +92,7 @@ func TestConvertLogs_ScopeNameDetectsJs(t *testing.T) {
 	rawStack := "Error: boom\n    at t (https://cdn.example.com/assets/minified.js:1:11)"
 	req := logsRequest("", "@opentelemetry/winston-transport", strKV("exception.stacktrace", rawStack))
 
-	records := convertLogs(nil, context.Background(), projectId, req)
+	records := convertLogs(context.Background(), nil, projectId, "", req).Records
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
@@ -106,7 +108,7 @@ func TestConvertLogs_NonJsStacktraceUntouched(t *testing.T) {
 	rawStack := "java.lang.RuntimeException: boom\n\tat com.example.Foo.bar(Foo.java:10)"
 	req := logsRequest("java", "io.opentelemetry.tomcat-7.0", strKV("exception.stacktrace", rawStack))
 
-	records := convertLogs(nil, context.Background(), testProjectId, req)
+	records := convertLogs(context.Background(), nil, testProjectId, "", req).Records
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
@@ -189,7 +191,7 @@ func TestConvertLogs_NoTokenCanonicalizesWithoutResolving(t *testing.T) {
 		strKV("exception.stacktrace", rawStack),
 	)
 
-	records := convertLogs(nil, context.Background(), projectId, req)
+	records := convertLogs(context.Background(), nil, projectId, "", req).Records
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
@@ -200,5 +202,32 @@ func TestConvertLogs_NoTokenCanonicalizesWithoutResolving(t *testing.T) {
 	}
 	if _, ok := records[0].LogAttributes["exception.stacktrace.original"]; ok {
 		t.Error("exception.stacktrace.original must not be added")
+	}
+}
+
+func TestSessionPreservesTracewaySDKVersion(t *testing.T) {
+	sessionID := uuid.New().String()
+	for _, scope := range []string{"@tracewayapp/frontend", "other-sdk"} {
+		t.Run(scope, func(t *testing.T) {
+			record := models.LogRecord{ScopeName: scope, ScopeVersion: "2.3.1"}
+			log := &logspb.LogRecord{
+				TimeUnixNano: uint64(time.Now().UnixNano()),
+				Attributes: []*commonpb.KeyValue{{
+					Key:   "session.id",
+					Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: sessionID}},
+				}},
+			}
+			session, ok := sessionFromLog(eventSessionStart, log, nil, record, "", time.Now())
+			if !ok {
+				t.Fatal("session was not converted")
+			}
+			expected := ""
+			if scope == "@tracewayapp/frontend" {
+				expected = "2.3.1"
+			}
+			if got := session.Attributes["traceway.sdk.version"]; got != expected {
+				t.Fatalf("SDK version = %q, want %q", got, expected)
+			}
+		})
 	}
 }

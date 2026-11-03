@@ -1,5 +1,7 @@
 # JS SDK Overview
 
+This reference covers the 2.x browser SDK and its framework wrappers. It uses OpenTelemetry and supports [remote collection settings](/learn/remote-config). See [Initialization](/client/js-sdk/initialization) and [Distributed Tracing](/client/js-sdk/distributed-tracing) when migrating from 1.x.
+
 The Traceway JavaScript SDK provides error tracking for browser-based applications. It captures exceptions, messages, and sends them to your Traceway backend.
 
 ## Packages
@@ -33,7 +35,7 @@ The frontend and jQuery packages are also available as standalone scripts (no bu
 
 ```html
 <!-- Framework-agnostic (exposes window.Traceway) -->
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@1/dist/traceway.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2/dist/traceway.iife.global.js"></script>
 <script>
   Traceway.init("your-token@https://traceway.example.com/api/report");
 </script>
@@ -42,7 +44,7 @@ The frontend and jQuery packages are also available as standalone scripts (no bu
 ```html
 <!-- jQuery (exposes window.TracewayJQuery) -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@1/dist/traceway-jquery.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@2/dist/traceway-jquery.iife.global.js"></script>
 <script>
   TracewayJQuery.init("your-token@https://traceway.example.com/api/report");
 </script>

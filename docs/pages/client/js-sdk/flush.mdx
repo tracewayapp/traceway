@@ -1,114 +1,53 @@
 # Flush & Lifecycle
 
-Understanding the SDK's batching behavior and how to control it.
+The 2.x browser SDK sends streamed telemetry through OpenTelemetry batch processors. `exportDelayMs` sets the usual delay, defaulting to 1000 ms. Buffered telemetry stays on the device until a trigger or capture asks for it.
 
-## Batching Behavior
-
-The Traceway SDK batches events to reduce network overhead:
-
-1. Events are collected in memory
-2. After `debounceMs` (default: 1500ms) of no new events, the batch is sent
-3. If an upload fails, it retries after `retryDelayMs` (default: 10000ms)
-
-This means events are not sent immediately. For most applications, this is the desired behavior.
-
-## flush()
-
-Force-send all pending events immediately:
+## Flush queued telemetry
 
 ```javascript
-import { flush } from "@tracewayapp/frontend";
+import { captureException, flush } from "@tracewayapp/frontend";
 
-// Send all pending events now
-await flush();
-```
-
-## When to Use flush()
-
-### Before Page Unload
-
-```javascript
-window.addEventListener("beforeunload", () => {
-  flush();
-});
-```
-
-Note: Due to browser limitations, `flush()` during `beforeunload` may not always complete. Use the [Beacon API](https://developer.mozilla.org/en-US/docs/Web/API/Beacon_API) pattern if critical events must be sent.
-
-### After Critical Errors
-
-```javascript
 try {
-  criticalOperation();
+  await submitOrder();
 } catch (error) {
   captureException(error);
-  await flush(); // Ensure this error is sent immediately
-  showErrorPage();
+  await flush();
 }
 ```
 
-### Before Redirects
+`flush()` sends queued logs, spans and replay uploads, and checkpoints the telemetry buffer. It does not upload every buffered record or force an in-progress replay segment to complete. A captured exception normally fires the built-in error trigger, which selects the lookback and replay clip before this flush.
+
+`flush(timeoutMs)` bounds how long the caller waits; it does not cancel outstanding requests. Successful completion is not a guarantee that every record reached the server: exporters can reject or retry data.
+
+## Navigation and connectivity
+
+The SDK handles `visibilitychange` and `pagehide`. It closes a streaming replay segment, queues uploads while the page can still send them, and checkpoints telemetry for the next page of the same session. Browser termination, blocked storage, storage quotas, and the browser's keepalive body limit can still cause data loss.
+
+With `buffer.persist: true`, failed OTLP batches wait in IndexedDB and retry with backoff while the page remains open, on connectivity recovery, and on later pages. Replay uploads have a separate bounded retry queue in memory. See the [buffer reference](/learn/remote-config/reference#buffer) for retention limits.
+
+For an application-controlled redirect, await `flush()` before changing location:
 
 ```javascript
-async function handleLogout() {
-  captureMessage("User logged out");
-  await flush(); // Send before redirect
-  window.location.href = "/login";
-}
+await flush(2000);
+window.location.href = "/next-page";
 ```
 
-### In Tests
+## Shutdown
 
 ```javascript
-it("should capture errors", async () => {
-  captureException(new Error("Test error"));
-  await flush(); // Ensure event is sent before assertions
-  // ... verify event was received
-});
+import { shutdown } from "@tracewayapp/frontend";
+
+await shutdown();
 ```
 
-## Lifecycle Considerations
+Shutdown closes the session's current replay segment, flushes queued telemetry, stops polling and retry timers, and removes instrumentation. Call `init()` again to create a fresh client.
 
-### Single Page Applications (SPAs)
+Initialize once in a single-page application. For server-rendered applications, initialize on the browser side only. The framework wrappers handle their respective mount lifecycles.
 
-For SPAs, initialize once at app startup. The SDK handles batching across route changes automatically.
+## Timing options
 
 ```javascript
-// main.js or index.js
-import { init } from "@tracewayapp/frontend";
-
-init("your-token@https://traceway.example.com/api/report");
+init(connectionString, { exportDelayMs: 500 });
 ```
 
-### Server-Side Rendering (SSR)
-
-The SDK is browser-only. For SSR frameworks:
-
-```javascript
-// Only initialize on client
-if (typeof window !== "undefined") {
-  init("your-token@https://traceway.example.com/api/report");
-}
-```
-
-Or use framework-specific packages that handle this automatically.
-
-## Tuning Batching
-
-Adjust timing based on your needs:
-
-```javascript
-init("your-token@https://traceway.example.com/api/report", {
-  // Faster batching for critical apps
-  debounceMs: 500,
-  retryDelayMs: 5000,
-});
-```
-
-```javascript
-init("your-token@https://traceway.example.com/api/report", {
-  // More aggressive batching for high-traffic apps
-  debounceMs: 3000,
-  retryDelayMs: 15000,
-});
-```
+SDK 1.x's `debounceMs` and `retryDelayMs` options were removed in 2.x. The exporter delay is separate from buffering, capture duration, and the OpAMP polling interval.

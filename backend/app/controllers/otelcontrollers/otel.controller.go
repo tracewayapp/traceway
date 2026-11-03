@@ -26,7 +26,7 @@ func msSince(t time.Time) float64 {
 	return float64(time.Since(t).Microseconds()) / 1000.0
 }
 
-func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, scopeName string) string {
+func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, scopeName string, debugIds map[string]string) string {
 	if !isJsTelemetry(language, scopeName) {
 		return stackTrace
 	}
@@ -34,7 +34,7 @@ func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx
 	if existingProject == nil || existingProject.SourceMapToken == nil {
 		return canonical
 	}
-	return services.ResolveStackTrace(ctx, projectId, canonical, nil)
+	return services.ResolveStackTrace(ctx, projectId, canonical, debugIds)
 }
 
 func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, proguardUuid string) string {
@@ -339,12 +339,14 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	orgId := 0
 	hasOrg := false
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
+		if p, ok := project.(*models.Project); ok {
 			existingProject = p
-			orgId = *p.OrganizationId
-			hasOrg = true
-			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
+			if p.OrganizationId != nil {
+				orgId = *p.OrganizationId
+				hasOrg = true
+				if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
+					attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
+				}
 			}
 		}
 	}
@@ -360,34 +362,59 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	}
 
 	convertStart := time.Now()
-	records := convertLogs(existingProject, c, projectId, req)
+	result := convertLogs(c, existingProject, projectId, c.ClientIP(), req)
+	records, sessions, exceptions := result.Records, result.Sessions, result.Exceptions
 	convertMs := msSince(convertStart)
 
 	if !perm.Data {
 		records = nil
-		if hasOrg {
-			monitoring.RecordRateLimited(orgId)
-		}
+	}
+	if !perm.Exceptions {
+		exceptions = nil
+	}
+	if hasOrg && (!perm.Data || !perm.Exceptions) {
+		monitoring.RecordRateLimited(orgId)
 	}
 
-	insertMs := 0.0
+	insertStart := time.Now()
 	if len(records) > 0 {
-		insertStart := time.Now()
 		if err := telemetry.LogRecordRepository.InsertAsync(c, records); err != nil {
 			abortIngestStorage(c, "log records", err)
 			return
 		}
-		insertMs = msSince(insertStart)
 	}
+	if len(sessions) > 0 {
+		if err := telemetry.SessionRepository.Upsert(c, sessions); err != nil {
+			abortIngestStorage(c, "sessions", err)
+			return
+		}
+	}
+	// Exceptions go last: a failure before them is retried by the exporter, and a retry must not find them written.
+	if len(exceptions) > 0 {
+		if err := telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
+			abortIngestStorage(c, "exceptions", err)
+			return
+		}
+	}
+	insertMs := msSince(insertStart)
 
-	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
+	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records)+len(exceptions), bodyBytes)
 
-	if hasOrg && perm.Data {
-		hooks.BroadcastReport(hooks.ReportEvent{
+	if hasOrg && (perm.Data || len(exceptions) > 0) {
+		ev := hooks.ReportEvent{
 			OrganizationId: orgId,
 			ProjectId:      projectId,
-			TelemetryBytes: bodyBytes,
-		})
+		}
+		if perm.Data {
+			ev.TelemetryBytes = bodyBytes
+		}
+		if perm.Exceptions {
+			ev.ErrorCount = len(exceptions)
+			for _, ex := range exceptions {
+				ev.ExceptionHashes = append(ev.ExceptionHashes, ex.ExceptionHash)
+			}
+		}
+		hooks.BroadcastReport(ev)
 	}
 
 	writeLogsResponse(c)

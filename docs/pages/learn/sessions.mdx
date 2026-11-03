@@ -31,6 +31,8 @@ Alongside the rrweb stream, each segment carries:
 
 The dashboard's session detail page renders these as separate tabs below the player, scrub-synced to the replay timeline.
 
+With the OpenTelemetry-based SDK, `@tracewayapp/frontend` 2.x, segments carry the recording only. Console lines, navigation, clicks and app events are stored as log records and requests as spans, tagged with the session id, and the session page reads them from there; which of them leave the browser is set per signal by [Remote SDK Config](/learn/remote-config).
+
 ## Session Lifecycle
 
 A session begins automatically when the SDK initializes with `recordAllSessions: true` (or when the page is restored from the bfcache after a back/forward navigation; a fresh `sessionId` is generated each time).

@@ -36,6 +36,7 @@ var (
 	SetupTokenRepository            = sqliterepo.SetupTokenRepository
 	SLORepository                   = sqliterepo.SLORepository
 	StatusPageRepository            = sqliterepo.StatusPageRepository
+	SdkConfigRepository             = sqliterepo.SdkConfigRepository
 	SyntheticCheckRepository        = sqliterepo.SyntheticCheckRepository
 	SyntheticRunnerRepository       = sqliterepo.SyntheticRunnerRepository
 	TeamRepository                  = sqliterepo.TeamRepository

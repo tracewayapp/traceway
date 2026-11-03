@@ -34,3 +34,11 @@ func initMainDB() error {
 func NotifyProjectCacheChanged(*sql.Tx, uuid.UUID) error {
 	return nil
 }
+
+func NotifySdkConfigChanged(*sql.Tx, uuid.UUID) error {
+	return nil
+}
+
+func LockSdkConfigProject(tx *sql.Tx, projectId uuid.UUID) error {
+	return nil
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/recordings"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/sdkconfig"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
 
@@ -38,7 +39,49 @@ func isEmptyRaw(r json.RawMessage) bool {
 		bytes.Equal(trimmed, []byte("{}"))
 }
 
-func symbolicateRecordingErrorLogs(c *gin.Context, projectId uuid.UUID, raw json.RawMessage) json.RawMessage {
+// buildRecordingJob turns one uploaded segment into its storage job. exceptionId is the server-side id of the
+// exception the segment is a clip of, or uuid.Nil; a segment with neither an exception nor a session is unreachable.
+func buildRecordingJob(c *gin.Context, projectId uuid.UUID, sr *clientmodels.ClientSessionRecording, exceptionId uuid.UUID, resolveJs bool, debugIds map[string]string) (recordings.Job, bool) {
+	var sessionPtr *uuid.UUID
+	if sr.SessionId != "" {
+		if parsed, err := uuid.Parse(sr.SessionId); err == nil {
+			sessionPtr = &parsed
+		}
+	}
+	if exceptionId == uuid.Nil && sessionPtr == nil {
+		return recordings.Job{}, false
+	}
+	if isEmptyRaw(sr.Events) && isEmptyRaw(sr.Logs) && isEmptyRaw(sr.Actions) {
+		return recordings.Job{}, false
+	}
+	if resolveJs && !isEmptyRaw(sr.Logs) {
+		sr.Logs = symbolicateRecordingErrorLogs(c, projectId, sr.Logs, debugIds)
+	}
+	body, err := json.Marshal(sr)
+	if err != nil {
+		traceway.CaptureException(traceway.NewStackTraceErrorf("failed to marshal session recording: %w", err))
+		return recordings.Job{}, false
+	}
+	var key string
+	if sessionPtr != nil {
+		key = fmt.Sprintf("recordings/%s/sessions/%s/%d.json", projectId, sessionPtr.String(), sr.SegmentIndex)
+	} else {
+		key = fmt.Sprintf("recordings/%s/%s.json", projectId, exceptionId)
+	}
+	return recordings.Job{
+		Id:           uuid.New(),
+		ProjectId:    projectId,
+		ExceptionId:  exceptionId,
+		SessionId:    sessionPtr,
+		SegmentIndex: sr.SegmentIndex,
+		Key:          key,
+		Body:         body,
+		RecordedAt:   time.Now().UTC(),
+		EndedAt:      sr.EndedAt,
+	}, true
+}
+
+func symbolicateRecordingErrorLogs(c *gin.Context, projectId uuid.UUID, raw json.RawMessage, debugIds map[string]string) json.RawMessage {
 	var logs []map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &logs); err != nil {
 		return raw
@@ -57,7 +100,7 @@ func symbolicateRecordingErrorLogs(c *gin.Context, projectId uuid.UUID, raw json
 		if !ok {
 			continue
 		}
-		resolved := services.ResolveStackTrace(c, projectId, canonical, nil)
+		resolved := services.ResolveStackTrace(c, projectId, canonical, debugIds)
 		if resolved == canonical {
 			continue
 		}
@@ -148,6 +191,12 @@ func (e clientController) Report(c *gin.Context) {
 		for _, cs := range cf.Sessions {
 			s := cs.ToSession(request.AppVersion, request.ServerName)
 			s.ProjectId = projectId
+			if project != nil && sdkconfig.SupportsFramework(project.Framework) {
+				if s.Attributes == nil {
+					s.Attributes = map[string]string{}
+				}
+				s.Attributes["traceway.sdk.generation"] = "1"
+			}
 
 			if clientIP := c.ClientIP(); clientIP != "" {
 				if s.Attributes == nil {
@@ -224,50 +273,18 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		for _, sr := range cf.SessionRecordings {
-
+			if sr == nil {
+				continue
+			}
 			var exceptionId uuid.UUID
 			if sr.ExceptionId != "" {
 				if id, ok := recordingIdToExceptionId[sr.ExceptionId]; ok {
 					exceptionId = id
 				}
 			}
-			var sessionPtr *uuid.UUID
-			if sr.SessionId != "" {
-				if parsed, err := uuid.Parse(sr.SessionId); err == nil {
-					sessionPtr = &parsed
-				}
+			if job, ok := buildRecordingJob(c, projectId, sr, exceptionId, resolveJs, nil); ok {
+				recordingsWork = append(recordingsWork, job)
 			}
-			if exceptionId == uuid.Nil && sessionPtr == nil {
-				continue
-			}
-			if isEmptyRaw(sr.Events) && isEmptyRaw(sr.Logs) && isEmptyRaw(sr.Actions) {
-				continue
-			}
-			if resolveJs && !isEmptyRaw(sr.Logs) {
-				sr.Logs = symbolicateRecordingErrorLogs(c, projectId, sr.Logs)
-			}
-			body, err := json.Marshal(sr)
-			if err != nil {
-				traceway.CaptureException(traceway.NewStackTraceErrorf("failed to marshal session recording: %w", err))
-				continue
-			}
-			var key string
-			if sessionPtr != nil {
-				key = fmt.Sprintf("recordings/%s/sessions/%s/%d.json", projectId, sessionPtr.String(), sr.SegmentIndex)
-			} else {
-				key = fmt.Sprintf("recordings/%s/%s.json", projectId, exceptionId)
-			}
-			recordingsWork = append(recordingsWork, recordings.Job{
-				Id:           uuid.New(),
-				ProjectId:    projectId,
-				ExceptionId:  exceptionId,
-				SessionId:    sessionPtr,
-				SegmentIndex: sr.SegmentIndex,
-				Key:          key,
-				Body:         body,
-				RecordedAt:   time.Now().UTC(),
-				EndedAt:      sr.EndedAt,
-			})
 		}
 	}
 	convertSpan.End()

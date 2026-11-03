@@ -1,130 +1,27 @@
 # Distributed Tracing
 
-Correlate frontend errors with the backend requests that caused them. The Traceway JS SDK propagates a `traceway-trace-id` header from the browser to your backend, linking exceptions and traces across the stack.
+The 2.x browser SDK uses OpenTelemetry CLIENT spans and the W3C `traceparent` header for `fetch` and XMLHttpRequest. An instrumented backend extracts that header and joins the same trace. The browser request appears alongside the server work in Traceway's trace view.
 
-## How It Works
-
-1. The frontend SDK generates a unique trace ID for each outgoing HTTP request
-2. The ID is sent as a `traceway-trace-id` header to your backend
-3. Your backend sets that ID on its server span as the `traceway.distributed_trace_id` attribute
-4. Traceway stores that ID on the backend row as its linked trace, so the browser's trace and the backend trace are shown together
-5. In the Traceway dashboard, you can jump between the frontend error and the backend request
-
-Step 3 is the one thing you have to add yourself. See [Backend Setup](#backend-setup) below.
-
-## Browser Side (Automatic)
-
-When you call `init()`, the SDK instruments both `window.fetch` and `XMLHttpRequest` to inject the `traceway-trace-id` header on **same-origin** requests. No extra code is needed.
+## Initialize propagation
 
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report");
-
-// All same-origin fetch calls are automatically instrumented
-const res = await fetch("/api/orders", {
-  method: "POST",
-  body: JSON.stringify(order),
+init("your-token@https://traceway.example.com", {
+  propagateTraceHeaderCorsUrls: [/^https:\/\/api\.example\.com\//],
 });
 ```
 
-Cross-origin requests are **not** instrumented, to prevent leaking the header to third-party services.
+Same-origin requests receive the header automatically. Cross-origin requests receive it only when their URL matches `propagateTraceHeaderCorsUrls`. The API's CORS policy must allow `traceparent` in request headers. Axios and jQuery AJAX are covered through XMLHttpRequest; they need no additional interceptor.
 
-An exception captured while a request is still **in flight** is automatically tagged with that request's distributed trace ID. Once the request settles, the ID is cleared, so a `.then()` handler or any code after `await` sees nothing and the exception is stored unlinked. See [Manual Capture After an Await](#manual-capture-after-an-await) for that case.
+Configure your backend's OpenTelemetry instrumentation and exporter using the [OpenTelemetry guides](/client/otel). Standard trace-context extraction replaces the custom header middleware used by SDK 1.x.
 
-## With Axios
+## Trace context and exceptions
 
-Axios uses `XMLHttpRequest` in the browser, and the SDK already instruments it. The header is injected and the active trace ID is set, so Axios requests correlate on their own with no setup at all.
+Request spans carry `session.id`. Their rows in the session timeline link to the distributed trace. An exception is associated with the active OpenTelemetry context when emitted; an arbitrary error after an `await` is not automatically assigned to whichever request happened most recently. Session breadcrumbs still show the requests surrounding the error.
 
-```javascript
-import axios from "axios";
+## Migrating from SDK 1.x
 
-const api = axios.create({ baseURL: "/api" });
+Remove `createAxiosInterceptor()` and `getActiveDistributedTraceId()` calls. The 2.x browser SDK no longer generates `traceway-trace-id`; it uses `traceparent`. Existing server compatibility for older clients can remain while those clients are being upgraded.
 
-// Already carries the traceway-trace-id header
-const res = await api.post("/orders", order);
-```
-
-> **Do not register `createAxiosInterceptor()` in a browser app.** It generates a *second*, different ID under the same header name. `XMLHttpRequest.setRequestHeader` combines duplicate header names, so the backend receives `"<uuid1>, <uuid2>"`, which is not a valid UUID and is dropped without an error. Adding the interceptor breaks correlation that already worked.
-
-## Backend Setup
-
-Your backend closes the loop in one middleware, in whatever language it uses:
-
-1. Read the `traceway-trace-id` request header.
-2. Set it on the active server span as the attribute `traceway.distributed_trace_id`. Traceway keeps the span's own OpenTelemetry trace ID and stores this value next to it as the linked trace. This is what puts the browser exception and the backend endpoint on the same distributed trace. The value must be a bare UUID or 32 hex characters. Anything else is ignored silently.
-3. Echo the header back on the response so manual `captureException` calls after `await fetch` can read it. This step is optional. Cross-origin, also add `traceway-trace-id` to `Access-Control-Expose-Headers`.
-
-The [Symfony bundle](/client/otel/symfony) does step 2 for you; add step 3 yourself if you want it. Node.js, NestJS, Next.js, Hono, Cloudflare Workers, Laravel, and Django install vanilla OpenTelemetry, which knows nothing about the header, so do all three:
-
-```javascript
-import { trace } from "@opentelemetry/api";
-
-app.use((req, res, next) => {
-  const id = req.headers["traceway-trace-id"];
-  if (id) {
-    trace.getActiveSpan()?.setAttribute("traceway.distributed_trace_id", id);
-    res.setHeader("traceway-trace-id", id);
-  }
-  next();
-});
-```
-
-Register it after your OpenTelemetry instrumentation, so there is an active server span to annotate. See the [OpenTelemetry guides](/client/otel) for the exporter setup itself.
-
-To verify, open the backend endpoint's detail page and select **View distributed trace**. The browser exception appears as a second node.
-
-Only the service that receives the browser's request needs this middleware. Services further down the call chain never see the `traceway-trace-id` header, only `traceparent`, and they do not need to: every backend row carries the same OpenTelemetry trace ID. The first service's row links that trace to the browser's, so Traceway shows the browser exception and every backend service as one distributed trace, whichever of them you open it from.
-
-## Manual Capture After an Await
-
-The SDK holds the active trace ID only while the request is in flight and clears it as soon as the request settles. A `captureException` call that runs after `await fetch` therefore sees `null` and stores the exception unlinked, even though the request header was sent correctly.
-
-Read the ID synchronously, after starting the request and before awaiting it:
-
-```javascript
-import {
-  captureExceptionWithAttributes,
-  getActiveDistributedTraceId,
-} from "@tracewayapp/frontend";
-
-async function request(path, options) {
-  const pending = fetch(path, options);
-  const distributedTraceId = getActiveDistributedTraceId() || undefined;
-  const res = await pending;
-
-  if (!res.ok) {
-    const err = new Error(`Request to ${path} failed (${res.status})`);
-    captureExceptionWithAttributes(
-      err,
-      { path, method: options?.method || "GET", status: String(res.status) },
-      distributedTraceId ? { distributedTraceId } : undefined
-    );
-    throw err;
-  }
-
-  return res.json();
-}
-```
-
-No other code can run between the `fetch` call and the `getActiveDistributedTraceId` call, so the ID always belongs to this request. If your backend echoes the header (step 3 above), `res.headers.get("traceway-trace-id")` gives you the same value after the await.
-
-## API Reference
-
-| Export | Description |
-|--------|-------------|
-| `getActiveDistributedTraceId()` | Returns the trace ID of the request currently in flight, or `null` |
-| `DISTRIBUTED_TRACE_HEADER` | The header name constant: `"traceway-trace-id"` |
-| `createAxiosInterceptor()` | Returns an Axios request interceptor that adds the header. Not for browser apps: see the warning above |
-
-## How the Active Trace ID Works
-
-The SDK keeps a module-level variable that tracks which request is currently in flight:
-
-1. Before each same-origin `fetch()` or `XMLHttpRequest.send()`, a new UUID is generated and stored as the "active" trace ID
-2. The same ID is injected as the `traceway-trace-id` header
-3. When the request settles (resolves, rejects, or errors), the active ID is cleared
-
-If an exception is captured (via `captureException`, `window.onerror`, or `window.onunhandledrejection`) while a request is in flight, the SDK automatically attaches the active trace ID to the exception. This is how frontend errors get linked to their triggering backend request without any manual work.
-
-Trace views are limited to projects you can access, the lookup time window and the graph row/attribute limits. Missing or sampled spans cannot be reconstructed.
+See [Initialization](/client/js-sdk/initialization) for browser options and [Remote SDK Config](/learn/remote-config) for controlling whether network spans stream, buffer, or remain off.

@@ -1,0 +1,282 @@
+# Settings reference
+
+import { Callout } from "nextra/components";
+
+Every field of the settings document a rule can set, the attributes rules can target, the trigger language, and the protocol and API behind them. For what these do together, see [Remote SDK Config](/learn/remote-config); for a walkthrough, [Set up remote config](/learn/remote-config/setup).
+
+## The settings document
+
+A rule stores a **partial** document: only what it changes. The server merges the matching rules in order and sends the browser that overlay; the SDK lays it over its built-in defaults. Unknown fields are rejected when you save a rule (422), and the browser ignores fields it does not know, so a newer server can add settings without breaking older SDKs.
+
+```json
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "signals": {
+    "errors":   { "mode": "stream", "sampleRate": 1 },
+    "network":  { "mode": "buffer", "sampleRate": 0.5 },
+    "console":  { "mode": "buffer", "minSeverity": "warn" }
+  },
+  "sessions": { "enabled": true, "baselineSampleRate": 0 },
+  "replay":   { "mode": "buffer", "sessionSampleRate": 1, "maskAllInputs": true },
+  "buffer":   { "maxBytes": 2097152, "maxAgeSeconds": 600, "replayMaxBytes": 8388608, "persist": true },
+  "triggers": [ { "id": "default-exception", "enabled": true } ]
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schemaVersion` | `1` | Defaults to `1` when omitted |
+| `enabled` | boolean | `false` is the kill switch: the SDK sends nothing, captures included |
+| `signals` | object | One entry per signal, see below |
+| `sessions.enabled` | boolean | Session start and end events |
+| `sessions.baselineSampleRate` | 0 to 1 | Stable healthy-session breadcrumb/request sample; default 0. Does not stream replay or override off signals |
+| `replay` | object | See [Replay](#replay) |
+| `buffer` | object | See [Buffer](#buffer) |
+| `triggers` | array | See [Triggers](#triggers) |
+| `captures`, `limits` | | Written by the server only; a rule that contains them is rejected |
+
+### Signals
+
+`errors`, `messages`, `network`, `console`, `navigation`, `userActions`, `webVitals`, `resourceTiming`, `custom`, each with:
+
+| Field | Values | Meaning |
+|---|---|---|
+| `mode` | `off`, `buffer`, `stream` | What happens to a record of this signal |
+| `sampleRate` | 0 to 1 | Share of records kept; the rest are dropped before the mode applies |
+| `minSeverity` | `trace`, `debug`, `info`, `warn`, `error`, `fatal` | Console only: lines below it are dropped |
+
+### Replay
+
+| Field | Values | Meaning |
+|---|---|---|
+| `mode` | `off`, `buffer`, `stream` | Buffered segments upload with a trigger's flush or a capture; streamed ones as they complete |
+| `sessionSampleRate` | 0 to 1 | Share of sessions that may stream replay, decided per session id, so a session is all or nothing |
+| `maskAllInputs` | boolean | Mask every input field in the recording (default `true`) |
+
+### Buffer
+
+| Field | Default | Limits | Meaning |
+|---|---|---|---|
+| `maxBytes` | 2 MiB | 1 B to 64 MiB | Size of the on-device buffer for log records and spans |
+| `maxAgeSeconds` | 600 | 1 to 86400 | Records older than this are dropped from the buffer |
+| `replayMaxBytes` | 8 MiB | 1 B to 64 MiB | Size of the buffered replay segments |
+| `persist` | `true` | | Keep telemetry in IndexedDB, with a sessionStorage navigation checkpoint; does not persist rrweb replay |
+
+Persistence is best effort when browser storage is unavailable or full. Restored and new telemetry share `maxBytes` and `maxAgeSeconds`; the byte budget accounts for complete serialized records. The SDK checkpoints after activity, on hidden/pagehide, and on `flush()`. IndexedDB writes alone may not finish during unload, so the current tab also keeps a synchronous sessionStorage checkpoint. Replay stays in memory and does not survive a full page navigation.
+
+Failed OTLP batches retry in the current page with increasing delays, on `online`, on visibility changes, and after startup. The outbox prunes batches after 8 attempts or 24 hours and keeps the newest 200 on a drain. `buffer.persist: false` stops durable retries and removes stored telemetry and navigation checkpoints for this project token. It does not disable collection or the configuration cache.
+
+Changing input masking restarts rrweb and discards incompatible buffered or queued replay. Newly restricted signals are purged from the ring and checked again before queued and persisted exports. Requests already in flight cannot be recalled.
+
+## Defaults
+
+What the 2.x SDK does with no rules.
+
+| Signal | Default | With `recordAllSessions: true` |
+|---|---|---|
+| `errors`, `messages` | stream | stream |
+| `network`, `console`, `navigation`, `userActions`, `custom` | buffer | stream |
+| `webVitals` | stream | stream |
+| `resourceTiming` | off | off |
+| replay | buffer | stream |
+| sessions | on | on |
+
+Production defaults keep session lifecycle metadata and web vitals on, with healthy breadcrumbs and replay buffered locally. An accepted exception uploads the preceding 30 seconds; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
+
+Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. Configure `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` to tune these limits; they reset when the SDK is recreated.
+
+For an optional stable sample of healthy-session breadcrumbs and request spans, use `baselineSampleRate: 0.01` (1%). The default is 0. Selection uses the session ID and persists across page reloads within that session. It does not enable replay or override explicitly disabled signals, signal filters, or exporter limits. Web vitals remain enabled independently, so performance diagnosis is not restricted to sessions with errors.
+
+Set `sessions.baselineSampleRate: 0.01` in a rule (or use **Use 1% baseline** in the rule editor) to enable that sample remotely. Targeted captures remain separate: duration is limited to 24 hours, lookback to 24 hours of locally retained data, and each project can have at most 20 active captures. Local buffers default to 2 MiB of telemetry and 8 MiB of replay; collection also respects developer ceilings and plan limits. These bounds are not a total upload-byte budget.
+
+Console's `minSeverity` defaults to `info`. One trigger is built in:
+
+```json
+{ "id": "default-exception", "name": "Error clip", "maxPerSession": 20, "cooldownSeconds": 5,
+  "steps": [{ "match": { "key": "event.name", "op": "eq", "value": "exception" } }],
+  "actions": [{ "type": "flush", "lookbackSeconds": 30, "signals": ["*"], "replay": true }] }
+```
+
+A rule can change it by id, or turn it off with `{ "id": "default-exception", "enabled": false }`.
+
+## Triggers
+
+| Field | Values | Meaning |
+|---|---|---|
+| `id` | 1-64 of `A-Z a-z 0-9 . _ -` | Rules merge triggers by id: a later rule with the same id replaces fields of an earlier one |
+| `name` | text | Shown in the dashboard and on `traceway.trigger.fired` |
+| `enabled` | boolean | `false` removes the trigger |
+| `sampleRate` | 0 to 1 | Share of completed matches that fire |
+| `cooldownSeconds` | 0 to 86400 | Minimum time between two fires in a session |
+| `maxPerSession` | ≥ 0 | Fires allowed per session |
+| `steps` | 1 to 5 | Matched in order |
+| `actions` | 1 to 5 | Run when the last step matches |
+
+A trigger with neither steps nor actions only patches the fields it sets on a trigger an earlier rule or the SDK defined. Steps and actions always come together.
+
+### Steps
+
+| Field | Values | Meaning |
+|---|---|---|
+| `match` | matcher | Required |
+| `withinSeconds` | 1 to 86400 | Time allowed since the previous step; a later match starts the trigger over |
+| `count` | 1 to 1000 | Matching records the step needs |
+| `periodSeconds` | 1 to 86400 | Sliding window for `count`; needs `count` |
+
+### Matchers
+
+A matcher is a condition, `{ "key": "...", "op": "...", "value": ... }` (or `"values": [...]` for `in` and `not_in`), or exactly one of `{ "all": [matchers] }`, `{ "any": [matchers] }` and `{ "not": matcher }`. A step's matcher may nest 8 levels and hold 50 conditions; values are strings, numbers or booleans, at most 256 characters, and at most 100 per condition.
+
+Keys a step can test:
+
+| Key | On | Value |
+|---|---|---|
+| `event.name` | logs | The event name: `exception`, `traceway.message`, `browser.console`, `browser.navigation`, `browser.user_action.click`, `browser.web_vital`, or a `track()` name |
+| `signal` | logs, spans | `errors`, `messages`, `console`, `navigation`, `userActions`, `webVitals`, `resourceTiming`, `custom`; `network` for spans |
+| `severity` | logs | Severity number: 1 trace, 5 debug, 9 info, 13 warn, 17 error, 21 fatal |
+| `severity.text` | logs | Severity text as recorded |
+| `body` | logs | The log body, for example the console line |
+| `span.name`, `span.kind`, `span.status` | spans | Kind `internal`, `server`, `client`, `producer`, `consumer`; status `unset`, `ok`, `error` |
+| `duration_ms` | spans | Span duration in milliseconds |
+| `attributes.<key>` | logs, spans | An attribute of the record, e.g. `attributes.http.response.status_code` |
+| `resource.<key>` | logs, spans | A resource attribute, e.g. `resource.service.version` |
+| `global.<key>` | logs, spans | A global attribute the app set, e.g. `global.user.id` |
+| `session.id` | logs, spans | The current session |
+
+Operators, also used by [targeting conditions](#targeting):
+
+| Operator | Matches when the value |
+|---|---|
+| `eq`, `neq` | equals, or does not equal, `value` (numbers compare as numbers) |
+| `in`, `not_in` | is, or is not, one of `values` |
+| `contains`, `icontains` | contains `value`, case-sensitive or not |
+| `starts_with` | starts with `value` |
+| `glob` | matches `value` with `*` (any run) and `?` (one character), ignoring case |
+| `exists`, `not_exists` | is set and not empty, or is not |
+| `gt`, `gte`, `lt`, `lte` | compares as a number |
+| `version` | satisfies a version range such as `>=2.4 <3`: comparators separated by spaces or commas, dotted numbers compared part by part, so `1.10 > 1.9` |
+
+Text operators look at the first 4 KB of a value. There is no regular expression operator; `glob` runs in linear time.
+
+### Actions
+
+| `type` | Fields | What it does |
+|---|---|---|
+| `flush` | `lookbackSeconds` (required), `signals`, `replay` | Uploads the buffered records of the last `lookbackSeconds` for the listed signals, and the replay clip when `replay` is `true` |
+| `stream` | `durationSeconds` (required), `signals`, `replay` | Streams the listed signals for a while, on this page. `"*"` covers the signals that are buffered; a signal named explicitly is turned on even if it is off |
+| `startReplay` | `durationSeconds` (required) | Streams replay for a while |
+| `emit` | `eventName` (required, ≤ 128 characters), `attributes` | Records an event you can search, or trigger on |
+| `capture` | `durationSeconds` (required), `lookbackSeconds` (default 60), `signals`, `replay` | Starts a capture on this device. See below |
+
+`signals` lists signal names or `"*"` (the default when omitted). An explicit `[]` selects no telemetry signals; replay is controlled separately. Durations are at most 86400 seconds.
+
+A `capture` action uploads its lookback, sends the record that fired it, and streams for `durationSeconds`. Its `"*"` also brings back signals a rule switched off: every signal the defaults collect; `resourceTiming` only if named. It is stored in `localStorage` (`traceway:local-captures:<token>`), so later pages keep streaming until it ends; the same trigger firing again extends it instead of uploading again. Each start emits `traceway.capture.started` with `traceway.capture.source: trigger`.
+
+## Targeting
+
+A rule's conditions are checked against the attributes the browser sends with every poll:
+
+| Attribute | Source |
+|---|---|
+| `service.name`, `service.version`, `deployment.environment.name` | `serviceName`, `version`, `environment` in `init()` |
+| `service.instance.id` | A UUID per browser profile and project token, kept in `localStorage`; `getInstanceId()` returns it |
+| `browser.name`, `browser.version`, `browser.language`, `browser.mobile`, `browser.platform`, `os.name`, `user_agent.original` | Detected from the browser |
+| `session.id` | The current session |
+| `user.id`, `tenant.id`, ... | Global attributes from `setAttribute` and the `attributes` option, up to 64 |
+
+```json
+{
+  "all": [
+    { "key": "service.version", "op": "version", "value": ">=2.4 <2.5" },
+    { "key": "deployment.environment.name", "op": "eq", "value": "production" }
+  ],
+  "rollout": { "percent": 25 }
+}
+```
+
+All conditions must hold; no conditions match every client. A rule has at most 20. `rollout.percent` (0 to 100) keeps the rule to a share of the matching clients. The bucket is a hash of the rule id and the browser's instance id, so a client stays in or out while the percentage only grows, and different rules pick different clients. `rollout.by` buckets by another attribute instead, for example `"by": "user.id"` to keep all of a user's browsers together; a client without that attribute is out.
+
+## Captures from the dashboard
+
+| Field | Values |
+|---|---|
+| Target | A device (`service.instance.id`), a user (`user.id`), a session (`session.id`), or any attribute and value |
+| Duration | 1 minute to 24 hours |
+| Lookback | 0 to 86400 seconds, default 600 |
+| Replay | On by default |
+
+At most 20 captures are active per project. A capture reaches the browsers it matches in their settings document; each tab runs its lookback upload once, even across pages, and streams until the capture ends, with the same rules as the `capture` action. A browser under a capture polls every 60 seconds. Expired captures drop out of the document by themselves. Cancellation takes effect when the next successful poll removes the capture; the SDK immediately removes that capture’s streaming override. Other active captures or stream rules still apply. A zero lookback requests no earlier telemetry.
+
+## Plan limits
+
+When the organization's plan does not include exceptions, replay or other data, the server switches those signals off in every document and adds them to `limits`:
+
+```json
+{ "limits": { "signals": { "errors": "off", "messages": "off" }, "replay": "off" } }
+```
+
+The SDK treats `limits` like its `init()` ceilings: no rule, trigger or capture turns those signals back on, so browsers stop sending data that would be dropped on arrival.
+
+## Events the SDK reports
+
+These stream unless the kill switch is on; session events additionally respect `sessions.enabled`:
+
+| Event | Attributes |
+|---|---|
+| `traceway.config.applied` | `traceway.config.hash`: the hash of the applied document |
+| `traceway.trigger.fired` | `traceway.trigger.id`, `traceway.trigger.name` |
+| `traceway.capture.started` | `traceway.capture.id`; for a trigger's capture also `traceway.capture.source: trigger`, `traceway.trigger.id`, `traceway.capture.until` |
+| `session.start`, `traceway.session.update`, `session.end` | `session.id`, `traceway.session.started_at` and the session's attributes |
+
+## The OpAMP endpoint
+
+`POST /api/otel/v1/opamp` speaks the plain-HTTP transport of [OpAMP](https://opentelemetry.io/docs/specs/opamp/), with protobuf bodies (`AgentToServer` up, `ServerToAgent` down).
+
+- **Auth**: `Authorization: Bearer <project token>`. The `OpAMP-Instance-UID` header must match the message's `instance_uid`.
+- **State**: none on the server. The SDK sends its full description in every poll; a poll without one is answered with `ReportFullState`.
+- **Answer**: `remote_config.config_map["traceway"]` (`application/json`) with a SHA-256 `config_hash`, only when the hash differs from `remote_config_status.last_remote_config_hash`; and `connection_settings.opamp.heartbeat_interval_seconds`.
+- **Client capabilities**: ReportsStatus, AcceptsRemoteConfig, ReportsRemoteConfig, ReportsHeartbeat, and the custom capabilities `io.traceway.sdk.buffer/v1` and `io.traceway.sdk.capture/v1`.
+
+| Status | When | The SDK |
+|---|---|---|
+| 200 | Normal answer | Applies the document, reports `APPLIED` (or `FAILED` and keeps the last good one) |
+| 400 | Malformed message, or the uid header does not match | Backs off |
+| 401 | Unknown project token | Stops polling |
+| 413 | Body over 64 KB, raw or decompressed | Does not retry that message |
+| 415 | Not `application/x-protobuf` | Backs off |
+| 503 | Too many polls at once, or the rules could not load; `Retry-After` set | Waits as told, keeps its settings |
+
+Errors back off from 30 seconds to 30 minutes. The heartbeat is never shorter than 30 seconds.
+
+<Callout type="info">
+  The endpoint uses the protobuf types of [opamp-go](https://github.com/open-telemetry/opamp-go) and is tested against opamp-go's own HTTP client, so other OpAMP clients can poll it too.
+</Callout>
+
+## Dashboard API
+
+The Data Collection tab uses these routes; they need dashboard authentication and write access for changes.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/sdk-config/rules` | Rules in order, plus the poll interval |
+| POST | `/api/sdk-config/rules` | Create a rule: `{name, enabled, conditions, settings}`; at most 50 per project |
+| PUT | `/api/sdk-config/rules/reorder` | `{ids}`, every rule once |
+| PUT, DELETE | `/api/sdk-config/rules/:id` | Update, delete |
+| POST | `/api/sdk-config/preview` | `{attributes, instanceUid?}` → the document such a client gets, its hash, and the rules and captures it matched |
+| GET, POST | `/api/sdk-config/captures` | Active captures followed by recent expired captures (up to 50, cancelled captures omitted) / start one: `{target: {kind, key?, value}, durationMinutes, lookbackSeconds?, replay?}` with kind `instance`, `user`, `session` or `attribute` |
+| DELETE | `/api/sdk-config/captures/:id` | Cancel a capture |
+| GET | `/api/sessions/:id/timeline?from=&to=` | A session's breadcrumbs from its log records and spans, for a window of at most 3 hours |
+
+## Limits
+
+| What | Limit |
+|---|---|
+| Settings stored in one rule | 16 KiB (the merged response can be larger) |
+| Rules per project | 50 |
+| Conditions per rule | 20 |
+| Triggers per rule | 20 |
+| Steps per trigger, actions per trigger | 5 each |
+| Active captures per project | 20 |
+| Capture duration | 24 hours |
+| OpAMP poll body | 64 KB |

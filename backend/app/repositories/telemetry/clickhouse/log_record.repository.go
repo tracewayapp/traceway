@@ -4,8 +4,10 @@ package clickhouse
 
 import (
 	"context"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -141,11 +143,7 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 }
 
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
-	query := `SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
-		severity_text, severity_number, service_name, body,
-		resource_schema_url, resource_attributes,
-		scope_schema_url, scope_name, scope_version, scope_attributes,
-		log_attributes
+	query := `SELECT ` + chLogRecordColumns + `
 	FROM log_records
 	WHERE project_id = ? AND trace_id = ?
 	ORDER BY timestamp ASC`
@@ -155,7 +153,32 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 		return nil, err
 	}
 	defer rows.Close()
+	return scanChLogRecords(rows)
+}
 
+// FindBySessionId returns a browser session's log records in a time window, oldest first; it reads through the
+// materialized session_id column and its bloom filter.
+func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
+	query := `SELECT ` + chLogRecordColumns + `
+	FROM log_records
+	WHERE project_id = ? AND session_id = ? AND timestamp >= ? AND timestamp <= ?
+	ORDER BY timestamp ASC LIMIT ?`
+
+	rows, err := chdb.Conn.Query(ctx, query, projectId, sessionId, from.UTC(), to.UTC(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanChLogRecords(rows)
+}
+
+const chLogRecordColumns = `id, project_id, timestamp, trace_id, span_id, trace_flags,
+		severity_text, severity_number, service_name, body,
+		resource_schema_url, resource_attributes,
+		scope_schema_url, scope_name, scope_version, scope_attributes,
+		log_attributes`
+
+func scanChLogRecords(rows driver.Rows) ([]models.LogRecord, error) {
 	var records []models.LogRecord
 	for rows.Next() {
 		var lr models.LogRecord

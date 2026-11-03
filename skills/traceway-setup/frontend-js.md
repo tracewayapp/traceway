@@ -1,4 +1,6 @@
-# JS Frontend SDKs Reference
+# JS Frontend SDKs Reference (v1)
+
+Use this reference only when stable browser SDK v2 is not available on npm, or when maintaining a v1 integration. If stable v2 is published, follow [frontend-js-v2.md](frontend-js-v2.md) instead. Check the registry as described in SKILL.md; do not mix the APIs from the two versions.
 
 Browser-side setup for every supported framework, plus the bundler plugin and source map upload that complete each integration. The connection string everywhere is `<project-token>@https://<instance>/api/report`.
 

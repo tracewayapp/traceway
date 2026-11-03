@@ -140,6 +140,9 @@ func Run(opts ...Option) {
 	if err := cache.ProjectCache.Init(ctx); err != nil {
 		panic(fmt.Errorf("projects cache could not be initialized: %w", err))
 	}
+	if err := cache.SdkConfigCache.Init(ctx); err != nil {
+		panic(fmt.Errorf("SDK config cache could not be initialized: %w", err))
+	}
 	services.InitSourceMapCache(
 		parsePositiveInt(cfg.SourceMapCacheMaxEntries, 200),
 		int64(parsePositiveInt(cfg.SourceMapCacheMaxBytesMB, 500))*1024*1024,
@@ -233,6 +236,12 @@ func Run(opts ...Option) {
 			// The runner poll long-polls for up to 25s; recording it would
 			// register as 25s endpoint samples and wreck self-monitoring p95.
 			if c.Request.URL.Path == "/api/runners/poll" {
+				c.Next()
+				return
+			}
+			// Every browser running the SDK polls OpAMP; recording each poll as an endpoint sample would drown
+			// the instance's own traffic.
+			if c.Request.URL.Path == "/api/otel/v1/opamp" {
 				c.Next()
 				return
 			}

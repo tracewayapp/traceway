@@ -207,6 +207,23 @@ func TestPollGivesCapturedClientsAShortHeartbeat(t *testing.T) {
 	if len(captures) != 1 || resp.ConnectionSettings.Opamp.HeartbeatIntervalSeconds != captureHeartbeat {
 		t.Fatalf("captured client got %v with heartbeat %d", captures, resp.ConnectionSettings.Opamp.HeartbeatIntervalSeconds)
 	}
+	readProgress := func() *models.SdkCapture {
+		rows, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SdkCapture, error) {
+			return transactional.SdkConfigRepository.ListCaptures(tx, f.project.Id, 10)
+		})
+		if err != nil || len(rows) != 1 {
+			t.Fatalf("progress: %v %v", rows, err)
+		}
+		return rows[0]
+	}
+	if row := readProgress(); row.DeliveredAt == nil || row.AppliedAt != nil {
+		t.Fatalf("delivery acknowledged too early: %+v", row)
+	}
+	f.poll(&protobufs.AgentToServer{InstanceUid: uid[:], Capabilities: sdkCapabilities, AgentDescription: description,
+		RemoteConfigStatus: &protobufs.RemoteConfigStatus{LastRemoteConfigHash: resp.RemoteConfig.ConfigHash, Status: protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED}})
+	if row := readProgress(); row.AppliedAt == nil || row.ReceivedAt != nil {
+		t.Fatalf("incorrect applied state: %+v", row)
+	}
 }
 
 func TestPollRejectsMalformedRequests(t *testing.T) {

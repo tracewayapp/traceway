@@ -170,8 +170,9 @@ func TestSdkCapturesTargetOneClient(t *testing.T) {
 		t.Fatalf("cancel = %d", code)
 	}
 	_, list := f.do("GET", "/api/sdk-config/captures", "")
-	if len(list["data"].([]any)) != 0 {
-		t.Fatalf("cancelled capture still listed: %v", list)
+	rows := list["data"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["status"] != "Cancelled" || rows[0].(map[string]any)["active"] != false {
+		t.Fatalf("cancelled capture history incorrect: %v", list)
 	}
 }
 

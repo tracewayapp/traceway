@@ -1,0 +1,3 @@
+ALTER TABLE sdk_captures ADD COLUMN delivered_at TIMESTAMPTZ NULL;
+ALTER TABLE sdk_captures ADD COLUMN applied_at TIMESTAMPTZ NULL;
+ALTER TABLE sdk_captures ADD COLUMN received_at TIMESTAMPTZ NULL;

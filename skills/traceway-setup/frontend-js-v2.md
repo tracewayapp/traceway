@@ -44,8 +44,9 @@ For CDN integration, use the registry-verified v2 version in `https://cdn.jsdeli
 Leave the defaults in place unless the user asks for another policy:
 
 - Errors stream at sample rate 1, subject to existing ignore filters, 1-second identical-error suppression, and a rolling limit of 60 accepted errors per minute per running client. `ignoreErrors: []` removes the ignore filters, not error protection. The next accepted error includes `traceway.error.suppressed_count` when occurrences were suppressed.
-- Console (info and above), fetch/XHR, navigation, clicks, and custom events buffer locally. On error, upload a 30-second lookback plus replay, with a 5-second clip cooldown and at most 20 clips per session. Replay segments can extend earlier than the lookback to retain a full snapshot.
+- Console (info and above), fetch/XHR, navigation, clicks, and custom events buffer locally. On error, upload up to 10 minutes of buffered breadcrumbs and a 30-second replay clip, with a 5-second clip cooldown and at most 20 clips per session. Replay segments can extend earlier than the lookback to retain a full snapshot.
 - Lightweight session metadata and web vitals remain on even for healthy sessions. Resource timing is off. Do not disable sessions to suppress healthy replay uploads.
+- Diagnostic uploads share a per-session ceiling of 50 MiB and 10,000 events, including replay events; developers can lower it with `collectionLimits`. Error-only replay still records locally before the error. Use explicit business-event triggers for failures that do not throw.
 - Full-session replay is off by default. `recordAllSessions: true` explicitly streams replay and breadcrumbs; do not add it as setup boilerplate.
 - Optional `baselineSampleRate: 0.01` streams buffered breadcrumbs and request spans for a stable 1% sample of sessions. It does not sample errors or enable full replay. OpAMP can set the equivalent `sessions.baselineSampleRate`.
 - Browser projects expose Data Collection rules and targeted, expiring captures. Backend and mobile projects do not. Do not add OpAMP to those integrations.

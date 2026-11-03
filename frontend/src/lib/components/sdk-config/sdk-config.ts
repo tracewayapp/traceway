@@ -54,6 +54,7 @@ export interface SdkCapture {
 	expiresAt: string;
 	createdAt: string;
 	active: boolean;
+	status: string;
 }
 
 export const SIGNALS: Array<{ key: string; label: string; hint: string }> = [
@@ -115,7 +116,10 @@ export const TRIGGER_TEMPLATES: Array<{ label: string; trigger: Record<string, u
 			cooldownSeconds: 5,
 			maxPerSession: 20,
 			steps: [{ match: { key: 'event.name', op: 'eq', value: 'exception' } }],
-			actions: [{ type: 'flush', lookbackSeconds: 30, signals: ['*'], replay: true }]
+			actions: [
+				{ type: 'flush', lookbackSeconds: 600, signals: ['*'], replay: false },
+				{ type: 'flush', lookbackSeconds: 30, signals: [], replay: true }
+			]
 		}
 	},
 	{

@@ -130,7 +130,9 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 				},
 			})
 			kind := entityNone
-			if !suppressEntities {
+			if !suppressEntities &&
+				getStringAttribute(resourceAttrs, "traceway.sdk.name") != "@tracewayapp/frontend" &&
+				getStringAttribute(span.Attributes, "traceway.collection.source") != "diagnostic" {
 				kind = classifySpan(span, parentInBatch)
 			}
 			if kind == entityNone && !spanCarriesException(span) {

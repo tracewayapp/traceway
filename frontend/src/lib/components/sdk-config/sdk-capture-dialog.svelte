@@ -104,6 +104,12 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<SdkVersionWarning />
+		<p
+			class="text-xs text-muted-foreground"
+			title="Each browser session can upload up to 50 MiB and 10,000 diagnostic events, including replay events, across all captures. Developers may lower these limits. Errors, lifecycle metadata and web vitals are separate. Limits persist across page reloads when session storage is available."
+		>
+			Captures respect a shared per-session diagnostic budget: 50 MiB / 10,000 events maximum.
+		</p>
 
 		<form
 			class="space-y-4"

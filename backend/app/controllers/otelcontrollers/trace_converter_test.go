@@ -1302,4 +1302,12 @@ func TestConvertTraces_FrontendFrameworkSuppressesEntityRows(t *testing.T) {
 	if len(endpoints) == 0 {
 		t.Error("expected non-frontend frameworks to keep promoting endpoint rows")
 	}
+	req.ResourceSpans[0].Resource.Attributes = append(req.ResourceSpans[0].Resource.Attributes, strKV("traceway.sdk.name", "@tracewayapp/frontend"))
+	protected := convertTraces(context.Background(), backendProject, testProjectId, req)
+	if len(protected.Endpoints) != 0 || len(protected.Tasks) != 0 || len(protected.AiTraces) != 0 {
+		t.Fatal("browser diagnostic data polluted backend performance aggregates")
+	}
+	if len(protected.Spans) == 0 || len(protected.Exceptions) != 1 {
+		t.Fatal("diagnostic evidence was discarded")
+	}
 }

@@ -2,13 +2,17 @@ package otelcontrollers
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -16,6 +20,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
@@ -158,6 +163,20 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		abortIngestStorage(c, "spans", err)
 		return
 	}
+
+	rejectedSpans := make(map[shared.SpanOwner]bool, len(notStored))
+	for _, owner := range notStored {
+		rejectedSpans[owner] = true
+	}
+	captureMetadata := []string{}
+	for _, span := range canonicalSpans {
+		if !rejectedSpans[shared.SpanOwner{ProjectId: projectId, TraceId: span.TraceId, SpanId: span.SpanId}] && span.OTLP != nil {
+			if ids := getStringAttribute(span.OTLP.Attributes, "traceway.capture.ids"); ids != "" {
+				captureMetadata = append(captureMetadata, ids)
+			}
+		}
+	}
+	markCaptureDataReceived(projectId, captureMetadata)
 
 	if len(notStored) > 0 {
 		rejected := make(map[shared.SpanOwner]bool, len(notStored))
@@ -390,6 +409,17 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		}
 	}
 	// Exceptions go last: a failure before them is retried by the exporter, and a retry must not find them written.
+	captureMetadata := []string{}
+	for _, record := range records {
+		if strings.HasPrefix(record.LogAttributes["event.name"], "traceway.capture.") {
+			continue
+		}
+		if ids := record.LogAttributes["traceway.capture.ids"]; ids != "" {
+			captureMetadata = append(captureMetadata, ids)
+		}
+	}
+	markCaptureDataReceived(projectId, captureMetadata)
+
 	if len(exceptions) > 0 {
 		if err := telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
 			abortIngestStorage(c, "exceptions", err)
@@ -484,4 +514,39 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 	monitoring.RecordIngestBatch(monitoring.SignalProfiles, "profiling_samples", convertMs, insertMs, len(samples), bodyBytes)
 
 	writeProfilesResponse(c)
+}
+
+func markCaptureDataReceived(projectId uuid.UUID, metadata []string) {
+	ids := map[uuid.UUID]bool{}
+	for _, raw := range metadata {
+		if raw == "" || len(raw) > 4096 {
+			continue
+		}
+		var values []string
+		if json.Unmarshal([]byte(raw), &values) != nil {
+			continue
+		}
+		for _, value := range values {
+			if len(ids) >= 20 {
+				break
+			}
+			if id, err := uuid.Parse(value); err == nil {
+				ids[id] = true
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+		for id := range ids {
+			if err := transactional.SdkConfigRepository.MarkCaptureProgress(tx, projectId, id, "received", time.Now().UTC()); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		traceway.CaptureException(err)
+	}
 }

@@ -24,6 +24,9 @@ type SdkConfigRule struct {
 // SdkCapture is an on-demand capture started from the dashboard: until it expires or is cancelled, the clients
 // matching its conditions upload what they buffered and stream everything.
 type SdkCapture struct {
+	DeliveredAt *time.Time `json:"deliveredAt" lit:"delivered_at"`
+	AppliedAt   *time.Time `json:"appliedAt" lit:"applied_at"`
+	ReceivedAt  *time.Time `json:"receivedAt" lit:"received_at"`
 	Id          uuid.UUID  `json:"id" lit:"id"`
 	ProjectId   uuid.UUID  `json:"projectId" lit:"project_id"`
 	Label       string     `json:"label" lit:"label"`

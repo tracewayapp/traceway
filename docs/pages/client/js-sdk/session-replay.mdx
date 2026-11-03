@@ -1,6 +1,6 @@
 # Session Replay
 
-The 2.x browser SDK records DOM events with rrweb. Replay is buffered on the device by default. On up to 20 errors per session, the built-in exception trigger uploads recent context and an exception clip. The session page can show the surrounding uploaded segments and breadcrumbs.
+The 2.x browser SDK records DOM events with rrweb. Replay is buffered on the device by default. Accepted errors upload up to 10 minutes of buffered breadcrumbs; the built-in exception trigger also requests a 30-second replay clip, with a 5-second cooldown and at most 20 clips per session. The session page can show the surrounding uploaded segments and breadcrumbs.
 
 ## Options
 
@@ -15,7 +15,6 @@ The 2.x browser SDK records DOM events with rrweb. Replay is buffered on the dev
 import { init } from "@tracewayapp/frontend";
 
 init(connectionString, {
-  recordAllSessions: true,
   sessionRecordingSegmentDuration: 30000,
 });
 ```
@@ -37,3 +36,25 @@ Inputs are masked by default. A rule can change `replay.maskAllInputs`; applying
 Console output, navigation, clicks and app events are OTLP log records, while requests are OTLP CLIENT spans. They carry `session.id` and are read alongside replay in the dashboard. Replay files contain rrweb events, rather than duplicate copies of these breadcrumbs.
 
 SDK 1.x and mobile recordings that contain embedded breadcrumbs remain readable. See [Sessions](/learn/sessions) and the [remote settings reference](/learn/remote-config/reference) for collection and retention details.
+
+## What “error-only” does and does not mean
+
+Error-only describes **uploading**, not when recording starts. rrweb observes the page before an error and retains a bounded local buffer. Healthy visits still incur browser CPU and memory costs. Breadcrumb buffers and retry queues may also be retained in browser storage when persistence is enabled. Input masking is enabled by default, but it is not a substitute for reviewing what your app renders or for obtaining any consent your application requires. Initialize after consent if required, and set `sessionRecording: false` when recording must never run. The collection kill switch prevents export; it cannot retract already uploaded data.
+
+The error view explains why a replay is absent: disabled collection, a disabled trigger, cooldown, clip limit, sampling, unavailable buffer, or exhausted collection budget. “Requested” means the SDK attempted collection; it is not a delivery guarantee. Open the session to find nearby clips. Completed segments remain in the bounded replay buffer so a second error can reference overlapping context. A replay can start before the requested window because playback needs a full snapshot.
+
+## Failures that do not throw
+
+A failed payment, stuck spinner, incorrect result, or abandoned flow might never throw an exception. Add explicit business events such as `track("checkout_failed", { reason: "payment_declined" })`, then configure an event trigger for the context you need. Use `captureMessage` for a failure that should become an issue. Avoid logging sensitive payment or user content.
+
+These signals cover known failure modes; they do not automatically detect all unsuccessful user experiences. Use normal performance measurements and product outcomes alongside exceptions.
+
+## Collection budget and gaps
+
+Each browser session has a shared diagnostic budget of **50 MiB of uncompressed serialized data and 10,000 events**, including rrweb events. The budget covers ordinary diagnostic streaming and targeted captures together, survives page reloads when session storage is available, and resets for a new session. It is a per-browser-session ceiling, not a project-wide cost cap; repeated sessions and transport retries still consume bandwidth.
+
+Lower the ceiling with `collectionLimits: { maxBytes: 10 * 1024 * 1024, maxEvents: 5000 }`. Remote configuration cannot raise it. Errors, web vitals, and lifecycle/control metadata are exempt. Error burst/duplicate protection applies separately.
+
+`traceway.collection.health` reports accepted bytes/events, dropped diagnostics and suppressed errors without waiting for another exception. Session metadata carries the counters too. `traceway.context.evicted` identifies lost buffered breadcrumbs. A missing summary is possible if the browser closes before it can send. The session overview exposes drop counts; these are counts reported by that running client, not estimates of project-wide loss.
+
+Replay requests rejected permanently or exhausted after retries increment `traceway.replay.failed_segments`, included in health logs and session metadata. The session overview displays failed replay uploads separately from budget drops. An unload-time failure may occur too late to report its counter.

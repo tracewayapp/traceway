@@ -82,7 +82,7 @@ What the 2.x SDK does with no rules.
 | replay | buffer | stream |
 | sessions | on | on |
 
-Production defaults keep session lifecycle metadata and web vitals on, with healthy breadcrumbs and replay buffered locally. An accepted exception uploads the preceding 30 seconds; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
+Production defaults keep session lifecycle metadata and web vitals on, with healthy breadcrumbs and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
 
 Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. Configure `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` to tune these limits; they reset when the SDK is recreated.
 
@@ -95,7 +95,7 @@ Console's `minSeverity` defaults to `info`. One trigger is built in:
 ```json
 { "id": "default-exception", "name": "Error clip", "maxPerSession": 20, "cooldownSeconds": 5,
   "steps": [{ "match": { "key": "event.name", "op": "eq", "value": "exception" } }],
-  "actions": [{ "type": "flush", "lookbackSeconds": 30, "signals": ["*"], "replay": true }] }
+  "actions": [{ "type": "flush", "lookbackSeconds": 600, "signals": ["*"], "replay": false }, { "type": "flush", "lookbackSeconds": 30, "signals": [], "replay": true }] }
 ```
 
 A rule can change it by id, or turn it off with `{ "id": "default-exception", "enabled": false }`.
@@ -280,3 +280,34 @@ The Data Collection tab uses these routes; they need dashboard authentication an
 | Active captures per project | 20 |
 | Capture duration | 24 hours |
 | OpAMP poll body | 64 KB |
+
+## Why did this client collect this data?
+
+Evaluate settings in this order:
+
+1. SDK defaults establish buffering, streaming and error clips.
+2. Matching remote rules apply in displayed order; later fields override earlier fields.
+3. Developer-disabled signals and plan limits remain hard ceilings.
+4. Temporary captures and trigger overrides can increase allowed collection until expiry.
+5. Signal filtering/sampling, replay cooldowns and clip limits, the error limiter, bounded local buffers, and the shared diagnostic upload budget still apply.
+
+Preview shows the **server overlay for the attributes you entered**, not proof of the settings a live browser is running. It does not know the client's initialization options, buffer contents, remaining budget, or whether the browser has polled. Inspect session counters and capture acknowledgement status as well.
+
+## Capture status
+
+- **Waiting for client:** no matching v2 browser has received this capture.
+- **Delivered · awaiting acknowledgement:** a poll offered the configuration; receipt does not prove application.
+- **Applied · awaiting data:** a matching browser acknowledged the current configuration hash as applied.
+- **Collecting:** tagged log/span data has reached Traceway.
+- **Expired · no data received:** the capture ended without tagged data reaching Traceway.
+- **Completed / Cancelled:** capture history remains visible after its active period.
+
+These statuses reflect at least one matching browser, not every member of a cohort. They survive server restarts and work across instances sharing the main database. The dashboard refreshes status every 15 seconds while visible. A suspended or closed browser cannot acknowledge; clients already under capture poll every minute. External-only logs/spans cannot be confirmed by Traceway, so “no data received” does not prove the external platform received nothing.
+
+## Diagnostic samples and averages
+
+Error-triggered and targeted requests are **diagnostic samples**, biased toward problematic visits. Randomly discarding some exception-related samples afterwards cannot recover the missing healthy visits and does not correct that bias.
+
+Traceway keeps browser diagnostic spans out of endpoint/task/AI performance aggregates, while retaining them in trace exploration and session timelines. Browser SDK resources are identified explicitly so accidentally sending them to a backend project does not turn them into endpoint measurements. The SDK marks spans with `traceway.collection.source` and `traceway.collection.baseline_rate`. A stable optional healthy-session baseline is independent of error occurrence, but a changing or targeted sampling rule is not a universal estimate of production traffic.
+
+Use independently collected web vitals and backend request measurements for normal performance. Custom queries over raw browser spans must account for their collection policy; the backend does not fabricate population averages or apply guessed inverse weights. The session overview includes a tooltip explaining this distinction.

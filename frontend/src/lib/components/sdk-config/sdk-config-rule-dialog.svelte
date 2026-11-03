@@ -222,6 +222,13 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<SdkVersionWarning />
+		<p
+			class="text-xs text-muted-foreground"
+			title="SDK defaults are overlaid by matching rules in their displayed order. Later rules replace earlier fields. Temporary captures can increase collection, but cannot exceed developer-disabled signals, plan limits, or the per-session upload budget."
+		>
+			Settings combine with SDK defaults and earlier matching rules. Use Preview to inspect the
+			server overlay.
+		</p>
 
 		<form
 			class="space-y-5"

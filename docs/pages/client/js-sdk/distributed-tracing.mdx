@@ -25,3 +25,29 @@ Request spans carry `session.id`. Their rows in the session timeline link to the
 Remove `createAxiosInterceptor()` and `getActiveDistributedTraceId()` calls. The 2.x browser SDK no longer generates `traceway-trace-id`; it uses `traceparent`. Existing server compatibility for older clients can remain while those clients are being upgraded.
 
 See [Initialization](/client/js-sdk/initialization) for browser options and [Remote SDK Config](/learn/remote-config) for controlling whether network spans stream, buffer, or remain off.
+
+## Trace an entire interaction explicitly
+
+Clicks remain breadcrumb events. A session groups visits; it is not a causal trace. To connect a multi-step interaction, start an interaction span and bind callbacks that continue it:
+
+```javascript
+import { startInteraction } from "@tracewayapp/frontend";
+
+const interaction = startInteraction("checkout");
+try {
+  const response = await interaction.run(() => fetch("/api/cart"));
+  const cart = await response.json();
+  await interaction.run(() => fetch("/api/checkout", {
+    method: "POST",
+    body: JSON.stringify(cart),
+  }));
+} catch (error) {
+  interaction.captureException(error);
+} finally {
+  interaction.end();
+}
+```
+
+The SDK must be initialized before starting an interaction. `run` activates context while its callback executes; it does **not** implicitly carry context through every `await`. Use another `run` around each later operation, or `interaction.bind(callback)` for a deferred callback. `captureException` explicitly associates the error with the interaction. Always end it, including failure paths. Two concurrent interactions keep separate trace IDs, and unrelated errors are not attached to whichever interaction happened most recently.
+
+Requests started in the bound context propagate the same trace to instrumented backends. Collection settings still apply: an interaction does not override disabled tracing or automatically upload a healthy unsampled session. Traceway's trace explorer can show the interaction span and request children when collected.

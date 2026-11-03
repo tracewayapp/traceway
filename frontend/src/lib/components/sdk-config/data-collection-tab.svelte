@@ -34,7 +34,6 @@
 	let deletingRule = $state<SdkConfigRule | null>(null);
 
 	const canWrite = $derived(projectsState.canWriteCurrentProject);
-	const activeCaptures = $derived(captures.filter((c) => c.active));
 
 	async function load() {
 		const projectId = projectsState.currentProjectId;
@@ -58,7 +57,13 @@
 		}
 	}
 
-	onMount(load);
+	onMount(() => {
+		void load();
+		const timer = setInterval(() => {
+			if (!document.hidden && !busy) void load();
+		}, 15000);
+		return () => clearInterval(timer);
+	});
 
 	async function mutate(action: () => Promise<unknown>, success?: string) {
 		busy = true;
@@ -167,10 +172,10 @@
 
 			{#if rules.length === 0}
 				<p class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-					No rules: errors are sent with duplicate and burst protection. The preceding 30 seconds of
-					breadcrumbs and replay are uploaded on an error. Lightweight session metadata and web
-					vitals stay on; healthy-session sampling is off. Explicit SDK options can override these
-					defaults.
+					No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
+					breadcrumbs and a 30-second replay clip are uploaded on an error. Lightweight session
+					metadata and web vitals stay on; healthy-session sampling is off. Explicit SDK options can
+					override these defaults.
 				</p>
 			{:else}
 				<ul class="divide-y rounded-md border">
@@ -242,7 +247,7 @@
 
 		<section class="space-y-3">
 			<div class="flex items-center justify-between">
-				<h3 class="text-sm font-medium">Active captures</h3>
+				<h3 class="text-sm font-medium">Captures</h3>
 				{#if canWrite}
 					<Button variant="success" size="sm" onclick={() => (captureOpen = true)} disabled={busy}>
 						<Plus class="mr-2 h-4 w-4" />
@@ -250,19 +255,23 @@
 					</Button>
 				{/if}
 			</div>
-			{#if activeCaptures.length === 0}
+			{#if captures.length === 0}
 				<p class="text-sm text-muted-foreground">
 					None. A capture makes one device, user or session upload what it buffered and send
 					everything for a while; start one here or from a session or issue.
 				</p>
 			{:else}
 				<ul class="divide-y rounded-md border">
-					{#each activeCaptures as capture (capture.id)}
+					{#each captures as capture (capture.id)}
 						<li class="flex items-center justify-between gap-3 p-3 text-sm">
 							<span class="min-w-0 truncate font-mono text-xs">{capture.label}</span>
 							<span class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-								{remaining(capture.expiresAt)}
-								{#if canWrite}
+								<span
+									title="Status reflects at least one matching browser, not every device in the cohort. Collecting means tagged log data has reached Traceway; external-only telemetry cannot be confirmed here."
+									>{capture.status}</span
+								>
+								{#if capture.active}{remaining(capture.expiresAt)}{/if}
+								{#if canWrite && capture.active}
 									<Button
 										variant="ghost"
 										size="icon"

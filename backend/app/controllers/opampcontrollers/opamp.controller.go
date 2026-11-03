@@ -1,13 +1,12 @@
-// Package opampcontrollers serves OpAMP (Open Agent Management Protocol) over plain HTTP so OpenTelemetry SDKs,
-// the browser SDK first, receive their collection settings from Traceway. It implements only the HTTP polling
-// transport and is stateless: every poll is answered from the agent description it carries, so any replica can
-// answer any client and nothing is stored per client.
+// Package opampcontrollers evaluates each poll from its complete client description, so any replica can answer.
+// Capture delivery and application acknowledgements are persisted in the shared main database.
 package opampcontrollers
 
 import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,9 +21,11 @@ import (
 	"github.com/open-telemetry/opamp-go/protobufs"
 	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/sdkconfig"
 	traceway "go.tracewayapp.com"
 	"google.golang.org/protobuf/proto"
@@ -159,6 +160,28 @@ func (opampController) Poll(c *gin.Context) {
 				ConfigMapKey: {Body: document, ContentType: "application/json"},
 			}},
 			ConfigHash: hash,
+		}
+	}
+	if acceptsRemoteConfig && len(result.MatchedCaptures) > 0 {
+		stage := "delivered"
+		if bytes.Equal(msg.RemoteConfigStatus.GetLastRemoteConfigHash(), hash) &&
+			msg.RemoteConfigStatus.GetStatus() == protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED {
+			stage = "applied"
+		}
+		_, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+			for _, value := range result.MatchedCaptures {
+				id, err := uuid.Parse(value)
+				if err != nil {
+					continue
+				}
+				if err := transactional.SdkConfigRepository.MarkCaptureProgress(tx, projectId, id, stage, time.Now().UTC()); err != nil {
+					return false, err
+				}
+			}
+			return true, nil
+		})
+		if err != nil {
+			traceway.CaptureException(err)
 		}
 	}
 	write(c, resp)

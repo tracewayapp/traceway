@@ -399,7 +399,8 @@ var captureTargetKeys = map[string]string{
 
 type sdkCaptureView struct {
 	*models.SdkCapture
-	Active bool `json:"active"`
+	Active bool   `json:"active"`
+	Status string `json:"status"`
 }
 
 func (sdkConfigController) ListCaptures(c *gin.Context) {
@@ -415,7 +416,27 @@ func (sdkConfigController) ListCaptures(c *gin.Context) {
 	now := time.Now()
 	views := make([]sdkCaptureView, 0, len(captures))
 	for _, capture := range captures {
-		views = append(views, sdkCaptureView{SdkCapture: capture, Active: capture.ExpiresAt.After(now)})
+		active := capture.CancelledAt == nil && capture.ExpiresAt.After(now)
+		status := "Waiting for client"
+		if capture.DeliveredAt != nil {
+			status = "Delivered · awaiting acknowledgement"
+		}
+		if capture.AppliedAt != nil {
+			status = "Applied · awaiting data"
+		}
+		if capture.ReceivedAt != nil {
+			status = "Collecting"
+		}
+		if !active {
+			status = "Expired · no data received"
+			if capture.ReceivedAt != nil {
+				status = "Completed"
+			}
+		}
+		if capture.CancelledAt != nil {
+			status = "Cancelled"
+		}
+		views = append(views, sdkCaptureView{SdkCapture: capture, Active: active, Status: status})
 	}
 	c.JSON(http.StatusOK, gin.H{"data": views, "heartbeatIntervalSeconds": config.OpampHeartbeatSeconds()})
 }
@@ -505,7 +526,7 @@ func (sdkConfigController) CreateCapture(c *gin.Context) {
 		return
 	}
 	invalidateSdkConfigOnCommit(c, projectId)
-	c.JSON(http.StatusCreated, sdkCaptureView{SdkCapture: capture, Active: true})
+	c.JSON(http.StatusCreated, sdkCaptureView{SdkCapture: capture, Active: true, Status: "Waiting for client"})
 }
 
 func (sdkConfigController) CancelCapture(c *gin.Context) {

@@ -61,9 +61,28 @@
 
 	const recordingEvents = $derived(sessionRecording?.events ?? null);
 	const hasReplay = $derived(!!recordingEvents && recordingEvents.length > 0);
+	const replayStatus = $derived(occurrence.attributes?.['traceway.replay.status']);
+	const replayExplanation = $derived(
+		(
+			{
+				disabled: 'Replay recording was disabled by SDK settings, a remote rule, or plan limits.',
+				cooldown:
+					'This error occurred during the configured replay cooldown. Open the session to inspect the nearby clip.',
+				session_clip_limit:
+					'This session reached its replay clip limit. Breadcrumbs are still captured within collection limits.',
+				trigger_disabled: 'The error replay trigger was disabled.',
+				sampled_out: 'The replay trigger sampled out this occurrence.',
+				collection_limit:
+					'The session reached its diagnostic collection budget. Errors and web vitals continue.',
+				buffer_unavailable:
+					'No replay segment was available. Recording may not have started yet or the buffer may have been evicted.',
+				requested:
+					'The SDK requested a replay upload, but no recording is available here yet. The upload may be pending or may have failed.',
+				not_triggered: 'No replay trigger matched this error.'
+			} as Record<string, string>
+		)[replayStatus ?? ''] ?? 'No recording is available. This SDK did not report why.'
+	);
 	let timeline = $state<SessionBreadcrumbs | null>(null);
-	// The minute before the exception, which covers the default error clip's 30 second lookback. Breadcrumbs and the
-	// exception carry the same client clock, so the second after it only catches the request that failed.
 	$effect(() => {
 		const id = sessionId;
 		const at = Date.parse(occurrence.recordedAt);
@@ -72,7 +91,7 @@
 		let cancelled = false;
 		loadSessionTimeline(
 			id,
-			at - 60_000,
+			at - 600_000,
 			at + 1_000,
 			projectsState.currentProjectId ?? undefined
 		).then((result) => {
@@ -136,7 +155,27 @@
 	<SdkCaptureDialog bind:open={captureOpen} kind={captureTarget.kind} value={captureTarget.value} />
 {/if}
 
-<!-- Session Replay -->
+{#if isFrontend && (Number(occurrence.attributes?.['traceway.context.evicted']) > 0 || Number(occurrence.attributes?.['traceway.collection.dropped']) > 0)}
+	<p class="text-sm text-muted-foreground" role="status">
+		This context may be incomplete. The SDK reported {occurrence.attributes?.[
+			'traceway.context.evicted'
+		] ?? '0'} buffer evictions and {occurrence.attributes?.['traceway.collection.dropped'] ?? '0'} diagnostic
+		events dropped at its collection limit.
+	</p>
+{/if}
+
+{#if isFrontend && !hasReplay}
+	<div class="rounded-md border p-4 text-sm" role="status">
+		<p class="font-medium">Replay unavailable</p>
+		<p class="mt-1 text-muted-foreground">{replayExplanation}</p>
+		{#if sessionId}
+			<Button variant="link" class="px-0" onclick={() => goto(resolve(`/sessions/${sessionId}`))}
+				>Open session context</Button
+			>
+		{/if}
+	</div>
+{/if}
+
 {#if hasReplay}
 	<Card.Root class="pb-0">
 		<Card.Header class="flex flex-row items-center justify-between gap-2">
@@ -162,7 +201,7 @@
 			{@render sessionActions()}
 		</Card.Header>
 		<Card.Content class="text-sm text-muted-foreground">
-			This exception is linked to a recorded user session.
+			This exception is linked to a user session.
 		</Card.Content>
 	</Card.Root>
 {/if}
@@ -173,7 +212,7 @@
 		<Card.Header>
 			<Card.Title>Session Context</Card.Title>
 			<Card.Description>
-				Console output, requests, navigation and app events in the minute before this exception.
+				Console output, requests, navigation and app events in the 10 minutes before this exception.
 				Times are offsets from {hasReplay ? 'the start of the recording' : 'the exception'}.
 			</Card.Description>
 		</Card.Header>

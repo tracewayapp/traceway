@@ -76,7 +76,7 @@ The **Logs** page supports filtering and search across all three attribute layer
 - **Service**: exact match on `service.name`.
 - **Trace**: exact match on the hex trace ID.
 - **Body search**: full-text search over the log message. Single-token queries use a token-bloom index for speed; multi-word or punctuation-heavy queries fall back to substring matching.
-- **Attribute filters**: match on any `resource.*`, `scope.*`, or log attribute key, either as equals or not equals.
+- **Attribute filters**: match on any `resource.*`, `scope.*`, or log attribute key, with equals, not equals, contains or not contains.
 - **Time range**: pick from presets (24h, 7d, 30d) or a custom window.
 
 All filters combine. Results load newest first, and a "Load more" button at the end of the list fetches older records in the same query.
@@ -87,9 +87,15 @@ Click **Add filter** to open the filter dialog. Enter a key with its layer prefi
 
 <img src="/logs/logs-filter-dialog-negative.png" alt="Attribute filter dialog with the Not equals operator selected" style={{ maxWidth: '520px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-Active filters show as pills under the search bar. Exclusion pills render the operator in red. Click a pill to edit it, or its X to remove it.
+Active filters show as pills under the search bar. Exclusion pills render the operator in red. Click a pill's key or value to edit it, its operator to switch to another one in place, or its X to remove it.
 
 <img src="/logs/logs-filter-pills-zoom.png" alt="Filter pills, one equals and one not equals" style={{ maxWidth: '700px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Filtering from a Log Row
+
+Click a row to expand it. The body, trace ID, span ID, scope and every attribute show as tiles, and a row with many attributes shows the first six followed by a **Show N more attributes** tile.
+
+The filter icon on an attribute tile opens a menu with the four operators, applied to that tile's value. Once a filter is active the icon turns blue for an including filter and red for an excluding one, with the operator beside it. Choose the active operator again, or **Clear filter**, to remove it. The body, trace ID, span ID and scope tiles filter on an exact match with a single click.
 
 ## Live Tail
 

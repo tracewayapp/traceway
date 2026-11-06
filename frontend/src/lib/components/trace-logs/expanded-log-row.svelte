@@ -16,27 +16,45 @@
 <script lang="ts">
 	import * as Table from '$lib/components/ui/table';
 	import { AttributesGrid, AttributesView } from '$lib/components/ui/attributes-grid';
-	import type { AttributeFilterState } from '$lib/components/ui/attributes-grid';
+	import type { FilterOperator } from '$lib/utils/attribute-filters';
 
 	let {
 		log,
 		colspan,
-		filterStateFor,
-		onFilterToggle,
-		metaFilterStateFor,
-		onMetaFilterToggle
+		filterOperatorFor,
+		onFilterOperator,
+		isMetaFilterActive,
+		onMetaFilterToggle,
+		onHeightChange,
+		showAllAttributes = $bindable(false)
 	}: {
 		log: ExpandedLogRecord;
 		colspan: number;
-		filterStateFor?: (key: string, value: string) => AttributeFilterState;
-		onFilterToggle?: (key: string, value: string) => void;
-		metaFilterStateFor?: (field: MetaFilterField, value: string) => AttributeFilterState;
+		filterOperatorFor?: (key: string, value: string) => FilterOperator | null;
+		onFilterOperator?: (key: string, value: string, operator: FilterOperator | null) => void;
+		isMetaFilterActive?: (field: MetaFilterField, value: string) => boolean;
 		onMetaFilterToggle?: (field: MetaFilterField, value: string) => void;
+		onHeightChange?: (height: number) => void;
+		// Bind it to keep "Show more" open across remounts: the row is rebuilt
+		// whenever the list reloads (every filter change) or scrolls back in.
+		showAllAttributes?: boolean;
 	} = $props();
 
+	let row = $state<HTMLTableRowElement | null>(null);
+	let contentHeight = $state(0);
+
+	// The row grows and shrinks after mount (Show more, long values, JSON
+	// trees). The content block is what gets measured because browsers do not
+	// all report size changes of table-row boxes.
+	$effect(() => {
+		if (contentHeight > 0 && row) onHeightChange?.(row.offsetHeight);
+	});
+
+	// Body, trace id, span id and scope match exactly, so their tiles toggle an
+	// equals filter in one click instead of offering the operator menu.
 	function metaTileProps(field: MetaFilterField, value: string) {
 		return {
-			filterState: metaFilterStateFor?.(field, value) ?? 'none',
+			activeOperator: isMetaFilterActive?.(field, value) ? ('=' as const) : null,
 			onFilterToggle: onMetaFilterToggle ? () => onMetaFilterToggle(field, value) : undefined
 		};
 	}
@@ -65,9 +83,9 @@
 	The container <tr>/<td> carry a fixed background with `!` so Table.Row's
 	built-in hover:[&>td]:bg-muted/50 can't repaint the cell on mouseover.
 -->
-<Table.Row class="!bg-background">
+<Table.Row bind:ref={row} class="!bg-background">
 	<Table.Cell {colspan} class="!bg-background px-4 py-3">
-		<div class="space-y-3">
+		<div bind:offsetHeight={contentHeight} class="space-y-3">
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
 				<div class="sm:col-span-2 md:col-span-3">
 					<AttributesView title="Body" value={log.body} {...metaTileProps('body', log.body)} />
@@ -99,8 +117,9 @@
 				<AttributesGrid
 					attributes={mergedAttributes()}
 					collapsedCount={6}
-					{filterStateFor}
-					{onFilterToggle}
+					{filterOperatorFor}
+					{onFilterOperator}
+					bind:expanded={showAllAttributes}
 				/>
 			{/if}
 		</div>

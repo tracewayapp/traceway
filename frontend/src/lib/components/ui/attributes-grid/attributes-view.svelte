@@ -1,22 +1,27 @@
-<script lang="ts" module>
-	export type AttributeFilterState = 'none' | 'include' | 'exclude';
-</script>
-
 <script lang="ts">
 	import JSONTree from '@sveltejs/svelte-json-tree';
 	import { Filter, FilterX } from '@lucide/svelte';
 	import CopyButton from '$lib/components/traceway/copy-button.svelte';
+	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
+	import {
+		operatorFlags,
+		operatorOptions,
+		type FilterOperator
+	} from '$lib/utils/attribute-filters';
 
 	let {
 		title,
 		value,
-		filterState = 'none',
-		onFilterToggle
+		onFilterToggle,
+		activeOperator = null,
+		onFilterOperator
 	}: {
 		title: string;
 		value: string;
-		filterState?: AttributeFilterState;
 		onFilterToggle?: () => void;
+		activeOperator?: FilterOperator | null;
+		// Opens the operator menu instead of toggling; null clears the filter.
+		onFilterOperator?: (operator: FilterOperator | null) => void;
 	} = $props();
 
 	// Hidden-until-hover only where hovering exists: always visible on small
@@ -24,12 +29,28 @@
 	const hoverRevealClass =
 		'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 md:pointer-coarse:opacity-100';
 
+	const tileFilterState = $derived(
+		activeOperator === null ? 'none' : operatorFlags(activeOperator).exclude ? 'exclude' : 'include'
+	);
+
+	const activeOption = $derived(operatorOptions.find((o) => o.value === activeOperator));
+
 	const filterTitle = $derived(
-		filterState === 'none'
+		!activeOption
 			? 'Filter by this value'
-			: filterState === 'include'
-				? 'Filtering by this value — click to clear'
-				: 'Excluding this value — click to clear'
+			: onFilterOperator
+				? `Filter: ${activeOption.label.toLowerCase()} this value — click to change`
+				: 'Filtering by this value — click to clear'
+	);
+
+	const filterButtonClass = $derived(
+		`transition-opacity ${
+			tileFilterState === 'none'
+				? `${hoverRevealClass} text-muted-foreground hover:text-foreground`
+				: tileFilterState === 'include'
+					? 'text-blue-500 dark:text-blue-400'
+					: 'text-red-500'
+		}`
 	);
 
 	let showFull = $state(false);
@@ -42,7 +63,7 @@
 		}
 	});
 
-	const parsedJson = $derived(() => {
+	const parsedJson = $derived.by(() => {
 		try {
 			const parsed = JSON.parse(value);
 			if (typeof parsed === 'object' && parsed !== null) {
@@ -59,21 +80,31 @@
 	<div class="flex items-center justify-between">
 		<span class="text-xs font-medium text-muted-foreground">{title}</span>
 		<div class="flex items-center gap-2">
-			{#if onFilterToggle}
-				<button
-					onclick={onFilterToggle}
-					class="transition-opacity {filterState === 'none'
-						? `${hoverRevealClass} text-muted-foreground hover:text-foreground`
-						: filterState === 'include'
-							? 'text-blue-500 dark:text-blue-400'
-							: 'text-red-500'}"
-					title={filterTitle}
+			{#snippet filterIcon()}
+				{#if tileFilterState === 'exclude'}
+					<FilterX class="h-3.5 w-3.5" />
+				{:else}
+					<Filter class="h-3.5 w-3.5 {tileFilterState === 'include' ? 'fill-current' : ''}" />
+				{/if}
+			{/snippet}
+			{#if onFilterOperator}
+				<FilterOperatorMenu
+					active={activeOperator}
+					label={title}
+					onSelect={onFilterOperator}
+					onClear={() => onFilterOperator?.(null)}
+					triggerClass="inline-flex items-center gap-0.5 {filterButtonClass} data-[state=open]:opacity-100"
+					triggerTitle={filterTitle}
+					triggerAriaLabel={filterTitle}
 				>
-					{#if filterState === 'exclude'}
-						<FilterX class="h-3.5 w-3.5" />
-					{:else}
-						<Filter class="h-3.5 w-3.5 {filterState === 'include' ? 'fill-current' : ''}" />
+					{@render filterIcon()}
+					{#if activeOption}
+						<span class="font-mono text-xs leading-none">{activeOption.symbol}</span>
 					{/if}
+				</FilterOperatorMenu>
+			{:else if onFilterToggle}
+				<button onclick={onFilterToggle} class={filterButtonClass} title={filterTitle}>
+					{@render filterIcon()}
 				</button>
 			{/if}
 			<CopyButton
@@ -84,9 +115,9 @@
 			/>
 		</div>
 	</div>
-	{#if parsedJson()}
+	{#if parsedJson}
 		<div class="json-tree-container overflow-x-auto whitespace-normal">
-			<JSONTree value={parsedJson()} />
+			<JSONTree value={parsedJson} />
 		</div>
 	{:else}
 		<span

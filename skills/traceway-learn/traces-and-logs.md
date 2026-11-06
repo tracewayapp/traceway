@@ -61,7 +61,7 @@ Filters, which all combine:
 
 - **Search**, by **Message** (the body), **Service** or **Trace ID**. On ClickHouse a single-word body search is a fast whole-word match that is case sensitive (`timeout` does not find `Timeout` or `timeouts`). Anything longer, and every search on SQLite and DuckDB, is a case-insensitive substring match.
 - **Severity**: All levels, or a threshold from TRACE+ to FATAL.
-- **Attribute filters** (**Add filter**): any `resource.*`, `scope.*` or log attribute key, with equals, not equals, contains or not contains. Not equals is how teams mute a noisy logger. Each filter is a pill, red for exclusions. Expanding a log row lets you click its body, trace id, span id or scope to filter on them.
+- **Attribute filters** (**Add filter**): any `resource.*`, `scope.*` or log attribute key, with equals, not equals, contains or not contains. Not equals is how teams mute a noisy logger. Each filter is a pill, red for exclusions; clicking a pill's operator switches it in place. In an expanded log row, the filter icon on an attribute offers the same four operators for that value, and the body, trace id, span id and scope tiles filter on an exact match in one click.
 - **Time range**: presets or custom, 24 hours by default. Results are newest first by default (timestamp, level and service are sortable), and **Load 50 more** fetches more.
 
 Filters are kept in the URL, so a filtered view can be shared.

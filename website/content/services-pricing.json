@@ -1,0 +1,20 @@
+{
+  "bookingUrl": "https://calendly.com/dusan-tracewayapp/30min",
+  "support": {
+    "monthly": 199,
+    "termMonths": 12
+  },
+  "cloud": {
+    "starter": {
+      "exceptions": "10k",
+      "ingestGb": 1
+    },
+    "premium": {
+      "monthly": 24.99,
+      "exceptions": "1M",
+      "ingestGb": 150,
+      "overagePerGb": 0.25
+    },
+    "pricingUrl": "tracewayapp.com/cloud"
+  }
+}

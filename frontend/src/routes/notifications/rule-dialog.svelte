@@ -685,7 +685,8 @@
 						<Label for="cfg-metric-group-by">Group By Tags (optional, comma-separated)</Label>
 						<Input id="cfg-metric-group-by" bind:value={metricGroupBy} placeholder="host.name" />
 						<p class="text-xs text-muted-foreground">
-							Evaluates every series separately and names the breaching one in the alert.
+							Evaluates every series separately, names the breaching one in the alert, and sends a
+							recovery notice (or resolves its page) once it is back within the threshold.
 						</p>
 					</div>
 				{:else if ruleType === 'no_data'}

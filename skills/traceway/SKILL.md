@@ -106,7 +106,7 @@ These fire from latency/throughput rules, not from an error. There is no hash, n
 | `endpoint_p95_threshold` / `endpoint_p99_threshold` | `P95 latency 1250ms on <endpoint>` · "reached 1250ms over the last N minutes (threshold: 1000ms)" | `/endpoints?from=<iso>&to=<iso>` |
 | `apdex_drop` | `Apdex dropped to 0.62 (threshold: 0.80)` · "across N requests over the last N minutes" | `/endpoints?from=<iso>&to=<iso>` |
 | `impact_score_critical\|high\|medium` | `Endpoint <endpoint> impact became critical` · "impact score: 0.82. Reason: <reason>" | `/endpoints?from=<iso>&to=<iso>` |
-| `metric_threshold` | `Metric <name> is <value> (threshold: gt 100)`, or `Metric <name>{<tag>=<value>} is ...` per breaching series when the rule sets `groupBy` | `/metrics?preset=1h` |
+| `metric_threshold` | `Metric <name> is <value> (threshold: gt 100)`, or `Metric <name>{<tag>=<value>} is ...` per breaching series when the rule sets `groupBy`. A grouped series that is back within the threshold sends `Metric <name>{<tag>=<value>} recovered: <value> ...`, which needs no investigation, and one silent for an hour sends `Metric <name>{<tag>=<value>} stopped reporting, alert closed` | `/metrics?preset=1h` |
 
 What the body gives you: the **endpoint name** (parse it from the subject/body; it is not a separate field), the **metric/percentile**, the **current value**, the **threshold**, and the **lookback window**. The `/endpoints?from=&to=` link is only a ~3-minute window around the fire time, so treat the fire time as the onset hint, not the incident window.
 

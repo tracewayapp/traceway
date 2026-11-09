@@ -20,6 +20,8 @@ type EvalResult struct {
 	Recovered bool
 	Message   Message
 	Messages  []Message
+	// Recoveries are per-series recovery notices, sent alongside Messages.
+	Recoveries []Message
 }
 
 type RuleEvaluator func(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error)
@@ -273,7 +275,7 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 		return nil, err
 	}
 
-	return metricThresholdResult(rule, cfg, series, projectId), nil
+	return metricThresholdResult(rule, cfg, series, projectId)
 }
 
 // --- No Data ---

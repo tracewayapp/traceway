@@ -249,8 +249,8 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 
 	conditionChanged := existing.RuleType != req.RuleType || existing.ChannelId != req.ChannelId || !sameRuleConfig(existing.Config, req.Config)
 	if conditionChanged {
-		if err := resolveSLORulePage(tx, existing); err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the page of the edited rule: %w", err))
+		if err := resolveRulePages(tx, existing); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the pages of the edited rule: %w", err))
 			return
 		}
 	}
@@ -303,8 +303,8 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 		return
 	}
 
-	if err := resolveSLORulePage(tx, existing); err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the page of the deleted rule: %w", err))
+	if err := resolveRulePages(tx, existing); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the pages of the deleted rule: %w", err))
 		return
 	}
 	if err := transactional.NotificationRuleRepository.Delete(tx, id); err != nil {
@@ -357,8 +357,8 @@ func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
 		newEnabled = *req.Enabled
 	}
 	if !newEnabled {
-		if err := resolveSLORulePage(tx, existing); err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the page of the disabled rule: %w", err))
+		if err := resolveRulePages(tx, existing); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the pages of the disabled rule: %w", err))
 			return
 		}
 	}
@@ -495,15 +495,26 @@ func validateRuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, config
 	return "", nil
 }
 
-func resolveSLORulePage(tx *sql.Tx, rule *models.NotificationRule) error {
-	sloId := sloRuleTarget(rule.RuleType, rule.Config)
-	if sloId == 0 {
-		return nil
+// resolveRulePages resolves the pages a rule's firing state holds open and
+// forgets that state, for a rule that is edited, disabled or deleted.
+func resolveRulePages(tx *sql.Tx, rule *models.NotificationRule) error {
+	now := time.Now().UTC()
+	if sloId := sloRuleTarget(rule.RuleType, rule.Config); sloId != 0 {
+		if _, err := oncall.AutoResolveByDedupKeyTx(tx, rule.Id, notifications.SLODedupToken(sloId), now); err != nil {
+			return err
+		}
+		return transactional.NotificationRuleStateRepository.Delete(tx, rule.Id)
 	}
-	if _, err := oncall.AutoResolveByDedupKeyTx(tx, rule.Id, notifications.SLODedupToken(sloId), time.Now().UTC()); err != nil {
+	firing, err := transactional.NotificationRuleFiringRepository.FindByRule(tx, rule.Id)
+	if err != nil {
 		return err
 	}
-	return transactional.NotificationRuleStateRepository.Delete(tx, rule.Id)
+	for _, f := range firing {
+		if _, err := oncall.AutoResolveByDedupKeyTx(tx, rule.Id, f.Token, now); err != nil {
+			return err
+		}
+	}
+	return transactional.NotificationRuleFiringRepository.DeleteByRule(tx, rule.Id)
 }
 
 func sameRuleConfig(a, b json.RawMessage) bool {

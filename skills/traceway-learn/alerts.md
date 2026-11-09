@@ -56,7 +56,7 @@ The numbers in brackets are what the evaluator uses when a setting is missing. T
 | **Impact Score Critical / High / Medium** | An endpoint newly enters the level (0.75, 0.50, 0.25) over the trailing 24 hours. Fires once on entry, again only after it leaves and comes back. The first run after a restart or edit only records the baseline. | Min requests 50 | Critical / Warning / Info |
 | **Task Duration** | A task's P95 duration exceeds a threshold | Task or `*`, threshold 30000 ms, lookback 30 min | Warning |
 | **Task Failure Rate** | The share of task runs with an exception on their own span exceeds a percentage | Task or `*`, threshold 10%, lookback 60 min, min executions 5 | Warning, Critical at 2x |
-| **Metric Threshold** | An aggregated metric violates a comparison. No data in the window, no alert. | Metric, aggregation (avg, max, min, sum, p95, p99, last), operator (gt, gte, lt, lte, eq), value 90, lookback 5 min | Warning, Critical when 20% past the value |
+| **Metric Threshold** | An aggregated metric violates a comparison. No data in the window, no alert. | Metric, aggregation (avg, max, min, sum, p95, p99, last), operator (gt, gte, lt, lte, eq), value 90, lookback 5 min | Warning, Critical when 20% past the value, recovery Info for a grouped series |
 | **No Data** | No telemetry of a kind for N minutes. `any` fires only when all four kinds are silent. | Data type (any, endpoints, exceptions, metrics, tasks), 10 min | Critical |
 | **AI Trace Cost** | One AI call costs at least the threshold | Trace name or `*`, $0.50 | Warning, Critical at 3x |
 | **AI Conversation Cost** | One conversation's cost over 24 hours reaches the threshold | $5 | Warning, Critical at 3x |
@@ -66,6 +66,8 @@ The numbers in brackets are what the evaluator uses when a setting is missing. T
 | **SLO Budget Consumed** | An SLO has used at least a share of its window's error budget, plus a recovery notice when the budget recovers. Fires on the transition only. | SLO, consumed 80% | Warning, Critical at 100%, recovery Info |
 
 The aggregation in Metric Threshold spans every series of the metric with no tag filter, so prefer `max` (or `min` for lower-is-bad metrics) where one bad host could hide in an average.
+
+With Group By Tags (`groupBy`) each combination of those tag values is evaluated as its own series. Each breaching series alerts on its own, with its own cooldown and escalation page (up to 50 per evaluation, the rest in one "N more series" notice). Once a series it alerted on is back within the threshold, the rule sends an Info recovery notice, or on an escalation channel resolves that series' page. A series that stops reporting stays firing until it has had no data for an hour while other series of the metric still report; then the rule closes its alert with a "stopped reporting" notice.
 
 Apdex uses fixed bands: satisfied up to 750 ms, tolerating up to 1500 ms, anything slower or a 5xx is frustrated. Apdex = (satisfied + tolerating / 2) / total.
 

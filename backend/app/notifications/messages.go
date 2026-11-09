@@ -94,7 +94,7 @@ func buildApdexDropMessage(apdex float64, threshold float64, total int64, window
 	}
 }
 
-func buildMetricThresholdMessage(metricName string, seriesLabel string, value float64, operator string, threshold float64, aggregation string, window int, projectName string) Message {
+func buildMetricThresholdMessage(series string, value float64, operator string, threshold float64, aggregation string, window int, projectName string) Message {
 	severity := SeverityWarning
 	diff := value - threshold
 	if diff < 0 {
@@ -106,7 +106,6 @@ func buildMetricThresholdMessage(metricName string, seriesLabel string, value fl
 	if aggregation == "" {
 		aggregation = "avg"
 	}
-	series := metricName + seriesLabel
 	headline := fmt.Sprintf("The metric %s has a %s of %.2f over the last %d minutes which violates the threshold %s %.2f.", series, aggregation, value, window, operator, threshold)
 	return Message{
 		Subject:    fmt.Sprintf("[%s] Metric %s is %.2f (threshold: %s %.2f)", projectName, series, value, operator, threshold),
@@ -133,13 +132,65 @@ func buildMetricThresholdOverflowMessage(metricName string, count int, operator 
 		Body:       headline,
 		Severity:   SeverityWarning,
 		URL:        "/metrics?preset=1h",
-		DedupToken: metricName + ":overflow",
+		DedupToken: metricOverflowToken(metricName),
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
 			Headline:    headline,
 			ScopeLabel:  "Metric",
 			Scope:       metricName,
 			Observed:    fmt.Sprintf("%d more series", count),
+			Threshold:   fmt.Sprintf("%s %.2f", operator, threshold),
+			WindowMins:  window,
+		}),
+	}
+}
+
+// buildMetricSeriesRecoveredMessage rewords the series' alert, so the two
+// share their scope and dedup token.
+func buildMetricSeriesRecoveredMessage(series string, value float64, operator string, threshold float64, aggregation string, window int, projectName string) Message {
+	msg := buildMetricThresholdMessage(series, value, operator, threshold, aggregation, window, projectName)
+	if aggregation == "" {
+		aggregation = "avg"
+	}
+	msg.Subject = fmt.Sprintf("[%s] Metric %s recovered: %.2f (threshold: %s %.2f)", projectName, series, value, operator, threshold)
+	msg.Body = fmt.Sprintf("The metric %s has a %s of %.2f over the last %d minutes which no longer violates the threshold %s %.2f.", series, aggregation, value, window, operator, threshold)
+	msg.Email.Alert.Headline = msg.Body
+	msg.Severity, msg.Recovered = SeverityInfo, true
+	return msg
+}
+
+func buildMetricSeriesSilencedMessage(series string, projectName string) Message {
+	headline := fmt.Sprintf("The metric %s has reported no data for over an hour while the metric's other series still report, so its alert is closed.", series)
+	return Message{
+		Subject:    fmt.Sprintf("[%s] Metric %s stopped reporting, alert closed", projectName, series),
+		Body:       headline,
+		Severity:   SeverityInfo,
+		Recovered:  true,
+		URL:        "/metrics?preset=1h",
+		DedupToken: series,
+		Email: alertEmail(models.EmailAlert{
+			ProjectName: projectName,
+			Headline:    headline,
+			ScopeLabel:  "Metric",
+			Scope:       series,
+		}),
+	}
+}
+
+func buildMetricThresholdOverflowRecoveredMessage(metricName string, operator string, threshold float64, window int, projectName string) Message {
+	headline := fmt.Sprintf("No series of the metric %s violates the threshold %s %.2f over the last %d minutes.", metricName, operator, threshold, window)
+	return Message{
+		Subject:    fmt.Sprintf("[%s] Metric %s recovered: no series breaches the threshold (%s %.2f)", projectName, metricName, operator, threshold),
+		Body:       headline,
+		Severity:   SeverityInfo,
+		Recovered:  true,
+		URL:        "/metrics?preset=1h",
+		DedupToken: metricOverflowToken(metricName),
+		Email: alertEmail(models.EmailAlert{
+			ProjectName: projectName,
+			Headline:    headline,
+			ScopeLabel:  "Metric",
+			Scope:       metricName,
 			Threshold:   fmt.Sprintf("%s %.2f", operator, threshold),
 			WindowMins:  window,
 		}),

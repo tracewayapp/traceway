@@ -1,7 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { filterOperator, parseAttributeFilter } from './session-filters';
+import {
+	filterOperator,
+	operatorFlags,
+	operatorOptions,
+	parseAttributeFilter
+} from './attribute-filters';
 
-describe('session attribute URLs', () => {
+describe('attribute filter operators', () => {
+	it.each(operatorOptions.map((o) => o.value))('round trips %s through its flags', (operator) => {
+		expect(filterOperator(operatorFlags(operator))).toBe(operator);
+	});
+
+	it('maps the flags the backend reads', () => {
+		expect(operatorFlags('=')).toEqual({ exclude: false, contains: false });
+		expect(operatorFlags('!=')).toEqual({ exclude: true, contains: false });
+		expect(operatorFlags('~=')).toEqual({ exclude: false, contains: true });
+		expect(operatorFlags('!~=')).toEqual({ exclude: true, contains: true });
+	});
+});
+
+describe('attribute filter URLs', () => {
 	it.each([
 		'user.id=u_42',
 		'email!=alice@example.com',

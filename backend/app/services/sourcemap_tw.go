@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/storage"
 
@@ -31,7 +30,7 @@ var (
 	twPendingMu   sync.Mutex
 	twPending     = map[twJob]struct{}{}
 	twRunning     atomic.Int32
-	twDroppedAt   time.Time
+	twDropped     atomic.Uint64
 	twRun         = warmTWArtifact
 )
 
@@ -67,7 +66,7 @@ func enqueueTWWarmup(job twJob) bool {
 		twPending[job] = struct{}{}
 		return true
 	default:
-		reportTWDrop(job)
+		twDropped.Add(1)
 		return false
 	}
 }
@@ -100,13 +99,4 @@ func warmTWArtifact(job twJob) {
 		traceway.CaptureException(fmt.Errorf("tw generation: failed to warm resolver (key=%s): %w", mapKey, err))
 	}
 	done()
-}
-
-func reportTWDrop(job twJob) {
-	now := time.Now()
-	if now.Sub(twDroppedAt) < time.Minute {
-		return
-	}
-	twDroppedAt = now
-	traceway.CaptureException(fmt.Errorf("tw generation: warm-up queue full (%d jobs), dropped %s/%s; the artifact will be built on first lookup", twQueueDepth, job.projectId, job.base))
 }

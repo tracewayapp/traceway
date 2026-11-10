@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -198,6 +199,14 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		clauses[0] = "project_id IN (" + strings.Join(placeholders, ", ") + ")"
 		args = append(args, params.FromDate, params.ToDate)
 	}
+
+	// log_records is partitioned by the stored timestamp_date column, which a
+	// filter on timestamp alone cannot prune. The day of slack on each side
+	// absorbs any timezone difference between this and the insert-time toDate.
+	clauses = append(clauses, "timestamp_date >= ?", "timestamp_date <= ?")
+	args = append(args,
+		params.FromDate.UTC().AddDate(0, 0, -1).Format(time.DateOnly),
+		params.ToDate.UTC().AddDate(0, 0, 1).Format(time.DateOnly))
 
 	if params.MinSeverity > 0 {
 		clauses = append(clauses, "severity_number >= ?")

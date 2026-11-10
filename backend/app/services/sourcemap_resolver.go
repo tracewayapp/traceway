@@ -62,6 +62,7 @@ type SourceMapCacheStats struct {
 	StoreHits     uint64
 	Builds        uint64
 	DiskEvictions uint64
+	WarmupDropped uint64
 }
 
 func SourceMapStats() SourceMapCacheStats {
@@ -81,6 +82,7 @@ func SourceMapStats() SourceMapCacheStats {
 		LastParseMs:     s.LastParseMs,
 		StoreHits:       smStoreHits.Load(),
 		Builds:          smBuilds.Load(),
+		WarmupDropped:   twDropped.Load(),
 	}
 	if s.Mode == "disk" {
 		out.DiskEnabled = true

@@ -1,6 +1,9 @@
 package controllers
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"net/http"
@@ -27,6 +30,7 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
 		return
 	}
+	traceway.GetAttributesFromContext(c).SetTag("project_id", projectId.String())
 
 	now := time.Now()
 	start := now.Add(-24 * time.Hour)
@@ -51,13 +55,9 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 
 	hasData := true
 	if len(worstEndpoints) == 0 && len(recentIssues) == 0 {
-		// Check if project has received ANY data (all time, not just 24h)
-		var epoch time.Time // zero time = beginning of time
 		span = traceway.StartSpan(c, "checking project data")
-		endpointCount, _ := telemetry.EndpointRepository.CountBetween(c, projectId, epoch, now)
-		exceptionCount, _ := telemetry.ExceptionStackTraceRepository.CountBetween(c, projectId, epoch, now)
+		hasData = projectHasData(c, projectId, now)
 		span.End()
-		hasData = endpointCount > 0 || exceptionCount > 0
 	}
 
 	c.JSON(http.StatusOK, DashboardOverviewResponse{
@@ -65,6 +65,30 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 		WorstEndpoints: worstEndpoints,
 		HasData:        hasData,
 	})
+}
+
+const hasDataTimeout = 10 * time.Second
+
+// A false answer swaps the dashboard for the setup guide, so a count that
+// fails or times out must not be read as "this project never sent data".
+func projectHasData(ctx context.Context, projectId uuid.UUID, now time.Time) bool {
+	ctx, cancel := context.WithTimeout(ctx, hasDataTimeout)
+	defer cancel()
+	var epoch time.Time
+	endpointCount, err := telemetry.EndpointRepository.CountBetween(ctx, projectId, epoch, now)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("dashboard overview: counting endpoints of project %s: %w", projectId, err))
+		return true
+	}
+	if endpointCount > 0 {
+		return true
+	}
+	exceptionCount, err := telemetry.ExceptionStackTraceRepository.CountBetween(ctx, projectId, epoch, now)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("dashboard overview: counting exceptions of project %s: %w", projectId, err))
+		return true
+	}
+	return exceptionCount > 0
 }
 
 func (d dashboardController) GetDashboard(c *gin.Context) {

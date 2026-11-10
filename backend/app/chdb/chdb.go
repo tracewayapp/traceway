@@ -64,10 +64,13 @@ func initExternal() error {
 		Compression: &clickhouse.Compression{
 			Method: clickhouse.CompressionLZ4,
 		},
-		DialTimeout:      time.Duration(10) * time.Second,
-		MaxOpenConns:     15,
-		MaxIdleConns:     15,
-		ConnMaxLifetime:  time.Duration(10) * time.Minute,
+		DialTimeout:  time.Duration(10) * time.Second,
+		MaxOpenConns: 15,
+		MaxIdleConns: 15,
+		// Cloud load balancers silently drop TCP connections idle for about
+		// 350s, and the pool cannot see that until a query reads EOF. Retiring
+		// connections before then keeps a dead one from ever being handed out.
+		ConnMaxLifetime:  5 * time.Minute,
 		ConnOpenStrategy: clickhouse.ConnOpenInOrder,
 		BlockBufferSize:  10,
 	})

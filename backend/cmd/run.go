@@ -287,7 +287,7 @@ func Run(opts ...Option) {
 
 		if staticFS != nil {
 			router.StaticFS("/assets", http.FS(mustSubFS(staticFS, "assets")))
-			router.StaticFS("/_app", http.FS(mustSubFS(staticFS, "_app")))
+			router.Match([]string{http.MethodGet, http.MethodHead}, "/_app/*filepath", appAssetHandler(mustSubFS(staticFS, "_app")))
 			router.GET("/favicon.ico", serveStaticFile(staticFS, "favicon.ico"))
 			router.GET("/robots.txt", serveStaticFile(staticFS, "robots.txt"))
 		}
@@ -413,7 +413,7 @@ const serverReadTimeout = time.Hour
 // none of them.
 func serveHTTP(router *gin.Engine, listener net.Listener) {
 	srv := &http.Server{
-		Handler:           router,
+		Handler:           compressResponses(router),
 		ReadHeaderTimeout: 15 * time.Second,
 		ReadTimeout:       serverReadTimeout,
 		IdleTimeout:       2 * time.Minute,

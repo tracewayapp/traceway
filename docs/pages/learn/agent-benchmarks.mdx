@@ -6,7 +6,7 @@ AI SRE BENCH is Traceway's open benchmark for AI site reliability engineering. I
 
 ## Bring your own AI
 
-Traceway has a strict bring-your-own-AI policy. We don't ship a model, pick one for you, or send your data to an AI vendor on your behalf, and every Traceway instance works without any LLM configured. You use the AI you already trust, under your own account, and Traceway gives it the tools: an [agent skill](https://github.com/tracewayapp/traceway/tree/main/skills/traceway) for the [CLI](/learn/cli) and an [MCP server](/learn/mcp).
+Traceway has a strict bring-your-own-AI policy. We don't ship a model, pick one for you, or send your data to an AI vendor on your behalf, and every Traceway instance works without any LLM configured. You use the AI you already trust, under your own account, and Traceway gives it the tools: an [agent skill](https://github.com/tracewayapp/skills/tree/main/skills/traceway) for the [CLI](/learn/cli) and an [MCP server](/learn/mcp).
 
 That raises a fair question: which models actually do well with those tools? AI SRE BENCH exists to answer it in the open. Our eval harness, in the repository at [`cli/test/evals`](https://github.com/tracewayapp/traceway/tree/main/cli/test/evals), hands models the kind of production problems an on-call engineer gets and grades what they do. Below is how it works and every case it runs. The results also show us where our own skill and MCP server fall short.
 

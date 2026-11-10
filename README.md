@@ -64,7 +64,7 @@ Plus: background-task (job) monitoring, configurable alerts (Slack / GitHub / em
 Your agent sets up Traceway, queries production telemetry, and finds the root cause:
 
 ```bash
-npx skills add tracewayapp/traceway --all
+npx skills add tracewayapp/skills --all
 ```
 
 One command installs all four skills into Claude Code, Cursor, Codex, or any agent that reads `SKILL.md`:
@@ -78,7 +78,7 @@ The [CLI](./cli) is designed for agents first: JSON when piped, tables on a TTY,
 
 Want the agent to act too? Agent write access is opt-in at three levels: a write credential (the separate `traceway-write` CLI, a `tww_` token, or the `/mcp/write` server), an organization admin switch, and the creator's own role. Then an agent can archive issues, acknowledge pages, snooze alerts, run monitors and write post-mortems, and every write lands in an audit log. In Claude Code the `traceway-write` skill is its own plugin (`plugins/tw-write`). [Learn more →](https://docs.tracewayapp.com/learn/agent-write-access)
 
-The skills are plain Markdown in [`skills/`](./skills), in the same MIT-licensed repo. No marketplace, no lock-in. [Learn more →](https://tracewayapp.com/product/agent-skills)
+The skills are plain Markdown in [`skills/`](./skills), MIT-licensed like the rest of Traceway, and every release publishes them to [tracewayapp/skills](https://github.com/tracewayapp/skills), the small repo you install from. No lock-in. [Learn more →](https://tracewayapp.com/product/agent-skills)
 
 <p align="center">
   <img alt="Claude Code fixing a production issue from a Traceway error, end to end" src="./traceway-ai-demo.gif" width="900" />

@@ -121,7 +121,7 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 }
 
 func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count FROM tasks_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()})
 	if err != nil {
@@ -134,7 +134,7 @@ func (e *taskRepository) CountBetween(ctx context.Context, projectId uuid.UUID, 
 }
 
 func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromDate, toDate time.Time, page, pageSize int, orderBy string) ([]models.Task, int64, error) {
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count FROM tasks_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "from": fromDate.UTC(), "to": toDate.UTC()})
 	if err != nil {
@@ -152,7 +152,7 @@ func (e *taskRepository) FindAll(ctx context.Context, projectId uuid.UUID, fromD
 		orderBy = "recorded_at"
 	}
 
-	rows, err := lit.SelectNamed[task](db.TelemetryDB,
+	rows, err := lit.SelectNamed[task](shared.Traced(ctx, db.TelemetryDB),
 		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id
 		FROM tasks_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s DESC LIMIT :limit OFFSET :offset`, orderBy),
@@ -185,7 +185,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 	// database paginates.
 	totalCount := int64(0)
 	if !needsGoSort {
-		totalResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+		totalResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 			"SELECT COUNT(DISTINCT task_name) AS count FROM tasks_v2 WHERE "+whereClause,
 			params)
 		if err != nil {
@@ -226,7 +226,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 		params["offset"] = offset
 	}
 
-	groups, err := lit.SelectNamed[taskGroupRow](db.TelemetryDB, baseQuery, params)
+	groups, err := lit.SelectNamed[taskGroupRow](shared.Traced(ctx, db.TelemetryDB), baseQuery, params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -290,7 +290,7 @@ func (e *taskRepository) FindGroupedByTaskName(ctx context.Context, projectId uu
 func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID, taskName string, fromDate, toDate time.Time, page, pageSize int, orderBy string, sortDirection string) ([]models.Task, int64, error) {
 	params := lit.P{"project_id": projectId, "task_name": taskName, "from": fromDate.UTC(), "to": toDate.UTC()}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count FROM tasks_v2 WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to",
 		params)
 	if err != nil {
@@ -313,7 +313,7 @@ func (e *taskRepository) FindByTaskName(ctx context.Context, projectId uuid.UUID
 		sortDir = "ASC"
 	}
 
-	rows, err := lit.SelectNamed[task](db.TelemetryDB,
+	rows, err := lit.SelectNamed[task](shared.Traced(ctx, db.TelemetryDB),
 		fmt.Sprintf(`SELECT id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id
 		FROM tasks_v2 WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to
 		ORDER BY %s %s LIMIT :limit OFFSET :offset`, orderBy, sortDir),
@@ -342,7 +342,7 @@ func (e *taskRepository) FindById(ctx context.Context, projectId, taskId uuid.UU
 	}
 	query += ` LIMIT 1`
 
-	row, err := lit.SelectSingleNamed[task](db.TelemetryDB, query, params)
+	row, err := lit.SelectSingleNamed[task](shared.Traced(ctx, db.TelemetryDB), query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +388,7 @@ func (e *taskRepository) AvgDurationByInterval(ctx context.Context, projectId uu
 func (e *taskRepository) FindWorstTasks(ctx context.Context, projectId uuid.UUID, start, end time.Time, limit int) ([]models.TaskStats, error) {
 	params := lit.P{"project_id": projectId, "from": start.UTC(), "to": end.UTC()}
 
-	groups, err := lit.SelectNamed[taskGroupRow](db.TelemetryDB,
+	groups, err := lit.SelectNamed[taskGroupRow](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT task_name, COUNT(*) as count, AVG(duration) as avg_duration, MAX(recorded_at) as last_seen,
 		quantile_cont(duration, 0.5) as p50, quantile_cont(duration, 0.95) as p95
 		FROM tasks_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
@@ -430,7 +430,7 @@ func (e *taskRepository) GetTaskStats(ctx context.Context, projectId uuid.UUID, 
 		durationMinutes = 1
 	}
 
-	statsRow, err := lit.SelectSingleNamed[taskCountStatsRow](db.TelemetryDB,
+	statsRow, err := lit.SelectSingleNamed[taskCountStatsRow](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count, CASE WHEN COUNT(*) > 0 THEN AVG(duration) / 1000000.0 ELSE 0 END AS avg_dur_ms FROM tasks_v2 WHERE project_id = :project_id AND task_name = :task_name AND recorded_at >= :from AND recorded_at <= :to",
 		params)
 	if err != nil {

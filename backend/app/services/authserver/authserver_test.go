@@ -3,6 +3,7 @@
 package authserver
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"testing"
@@ -69,7 +70,7 @@ func TestRotateRefresh_sequentialRotation(t *testing.T) {
 	setupAuthDB(t)
 	insertRefresh(t, "twr_seq", "fam-seq")
 
-	ts, err := RotateRefresh("twr_seq")
+	ts, err := RotateRefresh(context.Background(), "twr_seq")
 	if err != nil {
 		t.Fatalf("RotateRefresh: %v", err)
 	}
@@ -100,7 +101,7 @@ func TestRotateRefresh_replayOutsideGraceRevokesFamily(t *testing.T) {
 		t.Fatalf("mark used: %v", err)
 	}
 
-	if _, err := RotateRefresh("twr_old"); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RotateRefresh(context.Background(), "twr_old"); !errors.Is(err, ErrInvalidGrant) {
 		t.Fatalf("expected ErrInvalidGrant, got %v", err)
 	}
 
@@ -120,7 +121,7 @@ func TestRotateRefresh_concurrentWithinGraceKeepsFamily(t *testing.T) {
 		t.Fatalf("mark used: %v", err)
 	}
 
-	if _, err := RotateRefresh("twr_race"); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RotateRefresh(context.Background(), "twr_race"); !errors.Is(err, ErrInvalidGrant) {
 		t.Fatalf("expected ErrInvalidGrant, got %v", err)
 	}
 
@@ -134,7 +135,7 @@ func TestRotateRefresh_lostResponseReplaysTokenSetWithinGrace(t *testing.T) {
 	setupAuthDB(t)
 	insertRefresh(t, "twr_lost", "fam-lost")
 
-	first, err := RotateRefresh("twr_lost")
+	first, err := RotateRefresh(context.Background(), "twr_lost")
 	if err != nil {
 		t.Fatalf("first rotation: %v", err)
 	}
@@ -142,7 +143,7 @@ func TestRotateRefresh_lostResponseReplaysTokenSetWithinGrace(t *testing.T) {
 	// The client lost the response (or failed to persist it) and re-presents
 	// the consumed token within the grace window: it must receive the same
 	// rotated token set, not invalid_grant, and the family must stay intact.
-	second, err := RotateRefresh("twr_lost")
+	second, err := RotateRefresh(context.Background(), "twr_lost")
 	if err != nil {
 		t.Fatalf("grace-window retry: %v", err)
 	}
@@ -159,10 +160,10 @@ func TestRotateRefresh_lostResponseReplaysTokenSetWithinGrace(t *testing.T) {
 func TestCreateDeviceAuth_unknownClientRejected(t *testing.T) {
 	setupAuthDB(t)
 
-	if _, err := CreateDeviceAuth("Traceway Security Check", "http://localhost"); !errors.Is(err, ErrUnknownClient) {
+	if _, err := CreateDeviceAuth(context.Background(), "Traceway Security Check", "http://localhost"); !errors.Is(err, ErrUnknownClient) {
 		t.Fatalf("expected ErrUnknownClient, got %v", err)
 	}
-	if _, err := CreateDeviceAuth(mcpClientID, "http://localhost"); err != nil {
+	if _, err := CreateDeviceAuth(context.Background(), mcpClientID, "http://localhost"); err != nil {
 		t.Fatalf("known client must be accepted, got %v", err)
 	}
 }
@@ -250,7 +251,7 @@ func TestRevokeByToken_revokesFamily(t *testing.T) {
 	insertRefresh(t, "twr_a", "fam-logout")
 	insertRefresh(t, "twr_b", "fam-logout")
 
-	if err := RevokeByToken("twr_a"); err != nil {
+	if err := RevokeByToken(context.Background(), "twr_a"); err != nil {
 		t.Fatalf("RevokeByToken: %v", err)
 	}
 
@@ -261,8 +262,8 @@ func TestRevokeByToken_revokesFamily(t *testing.T) {
 		}
 	}
 	// Unknown token is a no-op, not an error.
-	if err := RevokeByToken("twr_missing"); err != nil {
-		t.Fatalf("RevokeByToken(unknown) should be a no-op, got %v", err)
+	if err := RevokeByToken(context.Background(), "twr_missing"); err != nil {
+		t.Fatalf("RevokeByToken(context.Background(), unknown) should be a no-op, got %v", err)
 	}
 }
 
@@ -278,7 +279,7 @@ func TestPollDeviceToken_singleUse(t *testing.T) {
 		t.Fatalf("approve: %v", err)
 	}
 
-	ts, err := PollDeviceToken(deviceCode)
+	ts, err := PollDeviceToken(context.Background(), deviceCode)
 	if err != nil {
 		t.Fatalf("first poll: %v", err)
 	}
@@ -286,7 +287,7 @@ func TestPollDeviceToken_singleUse(t *testing.T) {
 		t.Fatalf("first poll should issue a token set, got %+v", ts)
 	}
 
-	if _, err := PollDeviceToken(deviceCode); !errors.Is(err, ErrExpiredToken) {
+	if _, err := PollDeviceToken(context.Background(), deviceCode); !errors.Is(err, ErrExpiredToken) {
 		t.Fatalf("a device code must be single-use; second poll = %v", err)
 	}
 }

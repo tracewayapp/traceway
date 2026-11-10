@@ -89,7 +89,7 @@ func createPolicy(t *testing.T, orgId int, definition string) int {
 
 func openTestPageForPolicy(t *testing.T, fixture *escalatorFixture, policyId int, dedupKey string) *models.Page {
 	t.Helper()
-	if _, err := openPage(openPageParams{
+	if _, err := openPage(context.Background(), openPageParams{
 		PolicyId:  policyId,
 		ProjectId: fixture.ProjectId,
 		RuleName:  "Test rule",
@@ -575,7 +575,7 @@ func TestOpenPageRequiresMatchingOrg(t *testing.T) {
 	_ = otherOrgId
 
 	policyId := createPolicy(t, fixture.OrgId, twoStepPolicy(fixture.Alice, fixture.Bob))
-	_, err = openPage(openPageParams{
+	_, err = openPage(context.Background(), openPageParams{
 		PolicyId:  policyId,
 		ProjectId: otherProject,
 		RuleName:  "r",

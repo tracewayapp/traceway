@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const profilesSubdir = "profiles"
@@ -64,7 +64,7 @@ func startProfileArchiveDiskCleanup(ctx context.Context, days int) {
 	go func() {
 		defer traceway.Recover()
 
-		runDirAgeCleanup(dir, days)
+		runDirCleanupTask(ctx, "profile_archives", dir, days)
 
 		ticker := time.NewTicker(tickInterval)
 		defer ticker.Stop()
@@ -73,7 +73,7 @@ func startProfileArchiveDiskCleanup(ctx context.Context, days int) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				runDirAgeCleanup(dir, days)
+				runDirCleanupTask(ctx, "profile_archives", dir, days)
 			}
 		}
 	}()

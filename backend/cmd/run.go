@@ -36,12 +36,11 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
 	"github.com/tracewayapp/traceway/backend/app/synthetics"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"github.com/tracewayapp/traceway/backend/static"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	traceway "go.tracewayapp.com"
-	tracewaygin "go.tracewayapp.com/tracewaygin"
 )
 
 var PostStartupHooks []func(ctx context.Context)
@@ -84,6 +83,8 @@ func Run(opts ...Option) {
 		applyEnvOverrides(cfg)
 	}
 	config.Init(cfg)
+
+	selfMonitoringToken := startSelfMonitoring(cfg.MonitoringTracewayURL)
 
 	if err := services.InitJWT(); err != nil {
 		// A missing signing key is a configuration mistake, not a crash: print
@@ -213,31 +214,8 @@ func Run(opts ...Option) {
 	}
 	router.Use(middleware.SecurityHeaders)
 
-	if monitoringTracewayUrl := cfg.MonitoringTracewayURL; monitoringTracewayUrl != "" {
-		twmw := tracewaygin.New(
-			monitoringTracewayUrl,
-			tracewaygin.WithOnErrorRecording(tracewaygin.RecordingQuery|tracewaygin.RecordingBody|tracewaygin.RecordingHeader|tracewaygin.RecordingUrl),
-		)
-
-		selfToken := monitoringTracewayUrl
-		if i := strings.IndexByte(selfToken, '@'); i >= 0 {
-			selfToken = selfToken[:i]
-		}
-		selfAuth := "Bearer " + selfToken
-
-		router.Use(func(c *gin.Context) {
-			if c.GetHeader("Authorization") == selfAuth {
-				c.Next()
-				return
-			}
-			// The runner poll long-polls for up to 25s; recording it would
-			// register as 25s endpoint samples and wreck self-monitoring p95.
-			if c.Request.URL.Path == "/api/runners/poll" {
-				c.Next()
-				return
-			}
-			twmw(c)
-		})
+	if selfMonitoringToken != "" {
+		router.Use(middleware.SelfMonitoring(selfMonitoringToken)...)
 
 		monitoring.StartClickHouseReporter(ctx)
 		monitoring.StartBackendReporter(ctx)
@@ -336,6 +314,26 @@ func Run(opts ...Option) {
 	notifySystemd(ctx)
 	config.Logln("Starting server on " + listeners[0].Addr().String())
 	serveHTTP(router, listeners[0])
+}
+
+// A bad connection string must not take the server down.
+func startSelfMonitoring(connectionString string) string {
+	if connectionString == "" {
+		return ""
+	}
+	token, _, err := traceway.ParseConnectionString(connectionString)
+	if err == nil {
+		_, err = traceway.Setup(context.Background(), traceway.Options{
+			ConnectionString: connectionString,
+			Version:          traceway.BuildVersion(),
+		})
+	}
+	if err != nil {
+		config.Logln("WARNING: self-monitoring is off: " + err.Error())
+		return ""
+	}
+	config.Logf("Self-monitoring enabled (service name: %s)", traceway.ServiceName())
+	return token
 }
 
 func parsePorts(ports string) []string {
@@ -583,7 +581,7 @@ func createSPAHandler(staticFS fs.FS) gin.HandlerFunc {
 			}
 		}
 
-		statusPage, err := controllers.StatusPageForHost(c.Request.Host)
+		statusPage, err := controllers.StatusPageForHost(c, c.Request.Host)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve status page host: %w", err))
 			return

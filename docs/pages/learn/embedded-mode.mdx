@@ -249,7 +249,7 @@ Embedded mode signs dashboard sessions with the key from `WithJWTSecret`, else f
 | `WithDefaultProject(name, framework, token)`        | Create a default project with a fixed token (can be called multiple times)                         | None                      |
 | `DisableLogging()`                                  | Silence the embedded server's startup and request logs so they don't mix with your app's output    | Logging enabled           |
 | `WithDefaultProjectSourceMapToken(name, token)`     | Set a fixed source map upload token on a default project. Call it after the matching `WithDefaultProject`, since it looks the project up by name | None |
-| `WithMonitoringURL(connectionString)`               | Report the embedded server's own telemetry to another Traceway instance. Takes a connection string in the form `<project_token>@<url>/api/report` | None |
+| `WithMonitoringURL(connectionString)`               | Report the embedded server's own requests, database queries, background tasks, errors, logs and metrics over OpenTelemetry to a Traceway project. Takes a connection string in the form `<project_token>@<url>`; values ending in `/api/report` still work | None |
 | `WithJWTSecret(secret)`                             | Signing key for dashboard sessions, at least 32 characters. Overrides `TRACEWAY_JWT_SECRET`         | Random key per start      |
 
 If the embedded server's startup lines get in the way of your own output, add `tracewaybackend.DisableLogging()` to the option list:

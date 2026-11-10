@@ -16,7 +16,7 @@ type firedNotificationRepository struct{}
 
 func (r *firedNotificationRepository) Insert(ctx context.Context, n shared.FiredNotification) error {
 	batch, err := chdb.Conn.PrepareBatch(
-		chdb.BatchCtx(),
+		chdb.BatchCtx(ctx),
 		"INSERT INTO fired_notifications (project_id, rule_id, rule_type, rule_name, channel_type, channel_name, severity, subject, body, status, error_message, endpoint, url, fired_at)",
 	)
 	if err != nil {

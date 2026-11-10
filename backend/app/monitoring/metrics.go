@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const (
@@ -41,13 +41,13 @@ func RecordIngestBatch(signal, table string, convertMs, insertMs float64, size, 
 }
 
 func RecordHealthchecksDropped(signal string, count int) {
-	traceway.CaptureMetricWithTags("traceway.ingest.healthchecks_dropped", float64(count), map[string]string{
+	traceway.CaptureCount("traceway.ingest.healthchecks_dropped", int64(count), map[string]string{
 		"signal": signal,
 	})
 }
 
 func RecordRateLimited(orgID int) {
-	traceway.CaptureMetricWithTags("traceway.ingest.rate_limited", 1, map[string]string{
+	traceway.CaptureCount("traceway.ingest.rate_limited", 1, map[string]string{
 		"org_id": strconv.Itoa(orgID),
 	})
 }

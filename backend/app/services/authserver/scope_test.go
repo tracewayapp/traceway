@@ -3,6 +3,7 @@
 package authserver
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func approvedDeviceToken(t *testing.T, clientId, userCode string) *models.TokenS
 	if _, err := transactional.DeviceAuthorizationRepository.Approve(db.DB, userCode, 1); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
-	ts, err := PollDeviceToken(deviceCode)
+	ts, err := PollDeviceToken(context.Background(), deviceCode)
 	if err != nil {
 		t.Fatalf("poll: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestDeviceFlow_scopeFollowsClient(t *testing.T) {
 		t.Errorf("traceway-cli-write login scope = %q, want write", write.Scope)
 	}
 
-	rotated, err := RotateRefresh(write.RefreshToken)
+	rotated, err := RotateRefresh(context.Background(), write.RefreshToken)
 	if err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestDeviceFlow_scopeFollowsClient(t *testing.T) {
 		t.Errorf("refresh must keep the write scope, got %q", rotated.Scope)
 	}
 
-	rotatedRead, err := RotateRefresh(read.RefreshToken)
+	rotatedRead, err := RotateRefresh(context.Background(), read.RefreshToken)
 	if err != nil {
 		t.Fatalf("rotate read: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestAuthCode_scopeComesFromTheRequest(t *testing.T) {
 			Scope:               tc.requested,
 		})
 		code, _ := codeFromRedirect(t, redirectTo)
-		ts, err := RedeemAuthorizationCode(client.Id, code, testVerifier, "http://127.0.0.1:8123/callback", "", "")
+		ts, err := RedeemAuthorizationCode(context.Background(), client.Id, code, testVerifier, "http://127.0.0.1:8123/callback", "", "")
 		if err != nil {
 			t.Fatalf("redeem (%q): %v", tc.requested, err)
 		}

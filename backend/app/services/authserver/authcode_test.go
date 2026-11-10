@@ -3,6 +3,7 @@
 package authserver
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
@@ -110,10 +111,10 @@ func TestAuthCode_failedExchangeBurnsCode(t *testing.T) {
 	})
 	code, _ := codeFromRedirect(t, redirectTo)
 
-	if _, err := RedeemAuthorizationCode(client.Id, code, "wrong-verifier-wrong-verifier-wrong-verifier-x", "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RedeemAuthorizationCode(context.Background(), client.Id, code, "wrong-verifier-wrong-verifier-wrong-verifier-x", "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Fatalf("wrong verifier should be invalid_grant, got %v", err)
 	}
-	if _, err := RedeemAuthorizationCode(client.Id, code, testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RedeemAuthorizationCode(context.Background(), client.Id, code, testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Errorf("code should be consumed by the failed exchange, got %v", err)
 	}
 }
@@ -164,7 +165,7 @@ func TestAuthCode_happyPathAndSingleUse(t *testing.T) {
 		t.Fatalf("state should ride back on the redirect, got %q", state)
 	}
 
-	ts, err := RedeemAuthorizationCode(client.Id, code, testVerifier, "http://127.0.0.1:8123/callback", "https://traceway.example.com/mcp", "https://traceway.example.com")
+	ts, err := RedeemAuthorizationCode(context.Background(), client.Id, code, testVerifier, "http://127.0.0.1:8123/callback", "https://traceway.example.com/mcp", "https://traceway.example.com")
 	if err != nil {
 		t.Fatalf("redeem: %v", err)
 	}
@@ -172,7 +173,7 @@ func TestAuthCode_happyPathAndSingleUse(t *testing.T) {
 		t.Fatalf("unexpected token set: %+v", ts)
 	}
 
-	if _, err := RedeemAuthorizationCode(client.Id, code, testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RedeemAuthorizationCode(context.Background(), client.Id, code, testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Fatalf("replayed code should be invalid_grant, got %v", err)
 	}
 }
@@ -192,16 +193,16 @@ func TestAuthCode_rejectsWrongVerifierClientAndRedirect(t *testing.T) {
 		return code
 	}
 
-	if _, err := RedeemAuthorizationCode(client.Id, mint(), "wrong-verifier-wrong-verifier-wrong-verifier-x", "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RedeemAuthorizationCode(context.Background(), client.Id, mint(), "wrong-verifier-wrong-verifier-wrong-verifier-x", "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Errorf("wrong verifier should be invalid_grant, got %v", err)
 	}
-	if _, err := RedeemAuthorizationCode("other-client", mint(), testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RedeemAuthorizationCode(context.Background(), "other-client", mint(), testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Errorf("wrong client should be invalid_grant, got %v", err)
 	}
-	if _, err := RedeemAuthorizationCode(client.Id, mint(), testVerifier, "http://127.0.0.1:9999/other", "", ""); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RedeemAuthorizationCode(context.Background(), client.Id, mint(), testVerifier, "http://127.0.0.1:9999/other", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Errorf("wrong redirect should be invalid_grant, got %v", err)
 	}
-	if _, err := RedeemAuthorizationCode(client.Id, "twa_bogus", testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RedeemAuthorizationCode(context.Background(), client.Id, "twa_bogus", testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Errorf("unknown code should be invalid_grant, got %v", err)
 	}
 }
@@ -218,7 +219,7 @@ func TestAuthCode_expiredCodeRejected(t *testing.T) {
 		t.Fatalf("insert expired code: %v", err)
 	}
 
-	if _, err := RedeemAuthorizationCode(client.Id, "twa_expired", testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
+	if _, err := RedeemAuthorizationCode(context.Background(), client.Id, "twa_expired", testVerifier, "http://127.0.0.1:8123/callback", "", ""); !errors.Is(err, ErrInvalidGrant) {
 		t.Fatalf("expired code should be invalid_grant, got %v", err)
 	}
 	if got, _ := transactional.AuthorizationCodeRepository.FindByCode(db.DB, "twa_expired"); got != nil {

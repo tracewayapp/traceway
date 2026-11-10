@@ -6,12 +6,14 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/config"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type ChConn interface {
@@ -80,6 +82,9 @@ func initExternal() error {
 	}
 
 	Conn = conn
+	if traceway.Enabled() {
+		Conn = tracedConn{inner: conn, opts: dbtrace.Options{System: "clickhouse", Namespace: clickhouseDatabase}}
+	}
 
 	return nil
 }

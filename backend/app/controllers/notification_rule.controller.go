@@ -20,7 +20,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/notifications"
 	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type notificationRuleController struct{}

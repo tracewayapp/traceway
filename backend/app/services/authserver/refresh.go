@@ -1,6 +1,7 @@
 package authserver
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -9,11 +10,10 @@ import (
 	"sync"
 	"time"
 
-	traceway "go.tracewayapp.com"
-
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 var ErrInvalidGrant = errors.New("invalid_grant")
@@ -87,8 +87,8 @@ var (
 // winner's rotated token set is replayed from the rotation cache so the loser
 // recovers) from a genuine replay of a long-since-rotated token (family
 // revoked).
-func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
-	rt, err := transactional.RefreshTokenRepository.FindByToken(db.DB, presented)
+func RotateRefresh(ctx context.Context, presented string) (*models.TokenSetResponse, error) {
+	rt, err := transactional.RefreshTokenRepository.FindByToken(db.BindContext(ctx, db.DB), presented)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 	}
 
 	if rt.Revoked {
-		revokeFamily(rt.FamilyId)
+		revokeFamily(ctx, rt.FamilyId)
 		return nil, ErrInvalidGrant
 	}
 
@@ -105,7 +105,7 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 		return nil, ErrInvalidGrant
 	}
 
-	ts, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.TokenSetResponse, error) {
+	ts, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.TokenSetResponse, error) {
 		affected, err := transactional.RefreshTokenRepository.MarkUsedIfUnused(tx, presented, time.Now())
 		if err != nil {
 			return nil, err
@@ -136,7 +136,7 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 	})
 	if err != nil {
 		if errors.Is(err, errReplay) {
-			revokeFamily(rt.FamilyId)
+			revokeFamily(ctx, rt.FamilyId)
 			return nil, ErrInvalidGrant
 		}
 		if errors.Is(err, errBenignReuse) {
@@ -156,15 +156,15 @@ func RotateRefresh(presented string) (*models.TokenSetResponse, error) {
 // safe to expose on an unauthenticated logout endpoint. Like RotateRefresh it
 // self-manages its transaction because the endpoint may return a non-2xx that
 // the Transactional middleware would otherwise roll back.
-func RevokeByToken(presented string) error {
-	rt, err := transactional.RefreshTokenRepository.FindByToken(db.DB, presented)
+func RevokeByToken(ctx context.Context, presented string) error {
+	rt, err := transactional.RefreshTokenRepository.FindByToken(db.BindContext(ctx, db.DB), presented)
 	if err != nil {
 		return err
 	}
 	if rt == nil {
 		return nil
 	}
-	_, err = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+	_, err = db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (struct{}, error) {
 		return struct{}{}, transactional.RefreshTokenRepository.RevokeFamily(tx, rt.FamilyId)
 	})
 	return err
@@ -175,8 +175,8 @@ func RevokeByToken(presented string) error {
 // rolled back but the revoke must persist. A failed revoke must not change the
 // caller's invalid_grant response, but it is a security-relevant write, so it
 // is reported instead of discarded.
-func revokeFamily(familyId string) {
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+func revokeFamily(ctx context.Context, familyId string) {
+	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (struct{}, error) {
 		return struct{}{}, transactional.RefreshTokenRepository.RevokeFamily(tx, familyId)
 	})
 	if err != nil {

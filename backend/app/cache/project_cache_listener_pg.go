@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 func (c *projectCache) startListener(ctx context.Context) error {

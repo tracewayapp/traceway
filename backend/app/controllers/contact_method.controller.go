@@ -22,9 +22,9 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 type contactMethodController struct{}
@@ -293,7 +293,7 @@ func (c *contactMethodController) Verify(ctx *gin.Context) {
 	}
 	// The attempt is consumed atomically in SQL, before the hash compare: a
 	// check-then-increment would let concurrent requests exceed the cap.
-	attemptAllowed, err := db.ExecuteTransaction(func(attemptTx *sql.Tx) (bool, error) {
+	attemptAllowed, err := db.ExecuteTransactionContext(ctx, func(attemptTx *sql.Tx) (bool, error) {
 		return transactional.UserContactMethodRepository.IncrementVerificationAttempts(attemptTx, method.Id, maxVerificationAttempts)
 	})
 	if err != nil {
@@ -308,7 +308,7 @@ func (c *contactMethodController) Verify(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "The code is not correct."})
 		return
 	}
-	if _, err := db.ExecuteTransaction(func(verifyTx *sql.Tx) (struct{}, error) {
+	if _, err := db.ExecuteTransactionContext(ctx, func(verifyTx *sql.Tx) (struct{}, error) {
 		if err := transactional.UserContactMethodRepository.MarkVerified(verifyTx, method.Id); err != nil {
 			return struct{}{}, err
 		}
@@ -372,7 +372,7 @@ func (c *contactMethodController) Test(ctx *gin.Context) {
 		Method *models.UserContactMethod
 		User   *models.User
 	}
-	loaded, err := db.ExecuteTransaction(func(tx *sql.Tx) (methodAndUser, error) {
+	loaded, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (methodAndUser, error) {
 		method, err := transactional.UserContactMethodRepository.FindById(tx, methodId)
 		if err != nil {
 			return methodAndUser{}, err
@@ -429,7 +429,7 @@ func (c *contactMethodController) loadOwnMethod(ctx *gin.Context) (*models.UserC
 // the outer transaction forever.
 func (c *contactMethodController) loadOwnMethodInOwnTx(ctx *gin.Context) (*models.UserContactMethod, bool) {
 	return c.resolveOwnMethod(ctx, func(methodId int) (*models.UserContactMethod, error) {
-		return db.ExecuteTransaction(func(tx *sql.Tx) (*models.UserContactMethod, error) {
+		return db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.UserContactMethod, error) {
 			return transactional.UserContactMethodRepository.FindById(tx, methodId)
 		})
 	})

@@ -20,10 +20,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type clientController struct{}
@@ -372,7 +372,7 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		metricNames := services.CollectUniqueMetricNames(metricPointsToInsert)
-		go services.AutoRegisterMetrics(projectId, metricNames)
+		go services.AutoRegisterMetrics(c, projectId, metricNames)
 	}
 
 	insertMs := float64(time.Since(insertStart).Microseconds()) / 1000.0

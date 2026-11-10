@@ -385,7 +385,7 @@ func TestMetricThresholdResultCapsNotifiedSeries(t *testing.T) {
 		series = append(series, metricSeries{Key: fmt.Sprintf("h%03d", i), Value: float64(i + 2)})
 	}
 	rule := &models.NotificationRule{Id: 9300, CooldownMinutes: 30}
-	result := metricThresholdResult(rule, cfg, series, uuid.New())
+	result := metricThresholdResult(context.Background(), rule, cfg, series, uuid.New())
 	if len(result.Messages) != maxMetricRuleSeriesNotified+1 {
 		t.Fatalf("messages = %d, want %d", len(result.Messages), maxMetricRuleSeriesNotified+1)
 	}
@@ -395,7 +395,7 @@ func TestMetricThresholdResultCapsNotifiedSeries(t *testing.T) {
 	if last := result.Messages[maxMetricRuleSeriesNotified].Subject; !strings.Contains(last, "7 more series") {
 		t.Errorf("overflow subject = %q", last)
 	}
-	if again := metricThresholdResult(rule, cfg, series, uuid.New()); again.Fired {
+	if again := metricThresholdResult(context.Background(), rule, cfg, series, uuid.New()); again.Fired {
 		t.Errorf("series summarized in the overflow notice must also wait out the cooldown, got %d messages", len(again.Messages))
 	}
 }

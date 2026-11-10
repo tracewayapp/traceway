@@ -22,7 +22,7 @@ func (e *taskRepository) InsertAsync(ctx context.Context, lines []models.Task) e
 	if len(lines) == 0 {
 		return nil
 	}
-	return chdb.SendBatch("INSERT INTO tasks_v2 (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root)", func(batch driver.Batch) error {
+	return chdb.SendBatch(ctx, "INSERT INTO tasks_v2 (id, project_id, task_name, duration, recorded_at, client_ip, attributes, app_version, server_name, trace_id, span_id, parent_span_id, is_root)", func(batch driver.Batch) error {
 		for _, t := range lines {
 			attributesJSON := "{}"
 			if len(t.Attributes) != 0 {

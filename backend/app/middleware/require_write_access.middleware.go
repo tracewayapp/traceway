@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 // RequireWriteAccess middleware checks if the user has write access to the project's organization.
@@ -30,7 +30,7 @@ func InitRequireWriteAccess() {
 			return
 		}
 
-		role, err := db.ExecuteTransaction(func(tx *sql.Tx) (string, error) {
+		role, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (string, error) {
 			return transactional.ProjectRepository.GetEffectiveRole(tx, projectId, userId)
 		})
 

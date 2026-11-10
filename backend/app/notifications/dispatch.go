@@ -14,7 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 func sanitizeForDB(s string) string {
@@ -31,8 +31,8 @@ func sanitizeForDB(s string) string {
 // is persisted; callers use it to gate dedup recording, and the cooldown is
 // recorded here at enqueue time (the durable promise) so a rule cannot
 // re-fire while the outbox is still retrying.
-func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
-	channel, dbErr := db.ExecuteTransaction(func(tx *sql.Tx) (*models.NotificationChannel, error) {
+func dispatch(ctx context.Context, rule *models.NotificationRuleWithChannel, msg Message) bool {
+	channel, dbErr := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.NotificationChannel, error) {
 		return transactional.NotificationChannelRepository.FindById(tx, rule.ChannelId)
 	})
 	if dbErr != nil || channel == nil {
@@ -56,7 +56,7 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 			recordFiredNotification(rule, msg, "failed", "escalation pager not initialized")
 			return false
 		}
-		opened, err := pageOpener(channel.Config, rule, msg)
+		opened, err := pageOpener(ctx, channel.Config, rule, msg)
 		if err != nil {
 			recordFiredNotification(rule, msg, "failed", err.Error())
 			traceway.CaptureException(fmt.Errorf("failed to open page (rule=%d): %w", rule.Id, err))
@@ -73,7 +73,7 @@ func dispatch(rule *models.NotificationRuleWithChannel, msg Message) bool {
 
 	ruleId := rule.Id
 	projectId := rule.ProjectId
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
+	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (int, error) {
 		return outbox.Enqueue(tx, outbox.Delivery{
 			Kind:        models.OutboxKindRule,
 			AdapterType: channel.ChannelType,

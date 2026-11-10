@@ -15,9 +15,9 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/notifications"
 	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type notificationChannelController struct{}
@@ -264,7 +264,7 @@ func (ctrl *notificationChannelController) Test(ctx *gin.Context) {
 		return
 	}
 
-	channel, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.NotificationChannel, error) {
+	channel, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.NotificationChannel, error) {
 		return transactional.NotificationChannelRepository.FindById(tx, id)
 	})
 	if err != nil {
@@ -284,7 +284,7 @@ func (ctrl *notificationChannelController) Test(ctx *gin.Context) {
 			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "An escalation policy is required."})
 			return
 		}
-		opened, err := oncall.OpenTestPage(policyId, projectId, channel.Id, channel.Name)
+		opened, err := oncall.OpenTestPage(ctx, policyId, projectId, channel.Id, channel.Name)
 		if err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("test page failed: %w", err))
 			return

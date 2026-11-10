@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	traceway "go.tracewayapp.com"
-
 	"github.com/tracewayapp/traceway/backend/app/synthetics"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const syntheticsReportInterval = 10 * time.Second
@@ -40,7 +39,7 @@ func StartSyntheticsReporter(ctx context.Context) {
 }
 
 func reportSyntheticsOnce(baselines *syntheticsBaselines) {
-	stats, err := synthetics.HealthSnapshot()
+	stats, err := synthetics.HealthSnapshot(context.Background())
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to snapshot synthetics health for metrics: %w", err))
 		return

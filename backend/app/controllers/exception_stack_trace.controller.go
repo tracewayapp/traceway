@@ -18,10 +18,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type exceptionStackTraceController struct{}
@@ -251,7 +251,7 @@ func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
 	if request.ResolvePages {
 		userId := middleware.GetUserId(c)
 		now := time.Now().UTC()
-		resolvedPages, err = db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
+		resolvedPages, err = db.ExecuteTransactionContext(c, func(tx *sql.Tx) (int, error) {
 			resolved := 0
 			for _, hash := range request.Hashes {
 				pages, err := transactional.PageRepository.FindUnresolvedByIssueHash(tx, projectId, hash)

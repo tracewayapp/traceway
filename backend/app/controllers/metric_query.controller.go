@@ -15,10 +15,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type metricQueryController struct{}
@@ -140,7 +140,7 @@ func (c *metricQueryController) Query(ctx *gin.Context) {
 	defer cancel()
 
 	unitMap := make(map[string]string)
-	registry, regErr := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.MetricRegistry, error) {
+	registry, regErr := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.MetricRegistry, error) {
 		return transactional.MetricRegistryRepository.FindByProject(tx, projectId)
 	})
 	if regErr != nil {
@@ -245,7 +245,7 @@ func (c *metricQueryController) Discover(ctx *gin.Context) {
 		return
 	}
 
-	registry, regErr := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.MetricRegistry, error) {
+	registry, regErr := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.MetricRegistry, error) {
 		return transactional.MetricRegistryRepository.FindByProject(tx, projectId)
 	})
 
@@ -312,7 +312,7 @@ func (c *metricQueryController) DiscoverOrg(ctx *gin.Context) {
 	}
 
 	userId := middleware.GetUserId(ctx)
-	projects, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
+	projects, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.Project, error) {
 		role, err := transactional.OrganizationRepository.GetUserRole(tx, organizationId, userId)
 		if err != nil {
 			return nil, err
@@ -425,7 +425,7 @@ func (c *metricQueryController) UpdateRegistry(ctx *gin.Context) {
 		return
 	}
 
-	updated, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.MetricRegistry, error) {
+	updated, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.MetricRegistry, error) {
 		entry, err := transactional.MetricRegistryRepository.FindByProjectAndName(tx, projectId, req.Name)
 		if err != nil {
 			return nil, err

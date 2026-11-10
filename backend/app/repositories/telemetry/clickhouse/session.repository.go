@@ -23,7 +23,7 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 	if len(sessions) == 0 {
 		return nil
 	}
-	return chdb.SendBatch("INSERT INTO sessions (id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id, version)", func(batch driver.Batch) error {
+	return chdb.SendBatch(ctx, "INSERT INTO sessions (id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id, version)", func(batch driver.Batch) error {
 		for _, s := range sessions {
 			attrs := s.Attributes
 			if attrs == nil {

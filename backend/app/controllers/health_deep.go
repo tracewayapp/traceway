@@ -9,7 +9,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/slo"
 	"github.com/tracewayapp/traceway/backend/app/synthetics"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type healthDeepController struct{}
@@ -66,12 +66,12 @@ func (h healthDeepController) Get(c *gin.Context) {
 		resp.Engine = &engine
 	}
 	// Best-effort: health must not 500 because the main DB hiccuped.
-	if outboxStats, err := outbox.HealthSnapshot(); err == nil {
+	if outboxStats, err := outbox.HealthSnapshot(c); err == nil {
 		resp.Outbox = outboxStats
 	} else {
 		traceway.CaptureException(fmt.Errorf("failed to load outbox health: %w", err))
 	}
-	if syntheticsStats, err := synthetics.HealthSnapshot(); err == nil {
+	if syntheticsStats, err := synthetics.HealthSnapshot(c); err == nil {
 		resp.Synthetics = syntheticsStats
 	} else {
 		traceway.CaptureException(fmt.Errorf("failed to load synthetics health: %w", err))

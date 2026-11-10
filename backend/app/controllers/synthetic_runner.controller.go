@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -16,8 +17,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/synthetics"
-
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type syntheticRunnerController struct{}
@@ -76,7 +76,7 @@ func (ctrl *syntheticRunnerController) Poll(ctx *gin.Context) {
 	deadline := time.NewTimer(runnerPollWindow)
 	defer deadline.Stop()
 	for {
-		jobs, err := claimRunnerJobs(runner, maxJobs)
+		jobs, err := claimRunnerJobs(ctx, runner, maxJobs)
 		if err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to claim browser runs: %w", err))
 			return
@@ -102,10 +102,10 @@ func (ctrl *syntheticRunnerController) Poll(ctx *gin.Context) {
 	}
 }
 
-func claimRunnerJobs(runner *models.SyntheticRunner, maxJobs int) ([]runnerJob, error) {
+func claimRunnerJobs(ctx context.Context, runner *models.SyntheticRunner, maxJobs int) ([]runnerJob, error) {
 	claimedBy := runnerClaimedBy(runner.Name)
 	now := time.Now().UTC()
-	return db.ExecuteTransaction(func(tx *sql.Tx) ([]runnerJob, error) {
+	return db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]runnerJob, error) {
 		due, err := transactional.CheckRunRepository.FindClaimableBrowser(tx, now, maxJobs)
 		if err != nil {
 			return nil, err
@@ -187,7 +187,7 @@ func (ctrl *syntheticRunnerController) Result(ctx *gin.Context) {
 		return
 	}
 
-	run, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.CheckRun, error) {
+	run, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.CheckRun, error) {
 		return transactional.CheckRunRepository.FindById(tx, runId)
 	})
 	if err != nil {

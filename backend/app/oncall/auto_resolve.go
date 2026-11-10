@@ -1,6 +1,7 @@
 package oncall
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -34,8 +35,8 @@ func AutoResolveByDedupKeyTx(tx *sql.Tx, ruleId int, dedupToken string, now time
 // notifications page resolver in cmd/run.go (that caller holds no
 // transaction; nesting one would deadlock the single-connection SQLite main
 // DB).
-func AutoResolveByDedupKey(ruleId int, dedupToken string) error {
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+func AutoResolveByDedupKey(ctx context.Context, ruleId int, dedupToken string) error {
+	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
 		return AutoResolveByDedupKeyTx(tx, ruleId, dedupToken, time.Now().UTC())
 	})
 	return err

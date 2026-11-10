@@ -6,6 +6,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"net/http"
 	"sort"
 	"strings"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type dashboardController struct{}
@@ -30,7 +30,7 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
 		return
 	}
-	traceway.GetAttributesFromContext(c).SetTag("project_id", projectId.String())
+	traceway.SetAttribute(c, "project_id", projectId.String())
 
 	now := time.Now()
 	start := now.Add(-24 * time.Hour)

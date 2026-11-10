@@ -55,7 +55,7 @@ func evaluateTaskFailureRate(ctx context.Context, rule *models.NotificationRule,
 	if taskName == "" || taskName == "*" {
 		taskName = "all tasks"
 	}
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildTaskFailureRateMessage(taskName, rate, cfg.ThresholdPercent, failed, total, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }

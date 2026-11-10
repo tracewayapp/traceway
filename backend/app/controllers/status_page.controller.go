@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -23,8 +24,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/storage"
-
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type statusPageController struct{}
@@ -375,7 +375,7 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 		page   *models.StatusPage
 		checks []*models.SyntheticCheck
 	}
-	loaded, err := db.ExecuteTransaction(func(tx *sql.Tx) (pageWithChecks, error) {
+	loaded, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (pageWithChecks, error) {
 		page, err := transactional.StatusPageRepository.FindPublicBySlug(tx, slug)
 		if err != nil || page == nil {
 			return pageWithChecks{}, err
@@ -440,7 +440,7 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 			day.MaxLatencyMs = 0
 		}
 
-		incidents, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.CheckIncident, error) {
+		incidents, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.CheckIncident, error) {
 			return transactional.CheckIncidentRepository.FindByCheckSince(tx, check.Id, from)
 		})
 		if err != nil {
@@ -471,7 +471,7 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 		})
 	}
 
-	manualIncidents, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.CheckIncident, error) {
+	manualIncidents, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.CheckIncident, error) {
 		return transactional.CheckIncidentRepository.FindByStatusPageSince(tx, loaded.page.Id, from)
 	})
 	if err != nil {
@@ -493,7 +493,7 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 	for i, source := range pastIncidents {
 		incidentIds[i] = source.incident.Id
 	}
-	updates, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.IncidentUpdate, error) {
+	updates, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.IncidentUpdate, error) {
 		return transactional.IncidentUpdateRepository.FindByIncidentIds(tx, incidentIds)
 	})
 	if err != nil {
@@ -582,7 +582,7 @@ func (ctrl *statusPageController) UploadLogo(ctx *gin.Context) {
 // PublicLogo streams the logo of a public status page.
 func (ctrl *statusPageController) PublicLogo(ctx *gin.Context) {
 	slug := strings.ToLower(ctx.Param("slug"))
-	page, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.StatusPage, error) {
+	page, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.StatusPage, error) {
 		return transactional.StatusPageRepository.FindPublicBySlug(tx, slug)
 	})
 	if err != nil {
@@ -620,12 +620,12 @@ func isDashboardHost(host, requestHost string) bool {
 	return false
 }
 
-func StatusPageForHost(requestHost string) (*models.StatusPage, error) {
+func StatusPageForHost(ctx context.Context, requestHost string) (*models.StatusPage, error) {
 	host := normalizeHost(requestHost)
 	if host == "" || !customDomainPattern.MatchString(host) || isDashboardHost(host, "") {
 		return nil, nil
 	}
-	return db.ExecuteTransaction(func(tx *sql.Tx) (*models.StatusPage, error) {
+	return db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.StatusPage, error) {
 		return transactional.StatusPageRepository.FindPublicByCustomDomain(tx, host)
 	})
 }

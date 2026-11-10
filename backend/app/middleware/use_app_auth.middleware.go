@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -11,7 +12,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
 )
@@ -35,7 +36,7 @@ func InitUseAppAuth() {
 			return
 		}
 
-		identity, err := AuthenticateBearer(strings.TrimPrefix(authHeader, "Bearer "))
+		identity, err := AuthenticateBearer(c, strings.TrimPrefix(authHeader, "Bearer "))
 		if err != nil {
 			if errors.Is(err, ErrInvalidBearer) {
 				c.AbortWithStatus(http.StatusUnauthorized)
@@ -95,9 +96,9 @@ func (b *BearerIdentity) HasAgentWriteScope() bool {
 	return b.IsAgent() && b.Scope == models.ScopeWrite
 }
 
-func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
+func AuthenticateBearer(ctx context.Context, tokenString string) (*BearerIdentity, error) {
 	if strings.HasPrefix(tokenString, "twp_") || strings.HasPrefix(tokenString, "tww_") {
-		pat, err := transactional.PersonalAccessTokenRepository.FindActiveByToken(db.DB, tokenString)
+		pat, err := transactional.PersonalAccessTokenRepository.FindActiveByToken(db.BindContext(ctx, db.DB), tokenString)
 		if err != nil {
 			return nil, err
 		}

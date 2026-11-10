@@ -13,7 +13,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/synthetics/browserexec"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 var missedTotal uint64
@@ -53,7 +53,9 @@ func Start(ctx context.Context) {
 				return
 			case <-ticker.C:
 			}
-			ScheduleOnce(ctx, time.Now().UTC())
+			traceway.RunTask(ctx, "synthetics.schedule", func(ctx context.Context) {
+				ScheduleOnce(ctx, time.Now().UTC())
+			})
 		}
 	}()
 
@@ -70,7 +72,7 @@ func ScheduleOnce(ctx context.Context, now time.Time) {
 		browserRuns  bool
 		dueSaturated bool
 	}
-	result, err := db.ExecuteTransaction(func(tx *sql.Tx) (tickResult, error) {
+	result, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (tickResult, error) {
 		var res tickResult
 		if !db.IsSQLite() {
 			if _, err := tx.Exec(fmt.Sprintf("SELECT pg_advisory_xact_lock(%d)", schedulerAdvisoryLockId)); err != nil {
@@ -132,7 +134,7 @@ func ScheduleOnce(ctx context.Context, now time.Time) {
 		return res, nil
 	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("synthetics scheduler tick failed: %w", err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("synthetics scheduler tick failed: %w", err))
 		return
 	}
 
@@ -152,7 +154,7 @@ func ScheduleOnce(ctx context.Context, now time.Time) {
 			TlsDaysRemaining: -1,
 		})
 		if insertErr != nil {
-			traceway.CaptureException(fmt.Errorf("failed to record missed check result (check=%d run=%d): %w", run.CheckId, run.Id, insertErr))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to record missed check result (check=%d run=%d): %w", run.CheckId, run.Id, insertErr))
 		}
 	}
 

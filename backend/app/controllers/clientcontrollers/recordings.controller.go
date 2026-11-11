@@ -11,7 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models/clientmodels"
 	"github.com/tracewayapp/traceway/backend/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/app/recordings"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const maxRecordingSegments = 100

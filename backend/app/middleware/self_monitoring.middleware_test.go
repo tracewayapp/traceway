@@ -29,6 +29,7 @@ func selfMonitoredRouter(t *testing.T) (*gin.Engine, *tracetest.SpanRecorder) {
 	router.GET("/api/items/:id", ok)
 	router.POST("/api/otel/v1/traces", ok)
 	router.POST("/api/runners/poll", ok)
+	router.POST("/api/otel/v1/opamp", ok)
 	router.GET("/mcp", ok)
 	router.POST("/mcp", ok)
 	router.GET("/assets/*filepath", ok)
@@ -74,6 +75,7 @@ func TestSelfMonitoringSkipsStreamsStaticAndUnmatched(t *testing.T) {
 	router, recorder := selfMonitoredRouter(t)
 
 	serve(router, http.MethodPost, "/api/runners/poll", "")
+	serve(router, http.MethodPost, "/api/otel/v1/opamp", "Bearer customer-token")
 	serve(router, http.MethodGet, "/mcp", "")
 	serve(router, http.MethodGet, "/assets/app.js", "")
 	serve(router, http.MethodGet, "/some/spa/page", "")
@@ -135,19 +137,24 @@ func TestSelfMonitoringKeepsIngestStatementsOutOfTheTrace(t *testing.T) {
 		c.Status(http.StatusOK)
 	}
 	router.POST("/api/report", probe)
+	router.POST("/api/recordings", probe)
 	router.GET("/api/projects", probe)
 
 	serve(router, http.MethodPost, "/api/report", "")
+	serve(router, http.MethodPost, "/api/recordings", "")
 	serve(router, http.MethodGet, "/api/projects", "")
 
 	if statementsTraced["/api/report"] {
 		t.Fatal("ingest statements grow with customer traffic and must not be traced")
 	}
+	if statementsTraced["/api/recordings"] {
+		t.Fatal("recording ingest statements grow with customer traffic and must not be traced")
+	}
 	if !statementsTraced["/api/projects"] {
 		t.Fatal("dashboard statements must be traced")
 	}
-	if n := len(recorder.Ended()); n != 2 {
-		t.Fatalf("both requests must still be traced, got %d spans", n)
+	if n := len(recorder.Ended()); n != 3 {
+		t.Fatalf("all requests must still be traced, got %d spans", n)
 	}
 }
 

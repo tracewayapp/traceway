@@ -27,7 +27,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/sdkconfig"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -119,7 +119,7 @@ func (opampController) Poll(c *gin.Context) {
 
 	entry, err := cache.SdkConfigCache.Get(projectId)
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("loading SDK config for OpAMP poll: %w", err))
+		traceway.CaptureExceptionContext(c, fmt.Errorf("loading SDK config for OpAMP poll: %w", err))
 		c.Header("Retry-After", strconv.Itoa(int(unavailableRetryIn.Seconds())))
 		resp.ErrorResponse = &protobufs.ServerErrorResponse{
 			Type:         protobufs.ServerErrorResponseType_ServerErrorResponseType_Unavailable,
@@ -168,7 +168,7 @@ func (opampController) Poll(c *gin.Context) {
 			msg.RemoteConfigStatus.GetStatus() == protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED {
 			stage = "applied"
 		}
-		_, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+		_, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (bool, error) {
 			for _, value := range result.MatchedCaptures {
 				id, err := uuid.Parse(value)
 				if err != nil {
@@ -181,7 +181,7 @@ func (opampController) Poll(c *gin.Context) {
 			return true, nil
 		})
 		if err != nil {
-			traceway.CaptureException(err)
+			traceway.CaptureExceptionContext(c, err)
 		}
 	}
 	write(c, resp)

@@ -21,6 +21,8 @@ var untracedRoutes = map[string]bool{
 	// Held open for up to 25s by design; as endpoint samples they would
 	// dominate every latency percentile.
 	"/api/runners/poll": true,
+	// Every browser polls for configuration, so these would dominate endpoint samples.
+	"/api/otel/v1/opamp": true,
 }
 
 // Ingest requests stay endpoints, but their statements are not traced: they
@@ -28,6 +30,7 @@ var untracedRoutes = map[string]bool{
 // writes.
 var ingestRoutes = map[string]bool{
 	"/api/report":                      true,
+	"/api/recordings":                  true,
 	"/api/profiles/ingest":             true,
 	"/api/otel/v1/traces":              true,
 	"/api/otel/v1/metrics":             true,

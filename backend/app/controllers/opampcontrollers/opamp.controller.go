@@ -231,7 +231,8 @@ func DescriptionAttributes(description *protobufs.AgentDescription) map[string]s
 	attrs := map[string]string{}
 	add := func(kvs []*protobufs.KeyValue) {
 		for _, kv := range kvs {
-			if len(attrs) >= maxAttributes || kv.GetKey() == "" || len(kv.GetKey()) > maxAttributeKey {
+			_, exists := attrs[kv.GetKey()]
+			if (!exists && len(attrs) >= maxAttributes) || kv.GetKey() == "" || len(kv.GetKey()) > maxAttributeKey {
 				continue
 			}
 			value, ok := anyValueString(kv.GetValue())

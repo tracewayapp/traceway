@@ -8,6 +8,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
 	"strings"
+	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
@@ -200,6 +201,29 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 		return nil, err
 	}
 
+	records := make([]models.LogRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, row.toModel())
+	}
+	return records, nil
+}
+
+// FindBySessionId returns a browser session's log records in a time window, oldest first.
+func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
+		`SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
+			severity_text, severity_number, service_name, body,
+			resource_schema_url, resource_attributes,
+			scope_schema_url, scope_name, scope_version, scope_attributes,
+			log_attributes
+		FROM log_records
+		WHERE project_id = :project_id AND json_extract_string(log_attributes, '$."session.id"') = :session_id
+			AND timestamp >= :from AND timestamp <= :to
+		ORDER BY timestamp ASC LIMIT :limit`,
+		lit.P{"project_id": projectId, "session_id": sessionId, "from": from.UTC(), "to": to.UTC(), "limit": limit})
+	if err != nil {
+		return nil, err
+	}
 	records := make([]models.LogRecord, 0, len(rows))
 	for _, row := range rows {
 		records = append(records, row.toModel())

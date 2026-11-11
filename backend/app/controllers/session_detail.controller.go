@@ -142,7 +142,7 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session segments: %w", err))
 		return
 	}
-	segments = shared.SegmentsWithinSession(segments, session.CutoffAt)
+	segments = uniqueSegmentFiles(shared.SegmentsWithinSession(segments, session.CutoffAt))
 
 	_, span = traceway.StartSpan(c, "reading session segments")
 	bodies := readSegments(c.Request.Context(), segments)
@@ -191,6 +191,21 @@ type segmentBody struct {
 	events  []json.RawMessage
 	logs    []json.RawMessage
 	actions []json.RawMessage
+}
+
+// uniqueSegmentFiles keeps one row per stored file. A retried upload, or a segment uploaded both as an exception's
+// clip and as part of the session, adds a second row for the same file, which would otherwise replay twice.
+func uniqueSegmentFiles(segments []models.SessionRecording) []models.SessionRecording {
+	seen := make(map[string]bool, len(segments))
+	kept := segments[:0]
+	for _, seg := range segments {
+		if seen[seg.FilePath] {
+			continue
+		}
+		seen[seg.FilePath] = true
+		kept = append(kept, seg)
+	}
+	return kept
 }
 
 func readSegments(ctx context.Context, segments []models.SessionRecording) []*segmentBody {

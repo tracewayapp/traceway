@@ -138,6 +138,9 @@ func Run(opts ...Option) {
 	if err := cache.ProjectCache.Init(ctx); err != nil {
 		panic(fmt.Errorf("projects cache could not be initialized: %w", err))
 	}
+	if err := cache.SdkConfigCache.Init(ctx); err != nil {
+		panic(fmt.Errorf("SDK config cache could not be initialized: %w", err))
+	}
 	services.InitSourceMapCache(
 		parsePositiveInt(cfg.SourceMapCacheMaxEntries, 200),
 		int64(parsePositiveInt(cfg.SourceMapCacheMaxBytesMB, 500))*1024*1024,

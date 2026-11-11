@@ -2,7 +2,7 @@ module github.com/tracewayapp/traceway/benchmarks/processor/loadgen
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require go.opentelemetry.io/collector/pdata v1.60.0
 

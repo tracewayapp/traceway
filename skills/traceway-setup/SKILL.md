@@ -653,15 +653,21 @@ Zero-code path for OpenRouter users: in OpenRouter Settings -> Observability, ad
 
 ## Step 7: Frontend and Mobile
 
-Frontend and mobile projects do NOT use OTel; they use the Traceway SDKs reporting to `/api/report` with connection string `<project-token>@https://<instance>/api/report`.
+Browser and mobile integrations use the Traceway SDKs. Choose the browser SDK generation from the live npm registry, not from repository versions or an assumption that `latest` has moved:
+
+- **If stable v2 is published on npm** for `@tracewayapp/frontend` and the selected framework wrapper, install that stable v2 release and read [frontend-js-v2.md](frontend-js-v2.md). Check with `npm view @tracewayapp/frontend@2 version --json` and the same query for the wrapper; the `@2` range excludes prereleases. An existing v2 integration stays on v2. v2 exports logs/spans through OTLP, replay through `/api/recordings`, and receives browser-only remote configuration through OpAMP. Keep production defaults; do not turn on `recordAllSessions` merely to prove setup works.
+- **If stable v2 is not published**, install the latest compatible stable v1 SDK and follow [frontend-js.md](frontend-js.md). Do not install unpublished v2, substitute a local checkout, or add v2-only options to v1. A network/authentication failure is not proof that v2 is unpublished: retry the registry check or report that version selection is unverified. Do not silently downgrade an existing integration.
+- **Mobile** SDKs retain their own versioning and `/api/report` transport. The browser-v2 branch and OpAMP controls do not apply to React Native, Flutter, Android, or iOS.
+
+The legacy `<project-token>@https://<instance>/api/report` connection string remains accepted by both browser generations; v2 also accepts the server base URL.
 
 **Browser** (React / Vue / Svelte / jQuery / plain JS), three pieces, all expected:
 
-1. **SDK**: `npm install @tracewayapp/react` (or `vue`, `svelte`, `jquery`, `frontend` for plain JS) and initialize with the connection string (React: wrap the app in `<TracewayProvider connectionString="...">`). Captures errors, web vitals, and session replay.
+1. **SDK**: install the registry-verified version of `@tracewayapp/react` (or `vue`, `svelte`, `jquery`, `frontend` for plain JS) and initialize with the connection string (React: wrap the app in `<TracewayProvider connectionString="...">`). Captures errors, web vitals, and session replay.
 2. **Bundler plugin**: `npm install -D @tracewayapp/bundler-plugin`, then add `tracewayDebugIds()` from `@tracewayapp/bundler-plugin/vite` (or `/rollup`, or `TracewayDebugIdsWebpackPlugin` from `/webpack`) to the bundler config, with source maps enabled (`build.sourcemap: true` / `devtool: "source-map"`).
 3. **Source map upload**: `npm install -D @tracewayapp/sourcemap-upload`, then run `traceway-sourcemaps --url <instance> --token <source-map-upload-token> --directory ./dist` as a postbuild or CI step (env vars: `TRACEWAY_URL`, `TRACEWAY_SOURCEMAP_TOKEN`). The upload token comes from the browser project and is a CI secret, never committed.
 
-For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read `frontend-js.md` in this skill directory. Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
+For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read the version-specific reference selected above (`frontend-js-v2.md` or `frontend-js.md`). Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
 
 **Full-stack JS** (Next.js, SvelteKit, Remix): only when "Analyze the Architecture" confirmed the framework's server actually serves the app in production. A frontend-only deployment gets just the browser pieces above; a separate backend follows "Backend OTel Setup". When it is genuinely full-stack, integrate both sides under the two confirmed projects: server side follows "Backend OTel Setup" with the backend project's token, and browser side follows the three pieces above with the frontend project's token. For Next.js specifically, use the `instrumentation.ts` framework hook in the "Next.js server exception" above; never apply the generic Node preload to it.
 

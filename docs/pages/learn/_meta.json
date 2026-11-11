@@ -10,6 +10,7 @@
   "symbolicator-library": { "display": "hidden" },
   "collector-symbolicator": { "display": "hidden" },
   "sessions": "Sessions",
+  "remote-config": "Remote SDK Config",
   "attributes": "Attributes",
   "spans": "Spans",
   "healthchecks": "Healthchecks",

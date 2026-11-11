@@ -4,17 +4,27 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { ArrowRight } from '@lucide/svelte';
+	import { ArrowRight, Radar } from '@lucide/svelte';
+	import SdkCaptureDialog from '$lib/components/sdk-config/sdk-capture-dialog.svelte';
 	import type { ExceptionOccurrence, LinkedTrace, SessionRecording } from '$lib/types/exceptions';
 	import { formatDuration, getStatusColor, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { AttributesGrid } from '$lib/components/ui/attributes-grid';
 	import { LabelValue } from '../ui/label-value';
-	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import {
+		projectsState,
+		isFrontendFramework,
+		SDK_CONFIG_FRAMEWORKS
+	} from '$lib/state/projects.svelte';
 	import SessionReplay from './session-replay.svelte';
 	import SessionLogsTable from './session-logs-table.svelte';
 	import SessionActionsTable from './session-actions-table.svelte';
 	import DistributedTraceCard from '$lib/components/distributed-trace/distributed-trace-card.svelte';
+	import {
+		loadSessionTimeline,
+		pickBreadcrumbs,
+		type SessionBreadcrumbs
+	} from '$lib/utils/session-timeline';
 
 	interface Props {
 		occurrence: ExceptionOccurrence;
@@ -51,8 +61,51 @@
 
 	const recordingEvents = $derived(sessionRecording?.events ?? null);
 	const hasReplay = $derived(!!recordingEvents && recordingEvents.length > 0);
-	const logs = $derived(sessionRecording?.logs ?? []);
-	const actions = $derived(sessionRecording?.actions ?? []);
+	const replayStatus = $derived(occurrence.attributes?.['traceway.replay.status']);
+	const replayExplanation = $derived(
+		(
+			{
+				disabled: 'Replay recording was disabled by SDK settings, a remote rule, or plan limits.',
+				cooldown:
+					'This error occurred during the configured replay cooldown. Open the session to inspect the nearby clip.',
+				session_clip_limit:
+					'This session reached its replay clip limit. Breadcrumbs are still captured within collection limits.',
+				trigger_disabled: 'The error replay trigger was disabled.',
+				sampled_out: 'The replay trigger sampled out this occurrence.',
+				collection_limit:
+					'The session reached its diagnostic collection budget. Errors and web vitals continue.',
+				buffer_unavailable:
+					'No replay segment was available. Recording may not have started yet or the buffer may have been evicted.',
+				requested:
+					'The SDK requested a replay upload, but no recording is available here yet. The upload may be pending or may have failed.',
+				not_triggered: 'No replay trigger matched this error.'
+			} as Record<string, string>
+		)[replayStatus ?? ''] ?? 'No recording is available. This SDK did not report why.'
+	);
+	let timeline = $state<SessionBreadcrumbs | null>(null);
+	$effect(() => {
+		const id = sessionId;
+		const at = Date.parse(occurrence.recordedAt);
+		timeline = null;
+		if (!id || !isFrontend || !Number.isFinite(at)) return;
+		let cancelled = false;
+		loadSessionTimeline(
+			id,
+			at - 600_000,
+			at + 1_000,
+			projectsState.currentProjectId ?? undefined
+		).then((result) => {
+			if (!cancelled) timeline = result;
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+	const breadcrumbs = $derived(pickBreadcrumbs(timeline, sessionRecording));
+	const logs = $derived(breadcrumbs.logs);
+	const actions = $derived(breadcrumbs.actions);
+	// Without a replay to seek, times read best relative to the exception.
+	const timelineOrigin = $derived(sessionRecording?.startedAt ?? occurrence.recordedAt);
 	const hasLogs = $derived(logs.length > 0);
 	const hasActions = $derived(actions.length > 0);
 	// Logs/actions tables are only meaningful for frontend-framework projects.
@@ -66,18 +119,69 @@
 	function handleSeek(offsetMs: number) {
 		replayRef?.seek(offsetMs);
 	}
+
+	let captureOpen = $state(false);
+	const canCapture = $derived(
+		!!projectsState.currentProject &&
+			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework) &&
+			projectsState.canWriteCurrentProject
+	);
+	const captureTarget = $derived.by(() => {
+		const attrs = occurrence.attributes ?? {};
+		if (attrs['service.instance.id']) {
+			return { kind: 'instance' as const, value: attrs['service.instance.id'], label: 'device' };
+		}
+		if (attrs['user.id']) return { kind: 'user' as const, value: attrs['user.id'], label: 'user' };
+		return sessionId ? { kind: 'session' as const, value: sessionId, label: 'session' } : null;
+	});
 </script>
 
-<!-- Session Replay -->
+{#snippet sessionActions()}
+	<div class="flex items-center gap-2">
+		{#if canCapture && captureTarget}
+			<Button variant="outline" size="sm" onclick={() => (captureOpen = true)}>
+				<Radar class="size-4" />
+				Capture {captureTarget.label}
+			</Button>
+		{/if}
+		<Button variant="outline" size="sm" onclick={() => goto(resolve(`/sessions/${sessionId}`))}>
+			View full session
+			<ArrowRight class="size-4" />
+		</Button>
+	</div>
+{/snippet}
+
+{#if canCapture && captureTarget}
+	<SdkCaptureDialog bind:open={captureOpen} kind={captureTarget.kind} value={captureTarget.value} />
+{/if}
+
+{#if isFrontend && (Number(occurrence.attributes?.['traceway.context.evicted']) > 0 || Number(occurrence.attributes?.['traceway.collection.dropped']) > 0)}
+	<p class="text-sm text-muted-foreground" role="status">
+		This context may be incomplete. The SDK reported {occurrence.attributes?.[
+			'traceway.context.evicted'
+		] ?? '0'} buffer evictions and {occurrence.attributes?.['traceway.collection.dropped'] ?? '0'} diagnostic
+		events dropped at its collection limit.
+	</p>
+{/if}
+
+{#if isFrontend && !hasReplay}
+	<div class="rounded-md border p-4 text-sm" role="status">
+		<p class="font-medium">Replay unavailable</p>
+		<p class="mt-1 text-muted-foreground">{replayExplanation}</p>
+		{#if sessionId}
+			<Button variant="link" class="px-0" onclick={() => goto(resolve(`/sessions/${sessionId}`))}
+				>Open session context</Button
+			>
+		{/if}
+	</div>
+{/if}
+
 {#if hasReplay}
 	<Card.Root class="pb-0">
 		<Card.Header class="flex flex-row items-center justify-between gap-2">
 			<Card.Title>Session Replay</Card.Title>
 			{#if sessionId}
-				<Button variant="outline" size="sm" onclick={() => goto(resolve(`/sessions/${sessionId}`))}>
-					View full session
-					<ArrowRight class="size-4" />
-				</Button>
+				{@render sessionActions()}
 			{/if}
 		</Card.Header>
 		<Card.Content class="p-0">
@@ -94,13 +198,10 @@
 	<Card.Root>
 		<Card.Header class="flex flex-row items-center justify-between gap-2">
 			<Card.Title>Session</Card.Title>
-			<Button variant="outline" size="sm" onclick={() => goto(resolve(`/sessions/${sessionId}`))}>
-				View full session
-				<ArrowRight class="size-4" />
-			</Button>
+			{@render sessionActions()}
 		</Card.Header>
 		<Card.Content class="text-sm text-muted-foreground">
-			This exception is linked to a recorded user session.
+			This exception is linked to a user session.
 		</Card.Content>
 	</Card.Root>
 {/if}
@@ -111,8 +212,8 @@
 		<Card.Header>
 			<Card.Title>Session Context</Card.Title>
 			<Card.Description>
-				The last seconds of console output and recorded actions before this exception. Times are
-				offsets from the start of the recording.
+				Console output, requests, navigation and app events in the 10 minutes before this exception.
+				Times are offsets from {hasReplay ? 'the start of the recording' : 'the exception'}.
 			</Card.Description>
 		</Card.Header>
 		<Card.Content>
@@ -129,7 +230,7 @@
 					<Tabs.Content value="logs">
 						<SessionLogsTable
 							{logs}
-							startedAt={sessionRecording?.startedAt}
+							startedAt={timelineOrigin}
 							{currentTimeMs}
 							onSeek={handleSeek}
 						/>
@@ -139,7 +240,7 @@
 					<Tabs.Content value="actions">
 						<SessionActionsTable
 							{actions}
-							startedAt={sessionRecording?.startedAt}
+							startedAt={timelineOrigin}
 							{currentTimeMs}
 							onSeek={handleSeek}
 						/>

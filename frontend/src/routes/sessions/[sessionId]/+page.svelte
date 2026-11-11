@@ -24,12 +24,19 @@
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
-	import { ArrowRight } from '@lucide/svelte';
+	import { ArrowRight, Radar } from '@lucide/svelte';
+	import SdkCaptureDialog from '$lib/components/sdk-config/sdk-capture-dialog.svelte';
+	import { SDK_CONFIG_FRAMEWORKS } from '$lib/state/projects.svelte';
 	import type {
 		SessionActionEvent,
 		SessionLogEvent,
 		SessionReplayEvent
 	} from '$lib/types/exceptions';
+	import {
+		loadSessionTimeline,
+		pickBreadcrumbs,
+		type SessionBreadcrumbs
+	} from '$lib/utils/session-timeline';
 
 	type Session = {
 		id: string;
@@ -59,6 +66,7 @@
 	let recordingEvents = $state<SessionReplayEvent[] | null>(null);
 	let recordingLogs = $state<SessionLogEvent[]>([]);
 	let recordingActions = $state<SessionActionEvent[]>([]);
+	let timeline = $state<SessionBreadcrumbs | null>(null);
 	let recordingLoading = $state(false);
 	let recordingError = $state('');
 	let loading = $state(true);
@@ -72,8 +80,11 @@
 		replayRef?.seek(offsetMs);
 	}
 
-	const hasLogs = $derived(recordingLogs.length > 0);
-	const hasActions = $derived(recordingActions.length > 0);
+	const breadcrumbs = $derived(
+		pickBreadcrumbs(timeline, { logs: recordingLogs, actions: recordingActions })
+	);
+	const hasLogs = $derived(breadcrumbs.logs.length > 0);
+	const hasActions = $derived(breadcrumbs.actions.length > 0);
 	const defaultTab = $derived(hasLogs ? 'logs' : 'actions');
 
 	let loadGeneration = 0;
@@ -101,6 +112,19 @@
 		}
 	}
 
+	// The SDK stamps breadcrumbs with the client clock, so the window leaves a minute either side.
+	async function loadTimeline(generation: number, loaded: Session) {
+		const start = Date.parse(loaded.startedAt);
+		const end = loaded.endedAt ? Date.parse(loaded.endedAt) : Date.now();
+		const result = await loadSessionTimeline(
+			loaded.id,
+			start - 60_000,
+			end + 60_000,
+			projectsState.currentProjectId ?? undefined
+		);
+		if (generation === loadGeneration) timeline = result;
+	}
+
 	function retryRecording() {
 		if (!session) return;
 		loadRecording(++loadGeneration, requestRecording(session.startedAt));
@@ -114,6 +138,7 @@
 		recordingEvents = null;
 		recordingLogs = [];
 		recordingActions = [];
+		timeline = null;
 
 		const startedAt = pageState.url.searchParams.get('t');
 		const recordingRequest = startedAt ? requestRecording(startedAt) : null;
@@ -141,18 +166,57 @@
 		}
 
 		loadRecording(generation, recordingRequest ?? requestRecording(loaded.startedAt));
+		loadTimeline(generation, loaded);
 	}
 
 	onMount(() => {
 		loadAll();
 	});
+
+	let captureOpen = $state(false);
+	const canCapture = $derived(
+		!!projectsState.currentProject &&
+			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework) &&
+			projectsState.canWriteCurrentProject
+	);
+	const sdkVersion = $derived(session?.attributes?.['traceway.sdk.version']);
+	const sdkLabel = $derived(
+		sdkVersion
+			? `JS SDK v${sdkVersion}`
+			: session?.attributes?.['traceway.sdk.generation'] === '1'
+				? 'V1 · legacy ingestion'
+				: 'Unknown · not reported'
+	);
+	// A device keeps its instance id across sessions, so capturing it also covers the visits that follow.
+	const captureTarget = $derived(
+		session?.attributes?.['service.instance.id']
+			? { kind: 'instance' as const, value: session.attributes['service.instance.id'] }
+			: { kind: 'session' as const, value: session?.id ?? '' }
+	);
 </script>
 
 <div class="space-y-6">
 	<PageHeader
 		title="Session"
 		onBack={createSmartBackHandler({ fallbackPath: resolve('/sessions') })}
-	/>
+	>
+		{#snippet actions()}
+			{#if canCapture && session}
+				<Button variant="outline" size="sm" onclick={() => (captureOpen = true)}>
+					<Radar class="mr-2 h-4 w-4" />
+					Capture this {captureTarget.kind === 'instance' ? 'device' : 'session'}
+				</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
+
+	{#if canCapture}
+		<SdkCaptureDialog
+			bind:open={captureOpen}
+			kind={captureTarget.kind}
+			value={captureTarget.value}
+		/>
+	{/if}
 
 	{#if loading}
 		<div class="flex h-64 items-center justify-center">
@@ -168,6 +232,14 @@
 	{:else if error}
 		<ErrorDisplay status={500} title="Error" description={error} onRetry={loadAll} />
 	{:else if session}
+		{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
+			<p
+				class="text-sm text-muted-foreground"
+				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; web vitals are collected independently."
+			>
+				Session requests are diagnostic samples, not overall performance statistics.
+			</p>
+		{/if}
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Overview</Card.Title>
@@ -176,6 +248,21 @@
 				<LabelValue label="Started" value={formatDateTime(session.startedAt, { timezone })} />
 				<LabelValue label="Duration" value={sessionDurationLabel(session)} />
 				<LabelValue label="App version" value={session.appVersion || '—'} />
+				{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
+					<LabelValue label="JavaScript SDK" value={sdkLabel} />
+					<LabelValue
+						label="Failed replay uploads"
+						value={session.attributes?.['traceway.replay.failed_segments'] ?? 'Not reported'}
+					/>
+					<LabelValue
+						label="Suppressed errors"
+						value={session.attributes?.['traceway.error.suppressed_total'] ?? 'Not reported'}
+					/>
+					<LabelValue
+						label="Diagnostic events dropped"
+						value={session.attributes?.['traceway.collection.dropped'] ?? 'Not reported'}
+					/>
+				{/if}
 			</Card.Content>
 		</Card.Root>
 
@@ -240,24 +327,26 @@
 				<Card.Header>
 					<Card.Title>Session Context</Card.Title>
 					<Card.Description>
-						Console output and recorded actions across the session. Times are offsets from session
-						start.
+						Console output, requests, navigation and app events across the session. Times are
+						offsets from session start.{#if breadcrumbs.truncated}
+							Showing the first {breadcrumbs.logs.length} log lines and
+							{breadcrumbs.actions.length} actions.{/if}
 					</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					<Tabs.Root value={defaultTab}>
 						<Tabs.List class="mb-4">
 							{#if hasLogs}
-								<Tabs.Trigger value="logs">Logs ({recordingLogs.length})</Tabs.Trigger>
+								<Tabs.Trigger value="logs">Logs ({breadcrumbs.logs.length})</Tabs.Trigger>
 							{/if}
 							{#if hasActions}
-								<Tabs.Trigger value="actions">Actions ({recordingActions.length})</Tabs.Trigger>
+								<Tabs.Trigger value="actions">Actions ({breadcrumbs.actions.length})</Tabs.Trigger>
 							{/if}
 						</Tabs.List>
 						{#if hasLogs}
 							<Tabs.Content value="logs">
 								<SessionLogsTable
-									logs={recordingLogs}
+									logs={breadcrumbs.logs}
 									startedAt={session.startedAt}
 									{currentTimeMs}
 									onSeek={handleSeek}
@@ -267,7 +356,7 @@
 						{#if hasActions}
 							<Tabs.Content value="actions">
 								<SessionActionsTable
-									actions={recordingActions}
+									actions={breadcrumbs.actions}
 									startedAt={session.startedAt}
 									{currentTimeMs}
 									onSeek={handleSeek}

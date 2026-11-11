@@ -2,13 +2,14 @@ package monitoring
 
 import (
 	"context"
+	"database/sql"
+	"runtime"
 	"time"
-
-	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const backendReportInterval = 30 * time.Second
@@ -24,6 +25,9 @@ type backendBaselines struct {
 	smStoreHits     uint64
 	smBuilds        uint64
 	smDiskEvictions uint64
+	cpuTime         time.Duration
+	pools           map[string]sql.DBStats
+	cpuReadAt       time.Time
 	first           bool
 }
 
@@ -34,7 +38,7 @@ func StartBackendReporter(ctx context.Context) {
 		ticker := time.NewTicker(backendReportInterval)
 		defer ticker.Stop()
 
-		baselines := &backendBaselines{first: true}
+		baselines := &backendBaselines{first: true, pools: map[string]sql.DBStats{}}
 
 		reportBackendOnce(baselines)
 
@@ -55,6 +59,8 @@ func reportBackendOnce(b *backendBaselines) {
 	if rss, ok := ReadRSSBytes(); ok {
 		traceway.CaptureMetric("traceway.proc.rss_mb", float64(rss)/1024.0/1024.0)
 	}
+	reportProcessCPU(b)
+	reportDBPools(b.pools)
 
 	smStats := services.SourceMapStats()
 	traceway.CaptureMetric("traceway.sourcemap.entries", float64(smStats.Entries))
@@ -104,4 +110,20 @@ func safeDelta(prev, cur uint64) uint64 {
 		return cur
 	}
 	return cur - prev
+}
+
+func reportProcessCPU(b *backendBaselines) {
+	cpuTime, ok := ReadProcessCPUTime()
+	if !ok {
+		return
+	}
+	now := time.Now()
+	if !b.cpuReadAt.IsZero() {
+		if wall := now.Sub(b.cpuReadAt); wall > 0 && cpuTime >= b.cpuTime {
+			// GOMAXPROCS follows a container's CPU limit, NumCPU does not.
+			used := float64(cpuTime-b.cpuTime) / float64(wall) / float64(runtime.GOMAXPROCS(0))
+			traceway.CaptureMetric("traceway.proc.cpu_pcnt", used*100)
+		}
+	}
+	b.cpuTime, b.cpuReadAt = cpuTime, now
 }

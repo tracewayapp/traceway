@@ -22,7 +22,7 @@
 	import { Toaster, toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import { defaultAuthenticatedPath, gotoHref } from '$lib/utils/navigation';
-	import { setupTraceway } from '@tracewayapp/svelte';
+	import { DEFAULT_IGNORE_PATTERNS, setupTraceway } from '@tracewayapp/svelte';
 	import { captureException } from '@tracewayapp/frontend';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Component } from 'svelte';
@@ -31,7 +31,17 @@
 
 	if (__TRACEWAY_URL__) {
 		setupTraceway({
-			connectionString: __TRACEWAY_URL__
+			connectionString: __TRACEWAY_URL__,
+			options: {
+				// Browser and extension noise with no stack frame in our code.
+				ignoreErrors: [
+					...DEFAULT_IGNORE_PATTERNS,
+					/ResizeObserver loop/,
+					/^(\w+: )?Script error\.?$/,
+					/window\.ethereum/,
+					/The play\(\) request was interrupted/
+				]
+			}
 		});
 	}
 

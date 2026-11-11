@@ -20,7 +20,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/outbox"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const escalatorAdvisoryLockId = 824737002
@@ -64,16 +64,18 @@ func StartEscalator(ctx context.Context) {
 			case <-ticker.C:
 			case <-wakeCh:
 			}
-			runEscalatorTick(ctx, time.Now().UTC())
+			traceway.RunTask(ctx, "oncall.escalate", func(ctx context.Context) {
+				runEscalatorTick(ctx, time.Now().UTC())
+			})
 		}
 	}()
 }
 
-func runEscalatorTick(_ context.Context, now time.Time) {
+func runEscalatorTick(ctx context.Context, now time.Time) {
 	// Each page is claimed in its own transaction so one failing page (e.g. a
 	// target schedule whose stored definition no longer parses) cannot roll
 	// back or block escalation for every other page.
-	pageIds, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]int, error) {
+	pageIds, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]int, error) {
 		duePages, err := transactional.PageRepository.FindDue(tx, now)
 		if err != nil {
 			return nil, err
@@ -85,13 +87,17 @@ func runEscalatorTick(_ context.Context, now time.Time) {
 		return ids, nil
 	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("escalator tick failed: %w", err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("escalator tick failed: %w", err))
+		return
+	}
+	if len(pageIds) == 0 {
+		traceway.SkipTask(ctx)
 		return
 	}
 
 	enqueued := 0
 	for _, pageId := range pageIds {
-		count, err := db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
+		count, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (int, error) {
 			if !db.IsSQLite() {
 				if _, err := tx.Exec(fmt.Sprintf("SELECT pg_advisory_xact_lock(%d)", escalatorAdvisoryLockId)); err != nil {
 					return 0, fmt.Errorf("failed to take escalator lock: %w", err)
@@ -112,7 +118,7 @@ func runEscalatorTick(_ context.Context, now time.Time) {
 			if errors.Is(err, errClaimLost) {
 				continue
 			}
-			traceway.CaptureException(fmt.Errorf("failed to escalate page %d: %w", pageId, err))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to escalate page %d: %w", pageId, err))
 			continue
 		}
 		enqueued += count

@@ -119,7 +119,7 @@ func (r *otelSpanRepository) InsertWithRejections(ctx context.Context, spans []m
 		shared.RecordRejectedOtelSpan(fmt.Errorf("one request spans more than %d daily partitions", clickhouseMaxPartitionsPerInsert*clickhouseMaxPartitionedInserts))
 	}
 	for _, insert := range inserts {
-		err := chdb.SendBatch(otelInsertColumns, func(batch driver.Batch) error {
+		err := chdb.SendBatch(ctx, otelInsertColumns, func(batch driver.Batch) error {
 			for _, row := range insert {
 				if err := batch.Append(row.values...); err != nil {
 					return err

@@ -50,7 +50,7 @@ Servers and Monitors are hidden when every project is a browser or mobile app.
 
 The setup guide for the current project: the project token, the OTLP endpoint and the snippet for the chosen language and framework. Two tabs:
 
-- **AI**: install the skills with `npx skills add tracewayapp/traceway --all` and paste a ready-made prompt with the URL and token. The `traceway-setup` skill instruments the application.
+- **AI**: install the skills with `npx skills add tracewayapp/skills --all` and paste a ready-made prompt with the URL and token. The `traceway-setup` skill instruments the application.
 - **Manual**: step-by-step setup.
 
 Browser and mobile projects also get **Source Map Upload** (browser and Android) or **Symbol Upload** (Flutter and iOS) with an upload token for CI, hidden from read-only members. Regenerating it invalidates the old one.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
 )
 
 // DuckDBConnector is retained so repositories can open a dedicated driver.Conn
@@ -64,7 +65,7 @@ func openDuckDB(path string) error {
 		return fmt.Errorf("failed to open duckdb at %s: %w", path, err)
 	}
 
-	d := sql.OpenDB(connector)
+	d := sql.OpenDB(dbtrace.WrapConnector(connector, dbtrace.Options{System: "duckdb", Namespace: "telemetry"}))
 	d.SetMaxOpenConns(duckDBMaxReadConns)
 	d.SetMaxIdleConns(duckDBMaxReadConns)
 	if err := d.Ping(); err != nil {

@@ -13,9 +13,9 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 const storageOpTimeout = 15 * time.Second

@@ -9,13 +9,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/cache"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const maxBatchProjects = 20

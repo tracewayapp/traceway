@@ -6,12 +6,14 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/config"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type ChConn interface {
@@ -64,10 +66,13 @@ func initExternal() error {
 		Compression: &clickhouse.Compression{
 			Method: clickhouse.CompressionLZ4,
 		},
-		DialTimeout:      time.Duration(10) * time.Second,
-		MaxOpenConns:     15,
-		MaxIdleConns:     15,
-		ConnMaxLifetime:  time.Duration(10) * time.Minute,
+		DialTimeout:  time.Duration(10) * time.Second,
+		MaxOpenConns: 15,
+		MaxIdleConns: 15,
+		// Cloud load balancers silently drop TCP connections idle for about
+		// 350s, and the pool cannot see that until a query reads EOF. Retiring
+		// connections before then keeps a dead one from ever being handed out.
+		ConnMaxLifetime:  5 * time.Minute,
 		ConnOpenStrategy: clickhouse.ConnOpenInOrder,
 		BlockBufferSize:  10,
 	})
@@ -77,6 +82,9 @@ func initExternal() error {
 	}
 
 	Conn = conn
+	if traceway.Enabled() {
+		Conn = tracedConn{inner: conn, opts: dbtrace.Options{System: "clickhouse", Namespace: clickhouseDatabase}}
+	}
 
 	return nil
 }

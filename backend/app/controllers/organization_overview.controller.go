@@ -16,10 +16,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type organizationOverviewController struct{}
@@ -31,8 +31,8 @@ const orgOverviewMaxIssueFetch = 1000
 // orgOverviewProjects loads the organization's projects in one short
 // transaction: the fan-out handlers run their telemetry queries outside any
 // tx so the single-connection SQLite main DB is never held across them.
-func orgOverviewProjects(organizationId int) ([]*models.Project, error) {
-	projects, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
+func orgOverviewProjects(ctx context.Context, organizationId int) ([]*models.Project, error) {
+	projects, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.Project, error) {
 		return transactional.ProjectRepository.FindByOrganizationId(tx, organizationId)
 	})
 	if err != nil {
@@ -65,8 +65,8 @@ type orgServerRow struct {
 	K8sNodeName     string                   `json:"k8sNodeName"`
 }
 
-func orgServerDashboardIds(organizationId int) (map[uuid.UUID]int, error) {
-	return db.ExecuteTransaction(func(tx *sql.Tx) (map[uuid.UUID]int, error) {
+func orgServerDashboardIds(ctx context.Context, organizationId int) (map[uuid.UUID]int, error) {
+	return db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (map[uuid.UUID]int, error) {
 		dashboards, err := transactional.DashboardRepository.FindByOrganization(tx, organizationId)
 		if err != nil {
 			return nil, err
@@ -202,7 +202,7 @@ func applyServerMetadata(row *orgServerRow, tags map[string]string) {
 	row.K8sNodeName = tags["k8s.node.name"]
 }
 
-func loadProjectServerRows(ctx *gin.Context, project *models.Project, dashboardId int, since, now time.Time) ([]orgServerRow, error) {
+func loadProjectServerRows(ctx context.Context, project *models.Project, dashboardId int, since, now time.Time) ([]orgServerRow, error) {
 	latestOtel, err := telemetry.MetricPointRepository.LatestPerServer(ctx, project.Id, models.MetricNameSystemCPUUtilization, since)
 	if err != nil {
 		return nil, err
@@ -340,12 +340,12 @@ func loadProjectServerRows(ctx *gin.Context, project *models.Project, dashboardI
 
 func (c *organizationOverviewController) Servers(ctx *gin.Context) {
 	organizationId := middleware.GetOrganizationId(ctx)
-	projects, err := orgOverviewProjects(organizationId)
+	projects, err := orgOverviewProjects(ctx, organizationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list organization projects: %w", err))
 		return
 	}
-	dashboardIds, err := orgServerDashboardIds(organizationId)
+	dashboardIds, err := orgServerDashboardIds(ctx, organizationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve organization server dashboards: %w", err))
 		return
@@ -356,8 +356,8 @@ func (c *organizationOverviewController) Servers(ctx *gin.Context) {
 	servers := make([]orgServerRow, 0)
 	partial := false
 	for _, project := range projects {
-		span := traceway.StartSpan(ctx, fmt.Sprintf("org overview servers: project %s", project.Id))
-		projectServers, err := loadProjectServerRows(ctx, project, dashboardIds[project.Id], since, now)
+		spanCtx, span := traceway.StartSpan(ctx, fmt.Sprintf("org overview servers: project %s", project.Id))
+		projectServers, err := loadProjectServerRows(spanCtx, project, dashboardIds[project.Id], since, now)
 		span.End()
 		if err != nil {
 			partial = true
@@ -432,8 +432,8 @@ func attachOrgIssueTrends(ctx *gin.Context, rows []orgIssueRow) (partial bool) {
 	start24h := now.Add(-24 * time.Hour)
 	trends := map[uuid.UUID]map[string][]models.ExceptionTrendPoint{}
 	for projectId, hashes := range hashesByProject {
-		span := traceway.StartSpan(ctx, fmt.Sprintf("org overview issue trends: project %s", projectId))
-		projectTrends, err := telemetry.ExceptionStackTraceRepository.GetHourlyTrendForHashes(ctx, projectId, hashes, start24h, now)
+		spanCtx, span := traceway.StartSpan(ctx, fmt.Sprintf("org overview issue trends: project %s", projectId))
+		projectTrends, err := telemetry.ExceptionStackTraceRepository.GetHourlyTrendForHashes(spanCtx, projectId, hashes, start24h, now)
 		span.End()
 		if err != nil {
 			partial = true
@@ -471,7 +471,7 @@ func (c *organizationOverviewController) Issues(ctx *gin.Context) {
 		return
 	}
 
-	projects, err := orgOverviewProjects(organizationId)
+	projects, err := orgOverviewProjects(ctx, organizationId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to list organization projects: %w", err))
 		return
@@ -482,8 +482,8 @@ func (c *organizationOverviewController) Issues(ctx *gin.Context) {
 	var total int64
 	partial := false
 	for _, project := range projects {
-		span := traceway.StartSpan(ctx, fmt.Sprintf("org overview issues: project %s", project.Id))
-		groups, projectTotal, err := telemetry.ExceptionStackTraceRepository.FindGrouped(ctx, project.Id, request.FromDate, request.ToDate, 1, fetch, orderBy, request.Search, request.SearchType, false)
+		spanCtx, span := traceway.StartSpan(ctx, fmt.Sprintf("org overview issues: project %s", project.Id))
+		groups, projectTotal, err := telemetry.ExceptionStackTraceRepository.FindGrouped(spanCtx, project.Id, request.FromDate, request.ToDate, 1, fetch, orderBy, request.Search, request.SearchType, false)
 		span.End()
 		if err != nil {
 			partial = true
@@ -671,7 +671,7 @@ func (c *organizationOverviewController) Monitors(ctx *gin.Context) {
 		projects []*models.Project
 		checks   []*models.SyntheticCheck
 	}
-	data, err := db.ExecuteTransaction(func(tx *sql.Tx) (*orgMonitorsData, error) {
+	data, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*orgMonitorsData, error) {
 		projects, err := transactional.ProjectRepository.FindByOrganizationId(tx, organizationId)
 		if err != nil {
 			return nil, err
@@ -706,8 +706,8 @@ func (c *organizationOverviewController) Monitors(ctx *gin.Context) {
 	aggregates := make(map[int]*models.CheckAggregates)
 	partial := false
 	for _, projectId := range projectsWithChecks {
-		span := traceway.StartSpan(ctx, fmt.Sprintf("org overview monitors: project %s", projectId))
-		projectAggregates, err := telemetry.CheckResultRepository.AggregatesByProject(ctx, projectId, from, now)
+		spanCtx, span := traceway.StartSpan(ctx, fmt.Sprintf("org overview monitors: project %s", projectId))
+		projectAggregates, err := telemetry.CheckResultRepository.AggregatesByProject(spanCtx, projectId, from, now)
 		span.End()
 		if err != nil {
 			partial = true

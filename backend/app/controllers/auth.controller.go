@@ -10,10 +10,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 var PostRegistrationHooks []func(tx *sql.Tx, org *models.Organization, user *models.User) error

@@ -55,6 +55,7 @@ const COLUMNS: Column[] = [
     heading: "Hosting",
     links: [
       { label: "Cloud", href: "/cloud" },
+      { label: "Services", href: "/services" },
       {
         label: "Self-host",
         href: "https://docs.tracewayapp.com",

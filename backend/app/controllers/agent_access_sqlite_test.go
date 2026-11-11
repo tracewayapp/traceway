@@ -4,6 +4,7 @@ package controllers
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -367,7 +368,7 @@ func TestDeviceLookup_reportsRequestedScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	for client, want := range map[string]string{"traceway-cli": models.ScopeRead, "traceway-cli-write": models.ScopeWrite} {
-		da, err := authserver.CreateDeviceAuth(client, "http://localhost")
+		da, err := authserver.CreateDeviceAuth(context.Background(), client, "http://localhost")
 		if err != nil {
 			t.Fatalf("create device auth for %s: %v", client, err)
 		}

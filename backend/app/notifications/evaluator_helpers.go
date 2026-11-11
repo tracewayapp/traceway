@@ -14,7 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type newErrorConfig struct {
@@ -33,15 +33,15 @@ func registerReportHook() {
 func evaluateEventRules(event hooks.ReportEvent) {
 	defer traceway.Recover()
 
-	rules, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
+	ctx := context.Background()
+
+	rules, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
 		return transactional.NotificationRuleRepository.FindEnabledEventRules(tx, event.ProjectId)
 	})
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to load event notification rules: %w", err))
 		return
 	}
-
-	ctx := context.Background()
 
 	for _, rule := range rules {
 		if rule.SnoozedUntil != nil && rule.SnoozedUntil.After(time.Now()) {
@@ -54,11 +54,11 @@ func evaluateEventRules(event hooks.ReportEvent) {
 		case "error_regression":
 			evaluateErrorRegression(ctx, rule, event)
 		case "ai_trace_cost":
-			evaluateAiTraceCostEvent(rule, event)
+			evaluateAiTraceCostEvent(ctx, rule, event)
 		case "ai_conversation_cost":
 			evaluateAiConversationCostEvent(ctx, rule, event)
 		case "ai_flagged_content":
-			evaluateAiFlaggedContentEvent(rule, event)
+			evaluateAiFlaggedContentEvent(ctx, rule, event)
 		}
 	}
 }
@@ -68,7 +68,7 @@ type aiTraceCostEventConfig struct {
 	ThresholdCost float64 `json:"thresholdCost"`
 }
 
-func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
+func evaluateAiTraceCostEvent(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
 	if len(event.AiTraces) == 0 {
 		return
 	}
@@ -81,7 +81,7 @@ func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event ho
 		return
 	}
 
-	projectName := getProjectName(event.ProjectId)
+	projectName := getProjectName(ctx, event.ProjectId)
 
 	for _, at := range event.AiTraces {
 		if at.TotalCost < cfg.ThresholdCost {
@@ -99,7 +99,7 @@ func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event ho
 		// Record before dispatch: a persistently failing dispatch retries once
 		// per cooldown window, never on every ingest event.
 		dedup.record(dedupKey)
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
@@ -142,7 +142,7 @@ func evaluateAiConversationCostEvent(ctx context.Context, rule *models.Notificat
 		return
 	}
 
-	projectName := getProjectName(event.ProjectId)
+	projectName := getProjectName(ctx, event.ProjectId)
 	for _, conversationId := range candidateIds {
 		cost := costs[conversationId]
 		if cost < cfg.ThresholdCost {
@@ -152,7 +152,7 @@ func evaluateAiConversationCostEvent(ctx context.Context, rule *models.Notificat
 		// Record before dispatch: a persistently failing dispatch retries once
 		// per cooldown window, never on every ingest event.
 		dedup.record(aiConversationCostDedupKey(rule.Id, conversationId))
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
@@ -160,7 +160,7 @@ type aiFlaggedContentConfig struct {
 	Terms []string `json:"terms"`
 }
 
-func evaluateAiFlaggedContentEvent(rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
+func evaluateAiFlaggedContentEvent(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
 	var cfg aiFlaggedContentConfig
 	if err := json.Unmarshal(rule.Config, &cfg); err != nil {
 		return
@@ -188,12 +188,12 @@ func evaluateAiFlaggedContentEvent(rule *models.NotificationRuleWithChannel, eve
 			continue
 		}
 		if projectName == "" {
-			projectName = getProjectName(event.ProjectId)
+			projectName = getProjectName(ctx, event.ProjectId)
 		}
 		msg := buildAiFlaggedContentMessage(at.ConversationId, at.UserId, matched, projectName)
 		msg.DedupToken = subject
 		dedup.record(dedupKey)
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
@@ -261,8 +261,8 @@ func resolveExceptionOwner(ctx context.Context, exception models.ExceptionStackT
 	return owner.TraceType, owner.Name
 }
 
-func getProjectName(projectId uuid.UUID) string {
-	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+func getProjectName(ctx context.Context, projectId uuid.UUID) string {
+	project, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.Project, error) {
 		return transactional.ProjectRepository.FindById(tx, projectId)
 	})
 	if err != nil || project == nil {

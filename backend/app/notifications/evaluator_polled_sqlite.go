@@ -82,7 +82,7 @@ func evaluateErrorRateThreshold(ctx context.Context, rule *models.NotificationRu
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildErrorRateMessage(rate, cfg.ThresholdPercent, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -117,7 +117,7 @@ func evaluateEndpointP95Threshold(ctx context.Context, rule *models.Notification
 	if endpoint == "" || endpoint == "*" {
 		endpoint = "all endpoints"
 	}
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildEndpointLatencyMessage("P95", p95, cfg.ThresholdMs, endpoint, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -146,7 +146,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 	if endpoint == "" || endpoint == "*" {
 		endpoint = "all endpoints"
 	}
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildEndpointLatencyMessage("P99", p99, cfg.ThresholdMs, endpoint, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -235,7 +235,7 @@ func evaluateApdexDrop(ctx context.Context, rule *models.NotificationRule, proje
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildApdexDropMessage(apdex, cfg.ThresholdApdex, total, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -289,7 +289,7 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 		return nil, err
 	}
 
-	return metricThresholdResult(rule, cfg, series, projectId), nil
+	return metricThresholdResult(ctx, rule, cfg, series, projectId), nil
 }
 
 func scanMetricSeries(ctx context.Context, query string, args []interface{}) ([]metricSeries, error) {
@@ -393,7 +393,7 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 				}
 			}
 		}
-		projectName := getProjectName(projectId)
+		projectName := getProjectName(ctx, projectId)
 		msg := buildNoDataMessage("any", cfg.SilenceMinutes, projectName)
 		return &EvalResult{Fired: true, Message: msg}, nil
 	}
@@ -426,7 +426,7 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 		}
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildNoDataMessage(cfg.DataType, cfg.SilenceMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -462,7 +462,7 @@ func evaluateErrorCountThreshold(ctx context.Context, rule *models.NotificationR
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildErrorCountMessage(count, cfg.ThresholdCount, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -520,7 +520,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 	if taskName == "" || taskName == "*" {
 		taskName = "all tasks"
 	}
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildTaskDurationMessage(taskName, p95, cfg.ThresholdMs, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -619,7 +619,7 @@ func evaluateThroughputDrop(ctx context.Context, rule *models.NotificationRule, 
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildThroughputDropMessage(dropPercent, currentCount, normalizedBaseline, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -663,7 +663,7 @@ func evaluateEndpointErrorRate(ctx context.Context, rule *models.NotificationRul
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildEndpointErrorRateMessage(cfg.Endpoint, rate, cfg.ThresholdPercent, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }

@@ -76,14 +76,14 @@ The OAuth consent page shows a **Read and write access** warning when a client a
 
 ### The traceway-write skill
 
-The `traceway-write` skill teaches an agent the rules for writes (only on request, say the change first, prefer the reversible option) and playbooks for pages, flapping alerts, confirming fixes and writing post-mortems. `npx skills add tracewayapp/traceway --all` installs it with the other skills. In Claude Code it is its own plugin, `tw-write`, separate from the read-only `tw` plugin. The skill alone changes nothing: writes still need the `traceway-write` CLI or a write token, and an admin who turned on Agent Access. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
+The `traceway-write` skill teaches an agent the rules for writes (only on request, say the change first, prefer the reversible option) and playbooks for pages, flapping alerts, confirming fixes and writing post-mortems. `npx skills add tracewayapp/skills --all` installs it with the other skills. In Claude Code it is its own plugin, `tw-write`, separate from the read-only `tw` plugin. The skill alone changes nothing: writes still need the `traceway-write` CLI or a write token, and an admin who turned on Agent Access. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
 
 ```
-/plugin marketplace add tracewayapp/traceway
+/plugin marketplace add tracewayapp/skills
 /plugin install tw-write@traceway
 ```
 
-Other agents can copy the skill folder from [`plugins/tw-write/skills/traceway-write`](https://github.com/tracewayapp/traceway/tree/main/plugins/tw-write/skills/traceway-write).
+Other agents can copy the skill folder from [`plugins/tw-write/skills/traceway-write`](https://github.com/tracewayapp/skills/tree/main/plugins/tw-write/skills/traceway-write).
 
 <Callout type="info">
   The binary, the MCP endpoint and the skill make write access an explicit, separate choice. The server is what enforces it: scopes on the credential, the agent route allowlist and the organization switch are all checked on every request, whatever client sent it.

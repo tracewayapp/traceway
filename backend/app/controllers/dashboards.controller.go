@@ -16,10 +16,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	dashboardsvc "github.com/tracewayapp/traceway/backend/app/services/dashboards"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type dashboardsController struct{}

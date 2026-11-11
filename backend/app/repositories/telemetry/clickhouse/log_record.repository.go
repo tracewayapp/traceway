@@ -23,7 +23,7 @@ func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.
 	}
 
 	batch, err := chdb.Conn.PrepareBatch(
-		chdb.BatchCtx(),
+		chdb.BatchCtx(ctx),
 		"INSERT INTO log_records (id, project_id, timestamp, trace_id, span_id, trace_flags, severity_text, severity_number, service_name, body, resource_schema_url, resource_attributes, scope_schema_url, scope_name, scope_version, scope_attributes, log_attributes)",
 	)
 	if err != nil {
@@ -221,6 +221,14 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		clauses[0] = "project_id IN (" + strings.Join(placeholders, ", ") + ")"
 		args = append(args, params.FromDate, params.ToDate)
 	}
+
+	// log_records is partitioned by the stored timestamp_date column, which a
+	// filter on timestamp alone cannot prune. The day of slack on each side
+	// absorbs any timezone difference between this and the insert-time toDate.
+	clauses = append(clauses, "timestamp_date >= ?", "timestamp_date <= ?")
+	args = append(args,
+		params.FromDate.UTC().AddDate(0, 0, -1).Format(time.DateOnly),
+		params.ToDate.UTC().AddDate(0, 0, 1).Format(time.DateOnly))
 
 	if params.MinSeverity > 0 {
 		clauses = append(clauses, "severity_number >= ?")

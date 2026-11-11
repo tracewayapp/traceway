@@ -30,7 +30,7 @@ func InitRequireProjectAccess() {
 			return
 		}
 
-		hasAccess, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+		hasAccess, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (bool, error) {
 			return transactional.ProjectRepository.UserHasAccess(tx, projectId, userId)
 		})
 

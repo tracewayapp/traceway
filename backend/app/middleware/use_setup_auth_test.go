@@ -3,6 +3,7 @@
 package middleware
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -148,7 +149,7 @@ func TestUseSetupAuthRejects(t *testing.T) {
 func TestSetupTokenNeverPassesAppAuth(t *testing.T) {
 	setupSetupAuthDB(t)
 
-	identity, err := AuthenticateBearer("tws_" + "some-opaque-setup-token")
+	identity, err := AuthenticateBearer(context.Background(), "tws_"+"some-opaque-setup-token")
 	if !errors.Is(err, ErrInvalidBearer) {
 		t.Fatalf("AuthenticateBearer(tws_...) = (%v, %v), want ErrInvalidBearer", identity, err)
 	}

@@ -98,7 +98,7 @@ func HealthSnapshot(ctx context.Context) (*HealthStats, error) {
 // ReadFreshness reads every enabled SLO's last computation from the main
 // database, so it covers all instances and also catches a worker that stopped.
 func ReadFreshness(ctx context.Context, now time.Time) (*Freshness, error) {
-	rows, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SLOFreshness, error) {
+	rows, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.SLOFreshness, error) {
 		return transactional.SLORepository.FindEnabledFreshness(tx)
 	})
 	if err != nil {

@@ -4,12 +4,12 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 type taskController struct{}
@@ -51,8 +51,8 @@ func (e taskController) FindAllTasks(c *gin.Context) {
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading tasks")
-	tasks, total, err := telemetry.TaskRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	spanCtx, span := traceway.StartSpan(c, "loading tasks")
+	tasks, total, err := telemetry.TaskRepository.FindAll(spanCtx, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading tasks: %w", err))
@@ -83,8 +83,8 @@ func (e taskController) FindGroupedByTaskName(c *gin.Context) {
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading grouped tasks")
-	stats, total, err := telemetry.TaskRepository.FindGroupedByTaskName(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter)
+	spanCtx, span := traceway.StartSpan(c, "loading grouped tasks")
+	stats, total, err := telemetry.TaskRepository.FindGroupedByTaskName(spanCtx, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats by name: %w", err))
@@ -127,8 +127,8 @@ func (e taskController) FindByTaskName(c *gin.Context) {
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading task instances")
-	tasks, total, err := telemetry.TaskRepository.FindByTaskName(c, projectId, taskName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	spanCtx, span := traceway.StartSpan(c, "loading task instances")
+	tasks, total, err := telemetry.TaskRepository.FindByTaskName(spanCtx, projectId, taskName, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading tasks by name: %w", err))
@@ -136,8 +136,8 @@ func (e taskController) FindByTaskName(c *gin.Context) {
 	}
 
 	// Get aggregate stats for this task
-	span = traceway.StartSpan(c, "loading task stats")
-	stats, err := telemetry.TaskRepository.GetTaskStats(c, projectId, taskName, request.FromDate, request.ToDate)
+	spanCtx, span = traceway.StartSpan(c, "loading task stats")
+	stats, err := telemetry.TaskRepository.GetTaskStats(spanCtx, projectId, taskName, request.FromDate, request.ToDate)
 	span.End()
 	if err != nil {
 		// Don't fail the request if stats fail, just return nil stats

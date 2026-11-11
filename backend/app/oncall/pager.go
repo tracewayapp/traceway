@@ -1,6 +1,7 @@
 package oncall
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -32,14 +33,14 @@ func EscalationChannelPolicyId(configJSON json.RawMessage) int {
 // opener (see notifications.RegisterPageOpener). It runs inside dispatch for
 // rules targeting an escalation channel: instead of sending anything, it opens
 // (or dedups into) a page; the escalator worker does all notifying.
-func OpenPageFromDispatch(configJSON json.RawMessage, rule *models.NotificationRuleWithChannel, msg notifications.Message) (bool, error) {
+func OpenPageFromDispatch(ctx context.Context, configJSON json.RawMessage, rule *models.NotificationRuleWithChannel, msg notifications.Message) (bool, error) {
 	policyId := EscalationChannelPolicyId(configJSON)
 	if policyId == 0 {
 		return false, errors.New("escalation channel config has no policyId")
 	}
 
 	ruleId := rule.Id
-	opened, err := openPage(openPageParams{
+	opened, err := openPage(ctx, openPageParams{
 		PolicyId:  policyId,
 		ProjectId: rule.ProjectId,
 		RuleId:    &ruleId,
@@ -63,8 +64,8 @@ func OpenPageFromDispatch(configJSON json.RawMessage, rule *models.NotificationR
 // OpenTestPage opens a real page for the channel test endpoint, exercising the
 // full escalation loop. Reports false when the fire deduped into a previous
 // test page that is still unresolved.
-func OpenTestPage(policyId int, projectId uuid.UUID, channelId int, channelName string) (bool, error) {
-	opened, err := openPage(openPageParams{
+func OpenTestPage(ctx context.Context, policyId int, projectId uuid.UUID, channelId int, channelName string) (bool, error) {
+	opened, err := openPage(ctx, openPageParams{
 		PolicyId:  policyId,
 		ProjectId: projectId,
 		RuleName:  "Channel test",
@@ -114,14 +115,14 @@ type openPageParams struct {
 
 // openPage creates a page or bumps the unresolved page holding the dedup key.
 // Returns true when a new page was created.
-func openPage(params openPageParams) (bool, error) {
-	opened, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+func openPage(ctx context.Context, params openPageParams) (bool, error) {
+	opened, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
 		return openPageInTx(tx, params)
 	})
 	if err != nil && db.IsUniqueViolation(err) {
 		// Lost a race with a concurrent fire holding the same dedup key: the
 		// other side created the page, so this fire is just an extra event.
-		_, bumpErr := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+		_, bumpErr := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
 			return openPageInTx(tx, params)
 		})
 		return false, bumpErr

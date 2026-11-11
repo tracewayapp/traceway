@@ -17,6 +17,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Determine version
         id: version
@@ -117,3 +119,12 @@ jobs:
             --title "CLI v${VERSION}" \
             --notes "$NOTES" \
             cli/dist/*
+
+  # After the CLI release, so the published skills never describe a CLI that
+  # is not downloadable yet.
+  skills:
+    needs: release
+    uses: ./.github/workflows/release-skills.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+    secrets: inherit

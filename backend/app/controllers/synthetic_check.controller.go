@@ -21,9 +21,9 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/synthetics"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type syntheticCheckController struct{}

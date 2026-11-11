@@ -338,7 +338,7 @@ func TestLastEnqueuedPerRuleAndHealthAndPrune(t *testing.T) {
 		t.Errorf("expected rule %d in seeding map, got %v", ruleId, last)
 	}
 
-	stats, err := HealthSnapshot()
+	stats, err := HealthSnapshot(context.Background())
 	if err != nil {
 		t.Fatalf("health: %v", err)
 	}

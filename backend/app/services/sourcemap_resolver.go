@@ -14,9 +14,9 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 const sourceMapLoadTimeout = 5 * time.Second
@@ -62,6 +62,7 @@ type SourceMapCacheStats struct {
 	StoreHits     uint64
 	Builds        uint64
 	DiskEvictions uint64
+	WarmupDropped uint64
 }
 
 func SourceMapStats() SourceMapCacheStats {
@@ -81,6 +82,7 @@ func SourceMapStats() SourceMapCacheStats {
 		LastParseMs:     s.LastParseMs,
 		StoreHits:       smStoreHits.Load(),
 		Builds:          smBuilds.Load(),
+		WarmupDropped:   twDropped.Load(),
 	}
 	if s.Mode == "disk" {
 		out.DiskEnabled = true

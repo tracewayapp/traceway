@@ -9,9 +9,9 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 const maxDartFrames = 50

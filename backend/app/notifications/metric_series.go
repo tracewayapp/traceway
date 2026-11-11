@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -112,7 +113,7 @@ func metricSeriesLabel(groupBy []string, key string) string {
 	return "{" + strings.Join(pairs, ", ") + "}"
 }
 
-func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdConfig, series []metricSeries, projectId uuid.UUID) *EvalResult {
+func metricThresholdResult(ctx context.Context, rule *models.NotificationRule, cfg metricThresholdConfig, series []metricSeries, projectId uuid.UUID) *EvalResult {
 	var breaching []metricSeries
 	for _, s := range series {
 		if metricThresholdBreached(s.Value, cfg.Operator, cfg.ThresholdValue) {
@@ -124,7 +125,7 @@ func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdCon
 	}
 
 	if len(cfg.GroupBy) == 0 {
-		projectName := getProjectName(projectId)
+		projectName := getProjectName(ctx, projectId)
 		msg := buildMetricThresholdMessage(cfg.MetricName, "", breaching[0].Value, cfg.Operator, cfg.ThresholdValue, cfg.Aggregation, cfg.LookbackMinutes, projectName)
 		return &EvalResult{Fired: true, Message: msg}
 	}
@@ -154,7 +155,7 @@ func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdCon
 		return cmp.Compare(a.Key, b.Key)
 	})
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	notified := fresh[:min(len(fresh), maxMetricRuleSeriesNotified)]
 	messages := make([]Message, 0, len(notified)+1)
 	for _, s := range notified {

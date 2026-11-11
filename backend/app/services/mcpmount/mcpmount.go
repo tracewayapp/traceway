@@ -64,8 +64,8 @@ func GinHandler(engine *gin.Engine, version string, write bool) gin.HandlerFunc 
 	}
 }
 
-func verifyBearer(_ context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
-	identity, err := middleware.AuthenticateBearer(token)
+func verifyBearer(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
+	identity, err := middleware.AuthenticateBearer(ctx, token)
 	if err != nil {
 		if errors.Is(err, middleware.ErrInvalidBearer) {
 			return nil, auth.ErrInvalidToken

@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -11,7 +12,7 @@ import (
 // already unresolved). It is implemented by the oncall package and registered
 // from cmd/run.go; the indirection exists because notifications cannot import
 // oncall (oncall imports this package for Message and the adapters).
-type PageOpener func(channelConfig json.RawMessage, rule *models.NotificationRuleWithChannel, msg Message) (opened bool, err error)
+type PageOpener func(ctx context.Context, channelConfig json.RawMessage, rule *models.NotificationRuleWithChannel, msg Message) (opened bool, err error)
 
 var pageOpener PageOpener
 

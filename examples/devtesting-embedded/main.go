@@ -153,7 +153,7 @@ func main() {
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
 		tracewaybackend.WithDefaultProject("Backend API", "opentelemetry", backendToken),
 		tracewaybackend.WithDefaultProject("jQuery Frontend", "jquery", frontendToken),
-		tracewaybackend.WithDefaultProject("Traceway Monitoring", "gin", monitoringToken),
+		tracewaybackend.WithDefaultProject("Traceway Monitoring", "opentelemetry", monitoringToken),
 		tracewaybackend.WithDefaultProject("Flutter App", "flutter", flutterToken),
 		tracewaybackend.WithDefaultProjectSourceMapToken("Flutter App", flutterUploadToken),
 		tracewaybackend.WithDefaultProject("iOS App", "ios", iosToken),

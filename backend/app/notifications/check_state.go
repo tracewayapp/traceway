@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -9,13 +10,13 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/synthetics"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 // PageResolver auto-resolves the unresolved page a check_down rule opened,
 // identified by its rule-scoped dedup token. Implemented by the oncall
 // package and registered from cmd/run.go (notifications cannot import oncall).
-type PageResolver func(ruleId int, dedupToken string) error
+type PageResolver func(ctx context.Context, ruleId int, dedupToken string) error
 
 var pageResolver PageResolver
 
@@ -28,9 +29,10 @@ func RegisterPageResolver(resolver PageResolver) {
 // transaction: dispatch opens its own, and the SQLite main DB has a single
 // connection, so an ambient transaction here would deadlock.
 func OnCheckStateChange(transition synthetics.StateTransition) {
+	ctx := context.Background()
 	defer traceway.Recover()
 
-	rules, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
+	rules, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
 		return transactional.NotificationRuleRepository.FindEnabledEventRules(tx, transition.Check.ProjectId)
 	})
 	if err != nil {
@@ -53,7 +55,7 @@ func OnCheckStateChange(transition synthetics.StateTransition) {
 			continue
 		}
 		if projectName == "" {
-			projectName = getProjectName(transition.Check.ProjectId)
+			projectName = getProjectName(ctx, transition.Check.ProjectId)
 		}
 
 		if wentDown {
@@ -65,7 +67,7 @@ func OnCheckStateChange(transition synthetics.StateTransition) {
 			// Record before dispatch: a persistently failing dispatch retries
 			// once per cooldown window, never on every transition.
 			dedup.record(dedupKey)
-			dispatch(rule, msg)
+			dispatch(ctx, rule, msg)
 			continue
 		}
 
@@ -76,12 +78,12 @@ func OnCheckStateChange(transition synthetics.StateTransition) {
 			if pageResolver == nil {
 				continue
 			}
-			if err := pageResolver(rule.Id, checkPageDedupToken(transition.Check.Id)); err != nil {
+			if err := pageResolver(ctx, rule.Id, checkPageDedupToken(transition.Check.Id)); err != nil {
 				traceway.CaptureException(fmt.Errorf("failed to auto-resolve page for recovered check %d (rule=%d): %w", transition.Check.Id, rule.Id, err))
 			}
 			continue
 		}
-		dispatch(rule, buildCheckRecoveredMessage(&transition.Check, projectName))
+		dispatch(ctx, rule, buildCheckRecoveredMessage(&transition.Check, projectName))
 	}
 }
 

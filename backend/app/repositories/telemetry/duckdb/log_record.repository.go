@@ -158,7 +158,7 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	ORDER BY %s %s, id
 	LIMIT :limit OFFSET :offset`, where, orderBy, direction)
 
-	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB, query, args)
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB), query, args)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -169,7 +169,7 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	} else if params.Page > 1 {
 		// An offset past the last row returns no rows and thus no window
 		// total; only then fall back to a separate count scan.
-		countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+		countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 			"SELECT COUNT(*) AS count FROM log_records WHERE "+where, args)
 		if err != nil {
 			return nil, 0, err
@@ -187,7 +187,7 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 }
 
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
-	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB,
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
 			severity_text, severity_number, service_name, body,
 			resource_schema_url, resource_attributes,

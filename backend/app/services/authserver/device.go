@@ -1,6 +1,7 @@
 package authserver
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"strings"
@@ -42,7 +43,7 @@ func DeviceClientScope(clientId string) string {
 	return models.ScopeRead
 }
 
-func CreateDeviceAuth(clientId, baseURL string) (*models.DeviceAuthorizeResponse, error) {
+func CreateDeviceAuth(ctx context.Context, clientId, baseURL string) (*models.DeviceAuthorizeResponse, error) {
 	if clientId == "" {
 		clientId = cliClientID
 	}
@@ -58,7 +59,7 @@ func CreateDeviceAuth(clientId, baseURL string) (*models.DeviceAuthorizeResponse
 	// Opportunistically drop expired rows so this unauthenticated endpoint can
 	// never accumulate more than one device-code TTL's worth of rows between
 	// the daily prune-worker runs.
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (struct{}, error) {
 		if _, err := transactional.DeviceAuthorizationRepository.PruneExpired(tx, time.Now()); err != nil {
 			return struct{}{}, err
 		}
@@ -82,8 +83,8 @@ func CreateDeviceAuth(clientId, baseURL string) (*models.DeviceAuthorizeResponse
 // PollDeviceToken owns its own transactions: the OAuth token endpoint returns
 // 400 for normal flow control (pending/slow_down), so it cannot rely on the
 // request-scoped Transactional middleware (which only commits on 2xx).
-func PollDeviceToken(deviceCode string) (*models.TokenSetResponse, error) {
-	da, err := transactional.DeviceAuthorizationRepository.FindByDeviceCode(db.DB, deviceCode)
+func PollDeviceToken(ctx context.Context, deviceCode string) (*models.TokenSetResponse, error) {
+	da, err := transactional.DeviceAuthorizationRepository.FindByDeviceCode(db.BindContext(ctx, db.DB), deviceCode)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +99,7 @@ func PollDeviceToken(deviceCode string) (*models.TokenSetResponse, error) {
 		if da.UserId == nil {
 			return nil, ErrAccessDenied
 		}
-		return db.ExecuteTransaction(func(tx *sql.Tx) (*models.TokenSetResponse, error) {
+		return db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.TokenSetResponse, error) {
 			// Consume the device code first: a device code is single-use, so if
 			// the row is already gone another concurrent poll redeemed it and we
 			// must not mint a second token set for the same code.
@@ -125,7 +126,7 @@ func PollDeviceToken(deviceCode string) (*models.TokenSetResponse, error) {
 		if slow {
 			interval = da.IntervalSeconds + 5
 		}
-		_, _ = db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+		_, _ = db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (struct{}, error) {
 			return struct{}{}, transactional.DeviceAuthorizationRepository.MarkPolled(tx, deviceCode, now, interval)
 		})
 		if slow {

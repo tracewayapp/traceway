@@ -1,6 +1,7 @@
 package authserver
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
@@ -215,7 +216,7 @@ func appendRedirectParams(redirectUri string, params url.Values, state string) s
 	return redirectUri + sep + params.Encode()
 }
 
-func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, issuer string) (*models.TokenSetResponse, error) {
+func RedeemAuthorizationCode(ctx context.Context, clientId, code, verifier, redirectUri, resource, issuer string) (*models.TokenSetResponse, error) {
 	if err := ValidateResource(resource, issuer); err != nil {
 		return nil, err
 	}
@@ -227,7 +228,7 @@ func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, is
 		tokens   *models.TokenSetResponse
 		grantErr error
 	}
-	out, err := db.ExecuteTransaction(func(tx *sql.Tx) (redeemOutcome, error) {
+	out, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (redeemOutcome, error) {
 		ac, err := transactional.AuthorizationCodeRepository.FindByCode(tx, code)
 		if err != nil {
 			return redeemOutcome{}, err

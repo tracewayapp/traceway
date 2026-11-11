@@ -1,0 +1,81 @@
+name: Release Skills
+
+# Publishes .claude-plugin/, skills/ and plugins/ to tracewayapp/skills, the small
+# repo users install from (the monorepo is too big for Claude Code's clone timeout).
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release whose skills to publish (X.Y.Z, no leading v)"
+        required: true
+        type: string
+    secrets:
+      SKILLS_DEPLOY_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release whose skills to publish (X.Y.Z, no leading v)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-skills
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          HAS_KEY: ${{ secrets.SKILLS_DEPLOY_KEY != '' }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be X.Y.Z (got '$VERSION')"
+            exit 1
+          fi
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::error::SKILLS_DEPLOY_KEY is not set: add a write deploy key to tracewayapp/skills and its private half as this repo's SKILLS_DEPLOY_KEY secret"
+            exit 1
+          fi
+
+      # The script comes from the workflow's own commit, so a fixed script can
+      # republish an older release.
+      - name: Checkout sync script
+        uses: actions/checkout@v7
+        with:
+          path: tools
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Checkout release
+        uses: actions/checkout@v7
+        with:
+          ref: backend/v${{ inputs.version }}
+          path: source
+          persist-credentials: false
+          sparse-checkout: |
+            .claude-plugin
+            .github/skills-mirror
+            plugins
+            skills
+
+      - name: Checkout tracewayapp/skills
+        uses: actions/checkout@v7
+        with:
+          repository: tracewayapp/skills
+          ref: main
+          path: mirror
+          fetch-depth: 0
+          ssh-key: ${{ secrets.SKILLS_DEPLOY_KEY }}
+
+      - name: Publish if anything changed
+        env:
+          VERSION: ${{ inputs.version }}
+        run: bash tools/.github/scripts/sync-skills-mirror.sh source mirror "$VERSION"

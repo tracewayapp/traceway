@@ -153,7 +153,7 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 }
 
 func (r *sessionRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT count(*) as count FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end",
 		lit.P{"project_id": projectId, "start": start.UTC(), "end": end.UTC()})
 	if err != nil {
@@ -177,7 +177,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	for k, v := range extraParams {
 		countParams[k] = v
 	}
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, countParams)
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB), countQuery, countParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -212,7 +212,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	for k, v := range extraParams {
 		queryParams[k] = v
 	}
-	rows, err := lit.SelectNamed[sessionRow](db.TelemetryDB, query, queryParams)
+	rows, err := lit.SelectNamed[sessionRow](shared.Traced(ctx, db.TelemetryDB), query, queryParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -264,7 +264,7 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	}
 	query += " LIMIT 1"
 
-	row, err := lit.SelectSingleNamed[sessionRow](db.TelemetryDB, query, params)
+	row, err := lit.SelectSingleNamed[sessionRow](shared.Traced(ctx, db.TelemetryDB), query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	}
 
 	from, to := shared.TraceWindowBounds(row.StartedAt.Time)
-	activity, err := lit.SelectSingleNamed[sqlitetypes.SessionActivityResult](db.TelemetryDB,
+	activity, err := lit.SelectSingleNamed[sqlitetypes.SessionActivityResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT MAX(COALESCE(ended_at, recorded_at)) AS last_activity, MAX(CASE WHEN COALESCE(ended_at, recorded_at) <= :span_end THEN COALESCE(ended_at, recorded_at) END) AS span_activity, MAX(recorded_at) AS last_received FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "session_id": sessionId, "from": from.UTC(), "to": to.UTC(), "span_end": row.StartedAt.Time.Add(shared.SessionMaxSpan).UTC()})
 	if err != nil {

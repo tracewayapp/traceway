@@ -9,12 +9,12 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 type invitationController struct{}
@@ -114,7 +114,7 @@ func (c *invitationController) InviteUser(ctx *gin.Context) {
 func (c *invitationController) ListInvitations(ctx *gin.Context) {
 	organizationId := middleware.GetOrganizationId(ctx)
 
-	invitations, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.InvitationWithInviter, error) {
+	invitations, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.InvitationWithInviter, error) {
 		return transactional.InvitationRepository.FindByOrganization(tx, organizationId)
 	})
 
@@ -169,7 +169,7 @@ func (c *invitationController) GetInvitationInfo(ctx *gin.Context) {
 		UserExists bool
 	}
 
-	data, err := db.ExecuteTransaction(func(tx *sql.Tx) (*invitationInfo, error) {
+	data, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*invitationInfo, error) {
 		invitation, err := transactional.InvitationRepository.FindByToken(tx, token)
 		if err != nil {
 			return nil, err

@@ -14,10 +14,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
-	traceway "go.tracewayapp.com"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )

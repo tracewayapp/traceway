@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type oauthAuthorizeController struct{}
@@ -57,7 +57,7 @@ func (c *oauthAuthorizeController) Lookup(ctx *gin.Context) {
 		return
 	}
 
-	client, err := transactional.OauthClientRepository.FindById(db.DB, clientId)
+	client, err := transactional.OauthClientRepository.FindById(db.BindContext(ctx, db.DB), clientId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("oauth client lookup: %w", err))
 		return
@@ -91,7 +91,7 @@ func (c *oauthAuthorizeController) Deny(ctx *gin.Context) {
 		return
 	}
 
-	redirectTo, err := authserver.DenyAuthorization(db.DB, req.ClientId, req.RedirectUri, req.State)
+	redirectTo, err := authserver.DenyAuthorization(db.BindContext(ctx, db.DB), req.ClientId, req.RedirectUri, req.State)
 	if err != nil {
 		writeAuthorizeError(ctx, err)
 		return

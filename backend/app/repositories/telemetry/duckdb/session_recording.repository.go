@@ -83,7 +83,7 @@ func (r *sessionRecordingRepository) InsertAsync(ctx context.Context, recordings
 }
 
 func (r *sessionRecordingRepository) FindByExceptionId(ctx context.Context, projectId uuid.UUID, exceptionId uuid.UUID) (string, error) {
-	result, err := lit.SelectSingleNamed[sqlitetypes.FilePathResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[sqlitetypes.FilePathResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT file_path FROM session_recordings WHERE project_id = :project_id AND exception_id = :exception_id ORDER BY recorded_at DESC LIMIT 1",
 		lit.P{"project_id": projectId, "exception_id": exceptionId})
 	if err != nil {
@@ -107,7 +107,7 @@ func (r *sessionRecordingRepository) FindBySessionId(ctx context.Context, projec
 	}
 	query += " ORDER BY segment_index ASC, recorded_at ASC"
 
-	rows, err := lit.SelectNamed[sessionRecording](db.TelemetryDB, query, params)
+	rows, err := lit.SelectNamed[sessionRecording](shared.Traced(ctx, db.TelemetryDB), query, params)
 	if err != nil {
 		return nil, err
 	}

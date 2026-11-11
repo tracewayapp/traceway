@@ -251,7 +251,7 @@ func (r *metricPointRepository) DiscoverTagValues(ctx context.Context, projectId
 	}
 	lit.RegisterModel[tagValueRow](db.Driver)
 
-	results, err := lit.SelectNamed[tagValueRow](db.TelemetryDB,
+	results, err := lit.SelectNamed[tagValueRow](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT DISTINCT json_extract(tags, '$."' || :tag_key || '"') AS tag_value
 		FROM metric_points
 		WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to
@@ -271,7 +271,7 @@ func (r *metricPointRepository) DiscoverTagValues(ctx context.Context, projectId
 }
 
 func (r *metricPointRepository) GetAverageBetween(ctx context.Context, projectId uuid.UUID, name string, start, end time.Time) (float64, error) {
-	result, err := lit.SelectSingleNamed[avgResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[avgResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT COALESCE(avg(value), 0) AS agg_value FROM metric_points WHERE project_id = :project_id AND name = :name AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "name": name, "from": sqlitetypes.NewSQLiteTime(start), "to": sqlitetypes.NewSQLiteTime(end)})
 	if err != nil {
@@ -284,7 +284,7 @@ func (r *metricPointRepository) GetAverageBetween(ctx context.Context, projectId
 }
 
 func (r *metricPointRepository) GetDistinctServers(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]string, error) {
-	results, err := lit.SelectNamed[distinctServerResult](db.TelemetryDB,
+	results, err := lit.SelectNamed[distinctServerResult](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT DISTINCT json_extract(tags, '$.server_name') AS sn
 		FROM metric_points
 		WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to

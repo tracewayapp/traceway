@@ -23,7 +23,7 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 	if len(lines) == 0 {
 		return nil
 	}
-	return chdb.SendBatch("INSERT INTO exceptions_v2 (id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id)", func(batch driver.Batch) error {
+	return chdb.SendBatch(ctx, "INSERT INTO exceptions_v2 (id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id)", func(batch driver.Batch) error {
 		for _, est := range lines {
 			attributesJSON := "{}"
 			if len(est.Attributes) != 0 {

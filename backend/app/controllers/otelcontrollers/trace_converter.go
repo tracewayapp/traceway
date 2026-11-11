@@ -460,7 +460,10 @@ func buildException(
 	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName, debugIds)
 	stackTrace = otelSymbolicateAndroid(existingProject, projectId, ctx, stackTrace, language, proguardUuid)
 
-	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
+	// traceway.is_message is how the backend's own CaptureMessage marks a
+	// message: hashed as written, like the native protocol's isMessage.
+	isMessage, _ := getBoolAttribute(excAttrs, "traceway.is_message")
+	hash := clientcontrollers.ComputeExceptionHash(stackTrace, isMessage)
 	recordedAt, _, _ := shared.OtelStorageTimes(timeUnixNano, time.Now())
 
 	attrs := excCtx.spanAttrs
@@ -484,6 +487,7 @@ func buildException(
 		AppVersion:    appVersion,
 		ServerName:    serverName,
 		SessionId:     sessionIdFrom(excAttrs, excCtx.span, excCtx.resource),
+		IsMessage:     isMessage,
 	}
 }
 

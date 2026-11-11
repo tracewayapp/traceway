@@ -9,6 +9,7 @@ import (
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
 	"github.com/tracewayapp/traceway/backend/app/migrations"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	_ "modernc.org/sqlite"
@@ -21,7 +22,7 @@ func SetupSQLite(t *testing.T) {
 	t.Helper()
 
 	openMemory := func(name string) *sql.DB {
-		conn, err := sql.Open("sqlite", ":memory:")
+		conn, err := dbtrace.Open("sqlite", ":memory:", dbtrace.Options{System: "sqlite", Namespace: name})
 		if err != nil {
 			t.Fatalf("open in-memory sqlite (%s): %v", name, err)
 		}

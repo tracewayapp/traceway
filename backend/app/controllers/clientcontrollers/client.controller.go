@@ -59,7 +59,7 @@ func buildRecordingJob(c *gin.Context, projectId uuid.UUID, sr *clientmodels.Cli
 	}
 	body, err := json.Marshal(sr)
 	if err != nil {
-		traceway.CaptureException(traceway.NewStackTraceErrorf("failed to marshal session recording: %w", err))
+		traceway.CaptureExceptionContext(c, traceway.NewStackTraceErrorf("failed to marshal session recording: %w", err))
 		return recordings.Job{}, false
 	}
 	var key string

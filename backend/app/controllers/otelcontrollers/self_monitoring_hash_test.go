@@ -62,7 +62,7 @@ func TestSelfMonitoringMessagesStayMessages(t *testing.T) {
 		}
 		eventAttrs = append(eventAttrs, &commonpb.KeyValue{Key: string(kv.Key), Value: value})
 	}
-	stored := buildException(context.Background(), nil, uuid.New(), eventAttrs, 0, map[string]string{}, "api-1", "", "go", "", "")
+	stored := buildException(context.Background(), nil, uuid.New(), eventAttrs, 0, exceptionContext{}, "api-1", "", "go", "", "")
 
 	if !stored.IsMessage {
 		t.Fatal("a captured message must be stored as a message")

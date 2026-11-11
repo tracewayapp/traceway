@@ -174,7 +174,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 			}
 		}
 	}
-	markCaptureDataReceived(projectId, captureMetadata)
+	markCaptureDataReceived(c, projectId, captureMetadata)
 
 	if len(notStored) > 0 {
 		rejected := make(map[shared.SpanOwner]bool, len(notStored))
@@ -412,7 +412,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 			captureMetadata = append(captureMetadata, ids)
 		}
 	}
-	markCaptureDataReceived(projectId, captureMetadata)
+	markCaptureDataReceived(c, projectId, captureMetadata)
 
 	if len(exceptions) > 0 {
 		if err := telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
@@ -508,7 +508,7 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 	writeProfilesResponse(c)
 }
 
-func markCaptureDataReceived(projectId uuid.UUID, metadata []string) {
+func markCaptureDataReceived(ctx context.Context, projectId uuid.UUID, metadata []string) {
 	ids := map[uuid.UUID]bool{}
 	for _, raw := range metadata {
 		if raw == "" || len(raw) > 4096 {
@@ -530,7 +530,7 @@ func markCaptureDataReceived(projectId uuid.UUID, metadata []string) {
 	if len(ids) == 0 {
 		return
 	}
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
 		for id := range ids {
 			if err := transactional.SdkConfigRepository.MarkCaptureProgress(tx, projectId, id, "received", time.Now().UTC()); err != nil {
 				return false, err
@@ -539,6 +539,6 @@ func markCaptureDataReceived(projectId uuid.UUID, metadata []string) {
 		return true, nil
 	})
 	if err != nil {
-		traceway.CaptureException(err)
+		traceway.CaptureExceptionContext(ctx, err)
 	}
 }

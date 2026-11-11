@@ -210,7 +210,7 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 
 // FindBySessionId returns a browser session's log records in a time window, oldest first.
 func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
-	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx),
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
 			severity_text, severity_number, service_name, body,
 			resource_schema_url, resource_attributes,

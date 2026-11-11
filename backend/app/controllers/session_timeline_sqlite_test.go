@@ -16,6 +16,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/controllers/otelcontrollers"
 	"github.com/tracewayapp/traceway/backend/app/dbtest"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -51,6 +55,10 @@ func postOtlp(t *testing.T, projectId uuid.UUID, path string, msg proto.Message,
 }
 
 func TestSessionTimelineReadsBreadcrumbsFromTelemetry(t *testing.T) {
+	spanRecorder := tracetest.NewSpanRecorder()
+	t.Cleanup(traceway.Install(traceway.Providers{
+		TracerProvider: sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder)),
+	}))
 	dbtest.SetupSQLite(t)
 	previous := config.Config
 	config.Config = &config.Cfg{}
@@ -86,11 +94,11 @@ func TestSessionTimelineReadsBreadcrumbsFromTelemetry(t *testing.T) {
 		}}},
 	}}}, otelcontrollers.OtelController.ExportLogs)
 
-	trace := uuid.New()
+	traceID := uuid.New()
 	postOtlp(t, projectId, "/api/otel/v1/traces", &coltracepb.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{{
 		Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{kvString("service.name", "shop-web")}},
 		ScopeSpans: []*tracepb.ScopeSpans{{Spans: []*tracepb.Span{{
-			TraceId: trace[:], SpanId: []byte{1, 2, 3, 4, 5, 6, 7, 8}, Name: "POST", Kind: tracepb.Span_SPAN_KIND_CLIENT,
+			TraceId: traceID[:], SpanId: []byte{1, 2, 3, 4, 5, 6, 7, 8}, Name: "POST", Kind: tracepb.Span_SPAN_KIND_CLIENT,
 			StartTimeUnixNano: at(1500 * time.Millisecond), EndTimeUnixNano: at(1800 * time.Millisecond),
 			Attributes: []*commonpb.KeyValue{sid, kvString("http.request.method", "POST"),
 				kvString("url.full", "https://shop.test/api/checkout"), kvInt("http.response.status_code", 500)},
@@ -98,6 +106,7 @@ func TestSessionTimelineReadsBreadcrumbsFromTelemetry(t *testing.T) {
 	}}}, otelcontrollers.OtelController.ExportTraces)
 
 	router := gin.New()
+	router.Use(middleware.SelfMonitoring("self-token")...)
 	router.GET("/api/sessions/:sessionId/timeline", func(c *gin.Context) {
 		c.Set(middleware.ProjectIdContextKey, projectId)
 	}, SessionTimelineController.Timeline)
@@ -106,6 +115,20 @@ func TestSessionTimelineReadsBreadcrumbsFromTelemetry(t *testing.T) {
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/sessions/"+session+"/timeline"+query, nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("timeline = %d %s", recorder.Code, recorder.Body.String())
+	}
+	spans := spanRecorder.Ended()
+	if len(spans) != 3 {
+		t.Fatalf("want the request and its two database queries, got %d spans", len(spans))
+	}
+	requestSpan := spans[len(spans)-1]
+	if requestSpan.SpanKind() != trace.SpanKindServer {
+		t.Fatalf("request span kind = %v", requestSpan.SpanKind())
+	}
+	for _, span := range spans[:len(spans)-1] {
+		if span.SpanKind() != trace.SpanKindClient || span.Parent().SpanID() != requestSpan.SpanContext().SpanID() ||
+			span.SpanContext().TraceID() != requestSpan.SpanContext().TraceID() {
+			t.Fatalf("database span %q is not a child of the timeline request", span.Name())
+		}
 	}
 	var timeline struct {
 		Logs    []map[string]any `json:"logs"`

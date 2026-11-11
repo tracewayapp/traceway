@@ -223,7 +223,7 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 // navigation, clicks and custom events. Without statistics the planner prefers (project_id, timestamp), which also
 // serves the ORDER BY but reads every log of the project in the window, so the session index is named.
 func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
-	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx),
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT `+logRecordColumns+` FROM log_records INDEXED BY idx_log_records_session
 		WHERE project_id = :project_id AND json_extract(log_attributes, '$."session.id"') = :session_id
 			AND timestamp >= :from AND timestamp <= :to

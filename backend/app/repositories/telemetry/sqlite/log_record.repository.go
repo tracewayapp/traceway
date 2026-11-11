@@ -138,7 +138,7 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 		traceIdIn = " AND trace_id IN (" + strings.Join(placeholders, ", ") + ")"
 	}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count FROM log_records WHERE "+where+traceIdIn, args)
 	if err != nil {
 		return nil, 0, err
@@ -189,7 +189,7 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 			logRecordColumns, where+traceIdIn, orderBy, direction)
 	}
 
-	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB, query, args)
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB), query, args)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -202,7 +202,7 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 }
 
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
-	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB,
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT `+logRecordColumns+` FROM log_records
 		WHERE project_id = :project_id AND trace_id = :trace_id
 		ORDER BY timestamp ASC`,

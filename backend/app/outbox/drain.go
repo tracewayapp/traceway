@@ -14,7 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const (
@@ -58,7 +58,9 @@ func StartDrain(ctx context.Context) {
 			case <-ticker.C:
 			case <-wakeCh:
 			}
-			DrainOnce(ctx, time.Now().UTC())
+			traceway.RunTask(ctx, "outbox.drain", func(ctx context.Context) {
+				DrainOnce(ctx, time.Now().UTC())
+			})
 		}
 	}()
 }
@@ -68,7 +70,7 @@ func StartDrain(ctx context.Context) {
 // outbox deterministically.
 func DrainOnce(ctx context.Context, now time.Time) {
 	dueCount := 0
-	claimed, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.OutboxDelivery, error) {
+	claimed, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.OutboxDelivery, error) {
 		if !db.IsSQLite() {
 			if _, err := tx.Exec(fmt.Sprintf("SELECT pg_advisory_xact_lock(%d)", drainAdvisoryLockId)); err != nil {
 				return nil, fmt.Errorf("failed to take outbox drain lock: %w", err)
@@ -99,7 +101,11 @@ func DrainOnce(ctx context.Context, now time.Time) {
 		return claimed, nil
 	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("outbox drain tick failed: %w", err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("outbox drain tick failed: %w", err))
+		return
+	}
+	if dueCount == 0 {
+		traceway.SkipTask(ctx)
 		return
 	}
 
@@ -125,16 +131,16 @@ func DrainOnce(ctx context.Context, now time.Time) {
 
 func sendRow(ctx context.Context, row *models.OutboxDelivery) {
 	if sender == nil {
-		finalizeRow(row, errors.New("outbox sender not registered"))
+		finalizeRow(ctx, row, errors.New("outbox sender not registered"))
 		return
 	}
 	var msg models.NotificationMessage
 	if err := json.Unmarshal(row.Message, &msg); err != nil {
 		// Poison row: retrying cannot fix an unreadable payload.
-		finalizeTerminal(row, "unreadable message payload: "+err.Error())
+		finalizeTerminal(ctx, row, "unreadable message payload: "+err.Error())
 		return
 	}
-	finalizeRow(row, sendWithDeadline(ctx, row, msg))
+	finalizeRow(ctx, row, sendWithDeadline(ctx, row, msg))
 }
 
 // sendWithDeadline bounds one attempt in wall-clock time; an adapter that
@@ -163,13 +169,13 @@ func sendWithDeadline(ctx context.Context, row *models.OutboxDelivery, msg model
 	}
 }
 
-func finalizeRow(row *models.OutboxDelivery, sendErr error) {
+func finalizeRow(ctx context.Context, row *models.OutboxDelivery, sendErr error) {
 	if sendErr != nil && row.Attempts >= maxAttempts {
-		finalizeTerminal(row, sendErr.Error())
+		finalizeTerminal(ctx, row, sendErr.Error())
 		return
 	}
 	now := time.Now().UTC()
-	finalized, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+	finalized, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
 		if sendErr == nil {
 			sent, err := transactional.OutboxRepository.MarkSent(tx, row.Id, now)
 			if err != nil {
@@ -192,12 +198,12 @@ func finalizeRow(row *models.OutboxDelivery, sendErr error) {
 		return transactional.OutboxRepository.MarkFailedWithBackoff(tx, row.Id, sendErr.Error(), &next, now)
 	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to finalize outbox row %d: %w", row.Id, err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to finalize outbox row %d: %w", row.Id, err))
 		return
 	}
 	if sendErr != nil {
 		// Retryable failures must be visible before they turn terminal.
-		traceway.CaptureException(fmt.Errorf("outbox delivery %d (%s via %s) attempt %d failed, will retry: %w", row.Id, row.Kind, row.AdapterType, row.Attempts, sendErr))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("outbox delivery %d (%s via %s) attempt %d failed, will retry: %w", row.Id, row.Kind, row.AdapterType, row.Attempts, sendErr))
 		return
 	}
 	if finalized {
@@ -208,9 +214,9 @@ func finalizeRow(row *models.OutboxDelivery, sendErr error) {
 	}
 }
 
-func finalizeTerminal(row *models.OutboxDelivery, errorMsg string) {
+func finalizeTerminal(ctx context.Context, row *models.OutboxDelivery, errorMsg string) {
 	now := time.Now().UTC()
-	finalized, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+	finalized, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
 		failed, err := transactional.OutboxRepository.MarkFailedWithBackoff(tx, row.Id, errorMsg, nil, now)
 		if err != nil {
 			return false, err
@@ -228,14 +234,14 @@ func finalizeTerminal(row *models.OutboxDelivery, errorMsg string) {
 		return true, nil
 	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to finalize outbox row %d: %w", row.Id, err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to finalize outbox row %d: %w", row.Id, err))
 		return
 	}
 	if !finalized {
 		return
 	}
 	atomic.AddUint64(&terminalFailuresTotal, 1)
-	traceway.CaptureException(fmt.Errorf("outbox delivery %d (%s via %s) permanently failed after %d attempts: %s", row.Id, row.Kind, row.AdapterType, row.Attempts, errorMsg))
+	traceway.CaptureExceptionContext(ctx, fmt.Errorf("outbox delivery %d (%s via %s) permanently failed after %d attempts: %s", row.Id, row.Kind, row.AdapterType, row.Attempts, errorMsg))
 	if terminalHook != nil {
 		terminalHook(row, models.OutboxFailed, errorMsg)
 	}

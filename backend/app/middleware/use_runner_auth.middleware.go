@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/subtle"
 	"database/sql"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const RunnerContextKey = "syntheticRunner"
@@ -58,7 +59,7 @@ func InitUseRunnerAuth() {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid runner secret"})
 			return
 		}
-		runner := resolveRunner(c.GetHeader(RunnerNameHeader), c.GetHeader(RunnerVersionHeader))
+		runner := resolveRunner(c, c.GetHeader(RunnerNameHeader), c.GetHeader(RunnerVersionHeader))
 		c.Set(RunnerContextKey, runner)
 		c.Next()
 	}
@@ -67,7 +68,7 @@ func InitUseRunnerAuth() {
 // resolveRunner returns the liveness row for a runner name, registering or
 // touching it when the cached copy is stale. A DB failure degrades to a
 // transient in-memory row: liveness reporting must never block claiming.
-func resolveRunner(name string, version string) *models.SyntheticRunner {
+func resolveRunner(ctx context.Context, name string, version string) *models.SyntheticRunner {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = "unnamed"
@@ -85,7 +86,7 @@ func resolveRunner(name string, version string) *models.SyntheticRunner {
 		return entry.runner
 	}
 
-	runner, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.SyntheticRunner, error) {
+	runner, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.SyntheticRunner, error) {
 		return transactional.SyntheticRunnerRepository.UpsertSeen(tx, name, version, now)
 	})
 	if err != nil {

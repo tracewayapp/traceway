@@ -20,7 +20,7 @@ func (r *sessionRecordingRepository) InsertAsync(ctx context.Context, recordings
 	if len(recordings) == 0 {
 		return nil
 	}
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(), "INSERT INTO session_recordings (id, project_id, exception_id, session_id, segment_index, file_path, recorded_at, ended_at)")
+	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(ctx), "INSERT INTO session_recordings (id, project_id, exception_id, session_id, segment_index, file_path, recorded_at, ended_at)")
 	if err != nil {
 		return err
 	}

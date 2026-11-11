@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 const OrganizationIdContextKey = "organizationId"
@@ -39,12 +39,12 @@ func requireOrgRole(permitted func(role string) bool, denialMessage string) gin.
 			return
 		}
 
-		role, err := db.ExecuteTransaction(func(tx *sql.Tx) (string, error) {
+		role, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (string, error) {
 			return transactional.OrganizationRepository.GetUserRole(tx, organizationId, userId)
 		})
 
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to check permissions: %w", err))
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("Failed to check permissions: %w", err))
 			return
 		}
 

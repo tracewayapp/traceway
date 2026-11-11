@@ -8,7 +8,8 @@ import (
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 var telemetryRetentionTargets = []struct {
@@ -78,6 +79,12 @@ func startSQLiteRetention(ctx context.Context, days int, source string) {
 }
 
 func runSQLiteRetention(ctx context.Context, days int) {
+	traceway.RunTask(ctx, "retention.telemetry", func(ctx context.Context) {
+		pruneTelemetry(ctx, days)
+	})
+}
+
+func pruneTelemetry(ctx context.Context, days int) {
 	cutoff := time.Now().UTC().AddDate(0, 0, -days).Format(time.RFC3339Nano)
 	params := lit.P{"cutoff": cutoff}
 
@@ -87,8 +94,8 @@ func runSQLiteRetention(ctx context.Context, days int) {
 				return
 			}
 			query := fmt.Sprintf("DELETE FROM %s WHERE %s < :cutoff", tgt.table, tgt.column)
-			if err := lit.DeleteNamed(db.Driver, db.TelemetryDB, query, params); err != nil {
-				traceway.CaptureException(fmt.Errorf("retention: delete from telemetry.%s failed: %w", tgt.table, err))
+			if err := lit.DeleteNamed(db.Driver, shared.Traced(ctx, db.TelemetryDB), query, params); err != nil {
+				traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: delete from telemetry.%s failed: %w", tgt.table, err))
 			}
 		}
 		reclaimTelemetryDisk(ctx)
@@ -98,7 +105,7 @@ func runSQLiteRetention(ctx context.Context, days int) {
 func reclaimTelemetryDisk(ctx context.Context) {
 	if db.IsDuckDBTelemetry() {
 		if _, err := db.TelemetryDB.ExecContext(ctx, "CHECKPOINT"); err != nil {
-			traceway.CaptureException(fmt.Errorf("retention: telemetry maintenance %q failed: %w", "CHECKPOINT", err))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: telemetry maintenance %q failed: %w", "CHECKPOINT", err))
 		}
 		return
 	}
@@ -111,7 +118,7 @@ func reclaimTelemetryDisk(ctx context.Context) {
 			return
 		}
 		if _, err := db.TelemetryDB.ExecContext(ctx, stmt); err != nil {
-			traceway.CaptureException(fmt.Errorf("retention: telemetry maintenance %q failed: %w", stmt, err))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: telemetry maintenance %q failed: %w", stmt, err))
 		}
 	}
 }

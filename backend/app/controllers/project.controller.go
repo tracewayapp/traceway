@@ -12,13 +12,13 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"net/http"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 // Valid framework values
@@ -136,7 +136,7 @@ type DeleteProjectRequest struct {
 func (p projectController) ListProjects(c *gin.Context) {
 	userId := middleware.GetUserId(c)
 
-	projectsWithBackendUrl, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.ProjectWithBackendUrl, error) {
+	projectsWithBackendUrl, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) ([]*models.ProjectWithBackendUrl, error) {
 		return transactional.ProjectRepository.FindAllWithBackendUrlByUserId(tx, userId)
 	})
 	if err != nil {
@@ -175,7 +175,7 @@ func (p projectController) CreateProject(c *gin.Context) {
 	userId := middleware.GetUserId(c)
 
 	var creatorRole string
-	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+	project, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (*models.Project, error) {
 		currentProject, err := transactional.ProjectRepository.FindById(tx, projectId)
 		if err != nil {
 			return nil, err
@@ -329,7 +329,7 @@ func (p projectController) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+	project, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (*models.Project, error) {
 		return transactional.ProjectRepository.Update(tx, projectId, request.Name, request.Framework, request.DropHealthyHealthchecks, healthcheckPaths, profileLabelAllowlist, aiFlaggedTerms, aiFlaggedLanguages)
 	})
 	if err != nil {
@@ -355,7 +355,7 @@ func (p projectController) DeleteProject(c *gin.Context) {
 		return
 	}
 
-	nameMatched, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+	nameMatched, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (bool, error) {
 		project, err := transactional.ProjectRepository.FindById(tx, projectId)
 		if err != nil {
 			return false, err
@@ -395,7 +395,7 @@ func (p projectController) GenerateSourceMapToken(c *gin.Context) {
 		return
 	}
 
-	token, err := db.ExecuteTransaction(func(tx *sql.Tx) (string, error) {
+	token, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (string, error) {
 		return transactional.ProjectRepository.GenerateSourceMapToken(tx, projectId)
 	})
 	if err != nil {

@@ -1,15 +1,16 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 func CollectUniqueMetricNames(points []models.MetricPoint) []string {
@@ -24,8 +25,8 @@ func CollectUniqueMetricNames(points []models.MetricPoint) []string {
 	return names
 }
 
-func AutoRegisterMetrics(projectId uuid.UUID, names []string) {
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+func AutoRegisterMetrics(ctx context.Context, projectId uuid.UUID, names []string) {
+	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (struct{}, error) {
 		return struct{}{}, transactional.MetricRegistryRepository.EnsureRegistered(tx, projectId, names)
 	})
 	if err != nil {
@@ -33,8 +34,8 @@ func AutoRegisterMetrics(projectId uuid.UUID, names []string) {
 	}
 }
 
-func AutoRegisterMetricsWithUnits(projectId uuid.UUID, entries []transactional.MetricRegistrationEntry) {
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+func AutoRegisterMetricsWithUnits(ctx context.Context, projectId uuid.UUID, entries []transactional.MetricRegistrationEntry) {
+	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (struct{}, error) {
 		return struct{}{}, transactional.MetricRegistryRepository.EnsureRegisteredWithUnits(tx, projectId, entries)
 	})
 	if err != nil {

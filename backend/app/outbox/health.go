@@ -1,6 +1,7 @@
 package outbox
 
 import (
+	"context"
 	"database/sql"
 	"sync/atomic"
 	"time"
@@ -21,12 +22,12 @@ type HealthStats struct {
 
 // HealthSnapshot powers /api/health/deep. OldestPendingAgeSec measures due-age
 // (from next_attempt_at), so a scheduled future delivery does not look stuck.
-func HealthSnapshot() (*HealthStats, error) {
+func HealthSnapshot(ctx context.Context) (*HealthStats, error) {
 	type snapshot struct {
 		Counts *models.OutboxHealthCounts
 		Oldest *models.OutboxDelivery
 	}
-	loaded, err := db.ExecuteTransaction(func(tx *sql.Tx) (snapshot, error) {
+	loaded, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (snapshot, error) {
 		counts, err := transactional.OutboxRepository.CountsForHealth(tx)
 		if err != nil {
 			return snapshot{}, err

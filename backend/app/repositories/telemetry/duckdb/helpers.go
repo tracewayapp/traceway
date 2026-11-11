@@ -11,7 +11,8 @@ import (
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/tracewayapp/traceway/backend/app/db"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 // The DuckDB Appender rejects typed Go pointers for nullable columns
@@ -80,6 +81,15 @@ func withAppender(ctx context.Context, table string, fn func(*duckdb.Appender)) 
 }
 
 func withAppenderColumns(ctx context.Context, table string, columns []string, fn func(*duckdb.Appender)) error {
+	span, traced := dbtrace.StartSpan(ctx, dbtrace.Options{System: "duckdb", Namespace: "telemetry"}, "INSERT INTO "+table)
+	err := appendRows(ctx, table, columns, fn)
+	if traced {
+		dbtrace.EndSpan(span, err)
+	}
+	return err
+}
+
+func appendRows(ctx context.Context, table string, columns []string, fn func(*duckdb.Appender)) error {
 	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		db.RecordTelemetryInsertFailure()

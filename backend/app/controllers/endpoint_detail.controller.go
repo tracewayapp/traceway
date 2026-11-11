@@ -8,10 +8,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type endpointDetailController struct{}
@@ -60,10 +60,10 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	_ = c.ShouldBindJSON(&request)
 
 	// Get endpoint
-	span := traceway.StartSpan(c, "loading endpoint")
-	endpoint, err := telemetry.EndpointRepository.FindById(c, projectId, endpointId, request.RecordedAt)
+	spanCtx, span := traceway.StartSpan(c, "loading endpoint")
+	endpoint, err := telemetry.EndpointRepository.FindById(spanCtx, projectId, endpointId, request.RecordedAt)
 	if endpoint == nil && err == nil && request.RecordedAt != nil {
-		endpoint, err = telemetry.EndpointRepository.FindById(c, projectId, endpointId, nil)
+		endpoint, err = telemetry.EndpointRepository.FindById(spanCtx, projectId, endpointId, nil)
 	}
 	span.End()
 	if err != nil {
@@ -78,8 +78,8 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	recordedAt := endpoint.RecordedAt
 
 	// Get spans (flat list ordered by start_time)
-	span = traceway.StartSpan(c, "loading spans")
-	graph, err := telemetry.SpanRepository.FindGraph(c, shared.NewSpanLookup(projectId, endpoint.TraceId, endpoint.SpanId, recordedAt))
+	spanCtx, span = traceway.StartSpan(c, "loading spans")
+	graph, err := telemetry.SpanRepository.FindGraph(spanCtx, shared.NewSpanLookup(projectId, endpoint.TraceId, endpoint.SpanId, recordedAt))
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading spans: %w", err))
@@ -90,8 +90,8 @@ func (t endpointDetailController) GetEndpointDetail(c *gin.Context) {
 	var exceptionInfo *EndpointExceptionInfo
 	var messages []EndpointMessageInfo
 
-	span = traceway.StartSpan(c, "loading exceptions")
-	allExceptions, err := findOccurrenceExceptions(c, projectId, endpoint.TraceId, endpoint.SpanId, &recordedAt, graph.Spans)
+	spanCtx, span = traceway.StartSpan(c, "loading exceptions")
+	allExceptions, err := findOccurrenceExceptions(spanCtx, projectId, endpoint.TraceId, endpoint.SpanId, &recordedAt, graph.Spans)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading all exceptions: %w", err))

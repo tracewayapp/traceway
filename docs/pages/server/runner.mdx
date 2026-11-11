@@ -105,7 +105,7 @@ Shutdown is graceful: on SIGTERM the runner stops polling, lets in-flight runs f
 | `RUNNER_WORKERS` | `2` | Concurrent browser runs (max 16). |
 | `SYNTHETICS_PLAYWRIGHT_DIR` | `.` | Harness dir containing `node_modules/@playwright/test`. |
 | `SYNTHETICS_BROWSER_SANDBOX` | `auto` | `auto`, `bwrap` or `off`. Isolates each spec in a bubblewrap namespace. Set `bwrap` on any fleet serving more than one team. |
-| `TRACEWAY_RUNNER_MONITORING` | unset | Optional `<project_token>@<url>/api/report`. The runner then reports its own CPU/memory metrics, one `browser_run` task per executed check, and exceptions for infra failures. |
+| `TRACEWAY_RUNNER_MONITORING` | unset | Optional `<project_token>@<url>`. The runner then reports to that project over OpenTelemetry: Go runtime metrics, one `browser_run` task per executed check (tagged `check_id`, `run_id` and `status`), and exceptions for infra failures, linked to the run's task. Values ending in `/api/report` still work. For host CPU and memory, install the [Traceway OTel Agent](/learn/otel-agent) on the runner host. |
 
 ## 4. Verify
 

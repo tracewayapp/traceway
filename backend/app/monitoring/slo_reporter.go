@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	traceway "go.tracewayapp.com"
-
 	"github.com/tracewayapp/traceway/backend/app/slo"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const sloReportInterval = 30 * time.Second

@@ -7,7 +7,7 @@ import (
 
 	"github.com/tracewayapp/traceway/backend/app/config"
 	"github.com/tracewayapp/traceway/backend/app/db"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const logCapTickInterval = time.Minute
@@ -41,6 +41,12 @@ func runLogRecordsCap(ctx context.Context, maxRows int) {
 	if db.TelemetryDB == nil || ctx.Err() != nil {
 		return
 	}
+	traceway.RunTask(ctx, "retention.log_cap", func(ctx context.Context) {
+		capLogRecords(ctx, maxRows)
+	})
+}
+
+func capLogRecords(ctx context.Context, maxRows int) {
 
 	// Deletes everything strictly older than the Nth-newest row; a no-op (NULL
 	// boundary) while the table holds maxRows rows or fewer.
@@ -48,7 +54,12 @@ func runLogRecordsCap(ctx context.Context, maxRows int) {
 		"DELETE FROM log_records WHERE timestamp < (SELECT timestamp FROM log_records ORDER BY timestamp DESC LIMIT 1 OFFSET %d)",
 		maxRows-1,
 	)
-	if _, err := db.TelemetryDB.ExecContext(ctx, query); err != nil {
-		traceway.CaptureException(fmt.Errorf("retention: log_records row cap delete failed: %w", err))
+	result, err := db.TelemetryDB.ExecContext(ctx, query)
+	if err != nil {
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: log_records row cap delete failed: %w", err))
+		return
+	}
+	if deleted, err := result.RowsAffected(); err == nil && deleted == 0 {
+		traceway.SkipTask(ctx)
 	}
 }

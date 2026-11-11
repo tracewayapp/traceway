@@ -34,7 +34,6 @@ COPY backend/ ./
 COPY cli/ /app/cli/
 COPY --from=frontend-builder /app/frontend/build ./static/frontend/
 
-RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/tracewaygin
 RUN go mod tidy
 RUN go mod download
 

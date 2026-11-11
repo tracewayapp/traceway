@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 var (

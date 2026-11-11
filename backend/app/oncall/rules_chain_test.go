@@ -366,7 +366,7 @@ func TestLowUrgencyPageRunsLowChain(t *testing.T) {
 
 	// warning severity + auto urgency -> low chain (email), not sms.
 	policyId := createPolicy(t, fixture.OrgId, singleStepPolicy(fixture.Alice))
-	if _, err := openPage(openPageParams{
+	if _, err := openPage(context.Background(), openPageParams{
 		PolicyId: policyId, ProjectId: fixture.ProjectId, RuleName: "r", RuleType: "new_error",
 		Subject: "warn", Severity: "warning", DedupKey: "chain4|/issues/w",
 	}); err != nil {

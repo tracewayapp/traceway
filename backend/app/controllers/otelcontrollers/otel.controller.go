@@ -19,7 +19,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 func msSince(t time.Time) float64 {
@@ -94,9 +94,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	hasOrg := project != nil && project.OrganizationId != nil
 	if hasOrg {
 		orgId = *project.OrganizationId
-		if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-			attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
-		}
+		traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
 	}
 	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
 	if hasOrg {
@@ -271,9 +269,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
 			orgId = *p.OrganizationId
 			hasOrg = true
-			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
-			}
+			traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
 		}
 	}
 	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
@@ -309,7 +305,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		insertMs = msSince(insertStart)
 
 		if len(result.Entries) > 0 {
-			go services.AutoRegisterMetricsWithUnits(projectId, result.Entries)
+			go services.AutoRegisterMetricsWithUnits(c.Request.Context(), projectId, result.Entries)
 		}
 	}
 
@@ -343,9 +339,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 			existingProject = p
 			orgId = *p.OrganizationId
 			hasOrg = true
-			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
-			}
+			traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
 		}
 	}
 	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
@@ -410,9 +404,7 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 		}
 	}
 	if project != nil && project.OrganizationId != nil {
-		if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-			attrs.SetTag("organization_id", fmt.Sprintf("%d", *project.OrganizationId))
-		}
+		traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", *project.OrganizationId))
 	}
 
 	payload, bodyBytes, err := decodeProfilesPayload(c)

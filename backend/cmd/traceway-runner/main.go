@@ -42,9 +42,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/app/synthetics/browserexec"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const version = "1.0.0"
@@ -86,13 +85,22 @@ func main() {
 	defer stop()
 
 	if cfg.monitoring != "" {
-		if err := traceway.Init(cfg.monitoring,
-			traceway.WithServerName(cfg.name),
-			traceway.WithVersion(version),
-		); err != nil {
+		shutdown, err := traceway.Setup(ctx, traceway.Options{
+			ConnectionString: cfg.monitoring,
+			ServiceName:      cfg.name,
+			Version:          version,
+		})
+		if err != nil {
 			log.Printf("self-monitoring disabled: %v", err)
 		} else {
 			log.Printf("self-monitoring enabled (server name: %s)", cfg.name)
+			defer func() {
+				flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := shutdown(flushCtx); err != nil {
+					log.Printf("self-monitoring flush failed: %v", err)
+				}
+			}()
 		}
 	}
 
@@ -211,13 +219,17 @@ func poll(ctx context.Context, cfg runnerConfig) ([]job, error) {
 // executeGuarded isolates a panicking job: log it, report it, keep the
 // worker alive for the next claim.
 func executeGuarded(ctx context.Context, cfg runnerConfig, j job) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("run %d (check %d): panicked: %v", j.RunId, j.CheckId, r)
-			traceway.CaptureException(fmt.Errorf("panic executing run %d (check %d): %v", j.RunId, j.CheckId, r))
-		}
-	}()
-	execute(ctx, cfg, j)
+	traceway.RunTask(ctx, "browser_run", func(ctx context.Context) {
+		traceway.SetAttribute(ctx, "check_id", strconv.Itoa(j.CheckId))
+		traceway.SetAttribute(ctx, "run_id", strconv.Itoa(j.RunId))
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("run %d (check %d): panicked: %v", j.RunId, j.CheckId, r)
+				traceway.CaptureExceptionContext(ctx, fmt.Errorf("panic executing run %d (check %d): %v", j.RunId, j.CheckId, r))
+			}
+		}()
+		execute(ctx, cfg, j)
+	})
 }
 
 func execute(ctx context.Context, cfg runnerConfig, j job) {
@@ -241,7 +253,7 @@ func execute(ctx context.Context, cfg runnerConfig, j job) {
 	payload := map[string]any{"status": "down", "latencyMs": float64(time.Since(started).Microseconds()) / 1000}
 	if err != nil {
 		payload["errorMessage"] = "browser run failed to start: " + err.Error()
-		traceway.CaptureException(fmt.Errorf("browser run %d (check %d) failed to start: %w", j.RunId, j.CheckId, err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("browser run %d (check %d) failed to start: %w", j.RunId, j.CheckId, err))
 	} else {
 		if result.DurationMs > 0 {
 			payload["latencyMs"] = result.DurationMs
@@ -260,22 +272,11 @@ func execute(ctx context.Context, cfg runnerConfig, j job) {
 	}
 	log.Printf("run %d (check %d): %s", j.RunId, j.CheckId, payload["status"])
 
-	// One task trace per executed run; no-op unless self-monitoring is on.
-	traceway.CaptureTask(
-		&traceway.TraceContext{Id: uuid.NewString(), IsTask: true},
-		"browser_run",
-		time.Since(started),
-		started,
-		map[string]string{
-			"check_id": strconv.Itoa(j.CheckId),
-			"run_id":   strconv.Itoa(j.RunId),
-			"status":   payload["status"].(string),
-		},
-	)
+	traceway.SetAttribute(ctx, "status", payload["status"].(string))
 
 	if err := postResult(ctx, cfg, j.RunId, payload); err != nil {
 		log.Printf("run %d: failed to report result: %v", j.RunId, err)
-		traceway.CaptureException(fmt.Errorf("failed to report result for run %d (check %d): %w", j.RunId, j.CheckId, err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to report result for run %d (check %d): %w", j.RunId, j.CheckId, err))
 	}
 }
 

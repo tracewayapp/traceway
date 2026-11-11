@@ -10,7 +10,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 // browserExecWakeCh nudges the embedded browser executor loop separately from
@@ -59,7 +59,7 @@ func executeBatch(ctx context.Context, now time.Time, types [3]string, concurren
 		check *models.SyntheticCheck
 	}
 	claimedCount := 0
-	claimed, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]claimedRun, error) {
+	claimed, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]claimedRun, error) {
 		due, err := transactional.CheckRunRepository.FindClaimable(tx, types[0], types[1], types[2], now, claimBatchSize)
 		if err != nil {
 			return nil, err

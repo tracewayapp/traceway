@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type deviceAuthController struct{}
@@ -26,7 +26,7 @@ func (c *deviceAuthController) Authorize(ctx *gin.Context) {
 	// default client — CreateDeviceAuth substitutes it — rather than 400ing.
 	_ = ctx.ShouldBind(&req)
 
-	resp, err := authserver.CreateDeviceAuth(req.ClientId, authserver.IssuerBaseURLFromRequest(ctx))
+	resp, err := authserver.CreateDeviceAuth(ctx, req.ClientId, authserver.IssuerBaseURLFromRequest(ctx))
 	if err != nil {
 		if errors.Is(err, authserver.ErrUnknownClient) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid_client"})
@@ -51,21 +51,21 @@ func (c *deviceAuthController) Token(ctx *gin.Context) {
 
 	switch req.GrantType {
 	case "device_code", "urn:ietf:params:oauth:grant-type:device_code":
-		ts, err := authserver.PollDeviceToken(req.DeviceCode)
+		ts, err := authserver.PollDeviceToken(ctx, req.DeviceCode)
 		if err != nil {
 			writeOAuthGrantError(ctx, err)
 			return
 		}
 		ctx.JSON(http.StatusOK, ts)
 	case "refresh_token":
-		ts, err := authserver.RotateRefresh(req.RefreshToken)
+		ts, err := authserver.RotateRefresh(ctx, req.RefreshToken)
 		if err != nil {
 			writeOAuthGrantError(ctx, err)
 			return
 		}
 		ctx.JSON(http.StatusOK, ts)
 	case "authorization_code":
-		ts, err := authserver.RedeemAuthorizationCode(req.ClientId, req.Code, req.CodeVerifier, req.RedirectUri, req.Resource, authserver.IssuerBaseURLFromRequest(ctx))
+		ts, err := authserver.RedeemAuthorizationCode(ctx, req.ClientId, req.Code, req.CodeVerifier, req.RedirectUri, req.Resource, authserver.IssuerBaseURLFromRequest(ctx))
 		if err != nil {
 			writeOAuthGrantError(ctx, err)
 			return
@@ -85,7 +85,7 @@ func (c *deviceAuthController) Logout(ctx *gin.Context) {
 	_ = ctx.ShouldBind(&req)
 
 	if req.RefreshToken != "" {
-		if err := authserver.RevokeByToken(req.RefreshToken); err != nil {
+		if err := authserver.RevokeByToken(ctx, req.RefreshToken); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("logout revoke: %w", err))
 			return
 		}
@@ -100,7 +100,7 @@ func (c *deviceAuthController) Lookup(ctx *gin.Context) {
 		return
 	}
 
-	da, err := transactional.DeviceAuthorizationRepository.FindByUserCode(db.DB, userCode)
+	da, err := transactional.DeviceAuthorizationRepository.FindByUserCode(db.BindContext(ctx, db.DB), userCode)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("device lookup: %w", err))
 		return

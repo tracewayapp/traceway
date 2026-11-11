@@ -1,6 +1,6 @@
 package monitoring
 
-import traceway "go.tracewayapp.com"
+import "github.com/tracewayapp/traceway/backend/app/traceway"
 
 func RecordRecordingUploader(queueDepth, inFlight int, uploadedDelta, droppedDelta, failedDelta uint64) {
 	traceway.CaptureMetric("traceway.recordings.queue_depth", float64(queueDepth))

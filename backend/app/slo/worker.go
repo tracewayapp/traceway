@@ -17,7 +17,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const (
@@ -87,7 +87,7 @@ func Start(ctx context.Context) {
 		defer releaseShards()
 		ticker := time.NewTicker(pollInterval())
 		defer ticker.Stop()
-		RunOnce(ctx, time.Now().UTC())
+		runTick(ctx)
 		for {
 			select {
 			case <-ctx.Done():
@@ -95,29 +95,36 @@ func Start(ctx context.Context) {
 			case <-ticker.C:
 			case <-wakeCh:
 			}
-			RunOnce(ctx, time.Now().UTC())
+			runTick(ctx)
 		}
 	}()
+}
+
+func runTick(ctx context.Context) {
+	traceway.RunTask(ctx, "slo.compute", func(ctx context.Context) {
+		RunOnce(ctx, time.Now().UTC())
+	})
 }
 
 func RunOnce(ctx context.Context, now time.Time) {
 	shards, err := claimShards(ctx)
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to lease SLO shards: %w", err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to lease SLO shards: %w", err))
 		return
 	}
 	if shards.size() == 0 {
 		pruneWindowCaches(nil)
+		traceway.SkipTask(ctx)
 		return
 	}
 	started := time.Now()
 	tickStarted.Store(started.UnixNano())
 	defer tickStarted.Store(0)
-	enabled, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SLO, error) {
+	enabled, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.SLO, error) {
 		return transactional.SLORepository.FindEnabled(tx)
 	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to load enabled SLOs: %w", err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to load enabled SLOs: %w", err))
 		return
 	}
 	slos := make([]*models.SLO, 0, len(enabled))
@@ -139,12 +146,17 @@ func RunOnce(ctx context.Context, now time.Time) {
 	stats.DurationMs = millisSince(started)
 	recordTick(stats)
 	lastTickUnix.Store(now.Unix())
+	pruned := false
 	if shards.owns(0) && now.Sub(lastPruneAt) >= pruneInterval {
 		if err := telemetry.SLOBucketRepository.PruneBefore(ctx, now.Add(-bucketRetention)); err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to prune slo buckets: %w", err))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to prune slo buckets: %w", err))
 		} else {
 			lastPruneAt = now
+			pruned = true
 		}
+	}
+	if len(slos) == 0 && !pruned {
+		traceway.SkipTask(ctx)
 	}
 }
 
@@ -173,7 +185,7 @@ func computeAll(ctx context.Context, slos []*models.SLO, now time.Time) *TickSta
 		computeGroup(ctx, slos[start:end], now, deadline, workers, timeout, stats)
 		if end < len(slos) {
 			if err := renewShards(ctx); err != nil {
-				traceway.CaptureException(fmt.Errorf("failed to renew SLO shard leases: %w", err))
+				traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to renew SLO shard leases: %w", err))
 			}
 		}
 	}
@@ -223,7 +235,7 @@ func computeGroup(ctx context.Context, group []*models.SLO, now, deadline time.T
 		if result == nil {
 			atomic.AddUint64(&errorsTotal, 1)
 			stats.Errors++
-			traceway.CaptureException(fmt.Errorf("failed to compute SLO %d (%s): panicked", group[i].Id, group[i].SliKind))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to compute SLO %d (%s): panicked", group[i].Id, group[i].SliKind))
 			continue
 		}
 		stats.Buckets += len(result.buckets)
@@ -241,9 +253,9 @@ func computeGroup(ctx context.Context, group []*models.SLO, now, deadline time.T
 			atomic.AddUint64(&errorsTotal, 1)
 			stats.Errors++
 			if result.timedOut {
-				traceway.CaptureException(fmt.Errorf("SLO %d (%s) of project %s timed out after %s: %w", result.slo.Id, result.slo.SliKind, result.slo.ProjectId, timeout, result.err))
+				traceway.CaptureExceptionContext(ctx, fmt.Errorf("SLO %d (%s) of project %s timed out after %s: %w", result.slo.Id, result.slo.SliKind, result.slo.ProjectId, timeout, result.err))
 			} else {
-				traceway.CaptureException(fmt.Errorf("failed to compute SLO %d (%s): %w", result.slo.Id, result.slo.SliKind, result.err))
+				traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to compute SLO %d (%s): %w", result.slo.Id, result.slo.SliKind, result.err))
 			}
 			continue
 		}
@@ -416,7 +428,7 @@ func writeSnapshot(ctx context.Context, result *tickResult, now time.Time) error
 	result.fullSnapshot = sums.full
 	snapshot := Snapshot(sums.window, sums.lastHour, sums.lastSixHours, slo.Target(), now, &result.historyFrom, &result.lastClosed)
 	snapshot.GapFrom, snapshot.GapTo = result.gapFrom, result.gapTo
-	applied, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+	applied, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
 		return transactional.SLORepository.UpdateSnapshot(tx, slo.Id, slo.Revision, snapshot)
 	})
 	if err != nil {
@@ -436,7 +448,7 @@ func window(count shared.SLOCount) Window {
 }
 
 func discardStale(ctx context.Context, stale *models.SLO) error {
-	current, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.SLO, error) {
+	current, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.SLO, error) {
 		return transactional.SLORepository.FindById(tx, stale.Id)
 	})
 	if err != nil || current != nil {

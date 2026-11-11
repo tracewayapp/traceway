@@ -8,13 +8,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services/authserver"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type patController struct{}
@@ -81,7 +81,7 @@ func (c *patController) Create(ctx *gin.Context) {
 func (c *patController) List(ctx *gin.Context) {
 	userId := middleware.GetUserId(ctx)
 
-	tokens, err := transactional.PersonalAccessTokenRepository.ListByUser(db.DB, userId)
+	tokens, err := transactional.PersonalAccessTokenRepository.ListByUser(db.BindContext(ctx, db.DB), userId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("list pats: %w", err))
 		return

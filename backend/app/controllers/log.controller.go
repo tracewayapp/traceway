@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 type logController struct{}
@@ -149,8 +149,8 @@ func (l logController) List(c *gin.Context) {
 		}
 	}
 
-	span := traceway.StartSpan(c, "loading logs")
-	records, total, err := telemetry.LogRecordRepository.Search(c, params)
+	spanCtx, span := traceway.StartSpan(c, "loading logs")
+	records, total, err := telemetry.LogRecordRepository.Search(spanCtx, params)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading logs: %w", err))

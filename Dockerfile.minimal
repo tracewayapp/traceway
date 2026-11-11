@@ -43,8 +43,7 @@ COPY cli/ /app/cli/
 # Copy built frontend for embedding
 COPY --from=frontend-builder /app/frontend/build ./static/frontend/
 
-# Strip local replace directives and download dependencies
-RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/tracewaygin
+# Download dependencies
 RUN go mod tidy
 RUN go mod download
 

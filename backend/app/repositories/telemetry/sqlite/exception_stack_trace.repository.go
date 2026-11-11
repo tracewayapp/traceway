@@ -124,7 +124,7 @@ func (e *exceptionStackTraceRepository) InsertAsync(ctx context.Context, lines [
 }
 
 func (e *exceptionStackTraceRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count FROM exceptions_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "from": sqlitetypes.NewSQLiteTime(start), "to": sqlitetypes.NewSQLiteTime(end)})
 	if err != nil {
@@ -181,7 +181,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 		WHERE ` + whereClause + `
 		GROUP BY e.exception_hash` + havingClause + `)`
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, params)
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB), countQuery, params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -198,7 +198,7 @@ func (e *exceptionStackTraceRepository) FindGrouped(ctx context.Context, project
 	params["limit"] = pageSize
 	params["offset"] = offset
 
-	groupRows, err := lit.SelectNamed[exceptionGroupRow](db.TelemetryDB, fullQuery, params)
+	groupRows, err := lit.SelectNamed[exceptionGroupRow](shared.Traced(ctx, db.TelemetryDB), fullQuery, params)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -223,7 +223,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 	offset := (page - 1) * pageSize
 	params := lit.P{"project_id": projectId, "exception_hash": exceptionHash}
 
-	groupRow, err := lit.SelectSingleNamed[exceptionGroupRow](db.TelemetryDB,
+	groupRow, err := lit.SelectSingleNamed[exceptionGroupRow](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT exception_hash, stack_trace, MAX(recorded_at) as last_seen, MIN(recorded_at) as first_seen, COUNT(*) as count, NULL as max_archived_at
 		FROM exceptions_v2 WHERE project_id = :project_id AND exception_hash = :exception_hash
 		GROUP BY exception_hash`,
@@ -245,7 +245,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 		Count:         groupRow.Count,
 	}
 
-	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB,
+	rows, err := lit.SelectNamed[exceptionRow](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 		FROM exceptions_v2 WHERE project_id = :project_id AND exception_hash = :exception_hash
 		ORDER BY recorded_at DESC LIMIT :limit OFFSET :offset`,
@@ -263,7 +263,7 @@ func (e *exceptionStackTraceRepository) FindByHash(ctx context.Context, projectI
 }
 
 func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, projectId uuid.UUID, start, end time.Time) ([]models.TimeSeriesPoint, error) {
-	results, err := lit.SelectNamed[sqlitetypes.TimeSeriesResult](db.TelemetryDB,
+	results, err := lit.SelectNamed[sqlitetypes.TimeSeriesResult](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT strftime('%Y-%m-%d %H:00:00', recorded_at) as bucket, CAST(COUNT(*) AS REAL) as agg_value
 		FROM exceptions_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`,
@@ -276,7 +276,7 @@ func (e *exceptionStackTraceRepository) CountByHour(ctx context.Context, project
 
 func (e *exceptionStackTraceRepository) CountByInterval(ctx context.Context, projectId uuid.UUID, start, end time.Time, intervalMinutes int) ([]models.TimeSeriesPoint, error) {
 	intervalSeconds := intervalMinutes * 60
-	results, err := lit.SelectNamed[sqlitetypes.TimeSeriesResult](db.TelemetryDB,
+	results, err := lit.SelectNamed[sqlitetypes.TimeSeriesResult](shared.Traced(ctx, db.TelemetryDB),
 		fmt.Sprintf(`SELECT datetime((strftime('%%s', recorded_at) / %d) * %d, 'unixepoch') as bucket, CAST(COUNT(*) AS REAL) as agg_value
 		FROM exceptions_v2 WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to
 		GROUP BY bucket ORDER BY bucket ASC`, intervalSeconds, intervalSeconds),
@@ -306,7 +306,7 @@ func (e *exceptionStackTraceRepository) GetHourlyTrendForHashes(ctx context.Cont
 		AND exception_hash IN (` + strings.Join(placeholders, ",") + `)
 		GROUP BY exception_hash, hour ORDER BY exception_hash, hour ASC`
 
-	trendRows, err := lit.SelectNamed[exceptionTrendRow](db.TelemetryDB, query, params)
+	trendRows, err := lit.SelectNamed[exceptionTrendRow](shared.Traced(ctx, db.TelemetryDB), query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (e *exceptionStackTraceRepository) UnarchiveByHashes(ctx context.Context, p
 }
 
 func (e *exceptionStackTraceRepository) IsArchived(ctx context.Context, projectId uuid.UUID, hash string) (bool, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count FROM archived_exceptions WHERE project_id = :project_id AND exception_hash = :exception_hash",
 		lit.P{"project_id": projectId, "exception_hash": hash})
 	if err != nil {
@@ -392,7 +392,7 @@ func (e *exceptionStackTraceRepository) FindAllByTraceId(ctx context.Context, pr
 	}
 	query += ` ORDER BY recorded_at ASC`
 
-	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB, query, params)
+	rows, err := lit.SelectNamed[exceptionRow](shared.Traced(ctx, db.TelemetryDB), query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +416,7 @@ func (e *exceptionStackTraceRepository) FindById(ctx context.Context, projectId 
 	}
 	query += ` LIMIT 1`
 
-	row, err := lit.SelectSingleNamed[exceptionRow](db.TelemetryDB, query, params)
+	row, err := lit.SelectSingleNamed[exceptionRow](shared.Traced(ctx, db.TelemetryDB), query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +478,7 @@ func (e *exceptionStackTraceRepository) FindByTraceIds(ctx context.Context, trac
 // (WHERE session_id IS NOT NULL); an IS, IN or COALESCE rewrite falls back to a whole-project scan.
 func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, projectId, sessionId uuid.UUID, startedAt time.Time) ([]models.ExceptionStackTrace, error) {
 	from, to := shared.TraceWindowBounds(startedAt)
-	rows, err := lit.SelectNamed[exceptionRow](db.TelemetryDB,
+	rows, err := lit.SelectNamed[exceptionRow](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 			FROM exceptions_v2
 			WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to
@@ -496,7 +496,7 @@ func (e *exceptionStackTraceRepository) FindAllBySessionId(ctx context.Context, 
 
 // GetSessionIdForException returns the session_id for the given exception or nil when not linked.
 func (e *exceptionStackTraceRepository) GetSessionIdForException(ctx context.Context, projectId, exceptionId uuid.UUID) (*uuid.UUID, error) {
-	row, err := lit.SelectSingleNamed[exceptionRow](db.TelemetryDB,
+	row, err := lit.SelectSingleNamed[exceptionRow](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT id, project_id, trace_id, span_id, trace_type, exception_hash, stack_trace, recorded_at, attributes, app_version, server_name, is_message, session_id
 			FROM exceptions_v2
 			WHERE project_id = :project_id AND id = :id LIMIT 1`,

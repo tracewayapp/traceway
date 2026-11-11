@@ -18,10 +18,10 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type exceptionStackTraceController struct{}
@@ -100,8 +100,8 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading grouped exceptions")
-	exceptions, total, err := telemetry.ExceptionStackTraceRepository.FindGrouped(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.Search, request.SearchType, request.IncludeArchived)
+	spanCtx, span := traceway.StartSpan(c, "loading grouped exceptions")
+	exceptions, total, err := telemetry.ExceptionStackTraceRepository.FindGrouped(spanCtx, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.Search, request.SearchType, request.IncludeArchived)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptions: %w", err))
@@ -118,8 +118,8 @@ func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.C
 		now := time.Now()
 		start24h := now.Add(-24 * time.Hour)
 
-		span = traceway.StartSpan(c, "loading hourly trends")
-		trends, err := telemetry.ExceptionStackTraceRepository.GetHourlyTrendForHashes(c, projectId, hashes, start24h, now)
+		spanCtx, span = traceway.StartSpan(c, "loading hourly trends")
+		trends, err := telemetry.ExceptionStackTraceRepository.GetHourlyTrendForHashes(spanCtx, projectId, hashes, start24h, now)
 		span.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading trends: %w", err))
@@ -166,8 +166,8 @@ func (e exceptionStackTraceController) FindByHash(c *gin.Context) {
 		request.Pagination = PaginationParams{Page: 1, PageSize: 20}
 	}
 
-	span := traceway.StartSpan(c, "loading exception by hash")
-	group, occurrences, total, err := telemetry.ExceptionStackTraceRepository.FindByHash(c, projectId, exceptionHash, request.Pagination.Page, request.Pagination.PageSize)
+	spanCtx, span := traceway.StartSpan(c, "loading exception by hash")
+	group, occurrences, total, err := telemetry.ExceptionStackTraceRepository.FindByHash(spanCtx, projectId, exceptionHash, request.Pagination.Page, request.Pagination.PageSize)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading the group: %w", err))
@@ -251,7 +251,7 @@ func (e exceptionStackTraceController) ArchiveExceptions(c *gin.Context) {
 	if request.ResolvePages {
 		userId := middleware.GetUserId(c)
 		now := time.Now().UTC()
-		resolvedPages, err = db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
+		resolvedPages, err = db.ExecuteTransactionContext(c, func(tx *sql.Tx) (int, error) {
 			resolved := 0
 			for _, hash := range request.Hashes {
 				pages, err := transactional.PageRepository.FindUnresolvedByIssueHash(tx, projectId, hash)
@@ -342,10 +342,10 @@ func (e exceptionStackTraceController) FindById(c *gin.Context) {
 	var request exceptionByIdRequest
 	_ = c.ShouldBindJSON(&request)
 
-	span := traceway.StartSpan(c, "loading exception by id")
-	exception, err := telemetry.ExceptionStackTraceRepository.FindById(c, projectId, exceptionId, request.RecordedAt)
+	spanCtx, span := traceway.StartSpan(c, "loading exception by id")
+	exception, err := telemetry.ExceptionStackTraceRepository.FindById(spanCtx, projectId, exceptionId, request.RecordedAt)
 	if exception == nil && err == nil && request.RecordedAt != nil {
-		exception, err = telemetry.ExceptionStackTraceRepository.FindById(c, projectId, exceptionId, nil)
+		exception, err = telemetry.ExceptionStackTraceRepository.FindById(spanCtx, projectId, exceptionId, nil)
 	}
 	span.End()
 	if err != nil {

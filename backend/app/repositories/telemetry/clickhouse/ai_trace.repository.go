@@ -19,7 +19,7 @@ import (
 type aiTraceRepository struct{}
 
 func (r *aiTraceRepository) InsertAsync(ctx context.Context, lines []models.AiTrace) error {
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
+	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(ctx),
 		"INSERT INTO ai_traces_v2 (id, project_id, recorded_at, duration, status_code, model, response_model, provider, operation, input_tokens, output_tokens, total_tokens, cached_tokens, reasoning_tokens, input_cost, output_cost, total_cost, trace_name, user_id, finish_reason, server_name, app_version, storage_key, attributes, trace_id, span_id, parent_span_id, is_root, conversation_id, tool_call_count, tool_names, flagged, flagged_terms)")
 	if err != nil {
 		return err

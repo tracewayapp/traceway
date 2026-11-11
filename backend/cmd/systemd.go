@@ -7,7 +7,7 @@ import (
 
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/tracewayapp/traceway/backend/app/config"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 func notifySystemd(ctx context.Context) {

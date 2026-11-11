@@ -9,13 +9,13 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/models"
 	"github.com/tracewayapp/traceway/backend/app/oncall"
 	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 type organizationController struct{}
@@ -31,7 +31,7 @@ func (c *organizationController) GetSettings(ctx *gin.Context) {
 		AgentWrite   bool
 	}
 
-	data, err := db.ExecuteTransaction(func(tx *sql.Tx) (*settingsData, error) {
+	data, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*settingsData, error) {
 		org, err := transactional.OrganizationRepository.FindById(tx, organizationId)
 		if err != nil {
 			return nil, err
@@ -121,7 +121,7 @@ func (c *organizationController) AgentActivity(ctx *gin.Context) {
 func (c *organizationController) GetMembers(ctx *gin.Context) {
 	organizationId := middleware.GetOrganizationId(ctx)
 
-	members, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.OrganizationMember, error) {
+	members, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.OrganizationMember, error) {
 		return transactional.OrganizationRepository.GetMembersWithDetails(tx, organizationId)
 	})
 

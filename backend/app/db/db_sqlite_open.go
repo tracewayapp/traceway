@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
 	_ "modernc.org/sqlite"
 )
 
@@ -53,7 +54,11 @@ func openSQLite(path string, telemetry bool) (*sql.DB, error) {
 		dsn = "file:" + path + "?" + strings.Join(params, "&")
 	}
 
-	d, err := sql.Open("sqlite", dsn)
+	namespace := "main"
+	if telemetry {
+		namespace = "telemetry"
+	}
+	d, err := dbtrace.Open("sqlite", dsn, dbtrace.Options{System: "sqlite", Namespace: namespace})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite at %s: %w", path, err)
 	}

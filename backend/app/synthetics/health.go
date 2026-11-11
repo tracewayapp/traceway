@@ -1,6 +1,7 @@
 package synthetics
 
 import (
+	"context"
 	"database/sql"
 	"sync/atomic"
 	"time"
@@ -27,14 +28,14 @@ const runnerOnlineWindow = 2 * time.Minute
 
 // HealthSnapshot powers /api/health/deep. OldestQueuedAgeSec measures from
 // scheduled_for, so a healthy queue shows near-zero even under load.
-func HealthSnapshot() (*HealthStats, error) {
+func HealthSnapshot(ctx context.Context) (*HealthStats, error) {
 	type snapshot struct {
 		Counts        *models.CheckRunHealthCounts
 		Oldest        *models.CheckRun
 		ChecksDown    int
 		RunnersOnline int
 	}
-	loaded, err := db.ExecuteTransaction(func(tx *sql.Tx) (snapshot, error) {
+	loaded, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (snapshot, error) {
 		counts, err := transactional.CheckRunRepository.CountsForHealth(tx)
 		if err != nil {
 			return snapshot{}, err

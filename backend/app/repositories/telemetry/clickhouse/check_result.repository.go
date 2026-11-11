@@ -17,7 +17,7 @@ type checkResultRepository struct{}
 
 func (r *checkResultRepository) Insert(ctx context.Context, result shared.CheckResult) error {
 	batch, err := chdb.Conn.PrepareBatch(
-		chdb.BatchCtx(),
+		chdb.BatchCtx(ctx),
 		"INSERT INTO check_results (project_id, check_id, run_id, check_type, recorded_at, executed_at, status, latency_ms, status_code, error_message, executed_by, screenshot_key, output_key, tls_days_remaining)",
 	)
 	if err != nil {

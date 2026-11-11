@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
 
 	_ "github.com/lib/pq"
 	"github.com/tracewayapp/lit/v2"
@@ -37,7 +38,7 @@ func IsDuckDBTelemetry() bool {
 func initPostgres() error {
 	connStr := postgresConnectionString()
 
-	db, err := sql.Open("postgres", connStr)
+	db, err := dbtrace.Open("postgres", connStr, dbtrace.Options{System: "postgresql", Namespace: "main"})
 	if err != nil {
 		return fmt.Errorf("failed to open postgres connection: %w", err)
 	}
@@ -103,7 +104,12 @@ func QueryerFromContext(ctx context.Context) interface {
 }
 
 func ExecuteTransaction[T any](f func(tx *sql.Tx) (T, error)) (T, error) {
-	tx, err := DB.Begin()
+	return ExecuteTransactionContext(context.Background(), f)
+}
+
+// Cancelling ctx does not roll the transaction back; ctx only lends its span.
+func ExecuteTransactionContext[T any](ctx context.Context, f func(tx *sql.Tx) (T, error)) (T, error) {
+	tx, err := DB.BeginTx(context.WithoutCancel(ctx), nil)
 
 	if err != nil {
 		var zero T

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/tracewayapp/traceway/backend/app/config"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 
 	"github.com/gorilla/sessions"
 	"github.com/markbates/goth"

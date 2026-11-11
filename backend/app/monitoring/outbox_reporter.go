@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	traceway "go.tracewayapp.com"
-
 	"github.com/tracewayapp/traceway/backend/app/outbox"
+	"github.com/tracewayapp/traceway/backend/app/traceway"
 )
 
 const outboxReportInterval = 10 * time.Second
@@ -40,7 +39,7 @@ func StartOutboxReporter(ctx context.Context) {
 }
 
 func reportOutboxOnce(baselines *outboxBaselines) {
-	stats, err := outbox.HealthSnapshot()
+	stats, err := outbox.HealthSnapshot(context.Background())
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to snapshot outbox health for metrics: %w", err))
 		return

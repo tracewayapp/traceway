@@ -3,6 +3,7 @@
 package notifications
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"strings"
@@ -84,7 +85,7 @@ func outboxRows(t *testing.T) []*models.OutboxDelivery {
 func TestDispatchEnqueuesSnapshot(t *testing.T) {
 	fixture := setupDispatchDB(t)
 
-	if !dispatch(fixture.Rule, Message{Subject: "s", Body: "b", Severity: SeverityCritical}) {
+	if !dispatch(context.Background(), fixture.Rule, Message{Subject: "s", Body: "b", Severity: SeverityCritical}) {
 		t.Fatal("dispatch should report a durable enqueue")
 	}
 	rows := outboxRows(t)
@@ -120,7 +121,7 @@ func TestDispatchFailureLeavesNoCooldown(t *testing.T) {
 	fixture := setupDispatchDB(t)
 	fixture.Rule.ChannelId = 99999
 
-	if dispatch(fixture.Rule, Message{Subject: "s"}) {
+	if dispatch(context.Background(), fixture.Rule, Message{Subject: "s"}) {
 		t.Fatal("dispatch with a dangling channel should fail")
 	}
 	if len(outboxRows(t)) != 0 {
@@ -134,7 +135,7 @@ func TestDispatchFailureLeavesNoCooldown(t *testing.T) {
 func TestSeedCooldownsIncludesOutbox(t *testing.T) {
 	fixture := setupDispatchDB(t)
 
-	if !dispatch(fixture.Rule, Message{Subject: "s"}) {
+	if !dispatch(context.Background(), fixture.Rule, Message{Subject: "s"}) {
 		t.Fatal("dispatch failed")
 	}
 	// Fresh tracker simulating a restart before any terminal outcome exists.
@@ -192,7 +193,7 @@ func TestDispatchDashboardLinks(t *testing.T) {
 			setAppBaseURL(t, tc.base)
 
 			details := ExceptionDetails{Hash: "0123456789abcdef", ErrorType: "RuntimeError"}
-			if !dispatch(fixture.Rule, buildNewErrorMessage(details, "api")) {
+			if !dispatch(context.Background(), fixture.Rule, buildNewErrorMessage(details, "api")) {
 				t.Fatal("dispatch failed")
 			}
 			msg := queuedMessage(t)
@@ -227,7 +228,7 @@ func TestDispatchedCheckRecoveryIsInfoAndGreenInSlack(t *testing.T) {
 			fixture := setupDispatchDB(t)
 			fixture.Rule.RuleType, fixture.Rule.Severity = "check_down", tc.ruleSeverity
 
-			if !dispatch(fixture.Rule, tc.msg) {
+			if !dispatch(context.Background(), fixture.Rule, tc.msg) {
 				t.Fatal("dispatch failed")
 			}
 			msg := queuedMessage(t)

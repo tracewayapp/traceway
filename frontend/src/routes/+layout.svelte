@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { resolve } from '$app/paths';
 	import './layout.css';
 	import { goto, afterNavigate } from '$app/navigation';
@@ -29,10 +30,11 @@
 	import StatusPageView from '$lib/components/traceway/status-page-view.svelte';
 	import { statusDomainSlug } from '$lib/status-domain';
 
-	if (__TRACEWAY_URL__) {
+	if (browser && __TRACEWAY_URL__) {
 		setupTraceway({
 			connectionString: __TRACEWAY_URL__,
 			options: {
+				recordAllSessions: true,
 				// Browser and extension noise with no stack frame in our code.
 				ignoreErrors: [
 					...DEFAULT_IGNORE_PATTERNS,

@@ -2,7 +2,7 @@ module github.com/tracewayapp/traceway/cli/test/contract
 
 go 1.26.2
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	github.com/google/uuid v1.6.0

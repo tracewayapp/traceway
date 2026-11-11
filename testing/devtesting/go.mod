@@ -2,7 +2,7 @@ module testing/devtesting
 
 go 1.25.1
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	github.com/gin-gonic/gin v1.11.0

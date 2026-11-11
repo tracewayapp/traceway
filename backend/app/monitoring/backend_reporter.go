@@ -120,7 +120,8 @@ func reportProcessCPU(b *backendBaselines) {
 	now := time.Now()
 	if !b.cpuReadAt.IsZero() {
 		if wall := now.Sub(b.cpuReadAt); wall > 0 && cpuTime >= b.cpuTime {
-			used := float64(cpuTime-b.cpuTime) / float64(wall) / float64(runtime.NumCPU())
+			// GOMAXPROCS follows a container's CPU limit, NumCPU does not.
+			used := float64(cpuTime-b.cpuTime) / float64(wall) / float64(runtime.GOMAXPROCS(0))
 			traceway.CaptureMetric("traceway.proc.cpu_pcnt", used*100)
 		}
 	}

@@ -23,6 +23,18 @@ var untracedRoutes = map[string]bool{
 	"/api/runners/poll": true,
 }
 
+// Ingest requests stay endpoints, but their statements are not traced: they
+// grow with customer traffic, and traceway.ingest.batch.* already times the
+// writes.
+var ingestRoutes = map[string]bool{
+	"/api/report":                      true,
+	"/api/profiles/ingest":             true,
+	"/api/otel/v1/traces":              true,
+	"/api/otel/v1/metrics":             true,
+	"/api/otel/v1/logs":                true,
+	"/api/otel/v1development/profiles": true,
+}
+
 // SelfMonitoring traces the backend's own requests into the self-monitoring
 // project. Requests that carry that project's token are never traced: they
 // are the exports of this very tracer, and tracing them would report every
@@ -67,8 +79,12 @@ func recordRequestOutcome(c *gin.Context) {
 		c.Next()
 		return
 	}
-	if route := c.FullPath(); strings.Contains(route, ":token") {
+	route := c.FullPath()
+	if strings.Contains(route, ":token") {
 		span.SetAttributes(attribute.String("url.path", route))
+	}
+	if ingestRoutes[route] {
+		c.Request = c.Request.WithContext(traceway.WithoutStatementSpans(c.Request.Context()))
 	}
 
 	defer func() {

@@ -146,6 +146,32 @@ func TestAGinContextLendsItsRequestSpan(t *testing.T) {
 	}
 }
 
+func TestRequestsCanOptOutOfStatementSpans(t *testing.T) {
+	conn, recorder := openTraced(t)
+	requestCtx, request := traceway.Tracer().Start(context.Background(), "POST /api/otel/v1/traces")
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/api/otel/v1/traces", nil).WithContext(traceway.WithoutStatementSpans(requestCtx))
+
+	if _, err := conn.ExecContext(c, "INSERT INTO items (name) VALUES ('a')"); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := conn.BeginTx(context.WithoutCancel(c.Request.Context()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("INSERT INTO items (name) VALUES ('b')"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	request.End()
+
+	if spans := dbSpans(recorder); len(spans) != 0 {
+		t.Fatalf("an opted-out request must not trace its statements, got %d spans", len(spans))
+	}
+}
+
 func TestFailedStatementsMarkTheSpanWithoutAnException(t *testing.T) {
 	conn, recorder := openTraced(t)
 	ctx, request := traceway.Tracer().Start(context.Background(), "GET /api/items")

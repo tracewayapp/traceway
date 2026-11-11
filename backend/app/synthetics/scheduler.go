@@ -137,6 +137,9 @@ func ScheduleOnce(ctx context.Context, now time.Time) {
 		traceway.CaptureExceptionContext(ctx, fmt.Errorf("synthetics scheduler tick failed: %w", err))
 		return
 	}
+	if len(result.missed) == 0 && result.enqueued == 0 {
+		traceway.SkipTask(ctx)
+	}
 
 	// Missed runs are recorded to telemetry after the delete committed: a
 	// crash in between loses the missed marker (a gap), never duplicates it.

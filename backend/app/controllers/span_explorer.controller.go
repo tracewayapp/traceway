@@ -150,8 +150,8 @@ func (s spanExplorerController) Search(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
 	defer cancel()
 
-	span := traceway.StartSpan(c, "searching spans")
-	found, total, err := telemetry.OtelSpanRepository.Search(ctx, search)
+	spanCtx, span := traceway.StartSpan(ctx, "searching spans")
+	found, total, err := telemetry.OtelSpanRepository.Search(spanCtx, search)
 	span.End()
 	if err != nil {
 		if spanSearchTimedOut(ctx, err) {
@@ -225,8 +225,8 @@ func (s spanExplorerController) GetTrace(c *gin.Context) {
 	for i, project := range readable {
 		projectIds[i] = project.Id
 	}
-	span := traceway.StartSpan(c, "loading trace spans")
-	graph, err := telemetry.SpanRepository.FindTrace(c, projectIds, traceId, at)
+	spanCtx, span := traceway.StartSpan(c, "loading trace spans")
+	graph, err := telemetry.SpanRepository.FindTrace(spanCtx, projectIds, traceId, at)
 	span.End()
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading trace spans: %w", err))

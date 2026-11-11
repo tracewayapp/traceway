@@ -104,6 +104,10 @@ func DrainOnce(ctx context.Context, now time.Time) {
 		traceway.CaptureExceptionContext(ctx, fmt.Errorf("outbox drain tick failed: %w", err))
 		return
 	}
+	if dueCount == 0 {
+		traceway.SkipTask(ctx)
+		return
+	}
 
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, drainConcurrency)

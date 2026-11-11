@@ -54,7 +54,12 @@ func capLogRecords(ctx context.Context, maxRows int) {
 		"DELETE FROM log_records WHERE timestamp < (SELECT timestamp FROM log_records ORDER BY timestamp DESC LIMIT 1 OFFSET %d)",
 		maxRows-1,
 	)
-	if _, err := db.TelemetryDB.ExecContext(ctx, query); err != nil {
+	result, err := db.TelemetryDB.ExecContext(ctx, query)
+	if err != nil {
 		traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: log_records row cap delete failed: %w", err))
+		return
+	}
+	if deleted, err := result.RowsAffected(); err == nil && deleted == 0 {
+		traceway.SkipTask(ctx)
 	}
 }

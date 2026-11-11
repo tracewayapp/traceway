@@ -41,6 +41,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	otellog "go.opentelemetry.io/otel/log"
 )
 
 var PostStartupHooks []func(ctx context.Context)
@@ -91,16 +92,12 @@ func Run(opts ...Option) {
 		// something actionable instead of burying the message under a panic
 		// stack trace. The standalone binary deliberately has no default -- a
 		// key committed to the repo would be identical in every clone.
-		fmt.Fprintln(os.Stderr, "FATAL: "+err.Error())
-		fmt.Fprintln(os.Stderr, "Generate one with: openssl rand -hex 32")
-		os.Exit(1)
+		exitOnMisconfiguration("FATAL: "+err.Error(), "Generate one with: openssl rand -hex 32")
 	}
 
 	trustedNets, proxyErr := trustedProxyNets(cfg.TrustedProxyList())
 	if proxyErr != nil {
-		fmt.Fprintln(os.Stderr, "FATAL: invalid TRUSTED_PROXIES: "+proxyErr.Error())
-		fmt.Fprintln(os.Stderr, "Use comma-separated IP addresses or CIDR ranges, for example 10.0.0.0/8,203.0.113.7")
-		os.Exit(1)
+		exitOnMisconfiguration("FATAL: invalid TRUSTED_PROXIES: "+proxyErr.Error(), "Use comma-separated IP addresses or CIDR ranges, for example 10.0.0.0/8,203.0.113.7")
 	}
 
 	err := db.Init()
@@ -334,6 +331,18 @@ func startSelfMonitoring(connectionString string) string {
 	}
 	config.Logf("Self-monitoring enabled (service name: %s)", traceway.ServiceName())
 	return token
+}
+
+// Self-monitoring is already running when the configuration is checked, so
+// the reason for the exit is sent there before the process ends.
+func exitOnMisconfiguration(reason, hint string) {
+	fmt.Fprintln(os.Stderr, reason)
+	fmt.Fprintln(os.Stderr, hint)
+	traceway.EmitLog(context.Background(), otellog.SeverityFatal, reason)
+	flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_ = traceway.Shutdown(flushCtx)
+	cancel()
+	os.Exit(1)
 }
 
 func parsePorts(ports string) []string {

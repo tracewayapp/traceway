@@ -34,10 +34,10 @@ func RecordIngestBatch(signal, table string, convertMs, insertMs float64, size, 
 		"signal": signal,
 		"table":  table,
 	}
-	traceway.CaptureMetricWithTags("traceway.ingest.batch.convert_ms", convertMs, tags)
-	traceway.CaptureMetricWithTags("traceway.ingest.batch.insert_ms", insertMs, tags)
-	traceway.CaptureMetricWithTags("traceway.ingest.batch.size", float64(size), tags)
-	traceway.CaptureMetricWithTags("traceway.ingest.batch.bytes", float64(bytes), tags)
+	traceway.CaptureMetricMax("traceway.ingest.batch.convert_ms", convertMs, tags)
+	traceway.CaptureMetricMax("traceway.ingest.batch.insert_ms", insertMs, tags)
+	traceway.CaptureMetricMax("traceway.ingest.batch.size", float64(size), tags)
+	traceway.CaptureMetricMax("traceway.ingest.batch.bytes", float64(bytes), tags)
 }
 
 func RecordHealthchecksDropped(signal string, count int) {

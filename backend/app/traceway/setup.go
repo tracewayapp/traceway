@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
@@ -64,7 +65,9 @@ type state struct {
 	meter          metric.Meter
 	logger         otellog.Logger
 	gauges         sync.Map
+	maxGauges      sync.Map
 	counters       sync.Map
+	shutdown       func(context.Context) error
 }
 
 var current atomic.Pointer[state]
@@ -91,6 +94,10 @@ func newState(p Providers, enabled bool) *state {
 }
 
 func Install(p Providers) (restore func()) {
+	return install(p, nil)
+}
+
+func install(p Providers, shutdown func(context.Context) error) (restore func()) {
 	if p.TracerProvider == nil {
 		p.TracerProvider = tracenoop.NewTracerProvider()
 	}
@@ -100,12 +107,23 @@ func Install(p Providers) (restore func()) {
 	if p.LoggerProvider == nil {
 		p.LoggerProvider = lognoop.NewLoggerProvider()
 	}
-	previous := current.Swap(newState(p, true))
+	s := newState(p, true)
+	s.shutdown = shutdown
+	previous := current.Swap(s)
 	return func() { current.Store(previous) }
 }
 
 func Enabled() bool {
 	return current.Load().enabled
+}
+
+// Shutdown flushes what is still buffered and stops self-monitoring. It does
+// nothing when self-monitoring is off.
+func Shutdown(ctx context.Context) error {
+	if shutdown := current.Load().shutdown; shutdown != nil {
+		return shutdown(ctx)
+	}
+	return nil
 }
 
 func TracerProvider() trace.TracerProvider {
@@ -145,7 +163,11 @@ func Setup(ctx context.Context, opts Options) (shutdown func(context.Context) er
 		resource.WithTelemetrySDK(),
 		resource.WithFromEnv(),
 	)
-	if err != nil {
+	if errors.Is(err, resource.ErrPartialResource) {
+		// A malformed OTEL_RESOURCE_ATTRIBUTES entry is skipped, not a reason
+		// to report nothing at all.
+		otel.Handle(fmt.Errorf("self-monitoring resource: %w", err))
+	} else if err != nil {
 		return nil, fmt.Errorf("self-monitoring resource: %w", err)
 	}
 	if v, ok := res.Set().Value("service.name"); ok {
@@ -170,6 +192,7 @@ func Setup(ctx context.Context, opts Options) (shutdown func(context.Context) er
 		otlpmetrichttp.WithTemporalitySelector(temporality),
 	)
 	if err != nil {
+		_ = traceExporter.Shutdown(ctx)
 		return nil, fmt.Errorf("self-monitoring metric exporter: %w", err)
 	}
 	logExporter, err := otlploghttp.New(ctx,
@@ -178,12 +201,17 @@ func Setup(ctx context.Context, opts Options) (shutdown func(context.Context) er
 		otlploghttp.WithCompression(otlploghttp.GzipCompression),
 	)
 	if err != nil {
+		_ = traceExporter.Shutdown(ctx)
+		_ = metricExporter.Shutdown(ctx)
 		return nil, fmt.Errorf("self-monitoring log exporter: %w", err)
 	}
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
-		sdktrace.WithBatcher(traceExporter, sdktrace.WithBatchTimeout(exportInterval)),
+		// A caller's traceparent may still name the trace, but its sampled
+		// flag must not decide whether the backend records its own errors.
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSpanProcessor(newTaskFilter(sdktrace.NewBatchSpanProcessor(traceExporter, sdktrace.WithBatchTimeout(exportInterval)))),
 	)
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
@@ -194,15 +222,17 @@ func Setup(ctx context.Context, opts Options) (shutdown func(context.Context) er
 		sdklog.WithProcessor(sdklog.NewBatchProcessor(logExporter, sdklog.WithExportInterval(exportInterval))),
 	)
 
+	shutdown = func(ctx context.Context) error {
+		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx), lp.Shutdown(ctx))
+	}
+
 	if err := runtime.Start(runtime.WithMeterProvider(mp)); err != nil {
+		_ = shutdown(ctx)
 		return nil, fmt.Errorf("self-monitoring runtime metrics: %w", err)
 	}
 
-	Install(Providers{TracerProvider: tp, MeterProvider: mp, LoggerProvider: lp, ServiceName: serviceName})
-
-	return func(ctx context.Context) error {
-		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx), lp.Shutdown(ctx))
-	}, nil
+	install(Providers{TracerProvider: tp, MeterProvider: mp, LoggerProvider: lp, ServiceName: serviceName}, shutdown)
+	return shutdown, nil
 }
 
 // Traceway stores every metric data point as it arrives, so counters and

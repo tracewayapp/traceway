@@ -90,6 +90,10 @@ func runEscalatorTick(ctx context.Context, now time.Time) {
 		traceway.CaptureExceptionContext(ctx, fmt.Errorf("escalator tick failed: %w", err))
 		return
 	}
+	if len(pageIds) == 0 {
+		traceway.SkipTask(ctx)
+		return
+	}
 
 	enqueued := 0
 	for _, pageId := range pageIds {

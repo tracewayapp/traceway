@@ -17,31 +17,43 @@ Values that end in `/api/report`, the format older versions used, keep working.
 
 That single variable turns everything on. The backend instruments itself with OpenTelemetry and exports over OTLP/HTTP to `/api/otel/v1/traces`, `/v1/metrics` and `/v1/logs`:
 
-- Every HTTP request to the backend is an endpoint, so endpoint latency and error-rate alert rules work on `POST /api/otel/v1/traces` out of the box. Database queries show up as child spans of the request.
-- Each pass of a background worker is a task: `outbox.drain`, `oncall.escalate`, `notifications.evaluate`, `synthetics.schedule`, `slo.compute` and `retention.*`.
+- Every HTTP request to the backend is an endpoint, so endpoint latency and error-rate alert rules work on `POST /api/otel/v1/traces` out of the box. Database queries show up as child spans of the request. Ingest requests (`/api/report`, `/api/profiles/ingest` and `/api/otel/*`) are the exception: they are endpoints too, but their queries are not traced, because they grow with your clients' traffic and the `traceway.ingest.batch.*` metrics already time the writes.
+- Each pass of a background worker is a task: `outbox.drain`, `oncall.escalate`, `notifications.evaluate`, `synthetics.schedule`, `slo.compute` and `retention.*`. A pass that found nothing to do is not reported, so an idle instance does not fill the Tasks view with empty ticks. A pass that failed is always reported.
 - Handler errors and panics become issues linked to their request. A panic answers 500.
 - Server log lines are sent to Logs. Lines written during a request or task carry its trace.
 - Go runtime metrics are reported: `go.memory.used`, `go.memory.allocated`, `go.memory.gc.goal`, `go.goroutine.count` and more.
 - The backend reporters described below start emitting `traceway.*` metrics.
 
-The backend never traces a request that carries the monitoring project's token. Those requests are its own exports, and tracing them would report every report back to itself in a loop. It also skips the runner long-poll (`/api/runners/poll`), MCP streams and static assets. Requests from your other clients, including their ingest, are traced as usual.
+The backend never traces a request that carries the monitoring project's token. Those requests are its own exports, and tracing them would report every report back to itself in a loop. It also skips the runner long-poll (`/api/runners/poll`), MCP streams and static assets. Requests from your other clients, including their ingest, are traced as usual. A `traceparent` header sent by a client can make a request part of that client's trace, but it never turns the backend's own tracing off, so an error on that request is still reported.
 
 Each instance reports under its short hostname as the server name. Set `OTEL_SERVICE_NAME` to choose another name, and `OTEL_RESOURCE_ATTRIBUTES` to add resource attributes.
 
 Host metrics (CPU, memory, disk and network of the machine) are not reported by the backend. Install the [Traceway OTel Agent](/learn/otel-agent) on the host with the same project token. The backend does report its own process: `traceway.proc.cpu_pcnt` and `traceway.proc.rss_mb`. The latter is the OOM-relevant number (resident set size, Linux only). `go.memory.used` only counts memory the Go runtime holds.
 
+### Upgrading from the Go SDK metrics
+
+Older versions reported through the Traceway Go SDK, with different metric names. Dashboards built from the **Go Application** template and alert rules on these names stop receiving data after the upgrade. Rebuild them on the new names:
+
+| Old name | Replacement |
+|----------|-------------|
+| `cpu.used_pcnt` | `traceway.proc.cpu_pcnt` for the backend process. Host CPU comes from the [Traceway OTel Agent](/learn/otel-agent) |
+| `mem.used` | `go.memory.used`, in bytes rather than MB. For the OOM-relevant number use `traceway.proc.rss_mb` |
+| `mem.total` | None from the backend. Host memory comes from the OTel Agent |
+| `go.go_routines` | `go.goroutine.count` |
+| `go.heap_objects`, `go.num_gc`, `go.gc_pause` | None. `go.memory.allocations` counts allocations and `go.memory.gc.goal` is the heap size that triggers the next collection |
+
 ## Metric reference
 
 ### Ingestion (every batch)
 
-Recorded for every ingest request, tagged with `signal` and `table`. Metrics are exported every 5 seconds with the latest value of each series, so under heavy ingest the batch metrics are a sample of the batches in that window. `traceway.ingest.rate_limited` is a count of the events in the window.
+Recorded for every ingest request, tagged with `signal` and `table`. Metrics are exported every 5 seconds. Each batch metric reports the largest value of that window for each `signal` and `table`, so a slow or oversized batch between two exports is never lost. `traceway.ingest.rate_limited` is a count of the events in the window.
 
 | Metric | Meaning |
 |--------|---------|
-| `traceway.ingest.batch.convert_ms` | Time converting the client payload into rows (backend CPU work) |
-| `traceway.ingest.batch.insert_ms` | Time writing the batch into ClickHouse (inside the request, so clients wait on this) |
-| `traceway.ingest.batch.size` | Rows in the batch |
-| `traceway.ingest.batch.bytes` | Decompressed payload size in bytes |
+| `traceway.ingest.batch.convert_ms` | Longest time converting a client payload into rows (backend CPU work) |
+| `traceway.ingest.batch.insert_ms` | Longest time writing a batch into ClickHouse (inside the request, so clients wait on this) |
+| `traceway.ingest.batch.size` | Rows in the largest batch |
+| `traceway.ingest.batch.bytes` | Decompressed size of the largest payload in bytes |
 | `traceway.ingest.rate_limited` | Fired when an org hits its ingest quota (tagged `org_id`) |
 
 ### Backend process (every 30s)
@@ -49,7 +61,7 @@ Recorded for every ingest request, tagged with `signal` and `table`. Metrics are
 | Metric | Meaning |
 |--------|---------|
 | `traceway.ingest.in_flight` | Ingest requests currently being processed |
-| `traceway.proc.cpu_pcnt` | CPU used by the backend process since the last tick, as a percentage of all cores (not reported on Windows) |
+| `traceway.proc.cpu_pcnt` | CPU used by the backend process since the last tick, as a percentage of the CPUs it may use. That is `GOMAXPROCS`, which follows a container's CPU limit, so 100 means the container is saturated (not reported on Windows) |
 | `traceway.proc.rss_mb` | Process resident memory in MB (Linux only) |
 | `traceway.cache.projects.entries` | Projects held in the in-memory token cache |
 | `traceway.cache.metric_registry.entries` | Known metric names cached in memory |

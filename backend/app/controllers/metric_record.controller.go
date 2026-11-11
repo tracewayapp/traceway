@@ -26,8 +26,8 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 	twoDaysAgo := now.Add(-48 * time.Hour)
 
 	// requests
-	span := traceway.StartSpan(c, "loading requests stats")
-	requestsNow, err := telemetry.EndpointRepository.CountBetween(c, projectId, oneDayAgo, now)
+	spanCtx, span := traceway.StartSpan(c, "loading requests stats")
+	requestsNow, err := telemetry.EndpointRepository.CountBetween(spanCtx, projectId, oneDayAgo, now)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading requestsNow: %w", err))
@@ -41,8 +41,8 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 	}
 
 	// exceptions
-	span = traceway.StartSpan(c, "loading exceptions stats")
-	exceptionsNow, err := telemetry.ExceptionStackTraceRepository.CountBetween(c, projectId, oneDayAgo, now)
+	spanCtx, span = traceway.StartSpan(c, "loading exceptions stats")
+	exceptionsNow, err := telemetry.ExceptionStackTraceRepository.CountBetween(spanCtx, projectId, oneDayAgo, now)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptionsNow: %w", err))
@@ -56,8 +56,8 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 	}
 
 	// ram usage last 24h vs previous 24h
-	span = traceway.StartSpan(c, "loading ram usage")
-	ramNow, err := telemetry.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameMemoryUsage, oneDayAgo, now)
+	spanCtx, span = traceway.StartSpan(c, "loading ram usage")
+	ramNow, err := telemetry.MetricPointRepository.GetAverageBetween(spanCtx, projectId, models.MetricNameMemoryUsage, oneDayAgo, now)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading ramNow: %w", err))
@@ -71,8 +71,8 @@ func (e metricRecordController) FindHomepageStats(c *gin.Context) {
 	}
 
 	// memory usage last 24h vs previous 24h
-	span = traceway.StartSpan(c, "loading cpu usage")
-	cpuNow, err := telemetry.MetricPointRepository.GetAverageBetween(c, projectId, models.MetricNameCpuUsage, oneDayAgo, now)
+	spanCtx, span = traceway.StartSpan(c, "loading cpu usage")
+	cpuNow, err := telemetry.MetricPointRepository.GetAverageBetween(spanCtx, projectId, models.MetricNameCpuUsage, oneDayAgo, now)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading cpuNow: %w", err))

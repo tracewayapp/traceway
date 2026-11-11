@@ -305,7 +305,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		insertMs = msSince(insertStart)
 
 		if len(result.Entries) > 0 {
-			go services.AutoRegisterMetricsWithUnits(c, projectId, result.Entries)
+			go services.AutoRegisterMetricsWithUnits(c.Request.Context(), projectId, result.Entries)
 		}
 	}
 

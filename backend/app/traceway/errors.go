@@ -61,12 +61,15 @@ func captureStack(skip int) []runtime.Frame {
 	return result
 }
 
-// The first frame is the code that panicked, whatever recovery helpers sit
-// above runtime.gopanic.
+// The first frame is the code that raised the panic being recovered, below
+// the innermost runtime.gopanic. A re-panic (Transactional rolls back and
+// panics again) therefore starts at the re-panic, as the native SDK did, and
+// a panic raised inside a deferred cleanup is not given the frames of the
+// panic that ran the cleanup.
 func panicStack() []runtime.Frame {
 	frames := captureStack(1)
-	for i := len(frames) - 1; i >= 0; i-- {
-		if frames[i].Function == "runtime.gopanic" {
+	for i, frame := range frames {
+		if frame.Function == "runtime.gopanic" {
 			return frames[i+1:]
 		}
 	}

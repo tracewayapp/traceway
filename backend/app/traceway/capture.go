@@ -31,12 +31,17 @@ func CaptureExceptionContext(ctx context.Context, err error) {
 	s.recordStandalone(attrs, err.Error())
 }
 
+// The flag makes ingest store the event as a message, hashed without the
+// normalization exceptions get, as the native SDK's IsMessage did.
 func CaptureMessage(msg string) {
 	s := current.Load()
 	if !s.enabled || msg == "" {
 		return
 	}
-	s.recordStandalone([]attribute.KeyValue{attribute.String("exception.message", msg)}, msg)
+	s.recordStandalone([]attribute.KeyValue{
+		attribute.String("exception.message", msg),
+		attribute.Bool("traceway.is_message", true),
+	}, msg)
 }
 
 func Recover() {
@@ -45,7 +50,7 @@ func Recover() {
 		return
 	}
 	s := current.Load()
-	if !s.enabled {
+	if _, recorded := r.(recordedPanic); recorded || !s.enabled {
 		return
 	}
 	err := panicError(r)

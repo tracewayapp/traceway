@@ -2,6 +2,7 @@ package traceway
 
 import (
 	"context"
+	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -19,6 +20,19 @@ func CaptureMetricWithTags(name string, value float64, tags map[string]string) {
 	}
 	if g := s.gauge(name); g != nil {
 		g.Record(context.Background(), value, metric.WithAttributes(tagAttributes(tags)...))
+	}
+}
+
+// CaptureMetricMax reports the largest value recorded per tag set within an
+// export interval, so a spike between two exports is never lost to a later,
+// smaller value.
+func CaptureMetricMax(name string, value float64, tags map[string]string) {
+	s := current.Load()
+	if !s.enabled {
+		return
+	}
+	if g := s.maxGauge(name); g != nil {
+		g.record(value, attribute.NewSet(tagAttributes(tags)...))
 	}
 }
 
@@ -42,6 +56,52 @@ func (s *state) gauge(name string) metric.Float64Gauge {
 	}
 	actual, _ := s.gauges.LoadOrStore(name, g)
 	return actual.(metric.Float64Gauge)
+}
+
+type maxGauge struct {
+	mu     sync.Mutex
+	values map[attribute.Distinct]maxValue
+}
+
+type maxValue struct {
+	set   attribute.Set
+	value float64
+}
+
+func (s *state) maxGauge(name string) *maxGauge {
+	if g, ok := s.maxGauges.Load(name); ok {
+		return g.(*maxGauge)
+	}
+	g := &maxGauge{values: map[attribute.Distinct]maxValue{}}
+	if actual, loaded := s.maxGauges.LoadOrStore(name, g); loaded {
+		return actual.(*maxGauge)
+	}
+	if _, err := s.meter.Float64ObservableGauge(name, metric.WithFloat64Callback(g.observe)); err != nil {
+		return nil
+	}
+	return g
+}
+
+func (g *maxGauge) record(value float64, set attribute.Set) {
+	key := set.Equivalent()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if existing, ok := g.values[key]; !ok || value > existing.value {
+		g.values[key] = maxValue{set: set, value: value}
+	}
+}
+
+// Each collection starts a new window: a tag set with no value since the
+// last one is not reported.
+func (g *maxGauge) observe(_ context.Context, o metric.Float64Observer) error {
+	g.mu.Lock()
+	values := g.values
+	g.values = map[attribute.Distinct]maxValue{}
+	g.mu.Unlock()
+	for _, v := range values {
+		o.Observe(v.value, metric.WithAttributeSet(v.set))
+	}
+	return nil
 }
 
 func (s *state) counter(name string) metric.Int64Counter {

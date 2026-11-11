@@ -16,21 +16,26 @@ func Logf(format string, v ...any) {
 	LogfContext(context.Background(), format, v...)
 }
 
+// LoggingEnabled only quiets stdout: self-monitoring still receives the line.
 func Logln(v ...any) {
-	if !LoggingEnabled {
+	if !LoggingEnabled && !traceway.Enabled() {
 		return
 	}
 	msg := strings.TrimSuffix(fmt.Sprintln(v...), "\n")
-	log.Println("[tracewaybackend] " + msg)
+	if LoggingEnabled {
+		log.Println("[tracewaybackend] " + msg)
+	}
 	traceway.EmitLog(context.Background(), severityOf(msg), msg)
 }
 
 func LogfContext(ctx context.Context, format string, v ...any) {
-	if !LoggingEnabled {
+	if !LoggingEnabled && !traceway.Enabled() {
 		return
 	}
 	msg := fmt.Sprintf(format, v...)
-	log.Print("[tracewaybackend] " + msg)
+	if LoggingEnabled {
+		log.Print("[tracewaybackend] " + msg)
+	}
 	traceway.EmitLog(ctx, severityOf(msg), msg)
 }
 

@@ -114,6 +114,7 @@ func RunOnce(ctx context.Context, now time.Time) {
 	}
 	if shards.size() == 0 {
 		pruneWindowCaches(nil)
+		traceway.SkipTask(ctx)
 		return
 	}
 	started := time.Now()
@@ -145,12 +146,17 @@ func RunOnce(ctx context.Context, now time.Time) {
 	stats.DurationMs = millisSince(started)
 	recordTick(stats)
 	lastTickUnix.Store(now.Unix())
+	pruned := false
 	if shards.owns(0) && now.Sub(lastPruneAt) >= pruneInterval {
 		if err := telemetry.SLOBucketRepository.PruneBefore(ctx, now.Add(-bucketRetention)); err != nil {
 			traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to prune slo buckets: %w", err))
 		} else {
 			lastPruneAt = now
+			pruned = true
 		}
+	}
+	if len(slos) == 0 && !pruned {
+		traceway.SkipTask(ctx)
 	}
 }
 

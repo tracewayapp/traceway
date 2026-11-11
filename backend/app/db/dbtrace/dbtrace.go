@@ -144,7 +144,7 @@ func (c *tracedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver
 	if err != nil {
 		return nil, err
 	}
-	parent, _ := traceway.ParentContext(ctx)
+	parent, _ := traceway.StatementParent(ctx)
 	c.tx = &txState{parent: parent}
 	return &tracedTx{inner: tx, conn: c}, nil
 }
@@ -199,7 +199,7 @@ func (c *tracedConn) CheckNamedValue(nv *driver.NamedValue) error {
 }
 
 func (c *tracedConn) parent(ctx context.Context) (context.Context, bool) {
-	if parent, ok := traceway.ParentContext(ctx); ok {
+	if parent, ok := traceway.StatementParent(ctx); ok {
 		return parent, true
 	}
 	if c.tx != nil && c.tx.parent != nil {

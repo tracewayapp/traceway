@@ -127,6 +127,30 @@ func TestSelfMonitoringRecordsHandlerErrors(t *testing.T) {
 	}
 }
 
+func TestSelfMonitoringKeepsIngestStatementsOutOfTheTrace(t *testing.T) {
+	router, recorder := selfMonitoredRouter(t)
+	statementsTraced := map[string]bool{}
+	probe := func(c *gin.Context) {
+		_, statementsTraced[c.FullPath()] = traceway.StatementParent(c)
+		c.Status(http.StatusOK)
+	}
+	router.POST("/api/report", probe)
+	router.GET("/api/projects", probe)
+
+	serve(router, http.MethodPost, "/api/report", "")
+	serve(router, http.MethodGet, "/api/projects", "")
+
+	if statementsTraced["/api/report"] {
+		t.Fatal("ingest statements grow with customer traffic and must not be traced")
+	}
+	if !statementsTraced["/api/projects"] {
+		t.Fatal("dashboard statements must be traced")
+	}
+	if n := len(recorder.Ended()); n != 2 {
+		t.Fatalf("both requests must still be traced, got %d spans", n)
+	}
+}
+
 func TestSelfMonitoringRecoversPanics(t *testing.T) {
 	router, recorder := selfMonitoredRouter(t)
 

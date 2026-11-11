@@ -18,7 +18,7 @@ import (
 const maxQueryTextBytes = 2048
 
 func StartSpan(ctx context.Context, opts Options, query string) (trace.Span, bool) {
-	parent, ok := traceway.ParentContext(ctx)
+	parent, ok := traceway.StatementParent(ctx)
 	if !ok {
 		return nil, false
 	}

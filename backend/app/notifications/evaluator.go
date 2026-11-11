@@ -71,6 +71,10 @@ func evaluatePolledRules(ctx context.Context) {
 		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to load polled notification rules: %w", err))
 		return
 	}
+	if len(rules) == 0 {
+		traceway.SkipTask(ctx)
+		return
+	}
 
 	for _, rule := range rules {
 		if rule.SnoozedUntil != nil && rule.SnoozedUntil.After(time.Now()) {

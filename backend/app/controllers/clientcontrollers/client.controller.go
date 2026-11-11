@@ -108,7 +108,7 @@ func (e clientController) Report(c *gin.Context) {
 		orgId = *project.OrganizationId
 	}
 
-	parseSpan := traceway.StartSpan(c, "report.parse_body")
+	_, parseSpan := traceway.StartSpan(c, "report.parse_body")
 	var request ReportRequest
 	if err := c.ShouldBindBodyWithJSON(&request); err != nil {
 		parseSpan.End()
@@ -143,7 +143,7 @@ func (e clientController) Report(c *gin.Context) {
 
 	recordingIdToExceptionId := map[string]uuid.UUID{}
 
-	convertSpan := traceway.StartSpan(c, "report.convert_frames")
+	_, convertSpan := traceway.StartSpan(c, "report.convert_frames")
 	for _, cf := range request.CollectionFrames {
 		for _, cs := range cf.Sessions {
 			s := cs.ToSession(request.AppVersion, request.ServerName)
@@ -188,17 +188,17 @@ func (e clientController) Report(c *gin.Context) {
 		resolveIos := project != nil && project.SourceMapToken != nil && project.Framework == "ios"
 		resolveAndroid := project != nil && project.SourceMapToken != nil && project.Framework == "android"
 
-		resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
+		resolveCtx, resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
 		for _, cst := range cf.StackTraces {
 			resolvedStackTrace := cst.StackTrace
 			if resolveJs {
-				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, cst.DebugIds)
+				resolvedStackTrace = services.ResolveStackTrace(resolveCtx, projectId, cst.StackTrace, cst.DebugIds)
 			} else if resolveDart {
-				resolvedStackTrace = services.ResolveDartStackTrace(c, projectId, cst.StackTrace)
+				resolvedStackTrace = services.ResolveDartStackTrace(resolveCtx, projectId, cst.StackTrace)
 			} else if resolveIos {
-				resolvedStackTrace = services.ResolveIOSStackTrace(c, projectId, cst.StackTrace)
+				resolvedStackTrace = services.ResolveIOSStackTrace(resolveCtx, projectId, cst.StackTrace)
 			} else if resolveAndroid {
-				resolvedStackTrace = services.ResolveAndroidStackTrace(c, projectId, cst.StackTrace, request.ProguardUuid)
+				resolvedStackTrace = services.ResolveAndroidStackTrace(resolveCtx, projectId, cst.StackTrace, request.ProguardUuid)
 			}
 			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace
@@ -314,8 +314,8 @@ func (e clientController) Report(c *gin.Context) {
 	convertMs := float64(time.Since(convertStart).Microseconds()) / 1000.0
 	insertStart := time.Now()
 
-	spanInsertSpan := traceway.StartSpan(c, "report.insert.spans")
-	err = telemetry.SpanRepository.InsertAsync(c, spansToInsert)
+	insertCtx, spanInsertSpan := traceway.StartSpan(c, "report.insert.spans")
+	err = telemetry.SpanRepository.InsertAsync(insertCtx, spansToInsert)
 	spanInsertSpan.End()
 
 	if err != nil {
@@ -324,8 +324,8 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	if len(endpointsToInsert) > 0 {
-		insertSpan := traceway.StartSpan(c, "report.insert.endpoints")
-		err := telemetry.EndpointRepository.InsertAsync(c, endpointsToInsert)
+		insertCtx, insertSpan := traceway.StartSpan(c, "report.insert.endpoints")
+		err := telemetry.EndpointRepository.InsertAsync(insertCtx, endpointsToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting endpointsToInsert: %w", err))
@@ -334,8 +334,8 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	if len(tasksToInsert) > 0 {
-		insertSpan := traceway.StartSpan(c, "report.insert.tasks")
-		err := telemetry.TaskRepository.InsertAsync(c, tasksToInsert)
+		insertCtx, insertSpan := traceway.StartSpan(c, "report.insert.tasks")
+		err := telemetry.TaskRepository.InsertAsync(insertCtx, tasksToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting tasksToInsert: %w", err))
@@ -344,8 +344,8 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	if len(sessionsToUpsert) > 0 {
-		insertSpan := traceway.StartSpan(c, "report.upsert.sessions")
-		err := telemetry.SessionRepository.Upsert(c, sessionsToUpsert)
+		insertCtx, insertSpan := traceway.StartSpan(c, "report.upsert.sessions")
+		err := telemetry.SessionRepository.Upsert(insertCtx, sessionsToUpsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error upserting sessions: %w", err))
@@ -353,8 +353,8 @@ func (e clientController) Report(c *gin.Context) {
 		}
 	}
 
-	exceptionInsertSpan := traceway.StartSpan(c, "report.insert.exceptions")
-	err = telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
+	insertCtx, exceptionInsertSpan := traceway.StartSpan(c, "report.insert.exceptions")
+	err = telemetry.ExceptionStackTraceRepository.InsertAsync(insertCtx, exceptionStackTraceToInsert)
 	exceptionInsertSpan.End()
 
 	if err != nil {
@@ -363,8 +363,8 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	if len(metricPointsToInsert) > 0 {
-		insertSpan := traceway.StartSpan(c, "report.insert.metric_points")
-		err := telemetry.MetricPointRepository.InsertAsync(c, metricPointsToInsert)
+		insertCtx, insertSpan := traceway.StartSpan(c, "report.insert.metric_points")
+		err := telemetry.MetricPointRepository.InsertAsync(insertCtx, metricPointsToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting metricPointsToInsert: %w", err))
@@ -372,7 +372,7 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		metricNames := services.CollectUniqueMetricNames(metricPointsToInsert)
-		go services.AutoRegisterMetrics(c, projectId, metricNames)
+		go services.AutoRegisterMetrics(c.Request.Context(), projectId, metricNames)
 	}
 
 	insertMs := float64(time.Since(insertStart).Microseconds()) / 1000.0

@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -34,7 +33,7 @@ func seedProfileFor(t *testing.T, baseURL string) {
 }
 
 func TestProjectsList_jsonShape(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/projects" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -60,7 +59,7 @@ func TestProjectsList_jsonShape(t *testing.T) {
 }
 
 func TestProjectsList_table(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`[{"id":"p1","name":"alpha"}]`))
 	}))
 	defer srv.Close()
@@ -77,7 +76,7 @@ func TestProjectsList_table(t *testing.T) {
 }
 
 func TestProjectsList_unauth_writesEnvelope(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()
@@ -106,7 +105,7 @@ func TestProjectsList_noProfile_writesEnvelope(t *testing.T) {
 }
 
 func TestProjectsUse_persistsToProfile(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()

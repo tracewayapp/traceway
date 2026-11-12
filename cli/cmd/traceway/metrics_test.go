@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -11,7 +10,7 @@ import (
 )
 
 func TestMetricsQuery_jsonOutput(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{
 			"results":[
 				{"name":"http.request.duration","unit":"ms","series":{"all":[{"timestamp":"2026-05-13T12:00:00Z","value":42.5}]}}
@@ -34,7 +33,7 @@ func TestMetricsQuery_jsonOutput(t *testing.T) {
 }
 
 func TestMetricsQuery_table(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{
 			"results":[
 				{"name":"http.request.duration","unit":"ms","series":{
@@ -66,7 +65,7 @@ func TestMetricsQuery_table(t *testing.T) {
 }
 
 func TestMetricsQuery_requiresName(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"results":[]}`))
 	}))
 	defer srv.Close()
@@ -82,7 +81,7 @@ func TestMetricsQuery_requiresName(t *testing.T) {
 }
 
 func TestMetricsQuery_aggregationAcceptsAllDocumentedValues(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"results":[]}`))
 	}))
 	defer srv.Close()
@@ -99,7 +98,7 @@ func TestMetricsQuery_aggregationAcceptsAllDocumentedValues(t *testing.T) {
 }
 
 func TestMetricsQuery_aggregationRejectsBogus(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called for invalid --aggregation")
 	}))
 	defer srv.Close()

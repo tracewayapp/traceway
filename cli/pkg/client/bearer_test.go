@@ -3,13 +3,12 @@ package client
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
 func TestWithBearer_presentsOwnTokenWithoutRefresher(t *testing.T) {
 	var gotAuth string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		if gotAuth != "Bearer derived" {
 			w.WriteHeader(http.StatusUnauthorized)

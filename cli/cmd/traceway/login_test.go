@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -15,7 +14,7 @@ func TestLogin_passwordStdin_success(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/login" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -76,7 +75,7 @@ func TestLogin_passwordWithRefreshToken_isRefreshableAndRevocable(t *testing.T) 
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"token":"access","refreshToken":"twr_refresh","expiresIn":900}`))
 	}))
 	defer srv.Close()
@@ -98,7 +97,7 @@ func TestLogin_namedProfile_secondLogin_doesNotOverrideCurrent(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"token":"tok"}`))
 	}))
 	defer srv.Close()
@@ -130,7 +129,7 @@ func TestLogin_invalidCredentials_writesEnvelope(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()
@@ -155,7 +154,7 @@ func TestLogin_refreshExistingProfile_keepsURLAndUsername(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
 	t.Setenv("XDG_STATE_HOME", stateDir)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"token":"newtoken"}`))
 	}))
 	defer srv.Close()

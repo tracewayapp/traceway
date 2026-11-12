@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -15,7 +14,7 @@ import (
 
 func TestExceptionsArchive_yes_callsClientAndRendersJSON(t *testing.T) {
 	var gotHashes []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/exception-stack-traces/archive" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -52,7 +51,7 @@ func TestExceptionsArchive_yes_callsClientAndRendersJSON(t *testing.T) {
 }
 
 func TestExceptionsArchive_nonTTYWithoutYes_failsWithUsageError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called when confirmation refuses")
 	}))
 	defer srv.Close()
@@ -85,7 +84,7 @@ func TestExceptionsArchive_requiresAtLeastOneHash(t *testing.T) {
 func TestExceptionsUnarchive_yes_callsClientAndRendersJSON(t *testing.T) {
 	var gotPath string
 	var gotHashes []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)

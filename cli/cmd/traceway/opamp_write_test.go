@@ -4,7 +4,6 @@ package main
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -22,7 +21,7 @@ func TestOpampWrites(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := &recorded{}
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Query().Get("projectId") == "" {
 					t.Error("missing project scope")
 				}

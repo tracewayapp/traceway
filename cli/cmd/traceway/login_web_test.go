@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/tracewayapp/traceway/cli/v2/internal/state"
@@ -13,7 +12,7 @@ func TestLoginWeb_deviceFlow_success(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
 	polls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/auth/device/authorize":
 			_, _ = w.Write([]byte(`{"device_code":"dev","user_code":"AAAA-BBBB","verification_uri":"http://x/device","verification_uri_complete":"http://x/device?user_code=AAAA-BBBB","expires_in":600,"interval":1}`))

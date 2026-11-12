@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -27,7 +26,7 @@ func TestWriteEdition_passwordLoginAsksForWriteScope(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	var body map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		_, _ = w.Write([]byte(`{"token":"jwt"}`))
 	}))
@@ -59,7 +58,7 @@ func (r *recorded) add(req *http.Request) {
 
 func TestPagesAck_requiresConfirmationThenAcknowledges(t *testing.T) {
 	rec := &recorded{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		_, _ = w.Write([]byte(`{"message":"Page acknowledged"}`))
 	}))
@@ -84,7 +83,7 @@ func TestPagesAck_requiresConfirmationThenAcknowledges(t *testing.T) {
 
 func TestPagesResolve_archiveIssueFlag(t *testing.T) {
 	rec := &recorded{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		_, _ = w.Write([]byte(`{}`))
 	}))
@@ -102,7 +101,7 @@ func TestPagesResolve_archiveIssueFlag(t *testing.T) {
 
 func TestAlertsEnableDisable_setsAnExplicitState(t *testing.T) {
 	rec := &recorded{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		if strings.Contains(r.URL.Path, "/99/") {
 			w.WriteHeader(http.StatusNotFound)
@@ -143,7 +142,7 @@ func TestAlertsEnableDisable_undoesAnOlderServersFlip(t *testing.T) {
 	var mu sync.Mutex
 	ruleEnabled := false
 	rec := &recorded{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		mu.Lock()
 		defer mu.Unlock()
@@ -181,7 +180,7 @@ func TestAlertsEnableDisable_undoesAnOlderServersFlip(t *testing.T) {
 
 func TestAlertsSnooze_sendsMinutes(t *testing.T) {
 	rec := &recorded{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		_, _ = w.Write([]byte(`{"id":4}`))
 	}))
@@ -199,7 +198,7 @@ func TestAlertsSnooze_sendsMinutes(t *testing.T) {
 
 func TestPostMortemsUpdate_keepsFieldsItWasNotGiven(t *testing.T) {
 	rec := &recorded{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		if r.Method == http.MethodGet {
 			_, _ = w.Write([]byte(`{"id":5,"title":"Redis outage","contentMd":"old","tags":["redis"],"incidentId":11,"updatedAt":"2026-10-15T10:05:00Z"}`))
@@ -239,7 +238,7 @@ func TestPostMortemsUpdate_contentNeedsExpectedUpdatedAt(t *testing.T) {
 
 func TestPostMortemsUpdate_unlinkIncident(t *testing.T) {
 	rec := &recorded{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		if r.Method == http.MethodGet {
 			_, _ = w.Write([]byte(`{"id":5,"title":"Redis outage","contentMd":"old","tags":[],"incidentId":11,"updatedAt":"2026-10-15T10:05:00Z"}`))
@@ -269,7 +268,7 @@ func TestPostMortemsUpdate_nothingToUpdate(t *testing.T) {
 
 func TestEndpointsMarkSlow(t *testing.T) {
 	rec := &recorded{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.add(r)
 		_, _ = w.Write([]byte(`{}`))
 	}))

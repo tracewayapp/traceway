@@ -15,6 +15,13 @@ const (
 var agentRoutes = map[string]agentAccess{
 	"GET /api/projects": agentRead,
 
+	"GET /api/sdk-config/rules":         agentRead,
+	"POST /api/sdk-config/preview":      agentRead,
+	"POST /api/sdk-config/rules":        agentWrite,
+	"PUT /api/sdk-config/rules/:id":     agentWrite,
+	"PUT /api/sdk-config/rules/reorder": agentWrite,
+	"DELETE /api/sdk-config/rules/:id":  agentWrite,
+
 	"GET /api/dashboard":                  agentRead,
 	"GET /api/dashboard/overview":         agentRead,
 	"GET /api/metrics/application":        agentRead,

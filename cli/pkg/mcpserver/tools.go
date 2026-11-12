@@ -116,6 +116,7 @@ func (s *server) addTools(srv *mcp.Server) {
 	}, s.getTrace)
 
 	s.addOperationReadTools(srv)
+	s.addOpampReadTools(srv)
 	if s.cfg.AllowWrite {
 		s.addWriteTools(srv)
 	}
@@ -140,4 +141,5 @@ func (s *server) addWriteTools(srv *mcp.Server) {
 	}, s.unarchiveExceptions)
 
 	s.addOperationWriteTools(srv)
+	s.addOpampWriteTools(srv)
 }

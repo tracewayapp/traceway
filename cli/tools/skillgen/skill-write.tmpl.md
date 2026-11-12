@@ -1,12 +1,12 @@
 ---
 name: traceway-write
-description: 'Operate a Traceway instance with write access. Use when the user wants an agent to change something in Traceway: archive or unarchive issues, acknowledge or resolve on-call pages, snooze, enable or disable alert rules, run a monitor now, create or edit a post-mortem, or mark an endpoint as expected-slow. Requires the separate traceway-write CLI or the /mcp/write server, a write credential, and an organization admin who turned on agent writes.'
+description: 'Operate a Traceway instance with write access. Use when the user wants an agent to change something in Traceway: archive or unarchive issues, acknowledge or resolve on-call pages, snooze, enable or disable alert rules, run a monitor now, create or edit a post-mortem, mark an endpoint as expected-slow, or configure browser SDK collection, session recording and replay over OpAMP. Requires the separate traceway-write CLI or the /mcp/write server, a write credential, and an organization admin who turned on agent writes.'
 ---
 <!-- GENERATED FILE: assembled from cli/pkg/mcpserver/knowledge by cli/tools/skillgen. Edit the chunks there and run just gen-skills in cli/. -->
 
 # Traceway with write access
 
-This skill drives the `traceway-write` CLI (or the write MCP server) to make the routine changes an on-call engineer makes: archive issues, acknowledge and resolve pages, snooze or toggle alert rules, run monitors, write post-mortems and mark slow endpoints.
+This skill drives the `traceway-write` CLI (or the write MCP server) to make the routine changes an on-call engineer makes: archive issues, acknowledge and resolve pages, snooze or toggle alert rules, run monitors, write post-mortems, mark slow endpoints and configure browser collection over OpAMP.
 
 To explain how a part of Traceway works before or after a change (what acknowledging a page does to escalation, how a snooze differs from disabling a rule, how a monitor opens an incident), use the `traceway-learn` skill. It is the full product guide. Over MCP the same guide is the `traceway://knowledge/learn` resources.
 
@@ -77,6 +77,12 @@ Every `traceway` read command works in `traceway-write` (`exceptions list|show|o
 | `traceway-write post-mortems create --title T [--content-file F] [--tag X] [--incident N]` | `create_post_mortem` | New post-mortem |
 | `traceway-write post-mortems update <id> [--title] [--content-file --expected-updated-at] [--tag] [--incident \| --unlink-incident]` | `update_post_mortem` | Edits only the flags passed. A new body needs the `updatedAt` it was based on |
 | `traceway-write endpoints mark-slow <endpoint> --offset-ms N --reason R` | `set_slow_endpoint` | Accepted latency for an endpoint; 0 removes |
+| `traceway-write opamp rules list` | `list_sdk_config_rules` | Reads ordered collection rules and updatedAt |
+| `traceway-write opamp preview --file client.json` | `preview_sdk_config` | Reads effective saved configuration for client attributes |
+| `traceway-write opamp rules create --file rule.json` | `create_sdk_config_rule` | Appends a collection rule |
+| `traceway-write opamp rules update <id> --file rule.json --expected-updated-at <t>` | `update_sdk_config_rule` | Replaces rule configuration, refusing stale edits |
+| `traceway-write opamp rules delete <id>` | `delete_sdk_config_rule` | Deletes a collection rule |
+| `traceway-write opamp rules reorder <id>...` | `reorder_sdk_config_rules` | Sets rule precedence |
 
 Every write command prints what it is about to do and asks for confirmation on a TTY. In scripts and agents pass `--yes` (or set `TRACEWAY_ASSUME_YES=1`) only after the user asked for that exact change. Output, flags, exit codes and error envelopes are the same as the read CLI: JSON when piped, `--fields` to trim, exit code 4 for auth and permission errors.
 

@@ -31,6 +31,8 @@ func init() {
 func addWriteCommands(root *cobra.Command) {
 	for _, sub := range root.Commands() {
 		switch sub.Name() {
+		case "opamp":
+			addOpampWriteCommands(sub)
 		case "exceptions":
 			sub.AddCommand(newExceptionsArchiveCmd(), newExceptionsUnarchiveCmd())
 		case "pages":

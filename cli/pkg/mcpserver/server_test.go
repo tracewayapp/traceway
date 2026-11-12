@@ -94,6 +94,7 @@ func TestListTools_surfaceAndAnnotations(t *testing.T) {
 		"get_trace": true, "list_pages": true, "get_page": true,
 		"list_notification_rules": true, "list_checks": true, "get_check": true,
 		"list_post_mortems": true, "get_post_mortem": true,
+		"list_sdk_config_rules": true, "preview_sdk_config": true,
 	}
 	assertToolSurface(t, res.Tools, wantReadOnly)
 }
@@ -112,11 +113,13 @@ func TestListTools_writeServerAddsMutatingTools(t *testing.T) {
 		"get_trace": true, "list_pages": true, "get_page": true,
 		"list_notification_rules": true, "list_checks": true, "get_check": true,
 		"list_post_mortems": true, "get_post_mortem": true,
+		"list_sdk_config_rules": true, "preview_sdk_config": true,
 		"archive_exceptions": false, "unarchive_exceptions": false,
 		"acknowledge_page": false, "resolve_page": false,
 		"set_notification_rule_enabled": false, "snooze_notification_rule": false,
 		"run_check": false, "create_post_mortem": false, "update_post_mortem": false,
-		"set_slow_endpoint": false,
+		"set_slow_endpoint":      false,
+		"create_sdk_config_rule": false, "update_sdk_config_rule": false, "delete_sdk_config_rule": false, "reorder_sdk_config_rules": false,
 	}
 	assertToolSurface(t, res.Tools, want)
 	if init := cs.InitializeResult(); init == nil || !strings.Contains(init.Instructions, "Write access") {

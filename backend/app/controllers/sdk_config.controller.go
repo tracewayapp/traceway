@@ -36,10 +36,11 @@ type sdkConfigController struct{}
 var SdkConfigController = sdkConfigController{}
 
 type sdkConfigRuleRequest struct {
-	Name       string          `json:"name"`
-	Enabled    *bool           `json:"enabled"`
-	Conditions json.RawMessage `json:"conditions"`
-	Settings   json.RawMessage `json:"settings"`
+	ExpectedUpdatedAt string          `json:"expectedUpdatedAt"`
+	Name              string          `json:"name"`
+	Enabled           *bool           `json:"enabled"`
+	Conditions        json.RawMessage `json:"conditions"`
+	Settings          json.RawMessage `json:"settings"`
 }
 
 // canonicalRule validates a rule and returns its documents re-encoded, so stored rows always parse and a client
@@ -195,6 +196,10 @@ func (sdkConfigController) UpdateRule(c *gin.Context) {
 		return
 	}
 	tx := db.GetTx(c)
+	if err := transactional.SdkConfigRepository.LockProject(tx, projectId); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to lock SDK configuration: %w", err))
+		return
+	}
 	rule, err := transactional.SdkConfigRepository.FindRule(tx, projectId, id)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load SDK config rule: %w", err))
@@ -203,6 +208,21 @@ func (sdkConfigController) UpdateRule(c *gin.Context) {
 	if rule == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
 		return
+	}
+	if identity := middleware.GetBearerIdentity(c); identity != nil && identity.IsAgent() && req.ExpectedUpdatedAt == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "expectedUpdatedAt is required for agent updates; use updatedAt from the rule list"})
+		return
+	}
+	if req.ExpectedUpdatedAt != "" {
+		expected, err := time.Parse(time.RFC3339Nano, req.ExpectedUpdatedAt)
+		if err != nil {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "expectedUpdatedAt must be an RFC3339 timestamp"})
+			return
+		}
+		if !rule.UpdatedAt.Equal(expected) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Rule changed since it was read; list rules again and reapply the change"})
+			return
+		}
 	}
 	rule.Name = strings.TrimSpace(req.Name)
 	if req.Enabled != nil {

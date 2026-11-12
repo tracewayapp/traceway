@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/duckdb/duckdb-go/v2"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db/dbtrace"
 )
 
 // DuckDBConnector is retained so repositories can open a dedicated driver.Conn

@@ -9,9 +9,9 @@ import (
 	"errors"
 	"net/url"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // Classified is the surface-agnostic classification of a client error.

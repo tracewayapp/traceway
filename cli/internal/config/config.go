@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
 )
 
 // Config is the on-disk declarative configuration file. It contains only

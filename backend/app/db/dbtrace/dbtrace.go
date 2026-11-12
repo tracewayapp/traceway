@@ -10,7 +10,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -95,15 +95,36 @@ type txState struct {
 }
 
 // One INSERT per row would otherwise be thousands of spans per ingest
-// request. The folded span lasts as long as its statements spent in the
-// driver together, so the Go work between rows is not counted as database
-// time.
+// request. Reads fold too: on Postgres lit.Insert is an INSERT ... RETURNING
+// read through QueryRow. The folded span lasts as long as its statements
+// spent in the driver together, a read until its rows were closed, so the Go
+// work between rows is not counted as database time.
 type batchSpan struct {
 	span  trace.Span
 	query string
 	size  int
 	start time.Time
 	busy  time.Duration
+	// The rows of the latest read are still open. A batch that ends then
+	// leaves the span to those rows, which end it when they are closed.
+	reading  bool
+	detached bool
+}
+
+func (b *batchSpan) end() {
+	if b.size > 1 {
+		b.span.SetAttributes(attribute.Int("db.operation.batch.size", b.size))
+	}
+	b.span.End(trace.WithTimestamp(b.start.Add(b.busy)))
+}
+
+func (b *batchSpan) endRead(begin time.Time, err error) {
+	b.busy += time.Since(begin)
+	b.reading = false
+	recordError(b.span, err)
+	if b.detached {
+		b.end()
+	}
 }
 
 func (c *tracedConn) Prepare(query string) (driver.Stmt, error) {
@@ -221,18 +242,11 @@ func (c *tracedConn) exec(ctx context.Context, query string, run func() (driver.
 	}
 
 	begin := time.Now()
-	if b := c.tx.batch; b != nil && b.query == query {
-		result, err := run()
-		b.size++
-		b.busy += time.Since(begin)
-		recordError(b.span, err)
-		return result, err
-	}
-	c.endBatch()
-	span := startSpan(parent, c.opts, query, trace.WithTimestamp(begin))
+	b := c.batchFor(parent, query, begin)
 	result, err := run()
-	c.tx.batch = &batchSpan{span: span, query: query, size: 1, start: begin, busy: time.Since(begin)}
-	recordError(span, err)
+	b.size++
+	b.busy += time.Since(begin)
+	recordError(b.span, err)
 	return result, err
 }
 
@@ -243,14 +257,43 @@ func (c *tracedConn) query(ctx context.Context, query string, run func() (driver
 	if !ok {
 		return run()
 	}
-	c.endBatch()
-	span := startSpan(parent, c.opts, query)
+	if c.tx == nil {
+		span := startSpan(parent, c.opts, query)
+		rows, err := run()
+		if err != nil {
+			EndSpan(span, err)
+			return nil, err
+		}
+		return newTracedRows(rows, func(err error) { EndSpan(span, err) }), nil
+	}
+
+	begin := time.Now()
+	b := c.batchFor(parent, query, begin)
+	b.size++
 	rows, err := run()
 	if err != nil {
-		EndSpan(span, err)
+		b.busy += time.Since(begin)
+		recordError(b.span, err)
 		return nil, err
 	}
-	return newTracedRows(rows, span), nil
+	b.reading = true
+	return newTracedRows(rows, func(err error) { b.endRead(begin, err) }), nil
+}
+
+// batchFor folds the statement into the transaction's open batch when it
+// repeats the batch's statement. A read whose rows are still open is never
+// joined, so every folded read was over before the next one began.
+func (c *tracedConn) batchFor(parent context.Context, query string, begin time.Time) *batchSpan {
+	if b := c.tx.batch; b != nil && b.query == query && !b.reading {
+		return b
+	}
+	c.endBatch()
+	c.tx.batch = &batchSpan{
+		span:  startSpan(parent, c.opts, query, trace.WithTimestamp(begin)),
+		query: query,
+		start: begin,
+	}
+	return c.tx.batch
 }
 
 func (c *tracedConn) endBatch() {
@@ -258,11 +301,12 @@ func (c *tracedConn) endBatch() {
 		return
 	}
 	b := c.tx.batch
-	if b.size > 1 {
-		b.span.SetAttributes(attribute.Int("db.operation.batch.size", b.size))
-	}
-	b.span.End(trace.WithTimestamp(b.start.Add(b.busy)))
 	c.tx.batch = nil
+	if b.reading {
+		b.detached = true
+		return
+	}
+	b.end()
 }
 
 func (c *tracedConn) endTx() {

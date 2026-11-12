@@ -35,8 +35,8 @@ import (
 )
 
 const (
-	scopeName         = "github.com/tracewayapp/traceway/backend"
-	backendModulePath = "github.com/tracewayapp/traceway/backend"
+	scopeName         = "github.com/tracewayapp/traceway/backend/v2"
+	backendModulePath = "github.com/tracewayapp/traceway/backend/v2"
 
 	// Every self-monitoring reporter ticks at 10s or slower. Collecting more
 	// often than that means a delta gauge never holds two recordings of the

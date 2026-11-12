@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/scopes"
 )
 
 func fixture(t testing.TB, parts ...string) string {

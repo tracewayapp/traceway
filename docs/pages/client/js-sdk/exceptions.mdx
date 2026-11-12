@@ -72,7 +72,7 @@ class ValidationError extends Error {
 captureException(new ValidationError("Invalid email format"));
 ```
 
-The type shown in Traceway comes from the error's **class name**, not from `this.name`. Minifiers rename classes, so in a production build the issue above reads `r: Invalid email format` rather than `ValidationError: Invalid email format`. Put anything you need to search or group on into the message or into attributes.
+With the 2.x SDK, the type shown in Traceway is the error's `name` property, so set `this.name` as above: it is a string, and minifiers leave it alone. The 1.x SDK reads the **class name** instead, not `this.name`. Minifiers rename classes, so with 1.x a production build shows the issue above as `r: Invalid email format` rather than `ValidationError: Invalid email format`. Either way, put anything you need to search or group on into the message or into attributes.
 
 ## Non-Error Values
 

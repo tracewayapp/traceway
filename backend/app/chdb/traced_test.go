@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/db/dbtrace"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )

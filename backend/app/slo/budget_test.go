@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func near(got, want float64) bool {

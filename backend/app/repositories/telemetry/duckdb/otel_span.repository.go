@@ -12,9 +12,9 @@ import (
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 type otelSpanRepository struct{}
@@ -200,7 +200,7 @@ func (r *otelSpanRepository) FindOTLP(ctx context.Context, project uuid.UUID, tr
 }
 
 // FindSessionClientSpans returns the requests a browser session made in a time window (CLIENT spans), oldest first.
-func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]shared.SessionSpan, error) {
+func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]shared.SessionSpan, error) {
 	rows, err := db.TelemetryDB.QueryContext(ctx, `SELECT trace_id, span_id, name, start_time_unix_nano, duration, status_code,
 			COALESCE(json_extract_string(span_attributes, '$."http.request.method"'), ''),
 			COALESCE(json_extract_string(span_attributes, '$."url.full"'), ''),
@@ -209,8 +209,8 @@ func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, project
 		FROM spans_v2
 		WHERE project_id = ? AND json_extract_string(span_attributes, '$."session.id"') = ?
 			AND recorded_at >= ? AND recorded_at <= ? AND span_kind = 3
-		ORDER BY start_time_unix_nano ASC LIMIT ?`,
-		projectId.String(), sessionId, duckdbOtelCodec.Time(from), duckdbOtelCodec.Time(to), limit)
+		ORDER BY start_time_unix_nano `+q.Order()+` LIMIT ?`,
+		q.ProjectId.String(), q.SessionId, duckdbOtelCodec.Time(q.From), duckdbOtelCodec.Time(q.To), q.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -230,5 +230,8 @@ func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, project
 		span.StatusCode = int32(status)
 		spans = append(spans, span)
 	}
-	return spans, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return shared.SessionBreadcrumbsChronological(q, spans), nil
 }

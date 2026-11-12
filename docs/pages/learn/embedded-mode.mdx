@@ -24,11 +24,13 @@ This is intended for **local development only**. For production, use the [Docker
 ### Install the Traceway backend module
 
 ```bash
-go get github.com/tracewayapp/traceway/backend
+go get github.com/tracewayapp/traceway/backend/v2
 ```
 
+The module path ends in `/v2` from release 2.0.11 on: Go requires the major version in the path of a 2.x module, so `go get github.com/tracewayapp/traceway/backend` without it stops at the last 1.x release. Import the packages with `/v2` too.
+
 <Callout type="warning">
-  **On backend v1.9.15 and earlier, that command fails.** Those releases declare
+  **On backend v1.9.15 and earlier, the 1.x command fails.** Those releases declare
   their dependency on the Traceway CLI module with a placeholder version, so
   `go get` stops with:
 
@@ -60,7 +62,7 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
-	tracewaybackend "github.com/tracewayapp/traceway/backend"
+	tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
 )
 
 func main() {
@@ -97,7 +99,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	tracewaybackend "github.com/tracewayapp/traceway/backend"
+	tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"

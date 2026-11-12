@@ -1,4 +1,4 @@
-module github.com/tracewayapp/traceway/cli
+module github.com/tracewayapp/traceway/cli/v2
 
 go 1.26.2
 

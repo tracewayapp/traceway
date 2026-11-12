@@ -3,11 +3,13 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 const (
@@ -27,11 +29,16 @@ var writeOnlyCommands = map[string][]string{
 	"monitors":     {"run"},
 	"post-mortems": {"create", "update"},
 	"endpoints":    {"mark-slow"},
+	"opamp rules":  {"create", "update", "delete", "reorder"},
 }
 
 func addWriteCommands(root *cobra.Command) {
-	for _, sub := range root.Commands() {
-		for _, name := range writeOnlyCommands[sub.Name()] {
+	for path, names := range writeOnlyCommands {
+		sub, _, err := root.Find(strings.Fields(path))
+		if err != nil || sub == root {
+			continue
+		}
+		for _, name := range names {
 			sub.AddCommand(&cobra.Command{
 				Use:                name,
 				Hidden:             true,
@@ -40,7 +47,7 @@ func addWriteCommands(root *cobra.Command) {
 					mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
 					_ = output.RenderError(cmd.ErrOrStderr(), mode, output.ErrorEnvelope{
 						Code:     "write_required",
-						Message:  "'" + cmd.Parent().Name() + " " + name + "' changes data, and this traceway CLI is read-only",
+						Message:  "'" + path + " " + name + "' changes data, and this traceway CLI is read-only",
 						Hint:     "install the separate traceway-write CLI (install.sh --write), log in with it, and ask an organization admin to turn on Settings > Agent Access",
 						ExitCode: exitcode.Usage,
 					})

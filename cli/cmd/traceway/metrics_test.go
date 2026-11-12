@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
 )
 
 func TestMetricsQuery_jsonOutput(t *testing.T) {

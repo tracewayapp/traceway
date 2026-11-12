@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
 )
 
 func fakeSMTP(t *testing.T) (host string, port string, got *[]string, data *[]string) {

@@ -2,7 +2,7 @@
 
 import { Callout } from "nextra/components";
 
-AI agents can do more than read your telemetry. With write access they can make the routine changes an on-call engineer makes: archive an issue once it is fixed, acknowledge and resolve pages, snooze a noisy alert, run a monitor to confirm a fix, write the post-mortem, and mark an endpoint as expected-slow.
+AI agents can do more than read your telemetry. With write access they can make the routine changes an on-call engineer makes: archive an issue once it is fixed, acknowledge and resolve pages, snooze a noisy alert, run a monitor to confirm a fix, write the post-mortem, and mark an endpoint as expected-slow. They can also change what browser apps collect, through the [remote SDK config](/learn/remote-config) rules of a browser project.
 
 Writes are off by default and opt-in at three levels. All three have to agree before an agent can change anything:
 
@@ -10,7 +10,7 @@ Writes are off by default and opt-in at three levels. All three have to agree be
 |---|---|---|
 | **Credential** | Only write credentials can write: a `tww_` token, a `traceway-write` login, or the `/mcp/write` server. Everything else is read only. | The person creating the token or logging in |
 | **Organization** | An admin turns on **Settings > Agent Access**. Until then every agent write is refused. | Organization owners and admins |
-| **Role** | The write runs with the role of the person who created the credential, under the same rules as the dashboard. A `readonly` member's write token cannot archive issues, change alerts, run monitors or edit post-mortems. Like in the dashboard, any member can acknowledge and resolve pages. | Existing roles and per-project overrides |
+| **Role** | The write runs with the role of the person who created the credential, under the same rules as the dashboard. A `readonly` member's write token cannot archive issues, change alerts, run monitors, edit post-mortems or change remote SDK config rules. Like in the dashboard, any member can acknowledge and resolve pages. | Existing roles and per-project overrides |
 
 Every write a write credential makes in the organization is recorded in its agent activity log, including the writes refused because Agent Access is off.
 
@@ -26,8 +26,13 @@ Every write a write credential makes in the organization is recorded in its agen
 | Run a monitor now | `monitors run <id>` | `run_check` |
 | Create or edit a post-mortem | `post-mortems create` / `update <id>` | `create_post_mortem` / `update_post_mortem` |
 | Mark an endpoint as expected-slow | `endpoints mark-slow <endpoint> --offset-ms N` | `set_slow_endpoint` |
+| Create, replace, reorder or delete remote SDK config rules (a browser project's **Data Collection** rules) | `opamp rules create` / `update <id>` / `reorder <id>...` / `delete <id>` | `create_sdk_config_rule` / `update_sdk_config_rule` / `reorder_sdk_config_rules` / `delete_sdk_config_rule` |
 
-Everything else stays in the dashboard. Agent credentials are refused outright on every other route, including creating rules and channels, editing schedules and escalation policies, status pages and public incident updates, members and invitations, tokens, project settings, and every delete. A new dashboard route is never reachable by an agent until it is added to the agent allowlist on purpose.
+<Callout type="warning">
+  Remote SDK config rules decide what the browsers of a React, Vue, Svelte or jQuery project running the 2.x SDK send. A write credential can therefore switch signals off, stream console lines, requests and clicks for every visitor, turn on full-session replay, and set `maskAllInputs: false`, which records what users type into input fields. The only limits are the ceilings the app sets in `init()` (for example `sessionRecording: false`) and the organization's plan. Turn Agent Access on only for organizations where that is acceptable, and review these writes in the agent activity log.
+</Callout>
+
+Everything else stays in the dashboard. Agent credentials are refused outright on every other route, including creating alert rules and channels, editing schedules and escalation policies, status pages and public incident updates, members and invitations, tokens, the other project settings, targeted SDK captures, and every delete except of a remote SDK config rule. A new dashboard route is never reachable by an agent until it is added to the agent allowlist on purpose.
 
 ## Turning it on
 
@@ -76,7 +81,7 @@ The OAuth consent page shows a **Read and write access** warning when a client a
 
 ### The traceway-write skill
 
-The `traceway-write` skill teaches an agent the rules for writes (only on request, say the change first, prefer the reversible option) and playbooks for pages, flapping alerts, confirming fixes and writing post-mortems. `npx skills add tracewayapp/skills --all` installs it with the other skills. In Claude Code it is its own plugin, `tw-write`, separate from the read-only `tw` plugin. The skill alone changes nothing: writes still need the `traceway-write` CLI or a write token, and an admin who turned on Agent Access. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
+The `traceway-write` skill teaches an agent the rules for writes (only on request, say the change first, prefer the reversible option) and playbooks for pages, flapping alerts, confirming fixes, writing post-mortems and changing remote SDK config rules. `npx skills add tracewayapp/skills --all` installs it with the other skills. In Claude Code it is its own plugin, `tw-write`, separate from the read-only `tw` plugin. The skill alone changes nothing: writes still need the `traceway-write` CLI or a write token, and an admin who turned on Agent Access. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
 
 ```
 /plugin marketplace add tracewayapp/skills

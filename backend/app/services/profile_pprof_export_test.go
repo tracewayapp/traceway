@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/pprof/profile"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func TestBuildPprof_RoundTrips(t *testing.T) {

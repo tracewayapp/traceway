@@ -5,16 +5,15 @@ package sqlite
 import (
 	"context"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type logRecord struct {
@@ -222,13 +221,9 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 // FindBySessionId returns a browser session's log records in a time window, oldest first: its console lines,
 // navigation, clicks and custom events. Without statistics the planner prefers (project_id, timestamp), which also
 // serves the ORDER BY but reads every log of the project in the window, so the session index is named.
-func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
-	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
-		`SELECT `+logRecordColumns+` FROM log_records INDEXED BY idx_log_records_session
-		WHERE project_id = :project_id AND json_extract(log_attributes, '$."session.id"') = :session_id
-			AND timestamp >= :from AND timestamp <= :to
-		ORDER BY timestamp ASC LIMIT :limit`,
-		lit.P{"project_id": projectId, "session_id": sessionId, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to), "limit": limit})
+func (r *logRecordRepository) FindBySessionId(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]models.LogRecord, error) {
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB), sessionLogRecordsQuery(q.Order()),
+		lit.P{"project_id": q.ProjectId, "session_id": q.SessionId, "from": sqlitetypes.NewSQLiteTime(q.From), "to": sqlitetypes.NewSQLiteTime(q.To), "limit": q.Limit})
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +231,15 @@ func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uui
 	for _, row := range rows {
 		records = append(records, row.toModel())
 	}
-	return records, nil
+	return shared.SessionBreadcrumbsChronological(q, records), nil
+}
+
+func sessionLogRecordsQuery(order string) string {
+	return `SELECT ` + logRecordColumns + ` FROM log_records INDEXED BY idx_log_records_session
+		WHERE project_id = :project_id AND json_extract(log_attributes, '$."session.id"') = :session_id
+			AND timestamp >= :from AND timestamp <= :to
+			AND COALESCE(json_extract(log_attributes, '$."event.name"'), '') NOT IN (` + shared.SessionTimelineSkippedEventsSQL + `)
+		ORDER BY timestamp ` + order + ` LIMIT :limit`
 }
 
 func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string, lit.P) {

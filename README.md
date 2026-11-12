@@ -125,11 +125,11 @@ Prefer a single container with no external databases? The [SQLite image](https:/
 Run Traceway inside your Go process. No Docker, no external databases, SQLite under the hood:
 
 ```bash
-go get github.com/tracewayapp/traceway/backend
+go get github.com/tracewayapp/traceway/backend/v2
 ```
 
 ```go
-import tracewaybackend "github.com/tracewayapp/traceway/backend"
+import tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
 
 func main() {
     go tracewaybackend.Run(
@@ -142,7 +142,7 @@ func main() {
 }
 ```
 
-Open `http://localhost:8082`, log in, and hit your app to see traces appear. Full walkthrough in the [embedded mode guide](https://docs.tracewayapp.com/learn/embedded-mode), or check the working examples ([OTel exporter](./examples/embedded-backend-otel) or [Go client SDK](./examples/embedded-backend-go-client)).
+Open `http://localhost:8082`, log in, and hit your app to see traces appear. Full walkthrough in the [embedded mode guide](https://docs.tracewayapp.com/learn/embedded-mode), or check the [working example](./examples/embedded-backend-otel).
 
 ## Supported Integrations
 
@@ -247,7 +247,7 @@ A full-stack framework has two halves and two Traceway projects. Next.js and Rem
 | `cli/`      | Agent-first `traceway` command line for querying exceptions, logs, endpoints, and metrics                                                                                                                                              |
 | `skills/`   | Agent skills (`/traceway-setup`, `/traceway`, `/traceway-learn`) for Claude Code, Cursor, Codex, and any SKILL.md-compatible agent                                                                                                                         |
 | `docs/`     | Documentation site (Nextra)                                                                                                                                                                                                             |
-| `examples/` | Working examples: embedded mode ([OTel](./examples/embedded-backend-otel), [Go client](./examples/embedded-backend-go-client)) and OTel-instrumented apps ([Express](./examples/express-otel), [NestJS](./examples/nestjs-otel), [Next.js](./examples/nextjs-otel), [Hono](./examples/hono-otel)) |
+| `examples/` | Working examples: [embedded mode](./examples/embedded-backend-otel) and OTel-instrumented apps ([Express](./examples/express-otel), [NestJS](./examples/nestjs-otel), [Next.js](./examples/nextjs-otel), [Hono](./examples/hono-otel)) |
 | `website/`  | Landing page                                                                                                                                                                                                                            |
 
 ## Build Tags

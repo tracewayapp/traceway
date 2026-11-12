@@ -1,6 +1,7 @@
 <script lang="ts">
 	import CopyButton from '$lib/components/traceway/copy-button.svelte';
 	import type { PromptPart } from '$lib/utils/ai-setup';
+	import { REPLAY_BLOCK_CLASS } from '$lib/utils/self-monitoring';
 
 	let { parts }: { parts: PromptPart[] } = $props();
 
@@ -9,7 +10,7 @@
 
 <div class="flex items-start gap-2">
 	<code
-		class="block min-w-0 flex-1 rounded-md bg-muted px-4 py-3 font-mono text-sm break-words whitespace-pre-wrap text-foreground"
+		class="block min-w-0 flex-1 rounded-md bg-muted px-4 py-3 font-mono text-sm break-words whitespace-pre-wrap text-foreground {REPLAY_BLOCK_CLASS}"
 	>
 		{#each parts as part, i (i)}
 			{#if part.bold}

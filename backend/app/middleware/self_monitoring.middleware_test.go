@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -171,6 +171,28 @@ func TestSelfMonitoringRecoversPanics(t *testing.T) {
 	}
 	if !strings.Contains(exceptionAttr(span, "exception.stacktrace"), "self_monitoring.middleware_test.go") {
 		t.Fatal("the panic stack must point at the handler")
+	}
+}
+
+func TestSelfMonitoringMarksEventStreams(t *testing.T) {
+	router, recorder := selfMonitoredRouter(t)
+	router.POST("/mcp/write", func(c *gin.Context) {
+		c.Header("Content-Type", "text/event-stream; charset=utf-8")
+		c.String(http.StatusOK, "event: message\ndata: {}\n\n")
+	})
+
+	serve(router, http.MethodPost, "/mcp/write", "")
+	serve(router, http.MethodPost, "/mcp", "")
+
+	spans := recorder.Ended()
+	if len(spans) != 2 {
+		t.Fatalf("got %d spans", len(spans))
+	}
+	if attr(spans[0], "traceway.is_stream") != "true" {
+		t.Fatal("an event-stream answer must be marked as a stream, or it skews the endpoint's latency")
+	}
+	if attr(spans[1], "traceway.is_stream") != "" {
+		t.Fatal("an ordinary answer must not be marked as a stream")
 	}
 }
 

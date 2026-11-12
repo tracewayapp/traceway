@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/config"
-	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/internal/config"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
 )
 
 func seedProfileFor(t *testing.T, baseURL string) {

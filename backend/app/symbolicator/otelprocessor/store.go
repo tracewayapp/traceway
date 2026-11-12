@@ -18,9 +18,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/android"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/android"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/ios"
 )
 
 const (

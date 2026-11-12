@@ -7,9 +7,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/google/uuid"
 )
@@ -32,7 +33,12 @@ var (
 	twRunning     atomic.Int32
 	twDropped     atomic.Uint64
 	twRun         = warmTWArtifact
+
+	// Guarded by twPendingMu.
+	twDropReportedAt time.Time
 )
+
+const twDropReportInterval = time.Minute
 
 func GenerateTWArtifacts(ctx context.Context, projectId uuid.UUID, fileNames []string) {
 	ctx = context.WithoutCancel(ctx)
@@ -67,8 +73,18 @@ func enqueueTWWarmup(job twJob) bool {
 		return true
 	default:
 		twDropped.Add(1)
+		reportTWDrop(job)
 		return false
 	}
+}
+
+func reportTWDrop(job twJob) {
+	now := time.Now()
+	if now.Sub(twDropReportedAt) < twDropReportInterval {
+		return
+	}
+	twDropReportedAt = now
+	traceway.CaptureException(fmt.Errorf("tw generation: warm-up queue full (%d jobs), dropped %s/%s; the artifact will be built on first lookup", twQueueDepth, job.projectId, job.base))
 }
 
 func startTWWorkers() {

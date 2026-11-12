@@ -121,6 +121,7 @@ Not emitted in SQLite mode.
 | `traceway.sourcemap.store_hits.delta` / `builds.delta` | Memory misses served by a precompiled `.tw` from object storage vs. full rebuilds from `.map` + bundle; reported in both cache modes, since the `.tw` store tier is always active |
 | `traceway.sourcemap.disk.entries` / `disk.bytes` | Local `.tw` files cached on disk and their total size (only reported when `SOURCEMAP_CACHE_TYPE=disk`) |
 | `traceway.sourcemap.disk.hits.delta` / `disk.evictions.delta` | Memory misses served by a local `.tw` file, and local files evicted by the byte cap, since the last tick |
+| `traceway.sourcemap.warmup_dropped.delta` | Source-map warm-ups dropped because the 64-job warm-up queue was full; the artifact is built on its first lookup instead. Sustained drops also raise a rate-limited (1/min) exception |
 
 ### SLO worker (every 30s)
 

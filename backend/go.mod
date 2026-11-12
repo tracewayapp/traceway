@@ -1,4 +1,4 @@
-module github.com/tracewayapp/traceway/backend
+module github.com/tracewayapp/traceway/backend/v2
 
 go 1.26.2
 
@@ -22,7 +22,6 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/open-telemetry/opamp-go v0.25.0
 	github.com/tracewayapp/lit/v2 v2.0.5
-	github.com/tracewayapp/traceway/cli v1.9.15
 	go.opentelemetry.io/collector/component v1.60.0
 	go.opentelemetry.io/collector/component/componenttest v0.154.0
 	go.opentelemetry.io/collector/consumer v1.60.0
@@ -196,13 +195,16 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/tracewayapp/traceway/cli/v2 v2.0.11
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/text v0.42.0 // indirect
 )
 
 // Local development only. `replace` is ignored by anything that imports this
-// module, so the `require` above must name a real published cli version or
-// `go get github.com/tracewayapp/traceway/backend` fails to resolve for
-// consumers. Bump that version when a release depends on newer cli code.
-replace github.com/tracewayapp/traceway/cli => ../cli
+// module, so the `require` above must name the cli version released together
+// with this backend or `go get github.com/tracewayapp/traceway/backend/v2`
+// resolves an older cli. scripts/release-traceway.sh and release-backend.sh
+// set it to the release version; release-cli.yml tags that cli version from
+// the same commit.
+replace github.com/tracewayapp/traceway/cli/v2 => ../cli

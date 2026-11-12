@@ -10,10 +10,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/models/clientmodels"
-	"github.com/tracewayapp/traceway/backend/app/recordings"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models/clientmodels"
+	"github.com/tracewayapp/traceway/backend/v2/app/recordings"
 )
 
 func postRecordings(t *testing.T, project *models.Project, body string) (*httptest.ResponseRecorder, []recordings.Job) {

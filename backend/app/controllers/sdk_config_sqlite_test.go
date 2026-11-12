@@ -13,12 +13,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
 )
 
 type sdkConfigFixture struct {
@@ -144,6 +146,28 @@ func TestSdkConfigRulesLifecycleAndPreview(t *testing.T) {
 	}
 }
 
+func TestSdkConfigNumericConditionsFromTheForm(t *testing.T) {
+	f := newSdkConfigFixture(t)
+
+	code, created := f.do("POST", "/api/sdk-config/rules", `{"name":"Wide screens","conditions":{"all":[{"key":"screen.width","op":"gte","value":"1200"}]},"settings":{"replay":{"mode":"stream"}}}`)
+	if code != http.StatusCreated {
+		t.Fatalf("create = %d %v", code, created)
+	}
+	condition := created["conditions"].(map[string]any)["all"].([]any)[0].(map[string]any)
+	if condition["value"] != float64(1200) {
+		t.Fatalf("value stored as %#v, want the number 1200", condition["value"])
+	}
+	if code, out := f.do("POST", "/api/sdk-config/rules", `{"name":"Wide screens","conditions":{"all":[{"key":"screen.width","op":"gte","value":"wide"}]}}`); code != http.StatusUnprocessableEntity {
+		t.Fatalf("non-numeric comparison = %d %v, want 422", code, out)
+	}
+
+	_, wide := f.do("POST", "/api/sdk-config/preview", `{"attributes":{"screen.width":"1440"}}`)
+	_, narrow := f.do("POST", "/api/sdk-config/preview", `{"attributes":{"screen.width":"800"}}`)
+	if len(wide["matchedRules"].([]any)) != 1 || len(narrow["matchedRules"].([]any)) != 0 {
+		t.Fatalf("numeric comparison matched wide=%v narrow=%v", wide["matchedRules"], narrow["matchedRules"])
+	}
+}
+
 func TestSdkCapturesTargetOneClient(t *testing.T) {
 	f := newSdkConfigFixture(t)
 	instance := "0195f2a0-0000-7000-8000-0000000000aa"
@@ -161,9 +185,15 @@ func TestSdkCapturesTargetOneClient(t *testing.T) {
 	if len(captures) != 1 || captures[0].(map[string]any)["id"] != capture["id"] {
 		t.Fatalf("capture not delivered to its client: %v", preview)
 	}
+	if got := preview["heartbeatIntervalSeconds"]; got != float64(sdkconfig.CaptureHeartbeatSeconds) {
+		t.Fatalf("captured client previewed with heartbeat %v, but a poll tells it %d", got, sdkconfig.CaptureHeartbeatSeconds)
+	}
 	_, other := f.do("POST", "/api/sdk-config/preview", `{"instanceUid":"0195f2a0-0000-7000-8000-0000000000bb"}`)
 	if _, ok := other["settings"].(map[string]any)["captures"]; ok {
 		t.Fatalf("capture leaked to another client: %v", other)
+	}
+	if got := other["heartbeatIntervalSeconds"]; got != float64(config.OpampHeartbeatSeconds()) {
+		t.Fatalf("uncaptured client previewed with heartbeat %v, want the configured %d", got, config.OpampHeartbeatSeconds())
 	}
 
 	if code, _ := f.do("DELETE", "/api/sdk-config/captures/"+capture["id"].(string), ""); code != http.StatusOK {

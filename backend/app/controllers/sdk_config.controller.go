@@ -11,15 +11,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/hooks"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/sdkconfig"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const (
@@ -391,7 +391,7 @@ func (sdkConfigController) Preview(c *gin.Context) {
 		"configHash":               hex.EncodeToString(hash),
 		"matchedRules":             matched,
 		"matchedCaptures":          append([]string{}, result.MatchedCaptures...),
-		"heartbeatIntervalSeconds": config.OpampHeartbeatSeconds(),
+		"heartbeatIntervalSeconds": result.HeartbeatSeconds(config.OpampHeartbeatSeconds()),
 	})
 }
 

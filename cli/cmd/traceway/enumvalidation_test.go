@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
 )
 
 // TestEnumFlagValidation_acceptsAndRejects asserts that every enum-shaped flag

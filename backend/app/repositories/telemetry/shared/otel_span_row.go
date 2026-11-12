@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -251,6 +251,7 @@ func (row *OtelSpanRow) NestedValues() ([]any, error) {
 		for key, value := range row.Span.Attributes {
 			attributes[key] = value
 		}
+		NormalizeStoredAttributes(attributes)
 	}
 	resource, err := row.Group.Memo("resource", func() (string, error) {
 		return MetadataJSON(row.Group.Resource, row.Group.Resource.GetAttributes())

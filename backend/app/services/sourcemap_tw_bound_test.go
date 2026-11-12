@@ -2,11 +2,15 @@ package services
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func awaitTWWarmups(t *testing.T) {
@@ -25,6 +29,15 @@ func awaitTWWarmups(t *testing.T) {
 }
 
 func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	t.Cleanup(traceway.Install(traceway.Providers{
+		TracerProvider: sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)),
+	}))
+	twPendingMu.Lock()
+	twDropReportedAt = time.Time{}
+	twPendingMu.Unlock()
+	droppedBefore := twDropped.Load()
+
 	var live, peak int64
 	gate := make(chan struct{})
 	started := make(chan twJob, twWorkers+twQueueDepth+8)
@@ -78,6 +91,15 @@ func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("enqueue blocked on a full queue")
+	}
+	if enqueueTWWarmup(job(10_001)) {
+		t.Fatal("a job past the queue depth was accepted")
+	}
+	if dropped := twDropped.Load() - droppedBefore; dropped != 2 {
+		t.Fatalf("counted %d dropped warm-ups, want 2", dropped)
+	}
+	if reports := recorder.Ended(); len(reports) != 1 || !strings.Contains(reports[0].Status().Description, "warm-up queue full") {
+		t.Fatalf("a burst of drops must be reported once, got %d reports", len(reports))
 	}
 
 	if enqueueTWWarmup(job(twWorkers + 1)) {

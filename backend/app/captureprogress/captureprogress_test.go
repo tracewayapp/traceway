@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 type fakeWriter struct {
@@ -148,5 +151,66 @@ func TestRecordedStagesAgeOut(t *testing.T) {
 	r.drain(context.Background())
 	if len(r.recorded) > maxRecorded {
 		t.Fatalf("recorded grew to %d, cap is %d", len(r.recorded), maxRecorded)
+	}
+}
+
+func TestPanickingWriteDoesNotStopTheWriter(t *testing.T) {
+	for _, monitored := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unmonitored", true: "monitored"}[monitored], func(t *testing.T) {
+			spans := tracetest.NewSpanRecorder()
+			if monitored {
+				t.Cleanup(traceway.Install(traceway.Providers{
+					TracerProvider: sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)),
+				}))
+			}
+			project, capture := uuid.New(), uuid.New()
+			written := make(chan map[key]time.Time, 1)
+			writes := 0
+			r := newRecorder(func(_ context.Context, batch map[key]time.Time) error {
+				writes++
+				if writes == 1 {
+					panic("driver bug")
+				}
+				written <- batch
+				return nil
+			})
+
+			r.mark(project, capture, Delivered)
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				r.mu.Lock()
+				released := len(r.pending) == 0
+				r.mu.Unlock()
+				if released {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("the batch whose write panicked is still pending")
+				}
+				time.Sleep(time.Millisecond)
+			}
+
+			r.mark(project, capture, Delivered)
+			select {
+			case batch := <-written:
+				if _, ok := batch[key{project, capture, Delivered}]; !ok {
+					t.Fatalf("the stage noted again after the panic was not written: %v", batch)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the writer stopped after a write panicked")
+			}
+
+			if !monitored {
+				return
+			}
+			for _, span := range spans.Ended() {
+				for _, event := range span.Events() {
+					if span.Name() == "captureprogress.record" && event.Name == "exception" {
+						return
+					}
+				}
+			}
+			t.Fatal("the panic was not reported on the task")
+		})
 	}
 }

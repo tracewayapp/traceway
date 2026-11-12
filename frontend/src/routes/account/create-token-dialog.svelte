@@ -92,7 +92,7 @@
 						Store it somewhere safe. This is the only time it will be shown.
 					</Alert.Description>
 				</Alert.Root>
-				<CopyableInline value={createdToken} />
+				<CopyableInline value={createdToken} secret />
 			</div>
 			<AlertDialog.Footer>
 				<Button onclick={() => handleOpenChange(false)}>Done</Button>

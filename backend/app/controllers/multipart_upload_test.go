@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
 )
 
 func multipartBody(t *testing.T, parts int, size int) (*bytes.Buffer, string) {

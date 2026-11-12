@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	tracewaybackend "github.com/tracewayapp/traceway/backend"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 func main() {

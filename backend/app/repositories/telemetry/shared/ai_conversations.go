@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 // JoinCSV renders a string slice as the comma-separated form the ai_traces

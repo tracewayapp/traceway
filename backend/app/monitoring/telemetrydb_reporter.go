@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const telemetryDBReportInterval = 10 * time.Second

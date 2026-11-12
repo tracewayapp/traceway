@@ -4,12 +4,12 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/contentflag"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -67,7 +67,7 @@ func seed(opts *options) error {
 			if err := lit.InsertExistingUuid(tx, project); err != nil {
 				return struct{}{}, err
 			}
-			config.Logf("Seed: project %q connection string: %s@%s/api/report", project.Name, project.Token, opts.serverURL)
+			config.LogfLocal("Seed: project %q connection string: %s@%s/api/report", project.Name, project.Token, opts.serverURL)
 		}
 
 		config.Logf("Seed: created user %s, org %q", user.Email, org.Name)

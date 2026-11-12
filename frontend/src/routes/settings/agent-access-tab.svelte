@@ -101,11 +101,21 @@
 		<div class="flex items-start justify-between gap-4">
 			<div class="space-y-1">
 				<Label for="agent-write-toggle">Allow agent writes</Label>
-				<p class="text-sm text-muted-foreground">
-					Agents can archive issues, acknowledge and resolve pages, snooze or toggle alert rules,
-					run monitors, edit post-mortems and mark slow endpoints. They never get more access than
-					the person who created the token.
-				</p>
+				<div class="space-y-1 text-sm text-muted-foreground">
+					<p>When this is on, agents can:</p>
+					<ul class="list-disc space-y-0.5 pl-5">
+						<li>archive and unarchive issues, and acknowledge and resolve pages</li>
+						<li>snooze and enable or disable alert rules</li>
+						<li>run monitors and mark endpoints as expected to be slow</li>
+						<li>create and edit post-mortems</li>
+						<li>
+							create, edit, reorder and delete a project's Data Collection rules, which change what
+							its browser apps send: an agent can stream full session replay of every visitor with
+							form inputs unmasked, or switch collection off
+						</li>
+					</ul>
+					<p>They never get more access than the person who created the token.</p>
+				</div>
 			</div>
 			<Switch
 				id="agent-write-toggle"

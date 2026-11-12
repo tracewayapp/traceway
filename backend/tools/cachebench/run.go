@@ -16,8 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/monitoring"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/monitoring"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
 
 	"github.com/google/uuid"
 )

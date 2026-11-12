@@ -105,5 +105,5 @@ captureMessage("User completed checkout");
 - **Automatic retry**: Failed uploads are retried after `retryDelayMs` (10 seconds by default)
 - **Stack trace capture**: Full stack traces are captured for exceptions
 - **Custom attributes**: Attach metadata to exceptions for better debugging
-- **Distributed tracing**: Automatically correlates frontend errors with backend requests by instrumenting `fetch` and `XMLHttpRequest`, which covers `$.ajax()` and browser Axios with no extra setup
+- **Request header**: Adds a `traceway-trace-id` header to same-origin `fetch` and `XMLHttpRequest` calls. Traceway no longer uses it, so 1.x does not link frontend errors to backend requests; the 2.x SDK does, through W3C `traceparent` (see [Distributed Tracing](/client/js-sdk/v1/distributed-tracing))
 - **Lightweight**: Minimal bundle size impact

@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
 )
 
 // Global flag values, populated by Cobra at flag-parse time.

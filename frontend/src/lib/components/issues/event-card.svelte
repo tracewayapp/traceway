@@ -93,7 +93,8 @@
 			id,
 			at - 600_000,
 			at + 1_000,
-			projectsState.currentProjectId ?? undefined
+			projectsState.currentProjectId ?? undefined,
+			'end'
 		).then((result) => {
 			if (!cancelled) timeline = result;
 		});
@@ -102,6 +103,14 @@
 		};
 	});
 	const breadcrumbs = $derived(pickBreadcrumbs(timeline, sessionRecording));
+	// A read cut short at its limit kept the latest breadcrumbs; the oldest of them is where the list becomes complete.
+	const truncationNote = $derived.by(() => {
+		const rows = [...(timeline?.logs ?? []), ...(timeline?.actions ?? [])];
+		if (!timeline?.truncated || rows.length === 0) return '';
+		const earliest = rows.reduce((min, row) => Math.min(min, Date.parse(row.timestamp)), Infinity);
+		const from = formatDateTime(earliest, { timezone: tz, format: 'datetime-seconds' });
+		return `That window holds more than can be shown, so only the latest are listed, from ${from}.`;
+	});
 	const logs = $derived(breadcrumbs.logs);
 	const actions = $derived(breadcrumbs.actions);
 	// Without a replay to seek, times read best relative to the exception.
@@ -214,6 +223,7 @@
 			<Card.Description>
 				Console output, requests, navigation and app events in the 10 minutes before this exception.
 				Times are offsets from {hasReplay ? 'the start of the recording' : 'the exception'}.
+				{truncationNote}
 			</Card.Description>
 		</Card.Header>
 		<Card.Content>

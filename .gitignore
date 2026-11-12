@@ -48,13 +48,11 @@ backend/static/dist/
 /examples/devtesting-embedded/devtesting-embedded
 /examples/devtesting-embedded/frontend/node_modules
 /examples/devtesting-embedded/storage
-/examples/embedded-backend-go-client/embedded-backend-go-client
 /examples/embedded-backend-otel/embedded-backend-otel
 /examples/express-otel/node_modules
 /examples/hono-otel/node_modules
 /examples/nestjs-otel/node_modules
 /website/.wrangler
-/testing/devtesting/devtesting
 /testing/devtesting-otel/devtesting-otel
 /testing/profiles-e2e/ingest/profiles-e2e-ingest
 

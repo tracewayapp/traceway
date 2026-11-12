@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 const authTokensPruneInterval = 24 * time.Hour

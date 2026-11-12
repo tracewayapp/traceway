@@ -72,7 +72,7 @@ func TestParseConnectionString(t *testing.T) {
 // result: a drift here regroups every issue of the self-monitoring project.
 func TestFormatFramesMatchesNativeSDK(t *testing.T) {
 	frames := []runtime.Frame{
-		{Function: "github.com/tracewayapp/traceway/backend/app/controllers.(*projectController).Get", File: "/src/backend/app/controllers/project.controller.go", Line: 42},
+		{Function: "github.com/tracewayapp/traceway/backend/v2/app/controllers.(*projectController).Get", File: "/src/backend/app/controllers/project.controller.go", Line: 42},
 		{Function: "github.com/gin-gonic/gin.(*Context).Next", File: "/go/pkg/mod/github.com/gin-gonic/gin@v1.12.0/context.go", Line: 192},
 		{Function: "runtime.goexit", File: "/usr/local/go/src/runtime/asm_arm64.s", Line: 1223},
 	}

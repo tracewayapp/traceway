@@ -10,20 +10,20 @@ What you get by swapping:
 
 ## Usage
 
-The processor ships as a public package of the `github.com/tracewayapp/traceway/backend` module; the entry point is `otelprocessor.NewFactory()`. Add it to an [OpenTelemetry Collector Builder](https://opentelemetry.io/docs/collector/custom-collector/) manifest (the `import` line points the builder at the package inside the module):
+The processor ships as a public package of the `github.com/tracewayapp/traceway/backend/v2` module; the entry point is `otelprocessor.NewFactory()`. Add it to an [OpenTelemetry Collector Builder](https://opentelemetry.io/docs/collector/custom-collector/) manifest (the `import` line points the builder at the package inside the module):
 
 ```yaml
 processors:
-  - gomod: github.com/tracewayapp/traceway/backend v1.8.0
-    import: github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor
+  - gomod: github.com/tracewayapp/traceway/backend/v2 v2.0.11
+    import: github.com/tracewayapp/traceway/backend/v2/app/symbolicator/otelprocessor
 ```
 
-The processor first ships in `v1.8.0`; use that tag or any newer one.
+The processor first shipped in `v1.8.0` under `github.com/tracewayapp/traceway/backend`; from `v2.0.11` on the module path ends in `/v2`, so use `backend/v2` with that tag or any newer one.
 
 Or, when assembling a collector programmatically, register the factory directly:
 
 ```go
-import "github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor"
+import "github.com/tracewayapp/traceway/backend/v2/app/symbolicator/otelprocessor"
 
 factory := otelprocessor.NewFactory()
 factories.Processors[factory.Type()] = factory

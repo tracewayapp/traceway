@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func TestSessionTraceIdentityRoundTrip(t *testing.T) {
@@ -184,5 +184,73 @@ func TestSessionRepository_EndFromRecordingActivity(t *testing.T) {
 		if asc[i].Id != want[len(want)-1-i].session.Id {
 			t.Fatalf("ascending row %d is %s, want %s", i, asc[i].Id, want[len(want)-1-i].session.Id)
 		}
+	}
+}
+
+// A session update can reach the server after session.end, from a retried export or a second request in flight, and
+// it carries no end. The end stays, while the update's newer attributes still apply.
+func TestSessionRepository_LateUpdateKeepsTheEnd(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectID := uuid.New()
+	started := time.Now().UTC().Add(-30 * time.Minute).Truncate(time.Second)
+	ended := started.Add(5 * time.Minute)
+	start := models.Session{Id: uuid.New(), ProjectId: projectID, StartedAt: started, Attributes: map[string]string{"user.id": "anonymous"}}
+	end := start
+	end.EndedAt, end.Duration = &ended, int64(5*time.Minute)
+	update := start
+	update.Attributes = map[string]string{"user.id": "u_42"}
+	for _, s := range []models.Session{start, end, update} {
+		if err := SessionRepository.Upsert(ctx, []models.Session{s}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := SessionRepository.FindById(ctx, projectID, start.Id, &started)
+	if err != nil || got == nil {
+		t.Fatalf("FindById: %+v: %v", got, err)
+	}
+	rows, _, err := SessionRepository.FindAll(ctx, projectID, started.Add(-time.Minute), started.Add(time.Minute), 1, 10, "started_at", "desc", "", nil)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("FindAll: %+v: %v", rows, err)
+	}
+	for name, s := range map[string]*models.Session{"FindById": got, "FindAll": &rows[0]} {
+		if s.EndedAt == nil || !s.EndedAt.Equal(ended) || time.Duration(s.Duration) != 5*time.Minute {
+			t.Errorf("%s: ended_at=%v duration=%v, want the recorded end %v after 5m", name, s.EndedAt, time.Duration(s.Duration), ended)
+		}
+		if s.Attributes["user.id"] != "u_42" {
+			t.Errorf("%s: attributes = %v, want the later snapshot", name, s.Attributes)
+		}
+	}
+}
+
+// Session ids are chosen by the client and browser ingest tokens are public, so a session of one project must not
+// take writes from another project that names the same id.
+func TestSessionRepository_OtherProjectCannotOverwriteASession(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	started := time.Now().UTC().Add(-10 * time.Minute).Truncate(time.Second)
+	victim := models.Session{Id: uuid.New(), ProjectId: uuid.New(), StartedAt: started, AppVersion: "1.0.0", ServerName: "shop-web",
+		Attributes: map[string]string{"user.id": "u_1"}}
+	if err := SessionRepository.Upsert(ctx, []models.Session{victim}); err != nil {
+		t.Fatal(err)
+	}
+	ended := started.Add(time.Minute)
+	attacker := victim
+	attacker.ProjectId = uuid.New()
+	attacker.AppVersion, attacker.ServerName, attacker.TraceId = "6.6.6", "evil", "0102030405060708090a0b0c0d0e0f10"
+	attacker.Attributes = map[string]string{"user.id": "attacker"}
+	attacker.EndedAt, attacker.Duration = &ended, int64(time.Minute)
+	if err := SessionRepository.Upsert(ctx, []models.Session{attacker}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := SessionRepository.FindById(ctx, victim.ProjectId, victim.Id, &started)
+	if err != nil || got == nil {
+		t.Fatalf("FindById: %+v: %v", got, err)
+	}
+	if got.AppVersion != "1.0.0" || got.ServerName != "shop-web" || got.TraceId != "" || got.Attributes["user.id"] != "u_1" ||
+		got.EndedAt != nil || got.Duration != 0 {
+		t.Errorf("another project rewrote the session: %+v", got)
 	}
 }

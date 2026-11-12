@@ -23,6 +23,8 @@
 		uniqueTriggerId,
 		buildRuleConditions,
 		conditionText,
+		isNumericOp,
+		optionalNumber,
 		type ConditionRow,
 		type Mode,
 		type SdkConfigRule,
@@ -42,9 +44,9 @@
 	let name = $state('');
 	let enabled = $state(true);
 	let rows = $state<ConditionRow[]>([]);
-	let rolloutPercent = $state<number | undefined>(undefined);
+	let rolloutPercent = $state<number | null | undefined>(undefined);
 	let rolloutBy = $state('');
-	let baselinePercent = $state<number | undefined>(undefined);
+	let baselinePercent = $state<number | null | undefined>(undefined);
 	let editAsJson = $state(false);
 	let signalChoices = $state<Record<string, Choice>>({});
 	let replayChoice = $state<Choice>('inherit');
@@ -109,8 +111,9 @@
 		if (Object.keys(signals).length > 0) settings.signals = signals;
 		if (replayChoice !== 'inherit') settings.replay = { mode: replayChoice };
 		if (sessionsChoice !== 'inherit') settings.sessions = { enabled: sessionsChoice === 'on' };
-		if (baselinePercent !== undefined)
-			settings.sessions = { ...settings.sessions, baselineSampleRate: baselinePercent / 100 };
+		const baseline = optionalNumber(baselinePercent);
+		if (baseline !== undefined)
+			settings.sessions = { ...settings.sessions, baselineSampleRate: baseline / 100 };
 		if (collectionChoice !== 'inherit') settings.enabled = collectionChoice === 'on';
 		return settings;
 	}
@@ -283,7 +286,9 @@
 									? '>=2.4 <3'
 									: row.op === 'in' || row.op === 'not_in'
 										? 'a, b, c'
-										: 'value'}
+										: isNumericOp(row.op)
+											? 'number'
+											: 'value'}
 								bind:value={row.value}
 								disabled={saving}
 							/>
@@ -328,7 +333,7 @@
 						<span class="text-sm text-muted-foreground">% of matching clients</span>
 					</div>
 				</div>
-				{#if rolloutPercent !== undefined}
+				{#if optionalNumber(rolloutPercent) !== undefined}
 					<div class="space-y-2">
 						<Label for="sdk-rule-rollout-by">Keep the same cohort by</Label>
 						<Input

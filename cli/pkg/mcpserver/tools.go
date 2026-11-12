@@ -3,7 +3,7 @@ package mcpserver
 import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // addTools registers the full tool surface. Every tool wraps exactly one

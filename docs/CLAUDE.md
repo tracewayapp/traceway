@@ -3,7 +3,7 @@
 ## Navbar
 
 - The header navbar items must always be aligned to the left (next to the logo), not centered or spread across the header. This is achieved via CSS in `styles/custom.css`.
-- Navbar order: Docs, Learn, Symbolicator, Protocol, Self Host (controlled by key order in `pages/_meta.json`).
+- Navbar order: Docs, Learn, Symbolicator, Self Host (controlled by key order in `pages/_meta.json`). There is no Protocol tab: `/protocol` 301s to `/client/otel`.
 
 ## Backend docs live under `/client/otel`
 
@@ -24,6 +24,6 @@
 ## Browser SDK 1.x vs 2.x (beta)
 
 - The 2.x browser SDK (OpenTelemetry, remote SDK config over OpAMP) is in beta: npm `latest` is still 1.x and 2.x ships under the `beta` dist-tag. Install commands and CDN URLs for 2.x use `@beta`; `@2` matches nothing until 2.0 is stable.
-- `pages/client/js-sdk/*` documents 2.x and opens with `<BrowserSdkBeta stableHref="..." />` (`components/BrowserSdkBeta.jsx`); `pages/client/js-sdk/v1/*` keeps the 1.x versions of the pages that differ (overview, initialization, flush, distributed tracing, session replay). The framework guides (`react`, `vue`, `svelte`, `jquery`) still describe 1.x and link to the `v1` pages for 1.x behaviour.
+- `pages/client/js-sdk/*` documents 2.x. The pages that differ between versions (overview, initialization, flush, distributed tracing, session replay) open with `<BrowserSdkBeta stableHref="..." />` (`components/BrowserSdkBeta.jsx`), and `pages/client/js-sdk/v1/*` keeps their 1.x versions. `exceptions`, `messages`, `sourcemap-upload` and `debug-ids` cover what both versions share (the React Native guide links to `sourcemap-upload` too), so they carry no callout and no `v1` copy, and state any version difference inline. The framework guides (`react`, `vue`, `svelte`, `jquery`) still describe 1.x and link to the `v1` pages for 1.x behaviour.
 - Every page under `pages/learn/remote-config/` carries the same callout, and the sidebar labels the section "(Beta)".
 - When 2.0 goes stable: switch `@beta` to `@2`, drop the callouts and "(Beta)" labels, move the framework guides to 2.x, and keep `v1/` as the legacy reference.

@@ -141,6 +141,51 @@ func TestConditionOperators(t *testing.T) {
 	}
 }
 
+func TestNumericComparisonsTakeNumbersOrNumericStrings(t *testing.T) {
+	typed := mustConditions(t, `{"all":[{"key":"screen.width","op":"gte","value":"120"},{"key":"seats","op":"lt","value":" 1.50 "}]}`)
+	canonical, err := json.Marshal(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"all":[{"key":"screen.width","op":"gte","value":120},{"key":"seats","op":"lt","value":1.5}]}`; string(canonical) != want {
+		t.Fatalf("stored as %s, want %s", canonical, want)
+	}
+	if !typed.Matches(map[string]string{"screen.width": "130", "seats": "1"}, [16]byte{}, "r") ||
+		typed.Matches(map[string]string{"screen.width": "100", "seats": "1"}, [16]byte{}, "r") {
+		t.Fatal("canonicalized comparison does not compare as a number")
+	}
+
+	stored := Conditions{All: []Condition{{Key: "screen.width", Op: "gt", Value: "120"}}}
+	if !stored.Matches(map[string]string{"screen.width": "121"}, [16]byte{}, "r") ||
+		stored.Matches(map[string]string{"screen.width": "120"}, [16]byte{}, "r") {
+		t.Fatal("a numeric string stored before canonicalization must still compare as a number")
+	}
+
+	for _, value := range []string{`"wide"`, `""`, `true`, `"NaN"`, `"Inf"`, `"1e400"`} {
+		_, err := ParseConditions([]byte(`{"all":[{"key":"screen.width","op":"lte","value":` + value + `}]}`))
+		if _, ok := err.(*ValidationError); !ok {
+			t.Errorf("lte %s: got %v, want a ValidationError", value, err)
+		}
+	}
+
+	others := mustConditions(t, `{"all":[{"key":"build","op":"eq","value":"0120"},{"key":"build","op":"contains","value":"12"},{"key":"service.version","op":"version","value":">=2"}]}`)
+	if others.All[0].Value != "0120" || others.All[1].Value != "12" || others.All[2].Value != ">=2" {
+		t.Fatalf("only numeric comparisons are canonicalized, got %+v", others.All)
+	}
+	if !others.Matches(map[string]string{"build": "0120", "service.version": "2.1"}, [16]byte{}, "r") {
+		t.Fatal("eq, contains and version changed behaviour")
+	}
+}
+
+func TestCapturedClientsGetAShortHeartbeat(t *testing.T) {
+	if got := (Result{}).HeartbeatSeconds(300); got != 300 {
+		t.Errorf("heartbeat = %d, want the configured 300", got)
+	}
+	if got := (Result{MatchedCaptures: []string{"c"}}).HeartbeatSeconds(300); got != CaptureHeartbeatSeconds {
+		t.Errorf("captured heartbeat = %d, want %d", got, CaptureHeartbeatSeconds)
+	}
+}
+
 func TestEvaluateAddsActiveCaptures(t *testing.T) {
 	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 	lookback := 600.0

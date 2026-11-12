@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 const SchemaVersion = 1

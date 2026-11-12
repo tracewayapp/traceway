@@ -5,14 +5,14 @@ package clickhouse
 import (
 	"context"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type logRecordRepository struct{}
@@ -158,22 +158,27 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 
 // FindBySessionId returns a browser session's log records in a time window, oldest first; it reads through the
 // materialized session_id column and its bloom filter.
-func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
+func (r *logRecordRepository) FindBySessionId(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]models.LogRecord, error) {
 	// timestamp_date prunes partitions, timestamp alone cannot; the day of slack is the same as in buildWhere.
 	query := `SELECT ` + chLogRecordColumns + `
 	FROM log_records
 	WHERE project_id = ? AND session_id = ? AND timestamp_date >= ? AND timestamp_date <= ?
 		AND timestamp >= ? AND timestamp <= ?
-	ORDER BY timestamp ASC LIMIT ?`
+		AND log_attributes['event.name'] NOT IN (` + shared.SessionTimelineSkippedEventsSQL + `)
+	ORDER BY timestamp ` + q.Order() + ` LIMIT ?`
 
-	rows, err := chdb.Conn.Query(ctx, query, projectId, sessionId,
-		from.UTC().AddDate(0, 0, -1).Format(time.DateOnly), to.UTC().AddDate(0, 0, 1).Format(time.DateOnly),
-		from.UTC(), to.UTC(), limit)
+	rows, err := chdb.Conn.Query(ctx, query, q.ProjectId, q.SessionId,
+		q.From.UTC().AddDate(0, 0, -1).Format(time.DateOnly), q.To.UTC().AddDate(0, 0, 1).Format(time.DateOnly),
+		q.From.UTC(), q.To.UTC(), q.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanChLogRecords(rows)
+	records, err := scanChLogRecords(rows)
+	if err != nil {
+		return nil, err
+	}
+	return shared.SessionBreadcrumbsChronological(q, records), nil
 }
 
 const chLogRecordColumns = `id, project_id, timestamp, trace_id, span_id, trace_flags,

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/synthetics"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/synthetics"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const syntheticsReportInterval = 10 * time.Second

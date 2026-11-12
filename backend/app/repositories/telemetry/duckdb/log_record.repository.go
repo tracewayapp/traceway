@@ -5,17 +5,16 @@ package duckdb
 import (
 	"context"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
 	"strings"
-	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type logRecord struct {
@@ -209,7 +208,7 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 }
 
 // FindBySessionId returns a browser session's log records in a time window, oldest first.
-func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
+func (r *logRecordRepository) FindBySessionId(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]models.LogRecord, error) {
 	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
 			severity_text, severity_number, service_name, body,
@@ -219,8 +218,9 @@ func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uui
 		FROM log_records
 		WHERE project_id = :project_id AND json_extract_string(log_attributes, '$."session.id"') = :session_id
 			AND timestamp >= :from AND timestamp <= :to
-		ORDER BY timestamp ASC LIMIT :limit`,
-		lit.P{"project_id": projectId, "session_id": sessionId, "from": from.UTC(), "to": to.UTC(), "limit": limit})
+			AND COALESCE(json_extract_string(log_attributes, '$."event.name"'), '') NOT IN (`+shared.SessionTimelineSkippedEventsSQL+`)
+		ORDER BY timestamp `+q.Order()+` LIMIT :limit`,
+		lit.P{"project_id": q.ProjectId, "session_id": q.SessionId, "from": q.From.UTC(), "to": q.To.UTC(), "limit": q.Limit})
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uui
 	for _, row := range rows {
 		records = append(records, row.toModel())
 	}
-	return records, nil
+	return shared.SessionBreadcrumbsChronological(q, records), nil
 }
 
 func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string, lit.P) {

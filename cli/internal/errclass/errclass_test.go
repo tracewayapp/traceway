@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 func TestClassify(t *testing.T) {

@@ -105,5 +105,5 @@ captureMessage("User completed checkout");
 - **Automatic retry**: Batches that fail with a retryable status (such as 429 or 503) are retried with backoff; with `buffer.persist` they also survive page loads (see [Flush & Lifecycle](/client/js-sdk/flush))
 - **Stack trace capture**: Full stack traces are captured for exceptions
 - **Custom attributes**: Attach metadata to exceptions for better debugging
-- **Distributed tracing**: Automatically correlates frontend errors with backend requests by instrumenting `fetch` and `XMLHttpRequest`, which covers `$.ajax()` and browser Axios with no extra setup
+- **Distributed tracing**: Records `fetch` and `XMLHttpRequest` calls as spans and sends the W3C `traceparent` header, so a browser request and the backend work it caused share one trace. This covers `$.ajax()` and browser Axios with no extra setup (see [Distributed Tracing](/client/js-sdk/distributed-tracing))
 - **Lightweight**: Minimal bundle size impact

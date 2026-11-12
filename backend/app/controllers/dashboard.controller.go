@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"net/http"
 	"sort"
 	"strings"
@@ -55,7 +55,9 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 
 	hasData := true
 	if len(worstEndpoints) == 0 && len(recentIssues) == 0 {
-		spanCtx, span = traceway.StartSpan(c, "checking project data")
+		// A count past the deadline finishes after the request, so it must
+		// not hold the gin context, which gin reuses for the next request.
+		spanCtx, span = traceway.StartSpan(context.WithoutCancel(c.Request.Context()), "checking project data")
 		hasData = projectHasData(spanCtx, projectId, now)
 		span.End()
 	}
@@ -67,28 +69,59 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 	})
 }
 
-const hasDataTimeout = 10 * time.Second
+var (
+	hasDataTimeout   = 10 * time.Second
+	countProjectData = countEndpointsAndExceptions
+)
 
 // A false answer swaps the dashboard for the setup guide, so a count that
 // fails or times out must not be read as "this project never sent data".
+// The SQLite and DuckDB reads cannot be cancelled (lit has no context), so
+// the deadline is kept here: a count past it finishes in the background and
+// its answer is dropped.
 func projectHasData(ctx context.Context, projectId uuid.UUID, now time.Time) bool {
 	ctx, cancel := context.WithTimeout(ctx, hasDataTimeout)
 	defer cancel()
+
+	type answer struct {
+		hasData bool
+		err     error
+	}
+	result := make(chan answer, 1)
+	go func() {
+		a := answer{hasData: true}
+		defer func() { result <- a }()
+		defer traceway.Recover()
+		a.hasData, a.err = countProjectData(ctx, projectId, now)
+	}()
+
+	select {
+	case a := <-result:
+		if a.err != nil {
+			traceway.CaptureException(fmt.Errorf("dashboard overview: checking whether project %s has data: %w", projectId, a.err))
+			return true
+		}
+		return a.hasData
+	case <-ctx.Done():
+		traceway.CaptureException(fmt.Errorf("dashboard overview: checking whether project %s has data: %w", projectId, ctx.Err()))
+		return true
+	}
+}
+
+func countEndpointsAndExceptions(ctx context.Context, projectId uuid.UUID, now time.Time) (bool, error) {
 	var epoch time.Time
 	endpointCount, err := telemetry.EndpointRepository.CountBetween(ctx, projectId, epoch, now)
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("dashboard overview: counting endpoints of project %s: %w", projectId, err))
-		return true
+		return true, fmt.Errorf("counting endpoints: %w", err)
 	}
 	if endpointCount > 0 {
-		return true
+		return true, nil
 	}
 	exceptionCount, err := telemetry.ExceptionStackTraceRepository.CountBetween(ctx, projectId, epoch, now)
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("dashboard overview: counting exceptions of project %s: %w", projectId, err))
-		return true
+		return true, fmt.Errorf("counting exceptions: %w", err)
 	}
-	return exceptionCount > 0
+	return exceptionCount > 0, nil
 }
 
 func (d dashboardController) GetDashboard(c *gin.Context) {

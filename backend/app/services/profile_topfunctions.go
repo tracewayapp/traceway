@@ -3,7 +3,7 @@ package services
 import (
 	"sort"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type FunctionStat struct {

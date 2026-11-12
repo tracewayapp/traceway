@@ -1,6 +1,6 @@
 package tracewaybackend
 
-import "github.com/tracewayapp/traceway/backend/cmd"
+import "github.com/tracewayapp/traceway/backend/v2/cmd"
 
 type Option = cmd.Option
 

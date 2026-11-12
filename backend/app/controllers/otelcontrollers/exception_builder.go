@@ -5,13 +5,14 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 )
 
 const (
-	attrSessionId           = "session.id"
+	attrSessionId           = shared.SessionIdAttribute
 	attrTracewayExceptionId = "traceway.exception.id"
-	attrTracewayDebugIds    = "traceway.debug_ids"
+	attrTracewayDebugIds    = shared.DebugIdsAttribute
 
 	maxDebugIdsBytes = 64 << 10
 	maxDebugIds      = 500
@@ -99,7 +100,7 @@ func exceptionAttributes(resource []*commonpb.KeyValue, own map[string]string) m
 		out[key] = value
 	}
 	delete(out, "exception.stacktrace")
-	delete(out, attrTracewayDebugIds)
 	delete(out, attrTracewayExceptionId)
+	shared.NormalizeStoredAttributes(out)
 	return out
 }

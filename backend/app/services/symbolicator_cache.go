@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/android"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/ios"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/android"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/ios"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/twcache"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type SymbolicationCacheEntry = any

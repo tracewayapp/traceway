@@ -10,11 +10,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 // A session lasts at most about an hour (shared.SessionMaxSpan); the window leaves room for clock skew.
@@ -55,12 +55,13 @@ type SessionTimeline struct {
 	Truncated bool             `json:"truncated"`
 }
 
-// Events that describe the SDK itself, or page metrics, rather than what the user did.
-var timelineSkippedEvents = map[string]bool{
-	"session.start": true, "session.end": true, "traceway.session.update": true,
-	"traceway.trigger.fired": true, "traceway.capture.started": true, "traceway.config.applied": true,
-	"browser.web_vital": true, "browser.resource_timing": true, "browser.navigation_timing": true,
-}
+var timelineSkippedEvents = func() map[string]bool {
+	skipped := map[string]bool{}
+	for _, event := range shared.SessionTimelineSkippedEvents {
+		skipped[event] = true
+	}
+	return skipped
+}()
 
 // Attributes the SDK stamps on every app event; they are context, not the event's own data.
 var timelineContextKeys = map[string]bool{
@@ -93,20 +94,64 @@ func (sessionTimelineController) Timeline(c *gin.Context) {
 		return
 	}
 
-	limit := shared.SessionBreadcrumbLimit
-	records, err := telemetry.LogRecordRepository.FindBySessionId(c, projectId, sessionId.String(), from, to, limit)
+	// anchor=end keeps the breadcrumbs nearest `to` when the window holds more than the limit, which is what a view of
+	// the moments before an exception needs; the default keeps those nearest `from`.
+	anchor := c.DefaultQuery("anchor", "start")
+	if anchor != "start" && anchor != "end" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "anchor must be start or end"})
+		return
+	}
+
+	query := shared.SessionBreadcrumbQuery{ProjectId: projectId, SessionId: sessionId.String(), From: from, To: to,
+		Limit: shared.SessionBreadcrumbLimit, Newest: anchor == "end"}
+	records, err := telemetry.LogRecordRepository.FindBySessionId(c, query)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("loading session log records: %w", err))
 		return
 	}
-	spans, err := telemetry.OtelSpanRepository.FindSessionClientSpans(c, projectId, sessionId.String(), from, to, limit)
+	spans, err := telemetry.OtelSpanRepository.FindSessionClientSpans(c, query)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("loading session client spans: %w", err))
 		return
 	}
+	records, spans, truncated := trimToCoveredWindow(query, records, spans)
 	timeline := BuildSessionTimeline(records, spans)
-	timeline.Truncated = len(records) >= limit || len(spans) >= limit
+	timeline.Truncated = truncated
 	c.JSON(http.StatusOK, timeline)
+}
+
+// trimToCoveredWindow cuts both reads back to the part of the window that each of them returned in full. When one
+// read stops at the limit, rows of the other beyond that point would sit next to a silent stretch of the first.
+func trimToCoveredWindow(q shared.SessionBreadcrumbQuery, records []models.LogRecord, spans []shared.SessionSpan) ([]models.LogRecord, []shared.SessionSpan, bool) {
+	recordsFull, spansFull := len(records) >= q.Limit, len(spans) >= q.Limit
+	if !recordsFull && !spansFull {
+		return records, spans, false
+	}
+	var bounds []time.Time
+	if recordsFull {
+		bounds = append(bounds, records[lastRead(q, len(records))].Timestamp)
+	}
+	if spansFull {
+		bounds = append(bounds, spans[lastRead(q, len(spans))].StartTime)
+	}
+	if q.Newest {
+		bound := slices.MaxFunc(bounds, time.Time.Compare)
+		records = slices.DeleteFunc(records, func(r models.LogRecord) bool { return r.Timestamp.Before(bound) })
+		spans = slices.DeleteFunc(spans, func(s shared.SessionSpan) bool { return s.StartTime.Before(bound) })
+	} else {
+		bound := slices.MinFunc(bounds, time.Time.Compare)
+		records = slices.DeleteFunc(records, func(r models.LogRecord) bool { return r.Timestamp.After(bound) })
+		spans = slices.DeleteFunc(spans, func(s shared.SessionSpan) bool { return s.StartTime.After(bound) })
+	}
+	return records, spans, true
+}
+
+// lastRead is the index of the row a read reached last; reads come back oldest first whichever way they walked.
+func lastRead(q shared.SessionBreadcrumbQuery, n int) int {
+	if q.Newest {
+		return 0
+	}
+	return n - 1
 }
 
 // BuildSessionTimeline maps log records and client spans onto the log and action rows the replay player shows.

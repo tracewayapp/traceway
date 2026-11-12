@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 // An operation is the surface-neutral name of what a tool call did
@@ -56,6 +56,8 @@ var specs = []Spec{
 	{Op: "pages.show", CLI: []string{"pages", "show"}, MCP: "get_page", Positional: []string{"id"}},
 	{Op: "alerts.list", CLI: []string{"alerts", "list"}, MCP: "list_notification_rules"},
 	{Op: "monitors.list", CLI: []string{"monitors", "list"}, MCP: "list_checks"},
+	{Op: "opamp.rules.list", CLI: []string{"opamp", "rules", "list"}, MCP: "list_sdk_config_rules"},
+	{Op: "opamp.preview", CLI: []string{"opamp", "preview"}, MCP: "preview_sdk_config"},
 	{Op: "monitors.show", CLI: []string{"monitors", "show"}, MCP: "get_check", Positional: []string{"id"}},
 	{Op: "post_mortems.list", CLI: []string{"post-mortems", "list"}, MCP: "list_post_mortems", Rename: map[string]string{"tag": "tags"}},
 	{Op: "post_mortems.show", CLI: []string{"post-mortems", "show"}, MCP: "get_post_mortem", Positional: []string{"id"}},
@@ -71,6 +73,10 @@ var specs = []Spec{
 	{Op: "post_mortems.create", CLI: []string{"post-mortems", "create"}, MCP: "create_post_mortem", Write: true, WriteEdition: true, Rename: map[string]string{"tag": "tags", "incident": "incident_id", "content_file": "content_md"}},
 	{Op: "post_mortems.update", CLI: []string{"post-mortems", "update"}, MCP: "update_post_mortem", Write: true, WriteEdition: true, Positional: []string{"id"}, Rename: map[string]string{"tag": "tags", "incident": "incident_id", "content_file": "content_md"}},
 	{Op: "endpoints.mark_slow", CLI: []string{"endpoints", "mark-slow"}, MCP: "set_slow_endpoint", Write: true, WriteEdition: true, Positional: []string{"endpoint"}},
+	{Op: "opamp.rules.create", CLI: []string{"opamp", "rules", "create"}, MCP: "create_sdk_config_rule", Write: true, WriteEdition: true},
+	{Op: "opamp.rules.update", CLI: []string{"opamp", "rules", "update"}, MCP: "update_sdk_config_rule", Write: true, WriteEdition: true, Positional: []string{"id"}},
+	{Op: "opamp.rules.delete", CLI: []string{"opamp", "rules", "delete"}, MCP: "delete_sdk_config_rule", Write: true, WriteEdition: true, Positional: []string{"id"}},
+	{Op: "opamp.rules.reorder", CLI: []string{"opamp", "rules", "reorder"}, MCP: "reorder_sdk_config_rules", Write: true, WriteEdition: true, Positional: []string{"ids..."}},
 
 	// CLI-only commands. setup apply proposes a plan draft; nothing is
 	// created until a person approves it, so it is not an agent write.

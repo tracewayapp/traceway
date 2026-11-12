@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
 )
 
 func TestWriteEdition_identity(t *testing.T) {

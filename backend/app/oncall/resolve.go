@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 // Shift is one contiguous stretch of a single person being on call. Times are UTC.

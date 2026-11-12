@@ -1,8 +1,8 @@
 package notifications
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/netguard"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/netguard"
 )
 
 // ValidateOutboundURL rejects a destination on the server's own network, unless

@@ -22,7 +22,7 @@ For an optional stable sample of healthy-session breadcrumbs and request spans, 
 ## What you can do with it
 
 - **Change what a cohort sends.** A rule targets clients by what they report: release (`service.version`), environment, browser, OS, `user.id`, any attribute your app sets, plus a percentage rollout. It switches each signal between **stream**, **buffer** and **off**, and sets sample rates.
-- **Upload the minute before a problem.** Triggers run on the device and watch every record: "three failed requests within a minute", "`payment failed` was logged", "the app called `track('checkout_failed')`". When one fires, the device uploads what it was holding, with a replay clip.
+- **Upload what led up to a problem.** Triggers run on the device and watch every record: "three failed requests within a minute", "`payment failed` was logged", "the app called `track('checkout_failed')`". When one fires, the device uploads what it was holding, with a replay clip.
 - **Capture one user or one device.** Click **Capture** on a session or an issue. The next time that browser checks in, it uploads its recent history and streams everything for up to 24 hours.
 - **Turn a broken client off.** A rule with the kill switch stops a release or a browser version from sending anything.
 
@@ -129,7 +129,7 @@ Saving a rule or a capture invalidates the local cache after commit. PostgreSQL 
 
 Console lines, navigation, clicks and app events are stored as [log records](/learn/logs), and requests as [spans](/learn/spans), all tagged with `session.id`. Replay files hold only the recording. So a breadcrumb is stored once, and only if its mode sent it: buffered breadcrumbs reach Traceway with a trigger's flush or a capture, streamed ones always do.
 
-The session page reads back the whole session; the issue page reads the minute before the exception. Each request row links to its trace, where the browser's request sits above the backend work it caused.
+The session page reads back the whole session; the issue page reads the 10 minutes before the exception. Each request row links to its trace, where the browser's request sits above the backend work it caused.
 
 <img src="/remote-config/session-actions.png" alt="Session Context on the session page: navigation, clicks with their CSS selector, app events and two POST /api/checkout requests that returned 500, each with a Trace link" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 

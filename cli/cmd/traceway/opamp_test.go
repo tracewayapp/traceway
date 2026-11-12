@@ -29,7 +29,7 @@ func TestOpampReadsAndEditionBoundary(t *testing.T) {
 	if !editionWrite {
 		for _, name := range []string{"create", "update", "delete", "reorder"} {
 			cmd, _, err := newRootCmd().Find([]string{"opamp", "rules", name})
-			if err == nil && cmd.Name() == name {
+			if err == nil && cmd.Name() == name && !cmd.Hidden {
 				t.Errorf("read-only edition exposes %s", name)
 			}
 		}

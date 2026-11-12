@@ -19,6 +19,8 @@ func TestReadEdition_hasNoWriteCommands(t *testing.T) {
 		{"monitors", "run", "1"},
 		{"post-mortems", "create", "--title", "x"},
 		{"endpoints", "mark-slow", "GET /"},
+		{"opamp", "rules", "create", "--file", "rule.json"},
+		{"opamp", "rules", "delete", "1"},
 	} {
 		_, stderr, err := runCmd(t, "", append(args, "--output", "json")...)
 		if err == nil || !strings.Contains(stderr.String(), "write_required") || !strings.Contains(stderr.String(), "traceway-write") {

@@ -9,7 +9,7 @@ import (
 	"io/fs"
 	"net/url"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
 
 	"github.com/golang-migrate/migrate/v4"
 	migrateCh "github.com/golang-migrate/migrate/v4/database/clickhouse"

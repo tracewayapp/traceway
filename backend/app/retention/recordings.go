@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const recordingsSubdir = "recordings"
@@ -78,32 +78,33 @@ func isSafeStorageSubdir(path string) bool {
 }
 
 func runDirCleanupTask(ctx context.Context, name, dir string, days int) {
-	traceway.RunTask(ctx, "retention."+name, func(context.Context) {
-		runDirAgeCleanup(dir, days)
+	traceway.RunTask(ctx, "retention."+name, func(ctx context.Context) {
+		if runDirAgeCleanup(ctx, dir, days) == 0 {
+			traceway.SkipTask(ctx)
+		}
 	})
 }
 
-func runDirAgeCleanup(dir string, days int) {
+func runDirAgeCleanup(ctx context.Context, dir string, days int) (removed int) {
 	info, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return
+		return 0
 	}
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("retention: stat %s failed: %w", dir, err))
-		return
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: stat %s failed: %w", dir, err))
+		return 0
 	}
 	if !info.IsDir() {
-		traceway.CaptureException(fmt.Errorf("retention: cleanup path %s is not a directory", dir))
-		return
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: cleanup path %s is not a directory", dir))
+		return 0
 	}
 
 	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
 
 	var subDirs []string
-	var removed int
 	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			traceway.CaptureException(fmt.Errorf("retention: walk error at %s: %w", path, err))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: walk error at %s: %w", path, err))
 			return nil
 		}
 		if d.IsDir() {
@@ -118,7 +119,7 @@ func runDirAgeCleanup(dir string, days int) {
 		}
 		if fi.ModTime().Before(cutoff) {
 			if rmErr := os.Remove(path); rmErr != nil {
-				traceway.CaptureException(fmt.Errorf("retention: failed to remove %s: %w", path, rmErr))
+				traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: failed to remove %s: %w", path, rmErr))
 				return nil
 			}
 			removed++
@@ -126,7 +127,7 @@ func runDirAgeCleanup(dir string, days int) {
 		return nil
 	})
 	if walkErr != nil {
-		traceway.CaptureException(fmt.Errorf("retention: walk %s failed: %w", dir, walkErr))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: walk %s failed: %w", dir, walkErr))
 	}
 
 	for i := len(subDirs) - 1; i >= 0; i-- {
@@ -134,6 +135,7 @@ func runDirAgeCleanup(dir string, days int) {
 	}
 
 	if removed > 0 {
-		config.Logf("Disk cleanup removed %d file(s) older than %d day(s) under %s", removed, days, dir)
+		config.LogfContext(ctx, "Disk cleanup removed %d file(s) older than %d day(s) under %s", removed, days, dir)
 	}
+	return removed
 }

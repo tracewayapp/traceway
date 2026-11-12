@@ -6,8 +6,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 func (c *projectCache) startListener(ctx context.Context) error {

@@ -139,8 +139,8 @@ func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, bo
 
 func main() {
 	// ORCAROUTER_API_KEY / ORCAROUTER_MODEL (or CHEAPER_INFERENCE_API_KEY /
-	// CHEAPER_INFERENCE_MODEL, or OPENROUTER_API_KEY / OPENROUTER_MODEL) for the
-	// AI chat live in .env.
+	// CHEAPER_INFERENCE_MODEL, UBERLLM_API_KEY / UBERLLM_MODEL, or
+	// OPENROUTER_API_KEY / OPENROUTER_MODEL) for the AI chat live in .env.
 	_ = godotenv.Load()
 
 	if err := os.MkdirAll("storage", 0o755); err != nil {
@@ -401,9 +401,9 @@ func main() {
 	fmt.Printf("  AI chat:          http://localhost:%d/chat\n", appPort)
 	fmt.Println("  Dashboard:        http://localhost:8082")
 	fmt.Println("  Login:            admin@localhost.com / admin")
-	if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("CHEAPER_INFERENCE_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
+	if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("CHEAPER_INFERENCE_API_KEY") == "" && os.Getenv("UBERLLM_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
 		fmt.Println()
-		fmt.Println("  WARNING: ORCAROUTER_API_KEY / CHEAPER_INFERENCE_API_KEY / OPENROUTER_API_KEY is not set (.env) — /chat will not work")
+		fmt.Println("  WARNING: ORCAROUTER_API_KEY / CHEAPER_INFERENCE_API_KEY / UBERLLM_API_KEY / OPENROUTER_API_KEY is not set (.env) — /chat will not work")
 	}
 	fmt.Println()
 	fmt.Println("  OTel logs test endpoints (hit with curl or browser):")

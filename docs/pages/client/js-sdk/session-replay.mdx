@@ -1,5 +1,9 @@
 # Session Replay
 
+import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
+
+<BrowserSdkBeta stableHref="/client/js-sdk/v1/session-replay" />
+
 The 2.x browser SDK records DOM events with rrweb. Replay is buffered on the device by default. Accepted errors upload up to 10 minutes of buffered breadcrumbs; the built-in exception trigger also requests a 30-second replay clip, with a 5-second cooldown and at most 20 clips per session. The session page can show the surrounding uploaded segments and breadcrumbs.
 
 ## Options

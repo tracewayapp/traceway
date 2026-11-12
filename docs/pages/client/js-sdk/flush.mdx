@@ -1,5 +1,9 @@
 # Flush & Lifecycle
 
+import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
+
+<BrowserSdkBeta stableHref="/client/js-sdk/v1/flush" />
+
 The 2.x browser SDK sends streamed telemetry through OpenTelemetry batch processors. `exportDelayMs` sets the usual delay, defaulting to 1000 ms. Buffered telemetry stays on the device until a trigger or capture asks for it.
 
 ## Flush queued telemetry

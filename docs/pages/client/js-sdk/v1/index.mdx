@@ -1,0 +1,109 @@
+# JS SDK Overview (SDK 1.x)
+
+import { Callout } from "nextra/components";
+
+<Callout type="info">
+  This page covers the stable 1.x browser SDK, which `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs today. The 2.x SDK, with [remote SDK config](/learn/remote-config), is in beta: see [JS SDK Overview](/client/js-sdk) for its version of this page.
+</Callout>
+
+The Traceway JavaScript SDK provides error tracking for browser-based applications. It captures exceptions, messages, and sends them to your Traceway backend.
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `@tracewayapp/frontend` | Core browser SDK (framework-agnostic) |
+| `@tracewayapp/react` | React bindings with Provider, Error Boundary, and hooks |
+| `@tracewayapp/vue` | Vue 3 plugin and composables |
+| `@tracewayapp/svelte` | Svelte context-based integration |
+| `@tracewayapp/jquery` | jQuery integration with automatic AJAX error capture |
+
+## Installation
+
+```bash
+npm install @tracewayapp/frontend
+```
+
+Or use a framework-specific package:
+
+```bash
+npm install @tracewayapp/react
+npm install @tracewayapp/vue
+npm install @tracewayapp/svelte
+npm install @tracewayapp/jquery
+```
+
+### Via CDN
+
+The frontend and jQuery packages are also available as standalone scripts (no bundler required):
+
+```html
+<!-- Framework-agnostic (exposes window.Traceway) -->
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@1/dist/traceway.iife.global.js"></script>
+<script>
+  Traceway.init("your-token@https://traceway.example.com/api/report");
+</script>
+```
+
+```html
+<!-- jQuery (exposes window.TracewayJQuery) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@1/dist/traceway-jquery.iife.global.js"></script>
+<script>
+  TracewayJQuery.init("your-token@https://traceway.example.com/api/report");
+</script>
+```
+
+## Connection String Format
+
+All Traceway SDKs use a connection string to identify your project and endpoint:
+
+```
+<project_token>@<server_url>/api/report
+```
+
+Example:
+```
+abc123def456@https://traceway.example.com/api/report
+```
+
+You can find your connection string in the Traceway dashboard under **Project Settings**.
+
+## When to Use
+
+Use the generic `@tracewayapp/frontend` package when:
+
+- You're using a framework without official bindings
+- You need direct control over initialization
+- You're building a vanilla JavaScript application
+- You want to integrate with a custom framework
+
+For React, Vue, or Svelte applications, use the framework-specific packages for better integration and developer experience.
+
+## Basic Usage
+
+```javascript
+import { init, captureException, captureMessage } from "@tracewayapp/frontend";
+
+// Initialize once at app startup
+init("your-token@https://traceway.example.com/api/report");
+
+// Capture errors
+try {
+  riskyOperation();
+} catch (error) {
+  captureException(error);
+}
+
+// Capture custom messages
+captureMessage("User completed checkout");
+```
+
+## Features
+
+- **Automatic batching**: Events are batched and sent periodically to reduce network overhead
+- **Automatic retry**: Failed uploads are retried after `retryDelayMs` (10 seconds by default)
+- **Stack trace capture**: Full stack traces are captured for exceptions
+- **Custom attributes**: Attach metadata to exceptions for better debugging
+- **Distributed tracing**: Automatically correlates frontend errors with backend requests by instrumenting `fetch` and `XMLHttpRequest`, which covers `$.ajax()` and browser Axios with no extra setup
+- **Lightweight**: Minimal bundle size impact

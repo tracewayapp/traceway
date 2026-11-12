@@ -1,0 +1,132 @@
+# Session Replay (SDK 1.x)
+
+import { Callout } from "nextra/components";
+
+<Callout type="info">
+  This page covers the stable 1.x browser SDK, which `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs today. The 2.x SDK, with [remote SDK config](/learn/remote-config), is in beta: see [Session Replay](/client/js-sdk/session-replay) for its version of this page.
+</Callout>
+
+Session Replay records DOM changes and user interactions in the browser, then attaches the recording to captured exceptions. This lets you see exactly what happened leading up to an error.
+
+## How It Works
+
+Session Replay uses [rrweb](https://github.com/rrweb-io/rrweb) to record the DOM. Recordings are split into segments that rotate on a fixed interval. When an exception is captured, all current segments are attached to it and sent to Traceway.
+
+Recordings appear on the exception detail page in the Traceway dashboard as a **Session Replay** card.
+
+## Enabled by Default
+
+Session Replay is enabled by default when using `@tracewayapp/frontend` in a browser environment. No additional configuration is needed.
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+// Session Replay is active
+init("your-token@https://traceway.example.com/api/report");
+```
+
+## Disabling Session Replay
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  sessionRecording: false,
+});
+```
+
+## Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `sessionRecording` | `boolean` | `true` | Enable or disable session recording |
+| `sessionRecordingSegmentDuration` | `number` | `30000` | Duration of each recording segment in milliseconds |
+| `recordAllSessions` | `boolean` | `false` | Always-on session recording: upload every segment regardless of whether an exception fires. See [Always-on Session Recording](#always-on-session-recording) |
+
+## Privacy & Masking
+
+Because Session Replay runs on [rrweb](https://github.com/rrweb-io/rrweb) under the hood, you can drop rrweb's standard class hooks onto any element in your app to keep sensitive content out of recordings. No SDK configuration is needed. These classes are honored automatically.
+
+### `rr-mask`: block all text in an element
+
+Add `class="rr-mask"` to any element whose **text content** should never be recorded. The element is still captured (layout, clicks, and scrolls all work in the replay), but every character of text (including the text of child elements) is replaced with asterisks.
+
+```html
+<!-- Name visible in the app, hidden in replays -->
+<span class="rr-mask">{user.fullName}</span>
+
+<!-- The entire row's text is masked -->
+<tr class="rr-mask">
+  <td>{invoice.number}</td>
+  <td>{invoice.amount}</td>
+</tr>
+```
+
+Use this for anything you treat as PII or regulated data: names, emails, customer IDs, dollar amounts, addresses, health info, chat content, support tickets.
+
+### `rr-block`: hide the element entirely
+
+Add `class="rr-block"` when you don't want the element visible at all in the replay. It's replaced by a neutral gray placeholder with the same dimensions. Good for avatars, user-uploaded images, or custom widgets that shouldn't be reconstructed.
+
+```html
+<img class="rr-block" src={user.avatarUrl} />
+```
+
+### `rr-ignore`: don't record input values
+
+Add `class="rr-ignore"` on form inputs when you want interaction events (focus, blur, click) captured but **not the characters the user typed**.
+
+```html
+<input class="rr-ignore" type="text" name="search" />
+```
+
+### What's masked by default
+
+Exactly one thing is masked without any markup on your side:
+
+- `<input type="password">`. The value is never captured.
+
+Nothing else is automatic. The recorder does not recognize attributes such as `data-sensitive` or `aria-masked`, so text inside those elements is recorded in full. Every other piece of sensitive content needs one of the `rr-*` classes above.
+
+## Segment Rotation
+
+Recordings are split into segments to limit memory usage. Every 30 seconds (by default), the current segment is finalized and a new one begins with a fresh DOM snapshot.
+
+You can adjust the segment duration:
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  sessionRecordingSegmentDuration: 60000, // 60 seconds per segment
+});
+```
+
+A longer segment duration means fewer rows and fewer S3 reads when reassembling a session, at the cost of replay granularity. The default of 30 s is calibrated for typical browser apps.
+
+## Always-on Session Recording
+
+By default the recorder only ships clips when an exception fires. Pass `recordAllSessions: true` to upload **every** segment continuously and produce a parent `sessions` row in the dashboard:
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  recordAllSessions: true,
+});
+```
+
+What changes when always-on is enabled:
+
+- A persistent `sessionId` is generated at SDK init (or after bfcache restore).
+- Each rrweb segment is uploaded as it rotates, linked to the parent session via `sessionId` + `segmentIndex`.
+- Sessions end on **15 min inactivity**, **60 min max duration**, or `pagehide`. The closing payload is dispatched via `fetch keepalive` with raw JSON so it survives navigation.
+- Logs and actions are flushed onto each segment as it rotates (drained from the rolling buffer to avoid double-counting).
+- Exceptions captured during the session still produce their own clip on the issue page **and** stamp the parent `sessionId` so the dashboard renders a "View full session →" link.
+
+Sessions appear on the dedicated **Sessions** page in the dashboard, with attribute filters (`userId=…`, `tenant=…`, etc.) and full-session replay. See [Sessions](/learn/sessions) for the full feature description.
+
+## Viewing Recordings
+
+When an exception includes session recording data, a **Session Replay** card appears on the exception detail page in the Traceway dashboard. The replay shows DOM state and user interactions leading up to the error.
+
+## Next Steps
+
+- [Exceptions](/client/js-sdk/exceptions): capturing errors with the JS SDK
+- [Initialization](/client/js-sdk/v1/initialization): all SDK configuration options

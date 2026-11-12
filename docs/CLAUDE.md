@@ -20,3 +20,10 @@
 - `localStorage` stores only `lastSdk`. It is written when a specific SDK is resolved from the path, or when the user picks a framework from the dropdown (`SdkSelector`) or the `/client` picker (`FrameworkPicker`).
 - Sidebar item visibility (`SDK_VISIBILITY` in `theme.config.jsx`) and the dropdown label both derive from the path-resolved SDK. `SDK_VISIBILITY` must stay complete (every `/client/<folder>` needs an entry) and matching is by exact first path segment, not substring.
 - Stray `?sdk=` params on `/client` URLs are self-healed: `SdkProvider` strips them via a shallow `router.replace`, so old bookmarks/links correct themselves.
+
+## Browser SDK 1.x vs 2.x (beta)
+
+- The 2.x browser SDK (OpenTelemetry, remote SDK config over OpAMP) is in beta: npm `latest` is still 1.x and 2.x ships under the `beta` dist-tag. Install commands and CDN URLs for 2.x use `@beta`; `@2` matches nothing until 2.0 is stable.
+- `pages/client/js-sdk/*` documents 2.x and opens with `<BrowserSdkBeta stableHref="..." />` (`components/BrowserSdkBeta.jsx`); `pages/client/js-sdk/v1/*` keeps the 1.x versions of the pages that differ (overview, initialization, flush, distributed tracing, session replay). The framework guides (`react`, `vue`, `svelte`, `jquery`) still describe 1.x and link to the `v1` pages for 1.x behaviour.
+- Every page under `pages/learn/remote-config/` carries the same callout, and the sidebar labels the section "(Beta)".
+- When 2.0 goes stable: switch `@beta` to `@2`, drop the callouts and "(Beta)" labels, move the framework guides to 2.x, and keep `v1/` as the legacy reference.

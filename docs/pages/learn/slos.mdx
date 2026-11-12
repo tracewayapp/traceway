@@ -24,7 +24,7 @@ SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge
 
 Browser and mobile projects (React, Vue, Svelte, jQuery, React Native, Flutter, Android, iOS) do not report spans, so they get the session kind alone: the classic crash-free sessions objective, optionally per app version. Backend projects get the other five.
 
-The session kind counts the sessions an SDK reports. The browser SDK reports one per visit when [always-on session recording](/client/js-sdk/session-replay#always-on-session-recording) is on (`recordAllSessions: true`). Without it, and in the mobile SDKs today, no sessions are reported and a session SLO stays at No data.
+The session kind counts the sessions an SDK reports. The 1.x browser SDK reports one per visit only when [always-on session recording](/client/js-sdk/v1/session-replay#always-on-session-recording) is on (`recordAllSessions: true`); the 2.x browser SDK (beta) reports every session unless `sessions: false` is set. A 1.x app without `recordAllSessions`, and the mobile SDKs today, report no sessions, so a session SLO stays at No data.
 
 The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Endpoints and tasks are promoted from spans, so a span SLO covers them too.
 

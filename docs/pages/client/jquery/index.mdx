@@ -2,6 +2,12 @@
 
 Integrate Traceway into your jQuery application with the `@tracewayapp/jquery` package.
 
+import { Callout } from "nextra/components";
+
+<Callout type="info">
+  This guide installs the stable 1.x SDK. The 2.x SDK, which adds [remote SDK config](/learn/remote-config) and on-device buffering, is in beta: install `@tracewayapp/jquery@beta` and follow the [JS SDK reference](/client/js-sdk), where the 1.x pages are under **SDK 1.x (stable)**.
+</Callout>
+
 ## Installation
 
 ### Via npm
@@ -95,8 +101,8 @@ init("your-token@https://cloud.tracewayapp.com/api/report", {
 | `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
 | `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
 | `version` | `string` | `undefined` | Your application version |
-| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
-| `beforeCapture` | `(exception) => boolean` | `undefined` | Return `false` to suppress an error. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
+| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/v1/initialization#error-filtering) |
+| `beforeCapture` | `(exception) => boolean` | `undefined` | Return `false` to suppress an error. See [Error Filtering](/client/js-sdk/v1/initialization#error-filtering) |
 | `sessionRecording` | `boolean` | `true` | Enable the rrweb session recorder |
 | `sessionRecordingSegmentDuration` | `number` | `30000` | rrweb segment length in ms |
 | `recordAllSessions` | `boolean` | `false` | Always-on session recording. See [Sessions](/learn/sessions) |
@@ -158,7 +164,7 @@ Layering on each event: **defaults < global scope < per-call**. See [Sessions](/
 
 The SDK automatically instruments both `XMLHttpRequest` (used by `$.ajax()`) and `fetch` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them.
 
-The backend has to hold up its end: it must set the incoming header on its server span as the `traceway.distributed_trace_id` attribute. The Symfony bundle does this for you, everything else needs one small middleware. See [Distributed Tracing](/client/js-sdk/distributed-tracing#backend-setup).
+The backend has to hold up its end: it must set the incoming header on its server span as the `traceway.distributed_trace_id` attribute. The Symfony bundle does this for you, everything else needs one small middleware. See [Distributed Tracing](/client/js-sdk/v1/distributed-tracing#backend-setup).
 
 ### With Symfony + OpenTelemetry
 
@@ -190,5 +196,5 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Next Steps
 
-- [Distributed Tracing](/client/js-sdk/distributed-tracing): Frontend ↔ backend correlation
+- [Distributed Tracing](/client/js-sdk/v1/distributed-tracing): Frontend ↔ backend correlation
 - [JS SDK Reference](/client/js-sdk): Full API reference

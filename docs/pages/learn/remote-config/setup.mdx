@@ -1,11 +1,14 @@
-# Set up remote config
+# Set up remote config (Beta)
 
 import { Callout, Steps } from "nextra/components";
+import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
+
+<BrowserSdkBeta />
 
 This page takes a browser app from install to its first rule, trigger and capture. How the pieces fit together is on [Remote SDK Config](/learn/remote-config); every field of the settings document is in the [settings reference](/learn/remote-config/reference).
 
 <Callout type="info">
-  You need `@tracewayapp/frontend` 2.x, or the React, Vue, Svelte or jQuery wrapper of the same version, and a React, Vue, Svelte or jQuery project in Traceway. The **Data Collection** tab is only shown for those project types.
+  You need `@tracewayapp/frontend` 2.x (beta), or the React, Vue, Svelte or jQuery wrapper of the same version, and a React, Vue, Svelte or jQuery project in Traceway. The **Data Collection** tab is only shown for those project types.
 </Callout>
 
 <Steps>
@@ -13,8 +16,10 @@ This page takes a browser app from install to its first rule, trigger and captur
 ### Install and initialize the SDK
 
 ```bash
-npm install @tracewayapp/frontend@2
+npm install @tracewayapp/frontend@beta
 ```
+
+For a framework wrapper, install `@tracewayapp/react@beta`, `@tracewayapp/vue@beta`, `@tracewayapp/svelte@beta` or `@tracewayapp/jquery@beta` instead. Without `@beta`, npm installs the stable 1.x SDK, which never polls for settings.
 
 ```ts
 import * as Traceway from "@tracewayapp/frontend";
@@ -193,7 +198,7 @@ In the browser, `Traceway.getInstanceId()` returns the device id to capture or p
 | `OPAMP_POLL_INTERVAL_SECONDS` | How often browsers poll, default `300`, between 60 and 86400. Every open tab of every instrumented app polls, so this is a load setting. Clients under a capture poll every 60 seconds whatever it says |
 | `OPAMP_MAX_CONCURRENT` | Polls processed at once, default 4 × CPU cores (at least 8). Its own gate, so polls and ingest cannot starve each other; above it a poll answers 503 with `Retry-After: 60` and the browser keeps its settings |
 | Routes | `POST /api/otel/v1/opamp` and `POST /api/recordings`, both under `/api`, so existing proxy rules cover them |
-| Load | One small protobuf request per open tab per interval. A poll reads an in-memory cache, never the database |
+| Load | One small protobuf request per open tab per interval. A poll reads its rules from an in-memory cache; only a client matched by an active capture also writes the capture's progress (delivered, applied, data received) to the main database |
 | Several instances | On Postgres, saving a rule or a capture refreshes the cache on every instance; any instance can answer any browser |
 | Content Security Policy | `connect-src` must allow the Traceway origin, as it already must for telemetry |
 

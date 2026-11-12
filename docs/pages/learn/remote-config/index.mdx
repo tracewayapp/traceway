@@ -1,11 +1,14 @@
-# Remote SDK Config
+# Remote SDK Config (Beta)
 
 import { Callout } from "nextra/components";
+import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
+
+<BrowserSdkBeta />
 
 The browser SDK decides, on every device, what to send right away, what to keep on the device in case it is needed, and what to drop. Traceway tells it how, for each group of clients, while the app runs. From the dashboard you change what one release, one browser, one user or a tenth of your traffic sends, without shipping a build. Telemetry can wait on the device and leave only when something goes wrong, or when someone asks for it.
 
 <Callout type="info">
-  Remote config needs the OpenTelemetry-based browser SDK, `@tracewayapp/frontend` 2.x (and the React, Vue, Svelte and jQuery wrappers of the same version), and a Traceway server with the **Data Collection** tab. The tab appears in the settings of React, Vue, Svelte and jQuery projects. Setup steps are on [Set up remote config](/learn/remote-config/setup); every field is in the [settings reference](/learn/remote-config/reference).
+  Remote config needs the OpenTelemetry-based browser SDK, `@tracewayapp/frontend` 2.x (beta, and the React, Vue, Svelte and jQuery wrappers of the same version), and a Traceway server with the **Data Collection** tab. The tab appears in the settings of React, Vue, Svelte and jQuery projects. Setup steps are on [Set up remote config](/learn/remote-config/setup); every field is in the [settings reference](/learn/remote-config/reference).
 </Callout>
 
 Remote configuration is available only for browser frontend projects (React, Svelte, Vue and jQuery). Backend and mobile projects have no remote-collection controls, and their OpAMP/config requests are rejected. For a full-stack app, use its separate browser project.

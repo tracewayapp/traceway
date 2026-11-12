@@ -7,5 +7,6 @@
   "flush": "Flush & Lifecycle",
   "sourcemap-upload": "Source Maps",
   "debug-ids": "Debug IDs",
-  "session-replay": "Session Replay"
+  "session-replay": "Session Replay",
+  "v1": "SDK 1.x (stable)"
 }

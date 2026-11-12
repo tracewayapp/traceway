@@ -1,0 +1,188 @@
+# Initialization (SDK 1.x)
+
+import { Callout } from "nextra/components";
+
+<Callout type="info">
+  This page covers the stable 1.x browser SDK, which `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs today. The 2.x SDK, with [remote SDK config](/learn/remote-config), is in beta: see [Initialization](/client/js-sdk/initialization) for its version of this page.
+</Callout>
+
+Initialize the Traceway SDK once at application startup, before capturing any events.
+
+## Basic Initialization
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report");
+```
+
+## With Options
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  debug: true,
+  version: "1.2.3",
+  debounceMs: 2000,
+});
+```
+
+## Options Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `debug` | `boolean` | `false` | Log dropped events and failed uploads to the browser console. Captured events are not logged |
+| `debounceMs` | `number` | `1500` | Milliseconds to wait before sending batched events |
+| `retryDelayMs` | `number` | `10000` | Milliseconds to wait before retrying failed uploads |
+| `version` | `string` | `undefined` | Your application version (shown in Traceway dashboard) |
+| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Patterns to filter out errors before capture. See [Error Filtering](#error-filtering) |
+| `beforeCapture` | `(exception) => boolean` | `undefined` | Callback to programmatically suppress errors. Return `false` to drop. See [Error Filtering](#error-filtering) |
+| `sessionRecording` | `boolean` | `true` | Enable the rrweb session recorder. Required for both per-exception clips and always-on session recording |
+| `sessionRecordingSegmentDuration` | `number` | `30000` | Length of each rrweb segment in milliseconds. Always-on recording uploads one row per segment, so a longer value means fewer rows and S3 reads at the cost of replay granularity |
+| `attributes` | `Record<string, string>` | `{}` | Initial context for sessions and exceptions, such as `userId`, `email`, or `tenant`. Use `setAttributes` to update after login and `clearAttributes` on logout |
+| `recordAllSessions` | `boolean` | `false` | Always-on session recording: upload every segment continuously and create a parent `sessions` row, not just exception-bound clips. See [Sessions](/learn/sessions) for the full feature |
+| `captureLogs` | `boolean` | `true` | Mirror `console.{debug,log,info,warn,error}` into the rolling log buffer that ships with each clip / segment |
+| `captureNetwork` | `boolean` | `true` | Record `fetch` and `XMLHttpRequest` calls as network actions |
+| `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions as navigation actions |
+| `eventsWindowMs` | `number` | `10000` (`30000` w/ `recordAllSessions`) | Rolling window the log/action buffers retain |
+| `eventsMaxCount` | `number` | `200` (`600` w/ `recordAllSessions`) | Hard cap on entries kept independently in the log and action buffers |
+| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` response with status >= 500 as a synthetic exception. 4xx is never included, and it is wired into the `fetch` wrapper only, so `XMLHttpRequest` (including `$.ajax()` and browser Axios) does not trigger it |
+
+## Auto-Capture Behavior
+
+`init()` installs the global handlers for you. Uncaught errors (`window.onerror`) and unhandled promise rejections (`window.onunhandledrejection`) are captured automatically in every JS SDK: plain, React, Vue, Svelte, and jQuery alike.
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report");
+
+// Nothing else to wire up. This is already reported:
+setTimeout(() => {
+  throw new Error("Boom");
+});
+```
+
+> **Do not add your own `window.addEventListener("error")` or `"unhandledrejection"` listener that calls `captureException`.** The SDK's handlers are already attached, so every error would be reported twice and show up with double the count in the Issues feed.
+
+The framework packages add render-time capture on top of this: React's `TracewayProvider` doubles as an error boundary, and the Vue plugin installs `app.config.errorHandler`. Manual `captureException` calls are only needed where the error never becomes uncaught, such as inside a `try`/`catch` or an event handler that swallows it.
+
+## Error Filtering
+
+By default, the SDK ignores common non-actionable errors: **4xx HTTP errors**, **network errors**, and **timeouts**. These are typically expected application behavior (e.g., form validation returning 422, auth redirects from 401) rather than bugs that need tracking.
+
+### Default Behavior
+
+The following patterns are ignored out of the box:
+
+- `"Failed to fetch"` (Chrome), `"Load failed"` (Safari), `"NetworkError when attempting to fetch resource"` (Firefox), `"Network Error"` (Axios), `"Network request failed"` (React Native style)
+- `"The operation was aborted"` (AbortController), any message matching `/timeout/i`
+- Axios 4xx errors matching `/status code 4\d{2}/`
+- jQuery/custom 4xx errors matching `/failed: 4\d{2}/`
+
+### Capture All Errors
+
+To opt out of default filtering and capture everything:
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  ignoreErrors: [],
+});
+```
+
+### Custom Patterns
+
+Pass your own patterns to replace the defaults. Strings match via `includes()`, RegExps match via `.test()`:
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  ignoreErrors: [
+    "ResizeObserver loop",
+    /status code 5\d{2}/,
+  ],
+});
+```
+
+### Extending Default Patterns
+
+Import `DEFAULT_IGNORE_PATTERNS` to add your own patterns on top of the defaults:
+
+```javascript
+import { init, DEFAULT_IGNORE_PATTERNS } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  ignoreErrors: [
+    ...DEFAULT_IGNORE_PATTERNS,
+    "ResizeObserver loop",
+  ],
+});
+```
+
+### beforeCapture Callback
+
+For fine-grained control, use the `beforeCapture` callback. It receives the full exception object (including any attributes) and should return `false` to suppress:
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  ignoreErrors: [],
+  beforeCapture: (exception) => {
+    // Suppress 401 errors based on attributes (e.g., from jQuery AJAX capture)
+    if (exception.attributes?.status === "401") return false;
+
+    // Suppress errors from third-party scripts
+    if (exception.stackTrace.includes("third-party.js")) return false;
+
+    return true;
+  },
+});
+```
+
+`beforeCapture` is checked **after** `ignoreErrors`. If a pattern already suppresses the error, the callback is not called. If the callback throws, the error is captured normally (safe default).
+
+## Debug Mode
+
+When `debug: true` is set, the SDK logs what it throws away: errors suppressed by `ignoreErrors`, a `beforeCapture` callback that threw, and failed uploads. Captured events produce no console output at all, so an empty console does not mean the SDK is broken.
+
+To confirm an event was captured, watch for the `POST` to `/api/report` in the Network tab, or call `await flush()` and open the Issues page.
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  debug: process.env.NODE_ENV === "development",
+});
+```
+
+## Custom Attributes (Global Scope)
+
+The SDK auto-collects browser context (`url`, `userAgent`, `viewport`, etc.) on every session and exception. To attach app-level identifiers (`userId`, `tenant`, feature flags), call the imperative scope API once and they ride along every subsequent event:
+
+```javascript
+import {
+  setAttribute,
+  setAttributes,
+  removeAttribute,
+  clearAttributes,
+} from "@tracewayapp/frontend";
+
+setAttribute("userId", "u_42");
+setAttributes({ tenant: "acme", plan: "pro" });
+
+// On logout / tenant switch:
+clearAttributes();
+```
+
+Layering on each event: **defaults < global scope < per-call**. `captureExceptionWithAttributes(err, { … })` still wins over global keys for the specific exception.
+
+If `recordAllSessions: true` is on, calling `setAttribute*` mid-session also pushes a refresh upsert so the live session row picks up the new attributes immediately rather than waiting for close. See [Sessions](/learn/sessions) for the full attribute model.
+
+## Multiple Environments
+
+For different environments, use separate project tokens:
+
+```javascript
+const connectionString = process.env.NODE_ENV === "production"
+  ? "prod-token@https://traceway.example.com/api/report"
+  : "dev-token@https://traceway.example.com/api/report";
+
+init(connectionString);
+```

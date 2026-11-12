@@ -22,7 +22,7 @@ Both can coexist: an exception fired during an always-on session gets its inline
 
 ## What a Session Records
 
-The recording uses [rrweb](https://github.com/rrweb-io/rrweb) to capture DOM mutations, input events, mouse movement, and viewport changes. Replay is a faithful reconstruction: text, layout, scrolling, hover states, even mouse trails. Privacy markers (`rr-mask`, `rr-block`, `rr-ignore`) work the same way they do for exception clips. See [Session Replay in the JS SDK guide](/client/js-sdk/session-replay#privacy--masking) for the full masking reference.
+The recording uses [rrweb](https://github.com/rrweb-io/rrweb) to capture DOM mutations, input events, mouse movement, and viewport changes. Replay is a faithful reconstruction: text, layout, scrolling, hover states, even mouse trails. Privacy markers (`rr-mask`, `rr-block`, `rr-ignore`) work the same way they do for exception clips. See [Session Replay in the JS SDK guide](/client/js-sdk/v1/session-replay#privacy--masking) for the full masking reference.
 
 Alongside the rrweb stream, each segment carries:
 
@@ -31,7 +31,7 @@ Alongside the rrweb stream, each segment carries:
 
 The dashboard's session detail page renders these as separate tabs below the player, scrub-synced to the replay timeline.
 
-With the OpenTelemetry-based SDK, `@tracewayapp/frontend` 2.x, segments carry the recording only. Console lines, navigation, clicks and app events are stored as log records and requests as spans, tagged with the session id, and the session page reads them from there; which of them leave the browser is set per signal by [Remote SDK Config](/learn/remote-config).
+With the OpenTelemetry-based SDK, `@tracewayapp/frontend` 2.x (in beta), segments carry the recording only. Console lines, navigation, clicks and app events are stored as log records and requests as spans, tagged with the session id, and the session page reads them from there; which of them leave the browser is set per signal by [Remote SDK Config](/learn/remote-config).
 
 ## Session Lifecycle
 
@@ -115,6 +115,6 @@ For most apps, recording a sample of sessions (or only premium-tier users, etc.)
 
 ## Next Steps
 
-- [Session Replay in the JS SDK](/client/js-sdk/session-replay): privacy masking, segment rotation, and the wire format.
+- [Session Replay in the JS SDK](/client/js-sdk/v1/session-replay): privacy masking, segment rotation, and the wire format (1.x). The 2.x SDK (beta) is on [Session Replay](/client/js-sdk/session-replay).
 - [Issues](/learn/issues): how exceptions are grouped and what an issue page shows.
 - [Attributes](/learn/attributes): the broader attribute model that backs sessions, exceptions, traces, and tasks.

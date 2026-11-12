@@ -2,6 +2,12 @@
 
 Integrate Traceway into your Svelte or SvelteKit application with the `@tracewayapp/svelte` package.
 
+import { Callout } from "nextra/components";
+
+<Callout type="info">
+  This guide installs the stable 1.x SDK. The 2.x SDK, which adds [remote SDK config](/learn/remote-config) and on-device buffering, is in beta: install `@tracewayapp/svelte@beta` and follow the [JS SDK reference](/client/js-sdk), where the 1.x pages are under **SDK 1.x (stable)**.
+</Callout>
+
 ## Installation
 
 ```bash
@@ -91,9 +97,9 @@ The SDK automatically instruments both `fetch` and `XMLHttpRequest` to propagate
 
 Axios needs no setup. It uses `XMLHttpRequest` in the browser, which the SDK already instruments. Do not register `createAxiosInterceptor()` in a browser app: it adds a second ID under the same header name, and the combined value is rejected by the backend.
 
-Your backend still has to set the incoming header on its server span as the `traceway.distributed_trace_id` attribute, or the two sides never join. See the [Distributed Tracing](/client/js-sdk/distributed-tracing) guide for the middleware.
+Your backend still has to set the incoming header on its server span as the `traceway.distributed_trace_id` attribute, or the two sides never join. See the [Distributed Tracing](/client/js-sdk/v1/distributed-tracing) guide for the middleware.
 
 ## Next Steps
 
 - [Context Setup](/client/svelte/context) - Configuration and advanced usage
-- [Distributed Tracing](/client/js-sdk/distributed-tracing) - Frontend ↔ backend correlation
+- [Distributed Tracing](/client/js-sdk/v1/distributed-tracing) - Frontend ↔ backend correlation

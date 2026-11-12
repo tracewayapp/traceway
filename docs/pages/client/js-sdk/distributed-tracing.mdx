@@ -1,5 +1,9 @@
 # Distributed Tracing
 
+import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
+
+<BrowserSdkBeta stableHref="/client/js-sdk/v1/distributed-tracing" />
+
 The 2.x browser SDK uses OpenTelemetry CLIENT spans and the W3C `traceparent` header for `fetch` and XMLHttpRequest. An instrumented backend extracts that header and joins the same trace. The browser request appears alongside the server work in Traceway's trace view.
 
 ## Initialize propagation

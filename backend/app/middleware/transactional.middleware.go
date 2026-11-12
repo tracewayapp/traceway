@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 
 	"github.com/gin-gonic/gin"
 )

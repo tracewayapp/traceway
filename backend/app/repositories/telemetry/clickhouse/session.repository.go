@@ -7,21 +7,34 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type sessionRepository struct{}
 
+// sessionEndVersionLead ranks every row that records an end above every row that does not in the table's
+// ReplacingMergeTree(version). An update without an end that loses a race with session.end (it looked for an end
+// before that insert landed) must not become the surviving row with ended_at NULL. A newer end still wins over an
+// older one, and a century keeps the two ranges apart for the table's lifetime.
+const sessionEndVersionLead = 100 * 365 * 24 * time.Hour
+
+// Upsert keeps an end once recorded, as the COALESCE of the SQLite and DuckDB upserts does: rows arriving without
+// one take the end the table already holds, so a later snapshot of the attributes still wins.
 func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Session) error {
 	if len(sessions) == 0 {
 		return nil
+	}
+	sessions, err := withRecordedEnds(ctx, sessions)
+	if err != nil {
+		return err
 	}
 	return chdb.SendBatch(ctx, "INSERT INTO sessions (id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id, version)", func(batch driver.Batch) error {
 		for _, s := range sessions {
@@ -29,12 +42,80 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 			if attrs == nil {
 				attrs = map[string]string{}
 			}
-			if err := batch.Append(s.Id, s.ProjectId, s.StartedAt, s.EndedAt, s.Duration, s.ClientIP, attrs, s.AppVersion, s.ServerName, s.TraceId, time.Now()); err != nil {
+			version := time.Now()
+			if s.EndedAt != nil {
+				version = version.Add(sessionEndVersionLead)
+			}
+			if err := batch.Append(s.Id, s.ProjectId, s.StartedAt, s.EndedAt, s.Duration, s.ClientIP, attrs, s.AppVersion, s.ServerName, s.TraceId, version); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+}
+
+type sessionRowKey struct {
+	id      uuid.UUID
+	started int64
+}
+
+type recordedEnd struct {
+	endedAt  time.Time
+	duration int64
+}
+
+// withRecordedEnds returns the sessions with the stored end filled in where one arrives without it. A row is the
+// (project_id, started_at, id) of the sorting key; started_at is stored in whole seconds.
+func withRecordedEnds(ctx context.Context, sessions []models.Session) ([]models.Session, error) {
+	open := map[uuid.UUID][]int{}
+	for i, s := range sessions {
+		if s.EndedAt == nil {
+			open[s.ProjectId] = append(open[s.ProjectId], i)
+		}
+	}
+	if len(open) == 0 {
+		return sessions, nil
+	}
+	filled := slices.Clone(sessions)
+	for projectId, indexes := range open {
+		ids := make([]uuid.UUID, 0, len(indexes))
+		starts := make([]time.Time, 0, len(indexes))
+		for _, i := range indexes {
+			ids = append(ids, filled[i].Id)
+			starts = append(starts, filled[i].StartedAt)
+		}
+		rows, err := chdb.Conn.Query(ctx, `SELECT id, started_at, argMax(assumeNotNull(ended_at), version), argMax(duration, version)
+			FROM sessions
+			WHERE project_id = ? AND started_at >= ? AND started_at <= ? AND id IN (?) AND ended_at IS NOT NULL
+			GROUP BY id, started_at`,
+			projectId, slices.MinFunc(starts, time.Time.Compare).Truncate(time.Second), slices.MaxFunc(starts, time.Time.Compare), ids)
+		if err != nil {
+			return nil, err
+		}
+		ends := map[sessionRowKey]recordedEnd{}
+		for rows.Next() {
+			var id uuid.UUID
+			var started time.Time
+			var end recordedEnd
+			if err := rows.Scan(&id, &started, &end.endedAt, &end.duration); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			ends[sessionRowKey{id, started.Unix()}] = end
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		for _, i := range indexes {
+			if end, ok := ends[sessionRowKey{filled[i].Id, filled[i].StartedAt.Unix()}]; ok {
+				endedAt := end.endedAt
+				filled[i].EndedAt, filled[i].Duration = &endedAt, end.duration
+			}
+		}
+	}
+	return filled, nil
 }
 
 func (r *sessionRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {

@@ -6,10 +6,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const backendReportInterval = 30 * time.Second
@@ -25,6 +25,7 @@ type backendBaselines struct {
 	smStoreHits     uint64
 	smBuilds        uint64
 	smDiskEvictions uint64
+	smWarmupDropped uint64
 	cpuTime         time.Duration
 	pools           map[string]sql.DBStats
 	cpuReadAt       time.Time
@@ -77,9 +78,11 @@ func reportBackendOnce(b *backendBaselines) {
 		traceway.CaptureMetric("traceway.sourcemap.negative_hits.delta", float64(safeDelta(b.smNegativeHits, smStats.NegativeHits)))
 		traceway.CaptureMetric("traceway.sourcemap.store_hits.delta", float64(safeDelta(b.smStoreHits, smStats.StoreHits)))
 		traceway.CaptureMetric("traceway.sourcemap.builds.delta", float64(safeDelta(b.smBuilds, smStats.Builds)))
+		traceway.CaptureMetric("traceway.sourcemap.warmup_dropped.delta", float64(safeDelta(b.smWarmupDropped, smStats.WarmupDropped)))
 	}
 	b.smStoreHits = smStats.StoreHits
 	b.smBuilds = smStats.Builds
+	b.smWarmupDropped = smStats.WarmupDropped
 	if smStats.DiskEnabled {
 		traceway.CaptureMetric("traceway.sourcemap.disk.entries", float64(smStats.DiskEntries))
 		traceway.CaptureMetric("traceway.sourcemap.disk.bytes", float64(smStats.DiskBytes))

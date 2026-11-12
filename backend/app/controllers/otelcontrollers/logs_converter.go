@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -47,6 +47,7 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 	for _, rl := range req.ResourceLogs {
 		resource := rl.GetResource().GetAttributes()
 		resAttrs := extractAttributes(resource)
+		shared.NormalizeStoredAttributes(resAttrs)
 		serviceName := getStringAttribute(resource, "service.name")
 		appVersion := getStringAttribute(resource, "service.version")
 		language := getStringAttribute(resource, "telemetry.sdk.language")
@@ -61,6 +62,7 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 			scopeName := scope.GetName()
 			scopeVersion := scope.GetVersion()
 			scopeAttrs := extractAttributes(scope.GetAttributes())
+			shared.NormalizeStoredAttributes(scopeAttrs)
 			scopeSchemaUrl := sl.GetSchemaUrl()
 
 			for _, lr := range sl.LogRecords {
@@ -68,12 +70,15 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 				if record.LogAttributes == nil {
 					record.LogAttributes = map[string]string{}
 				}
+				// Producers on the older events convention name the event only in the event.name attribute.
 				eventName := lr.GetEventName()
-				if eventName != "" && record.LogAttributes[attrEventName] == "" {
+				if eventName == "" {
+					eventName = record.LogAttributes[attrEventName]
+				} else if record.LogAttributes[attrEventName] == "" {
 					record.LogAttributes[attrEventName] = eventName
 				}
 				debugIds := debugIdsFrom(lr.Attributes, resource)
-				delete(record.LogAttributes, attrTracewayDebugIds)
+				shared.NormalizeStoredAttributes(record.LogAttributes)
 				if stackTrace := record.LogAttributes["exception.stacktrace"]; stackTrace != "" {
 					record.LogAttributes["exception.stacktrace"] = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName, debugIds)
 				}

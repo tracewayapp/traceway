@@ -2,7 +2,7 @@
 
 package transactional
 
-import sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/transactional/sqlite"
+import sqliterepo "github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/sqlite"
 
 var (
 	AgentWriteEventRepository       = sqliterepo.AgentWriteEventRepository

@@ -36,7 +36,7 @@ That is all remote config needs: it is on by default (`remoteConfig: true`). The
 
 Set `version` and `environment`. They are what most rules target, and without them you cannot tell a canary from production.
 
-The React, Vue, Svelte and jQuery wrappers take the same options and re-export the functions used below (`setAttribute`, `refreshConfig`, `track`, `getInstanceId`, ...).
+The React, Vue, Svelte and jQuery wrappers take the same options. The React, Vue and Svelte wrappers re-export every function used below (`setAttribute`, `refreshConfig`, `track`, `recordAction`, `getInstanceId`, ...). The jQuery wrapper (`TracewayJQuery` on the CDN) re-exports the same functions except `recordAction` (as of `2.0.0-beta.1`): use `track()` there.
 
 ### Decide what the page may never send
 
@@ -76,7 +76,7 @@ Any global attribute works for targeting (`setAttribute("tenant.id", "acme")`, `
 
 ```ts
 Traceway.track("checkout_failed", { step: "payment" });
-Traceway.recordAction("cart", "add_item", { sku: "CHAIR-1" });
+Traceway.recordAction("cart", "add_item", { sku: "CHAIR-1" }); // not in the jQuery wrapper: use track() there
 ```
 
 ### Open the Data Collection tab
@@ -91,7 +91,7 @@ The rules apply top to bottom, and a later rule wins where two set the same fiel
 
 Click **New Rule**. A rule has three parts:
 
-- **Applies to**: conditions over the attributes clients report, all of which must hold. No condition matches every client. Useful keys: `service.version`, `deployment.environment.name`, `browser.name`, `browser.version`, `os.name`, `user.id`, and anything your app sets with `setAttribute`. Operators include equals, is one of, contains (also case-insensitive), starts with, matches pattern (`*` and `?`), version matches (`>=2.4 <3`), is set and is not set.
+- **Applies to**: conditions over the attributes clients report, all of which must hold. No condition matches every client. Useful keys: `service.version`, `deployment.environment.name`, `browser.name`, `browser.version`, `os.name`, `user.id`, and anything your app sets with `setAttribute`. Operators include equals, is one of, contains (also case-insensitive), starts with, matches pattern (`*` and `?`), version matches (`>=2.4 <3`), greater or less than a number (`>`, `≥`, `<`, `≤`), is set and is not set.
 - **Roll out to**: the share of matching clients the rule applies to. Each browser profile lands in a fixed bucket per rule, so the same clients stay in as you raise the percentage.
 - **Settings**: for each signal, **Inherit** (keep what earlier rules and the defaults say), **Off**, **Buffer** or **Stream**; plus session replay, session events and the kill switch.
 
@@ -113,7 +113,7 @@ Triggers decide what leaves the device when something goes wrong. In the rule di
 
 | Template | What it does |
 |---|---|
-| Error clip | On an exception, upload the last minute with a replay clip |
+| Error clip | On an exception, upload the last 10 minutes of buffered breadcrumbs and a 30-second replay clip (at most every 5 seconds, 20 times per session) |
 | Failed requests | After 3 responses of 500 or more within a minute, upload the last 2 minutes and stream for 5 |
 | Log line → capture | When a log line contains a text, capture this device for a while |
 | Error log burst → capture | After 5 error-level log lines within a minute, capture this device |
@@ -206,7 +206,7 @@ In the browser, `Traceway.getInstanceId()` returns the device id to capture or p
 
 | Symptom | Check |
 |---|---|
-| A rule does not apply | Wait for the next poll, focus the tab, or call `refreshConfig()`. Use **Preview** with the client's attributes: a condition on `user.id` only matches after `setAttribute("user.id", ...)`. Check that `init()` does not turn the signal off |
+| A rule does not apply | Wait for the next poll, focus the tab, or call `refreshConfig()`. Use **Preview** with the client's attributes: a condition on `user.id` only matches after `setAttribute("user.id", ...)`. Check that `init()` does not turn the signal off. A `403` on `/api/otel/v1/opamp` means the connection string carries the token of a backend or mobile project, and the SDK stops polling: use the browser project's token |
 | A capture does not start | The target must match exactly what the browser reports: its instance id, `user.id` or session id. The capture starts at the next poll or tab focus |
 | A trigger fires but little is uploaded | A flush uploads only what was buffered: a signal that is off has nothing to upload. The buffer keeps 10 minutes or 2 MB by default (`buffer` in the [settings reference](/learn/remote-config/reference#buffer)) |
 | Nothing arrives at all | Look for a kill switch rule that matches the client, and for a plan without the data you expect. A 401 on the OpAMP endpoint stops polling: check the project token |

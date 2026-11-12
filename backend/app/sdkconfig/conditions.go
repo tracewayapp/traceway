@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -14,6 +15,8 @@ import (
 const RolloutByInstance = "instance"
 
 const maxConditions = 20
+
+var numericOps = map[string]bool{"gt": true, "gte": true, "lt": true, "lte": true}
 
 // Condition targets a rule at clients by the attributes they report in their OpAMP agent description.
 type Condition struct {
@@ -46,7 +49,11 @@ func ParseConditions(raw []byte) (Conditions, error) {
 	if err := dec.Decode(&c); err != nil {
 		return c, invalid("conditions are not a valid document: %v", err)
 	}
-	return c, c.Validate()
+	if err := c.Validate(); err != nil {
+		return c, err
+	}
+	c.canonicalize()
+	return c, nil
 }
 
 func (c Conditions) Validate() error {
@@ -60,6 +67,9 @@ func (c Conditions) Validate() error {
 		if err := validateCondition(cond.Key, cond.Op, cond.Value, cond.Values); err != nil {
 			return invalid("conditions[%d]: %s", i, err.(*ValidationError).Message)
 		}
+		if _, ok := numberValue(cond.Value); numericOps[cond.Op] && !ok {
+			return invalid("conditions[%d]: %s needs a number", i, cond.Op)
+		}
 	}
 	if r := c.Rollout; r != nil {
 		if r.Percent < 0 || r.Percent > 100 {
@@ -70,6 +80,16 @@ func (c Conditions) Validate() error {
 		}
 	}
 	return nil
+}
+
+// canonicalize stores the value of a numeric comparison as a number. The dashboard form sends "120", and the
+// stored document, so its config hash, should not depend on how the number was typed.
+func (c *Conditions) canonicalize() {
+	for i, cond := range c.All {
+		if n, ok := numberValue(cond.Value); numericOps[cond.Op] && ok {
+			c.All[i].Value = n
+		}
+	}
 }
 
 // Matches evaluates the conditions against a client's attributes. salt is what the rollout hashes with the client,
@@ -128,7 +148,7 @@ func (cond Condition) matches(attrs map[string]string) bool {
 		return present && GlobMatch(actual, scalarString(cond.Value))
 	case "gt", "gte", "lt", "lte":
 		a, aok := parseNumber(actual)
-		e, eok := cond.Value.(float64)
+		e, eok := numberValue(cond.Value)
 		if !present || !aok || !eok {
 			return false
 		}
@@ -164,6 +184,19 @@ func scalarString(v any) string {
 func parseNumber(s string) (float64, bool) {
 	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	return f, err == nil
+}
+
+// numberValue reads the expected value of a numeric comparison: a JSON number, or a string holding a finite one
+// (JSON cannot encode the others).
+func numberValue(v any) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case string:
+		f, ok := parseNumber(val)
+		return f, ok && !math.IsInf(f, 0) && !math.IsNaN(f)
+	}
+	return 0, false
 }
 
 func same(actual string, expected any) bool {

@@ -43,6 +43,28 @@ describe('session timeline', () => {
 		expect(await loadSessionTimeline('s1', from, from + 60_000)).toBeNull();
 	});
 
+	it('anchors the read at the end of the window when asked', async () => {
+		get.mockResolvedValueOnce({ logs: [log], actions: [], truncated: true });
+		const at = Date.parse('2026-11-01T10:10:00Z');
+		expect(await loadSessionTimeline('s1', at - 600_000, at, 'p1', 'end')).toEqual({
+			logs: [log],
+			actions: [],
+			truncated: true
+		});
+		expect(get).toHaveBeenLastCalledWith(
+			'/sessions/s1/timeline?from=2026-11-01T10%3A00%3A00.000Z&to=2026-11-01T10%3A10%3A00.000Z&anchor=end',
+			{ projectId: 'p1' }
+		);
+	});
+
+	it('clamps an end-anchored window from its start', () => {
+		const to = Date.parse('2026-11-01T10:00:00Z');
+		expect(timelineWindow(to - 10 * MAX_TIMELINE_WINDOW_MS, to, 'end')).toEqual({
+			from: new Date(to - MAX_TIMELINE_WINDOW_MS).toISOString(),
+			to: new Date(to).toISOString()
+		});
+	});
+
 	it('retains legacy actions when only OTLP logs exist and sorts mixed logs', () => {
 		const action = {
 			type: 'custom' as const,

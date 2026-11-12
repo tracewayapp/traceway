@@ -1,11 +1,16 @@
-import { buildRuleConditions, conditionText } from './sdk-config';
 import { describe, expect, it } from 'vitest';
 import {
+	buildRuleConditions,
+	conditionText,
+	conditionValue,
 	fitsForm,
 	logLineTrigger,
+	optionalNumber,
 	summarizeConditions,
 	summarizeSettings,
-	uniqueTriggerId
+	uniqueTriggerId,
+	type Condition,
+	type ConditionRow
 } from './sdk-config';
 
 describe('sdk-config helpers', () => {
@@ -113,5 +118,84 @@ describe('rule conditions', () => {
 	it('accepts an empty or zero numeric rollout input', () => {
 		expect(buildRuleConditions([], undefined, '')).toEqual({});
 		expect(buildRuleConditions([], 0, '')).toEqual({ rollout: { percent: 0 } });
+	});
+
+	it('treats a cleared rollout input as no rollout, not 0%', () => {
+		expect(buildRuleConditions([], null, 'user.id')).toEqual({});
+		expect(buildRuleConditions([], Number.NaN, '')).toEqual({});
+		expect(buildRuleConditions([], '', '')).toEqual({});
+		expect(buildRuleConditions([], 12.5, '')).toEqual({ rollout: { percent: 12.5 } });
+	});
+
+	it('sends numeric comparisons as numbers', () => {
+		const rows: ConditionRow[] = [
+			{ key: 'browser.version', op: 'gte', value: ' 120 ' },
+			{ key: 'screen.width', op: 'lt', value: '1.5e3' },
+			{ key: 'cpu.cores', op: 'gt', value: '-2' },
+			{ key: 'memory', op: 'lte', value: '.5' },
+			{ key: 'user.id', op: 'eq', value: '00123' }
+		];
+		expect(buildRuleConditions(rows, undefined, '').all).toEqual([
+			{ key: 'browser.version', op: 'gte', value: 120 },
+			{ key: 'screen.width', op: 'lt', value: 1500 },
+			{ key: 'cpu.cores', op: 'gt', value: -2 },
+			{ key: 'memory', op: 'lte', value: 0.5 },
+			{ key: 'user.id', op: 'eq', value: '00123' }
+		]);
+	});
+
+	it('leaves a non-numeric comparison value as text for the server to reject', () => {
+		expect(conditionValue('gte', 'abc')).toBe('abc');
+		expect(conditionValue('gte', '0x10')).toBe('0x10');
+		expect(conditionValue('gte', 'Infinity')).toBe('Infinity');
+		expect(conditionValue('gte', '')).toBe('');
+		expect(conditionValue('contains', '120')).toBe('120');
+	});
+
+	it('keeps the JSON type of values created through the CLI when other fields change', () => {
+		const row = (original: Condition, change: Partial<ConditionRow>): ConditionRow => ({
+			key: original.key,
+			op: original.op,
+			value: conditionText(original),
+			original,
+			...change
+		});
+		const width: Condition = { key: 'screen.width', op: 'eq', value: 1280 };
+		const mobile: Condition = { key: 'browser.mobile', op: 'eq', value: true };
+		const tenants: Condition = { key: 'tenant', op: 'in', values: [12, true, 'a'] };
+		expect(
+			buildRuleConditions(
+				[
+					row(width, { key: 'viewport.width' }),
+					row(width, { op: 'gte' }),
+					row(width, { value: '1440' }),
+					row(mobile, { key: 'device.mobile' }),
+					row(mobile, { op: 'gte' }),
+					row(tenants, { key: 'org' })
+				],
+				undefined,
+				''
+			).all
+		).toEqual([
+			{ key: 'viewport.width', op: 'eq', value: 1280 },
+			{ key: 'screen.width', op: 'gte', value: 1280 },
+			{ key: 'screen.width', op: 'eq', value: '1440' },
+			{ key: 'device.mobile', op: 'eq', value: true },
+			{ key: 'browser.mobile', op: 'gte', value: 'true' },
+			{ key: 'org', op: 'in', values: [12, true, 'a'] }
+		]);
+	});
+});
+
+describe('optionalNumber', () => {
+	it('reads cleared and unparsable number inputs as unset', () => {
+		expect(optionalNumber(undefined)).toBeUndefined();
+		expect(optionalNumber(null)).toBeUndefined();
+		expect(optionalNumber(Number.NaN)).toBeUndefined();
+		expect(optionalNumber('')).toBeUndefined();
+		expect(optionalNumber(' ')).toBeUndefined();
+		expect(optionalNumber(0)).toBe(0);
+		expect(optionalNumber(1.5)).toBe(1.5);
+		expect(optionalNumber('25')).toBe(25);
 	});
 });

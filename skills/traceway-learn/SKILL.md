@@ -1,6 +1,6 @@
 ---
 name: traceway-learn
-description: 'The full guide to Traceway, the observability platform. Explains every part of the product and how it is meant to be used: issues and exception grouping, endpoints and the impact score, tasks, spans and traces, logs, metrics and dashboards, sessions, AI traces, profiles, monitors, incidents, status pages, post-mortems, alert rules and channels, on-call teams, schedules, overrides, escalation policies and pages, contact methods, roles, organization views, settings and agent access. Use when the user asks how a Traceway page or feature works, where to find something, what a term means, or how to set up a workflow such as paging or a status page.'
+description: 'The full guide to Traceway, the observability platform. Explains every part of the product and how it is meant to be used: issues and exception grouping, endpoints and the impact score, tasks, spans and traces, logs, metrics and dashboards, sessions, remote SDK config (what browsers collect: rules, triggers and captures), AI traces, profiles, monitors, incidents, status pages, post-mortems, alert rules and channels, on-call teams, schedules, overrides, escalation policies and pages, contact methods, roles, organization views, settings and agent access. Use when the user asks how a Traceway page or feature works, where to find something, what a term means, or how to set up a workflow such as paging or a status page.'
 ---
 <!-- GENERATED FILE: assembled from cli/pkg/mcpserver/knowledge/learn by cli/tools/skillgen. Edit the chunks there and run just gen-skills in cli/. -->
 
@@ -38,6 +38,7 @@ This guide explains every part of the product: what each page shows, the terms i
 | Monitors and status pages | [monitors.md](monitors.md) | `traceway://knowledge/learn/monitors` | HTTP, TCP and browser checks, runs, incidents, public status pages, post-mortems |
 | Alerts | [alerts.md](alerts.md) | `traceway://knowledge/learn/alerts` | Every rule type and its settings, channels, cooldown, snooze, history |
 | On-call | [on-call.md](on-call.md) | `traceway://knowledge/learn/on-call` | Teams, schedules, layers, overrides, escalation policies, pages, contact methods |
+| Remote SDK config | [data-collection.md](data-collection.md) | `traceway://knowledge/learn/data-collection` | What browsers send: stream, buffer and off per signal, rules, triggers, captures, preview (browser projects, 2.x SDK) |
 | Organization and access | [organization.md](organization.md) | `traceway://knowledge/learn/organization` | Projects, roles, the home page, organization views, Connection, Account, Settings, agent access |
 
 ## Page map
@@ -61,6 +62,7 @@ This guide explains every part of the product: what each page shows, the terms i
 | Connection | `/connection` | organization.md |
 | Account | `/account` | organization.md, on-call.md |
 | Settings | `/settings` (owners and admins) | organization.md |
+| Data Collection | project switcher, **Edit Project**, **Data Collection** (browser projects) | data-collection.md |
 | Organization | `/organization` (Servers, Issues, Monitors, On-Call, Projects) | organization.md |
 | Project setup | `/setup` | organization.md |
 
@@ -80,4 +82,6 @@ Browser and mobile projects only show Issues, Sessions, Alerts, On-Call and Conn
 | Where do I write up the incident? | monitors.md, Post-mortems |
 | Why is a span missing from the waterfall? | traces-and-logs.md |
 | Why does my counter metric only go up? | metrics-and-dashboards.md, Aggregations |
+| Why did a browser send (or not send) console lines, requests or a replay? | data-collection.md |
+| How do I capture everything one user's browser does for an hour? | data-collection.md, Captures |
 | Can an agent change things in Traceway? | organization.md, How agents get access |

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type cooldownTracker struct {

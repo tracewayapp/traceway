@@ -5,7 +5,6 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -19,6 +18,8 @@ func TestReadEdition_hasNoWriteCommands(t *testing.T) {
 		{"monitors", "run", "1"},
 		{"post-mortems", "create", "--title", "x"},
 		{"endpoints", "mark-slow", "GET /"},
+		{"opamp", "rules", "create", "--file", "rule.json"},
+		{"opamp", "rules", "delete", "1"},
 	} {
 		_, stderr, err := runCmd(t, "", append(args, "--output", "json")...)
 		if err == nil || !strings.Contains(stderr.String(), "write_required") || !strings.Contains(stderr.String(), "traceway-write") {
@@ -31,7 +32,7 @@ func TestReadEdition_passwordLoginAsksForReadScope(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	var body map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		_, _ = w.Write([]byte(`{"token":"jwt"}`))
 	}))
@@ -50,7 +51,7 @@ func TestReadEdition_passwordLoginAsksForReadScope(t *testing.T) {
 
 func TestReadEdition_refusesWriteTokens(t *testing.T) {
 	called := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		_, _ = w.Write([]byte(`[]`))
 	}))

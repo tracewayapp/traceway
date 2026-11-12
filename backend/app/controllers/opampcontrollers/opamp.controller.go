@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,14 +20,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/open-telemetry/opamp-go/protobufs"
-	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/captureprogress"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/hooks"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/sdkconfig"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/captureprogress"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -38,7 +39,6 @@ const (
 	maxAttributes      = 128
 	maxAttributeKey    = 128
 	maxAttributeValue  = 1024
-	captureHeartbeat   = 60
 	unavailableRetryIn = 60 * time.Second
 	instanceUidHeader  = "OpAMP-Instance-UID"
 )
@@ -141,11 +141,7 @@ func (opampController) Poll(c *gin.Context) {
 		return
 	}
 
-	heartbeat := config.OpampHeartbeatSeconds()
-	// A client under an active capture polls more often, so cancelling or extending the capture reaches it soon.
-	if len(result.MatchedCaptures) > 0 {
-		heartbeat = min(heartbeat, captureHeartbeat)
-	}
+	heartbeat := result.HeartbeatSeconds(config.OpampHeartbeatSeconds())
 	heartbeatHash := sha256.Sum256([]byte(strconv.FormatUint(heartbeat, 10)))
 	resp.ConnectionSettings = &protobufs.ConnectionSettingsOffers{
 		Hash:  heartbeatHash[:],
@@ -215,28 +211,42 @@ func instanceUid(c *gin.Context, raw []byte) (uuid.UUID, bool) {
 }
 
 // DescriptionAttributes flattens an agent description into the attributes rules match on. Identifying attributes
-// win over non-identifying ones of the same key; composite values are matched as their JSON text.
+// are taken first and win over non-identifying ones of the same key, which only fill what is left of the limit, so
+// a client cannot crowd out its own service.instance.id or service.version. An array is matched as the JSON text of
+// its scalar items.
 func DescriptionAttributes(description *protobufs.AgentDescription) map[string]string {
 	attrs := map[string]string{}
-	add := func(kvs []*protobufs.KeyValue) {
+	add := func(kvs []*protobufs.KeyValue, kept map[string]string) {
 		for _, kv := range kvs {
-			_, exists := attrs[kv.GetKey()]
-			if (!exists && len(attrs) >= maxAttributes) || kv.GetKey() == "" || len(kv.GetKey()) > maxAttributeKey {
+			key := kv.GetKey()
+			if _, taken := kept[key]; taken || key == "" || len(key) > maxAttributeKey {
 				continue
 			}
-			value, ok := anyValueString(kv.GetValue())
-			if !ok || len(value) > maxAttributeValue {
+			if _, exists := attrs[key]; !exists && len(attrs) >= maxAttributes {
 				continue
 			}
-			attrs[kv.GetKey()] = value
+			if value, ok := anyValueString(kv.GetValue()); ok {
+				attrs[key] = value
+			}
 		}
 	}
-	add(description.GetNonIdentifyingAttributes())
-	add(description.GetIdentifyingAttributes())
+	add(description.GetIdentifyingAttributes(), nil)
+	add(description.GetNonIdentifyingAttributes(), maps.Clone(attrs))
 	return attrs
 }
 
+// anyValueString renders a value of at most maxAttributeValue bytes. Arrays keep only their scalar items and stop
+// as soon as the text would pass the limit: encoding nested arrays as JSON strings doubles the escaping at every
+// level, so a poll of a few hundred bytes could otherwise build gigabytes.
 func anyValueString(v *protobufs.AnyValue) (string, bool) {
+	if array, ok := v.GetValue().(*protobufs.AnyValue_ArrayValue); ok {
+		return arrayString(array.ArrayValue.GetValues())
+	}
+	s, ok := scalarString(v)
+	return s, ok && len(s) <= maxAttributeValue
+}
+
+func scalarString(v *protobufs.AnyValue) (string, bool) {
 	switch value := v.GetValue().(type) {
 	case *protobufs.AnyValue_StringValue:
 		return value.StringValue, true
@@ -246,17 +256,33 @@ func anyValueString(v *protobufs.AnyValue) (string, bool) {
 		return strconv.FormatInt(value.IntValue, 10), true
 	case *protobufs.AnyValue_DoubleValue:
 		return strconv.FormatFloat(value.DoubleValue, 'g', -1, 64), true
-	case *protobufs.AnyValue_ArrayValue:
-		items := []string{}
-		for _, item := range value.ArrayValue.GetValues() {
-			if s, ok := anyValueString(item); ok {
-				items = append(items, s)
-			}
-		}
-		encoded, err := json.Marshal(items)
-		return string(encoded), err == nil
 	}
 	return "", false
+}
+
+func arrayString(items []*protobufs.AnyValue) (string, bool) {
+	out := []byte{'['}
+	for _, item := range items {
+		s, ok := scalarString(item)
+		if !ok {
+			continue
+		}
+		if len(out)+len(s)+3 > maxAttributeValue {
+			return "", false
+		}
+		encoded, err := json.Marshal(s)
+		if err != nil {
+			return "", false
+		}
+		if len(out) > 1 {
+			out = append(out, ',')
+		}
+		out = append(out, encoded...)
+		if len(out)+1 > maxAttributeValue {
+			return "", false
+		}
+	}
+	return string(append(out, ']')), true
 }
 
 func ingestPermission(c *gin.Context) (hooks.IngestPermission, bool) {

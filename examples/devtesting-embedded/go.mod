@@ -8,7 +8,6 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
-	github.com/tracewayapp/traceway/backend v1.5.2
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.72.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.23.0
@@ -18,6 +17,8 @@ require (
 	go.opentelemetry.io/otel/sdk/log v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 )
+
+require github.com/tracewayapp/traceway/cli/v2 v2.0.11 // indirect
 
 require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
@@ -106,7 +107,7 @@ require (
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/tracewayapp/lit/v2 v2.0.5 // indirect
-	github.com/tracewayapp/traceway/cli v1.9.15 // indirect
+	github.com/tracewayapp/traceway/backend/v2 v2.0.11
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.2 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
@@ -147,7 +148,6 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace (
-	github.com/tracewayapp/traceway/backend => ../../backend
-	github.com/tracewayapp/traceway/cli => ../../cli
-)
+replace github.com/tracewayapp/traceway/cli/v2 => ../../cli
+
+replace github.com/tracewayapp/traceway/backend/v2 => ../../backend

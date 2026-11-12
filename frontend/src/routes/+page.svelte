@@ -30,7 +30,8 @@
 		projectsState,
 		isFrontendFramework,
 		isCloudflareFramework,
-		isOtelFramework
+		isOtelFramework,
+		usesOtelSetupGuide
 	} from '$lib/state/projects.svelte';
 	import { setSortState } from '$lib/utils/sort-storage';
 	import { Button } from '$lib/components/ui/button';
@@ -54,6 +55,7 @@
 	import SetupModeTabs from '$lib/components/setup/setup-mode-tabs.svelte';
 	import AiSetupSteps from '$lib/components/setup/ai-setup-steps.svelte';
 	import OtelSetupSteps from '$lib/components/setup/otel-setup-steps.svelte';
+	import { legacyOtelGuide } from '$lib/utils/otel-setup';
 	import OtelExporterConfig from '$lib/components/setup/otel-exporter-config.svelte';
 	import CopyableInline from '$lib/components/setup/copyable-inline.svelte';
 	import CopyableCodeBlock from '$lib/components/setup/copyable-code-block.svelte';
@@ -149,7 +151,7 @@
 	);
 
 	const installCommand = $derived(
-		projectWithToken ? getInstallCommand(projectWithToken.framework) : 'go get go.tracewayapp.com'
+		projectWithToken ? getInstallCommand(projectWithToken.framework) : ''
 	);
 
 	const isFrontend = $derived(
@@ -198,7 +200,10 @@
 }`);
 
 	const isOtel = $derived(projectWithToken ? isOtelFramework(projectWithToken.framework) : false);
-	const isOtelGeneric = $derived(projectWithToken?.framework === 'opentelemetry');
+	const isOtelGeneric = $derived(
+		projectWithToken ? usesOtelSetupGuide(projectWithToken.framework) : false
+	);
+	const otelGuide = $derived(projectWithToken ? legacyOtelGuide(projectWithToken.framework) : null);
 	const otelBaseEndpoint = $derived(
 		projectWithToken ? `${projectWithToken.backendUrl}/api/otel` : ''
 	);
@@ -448,7 +453,7 @@ service:
 							</div>
 							<div>
 								<p class="mb-2 text-sm font-medium">Authorization Header</p>
-								<CopyableInline value={cfAuthHeader} />
+								<CopyableInline value={cfAuthHeader} secret />
 							</div>
 						</div>
 					</div>
@@ -493,7 +498,12 @@ service:
 						</div>
 					</div>
 				{:else if isOtelGeneric}
-					<OtelSetupSteps backendUrl={projectWithToken.backendUrl} token={projectWithToken.token} />
+					<OtelSetupSteps
+						backendUrl={projectWithToken.backendUrl}
+						token={projectWithToken.token}
+						initialTarget={otelGuide?.target}
+						initialFramework={otelGuide?.framework}
+					/>
 				{:else if isOtel}
 					<!-- OTel Step 1: Install an OTel SDK -->
 					<div class="rounded-md border bg-card">
@@ -609,7 +619,7 @@ service:
 							</p>
 						</div>
 						<div class="p-4">
-							<CopyableCodeBlock code={sdkCode} language={highlightLanguage} />
+							<CopyableCodeBlock code={sdkCode} language={highlightLanguage} secret />
 						</div>
 					</div>
 
@@ -650,7 +660,7 @@ service:
 							<Unplug class="h-6 w-6 text-destructive" />
 						</div>
 						<p class="mb-4 text-sm text-muted-foreground">
-							{#if setupMode === 'ai' || isOtel || isCloudflare}
+							{#if setupMode === 'ai' || isOtel || isOtelGeneric || isCloudflare}
 								Once you've completed the steps above and sent some traffic through your
 								application, click below to verify.
 							{:else}

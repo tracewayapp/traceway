@@ -43,10 +43,19 @@ var uncompressedPathPrefixes = []string{
 	"/mcp",
 }
 
+// gzhttp's default filter skips content that is already compressed (images,
+// video, archives); a stream must also reach the client as it is written.
+func compressibleContentType(contentType string) bool {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "text/event-stream") {
+		return false
+	}
+	return gzhttp.DefaultContentTypeFilter(contentType)
+}
+
 func compressResponses(next http.Handler) http.Handler {
 	wrap, err := gzhttp.NewWrapper(
 		gzhttp.MinSize(1024),
-		gzhttp.ExceptContentTypes([]string{"text/event-stream"}),
+		gzhttp.ContentTypeFilter(compressibleContentType),
 	)
 	if err != nil {
 		panic(err)

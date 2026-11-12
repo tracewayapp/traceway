@@ -4,8 +4,6 @@ import (
 	"database/sql/driver"
 	"io"
 	"reflect"
-
-	"go.opentelemetry.io/otel/trace"
 )
 
 // The optional column-type and result-set methods fall back to exactly what
@@ -13,13 +11,13 @@ import (
 // never changes what ColumnTypes or NextResultSet report.
 type tracedRows struct {
 	inner   driver.Rows
-	span    trace.Span
+	end     func(err error)
 	readErr error
 	ended   bool
 }
 
-func newTracedRows(rows driver.Rows, span trace.Span) *tracedRows {
-	return &tracedRows{inner: rows, span: span}
+func newTracedRows(rows driver.Rows, end func(err error)) *tracedRows {
+	return &tracedRows{inner: rows, end: end}
 }
 
 func (r *tracedRows) Columns() []string {
@@ -39,9 +37,9 @@ func (r *tracedRows) Close() error {
 	if !r.ended {
 		r.ended = true
 		if r.readErr != nil {
-			EndSpan(r.span, r.readErr)
+			r.end(r.readErr)
 		} else {
-			EndSpan(r.span, err)
+			r.end(err)
 		}
 	}
 	return err

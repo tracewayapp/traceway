@@ -40,6 +40,18 @@ type Result struct {
 	MatchedCaptures []string
 }
 
+// CaptureHeartbeatSeconds is the longest poll interval a client under an active capture is told, so cancelling or
+// extending the capture reaches it soon.
+const CaptureHeartbeatSeconds = 60
+
+// HeartbeatSeconds is the poll interval OpAMP tells this client, given the configured one.
+func (r Result) HeartbeatSeconds(configured uint64) uint64 {
+	if len(r.MatchedCaptures) > 0 {
+		return min(configured, CaptureHeartbeatSeconds)
+	}
+	return configured
+}
+
 // Evaluate builds the document one client receives: every matching rule laid over the previous ones in order,
 // then the captures aimed at it. A client nothing matches gets an empty overlay and runs on the SDK's defaults.
 func (c *Compiled) Evaluate(attrs map[string]string, instanceUid [16]byte, now time.Time) Result {

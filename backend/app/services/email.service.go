@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 //go:embed emailtemplates/*.gohtml
@@ -124,7 +124,7 @@ func SendEmail(ctx context.Context, email Email) error {
 	subject := sanitizeHeaderValues([]string{email.Subject})[0]
 
 	if !emailEnabled() {
-		config.Logf("[EMAIL LOG] To: %s\nSubject: %s\nBody:\n%s", strings.Join(recipients, ", "), subject, email.Text)
+		config.LogfLocal("[EMAIL LOG] To: %s\nSubject: %s\nBody:\n%s", strings.Join(recipients, ", "), subject, email.Text)
 		return nil
 	}
 

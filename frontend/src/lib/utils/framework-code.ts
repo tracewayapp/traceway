@@ -1,19 +1,10 @@
 import type { Framework } from '$lib/state/projects.svelte';
 import { isJsFramework } from '$lib/state/projects.svelte';
 
+// Legacy Go projects (LEGACY_GO_FRAMEWORKS) get the OpenTelemetry setup guide instead, so the retired
+// Go SDK has no install command or snippet here.
 export function getInstallCommand(framework: Framework): string {
-	const base = 'go get go.tracewayapp.com';
 	switch (framework) {
-		case 'gin':
-			return `${base} && go get go.tracewayapp.com/tracewaygin`;
-		case 'chi':
-			return `${base} && go get go.tracewayapp.com/tracewaychi`;
-		case 'fiber':
-			return `${base} && go get go.tracewayapp.com/tracewayfiber`;
-		case 'fasthttp':
-			return `${base} && go get go.tracewayapp.com/tracewayfasthttp`;
-		case 'stdlib':
-			return `${base} && go get go.tracewayapp.com/tracewayhttp`;
 		case 'react':
 			return 'npm install @tracewayapp/react';
 		case 'svelte':
@@ -50,9 +41,8 @@ export function getInstallCommand(framework: Framework): string {
 			return 'implementation("com.tracewayapp:traceway:1.0.1")';
 		case 'ios':
 			return '.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "0.1.0")';
-		case 'custom':
 		default:
-			return base;
+			return '';
 	}
 }
 
@@ -62,89 +52,6 @@ export function getFrameworkCode(framework: Framework, token: string, backendUrl
 		: `YOUR_TOKEN@${backendUrl}/api/report`;
 
 	switch (framework) {
-		case 'gin':
-			return `package main
-
-import (
-    "github.com/gin-gonic/gin"
-    tracewaygin "go.tracewayapp.com/tracewaygin"
-)
-
-func main() {
-    r := gin.Default()
-    r.Use(tracewaygin.New("${connectionString}"))
-    r.Run(":8080")
-}`;
-
-		case 'chi':
-			return `package main
-
-import (
-    "net/http"
-
-    "github.com/go-chi/chi/v5"
-    tracewaychi "go.tracewayapp.com/tracewaychi"
-)
-
-func main() {
-    r := chi.NewRouter()
-    r.Use(tracewaychi.New("${connectionString}"))
-
-    r.Get("/api/users", getUsers)
-    http.ListenAndServe(":8080", r)
-}`;
-
-		case 'fiber':
-			return `package main
-
-import (
-    "github.com/gofiber/fiber/v2"
-    tracewayfiber "go.tracewayapp.com/tracewayfiber"
-)
-
-func main() {
-    app := fiber.New()
-    app.Use(tracewayfiber.New("${connectionString}"))
-
-    app.Get("/api/users", getUsers)
-    app.Listen(":8080")
-}`;
-
-		case 'fasthttp':
-			return `package main
-
-import (
-    "github.com/valyala/fasthttp"
-    tracewayfasthttp "go.tracewayapp.com/tracewayfasthttp"
-)
-
-func main() {
-    handler := func(ctx *fasthttp.RequestCtx) {
-        ctx.SetStatusCode(200)
-        ctx.SetBodyString("Hello, World!")
-    }
-
-    tracedHandler := tracewayfasthttp.New("${connectionString}")(handler)
-    fasthttp.ListenAndServe(":8080", tracedHandler)
-}`;
-
-		case 'stdlib':
-			return `package main
-
-import (
-    "net/http"
-
-    tracewayhttp "go.tracewayapp.com/tracewayhttp"
-)
-
-func main() {
-    mux := http.NewServeMux()
-    mux.HandleFunc("/api/users", getUsers)
-
-    handler := tracewayhttp.New("${connectionString}")(mux)
-    http.ListenAndServe(":8080", handler)
-}`;
-
 		case 'react':
 			return `import { TracewayProvider } from "@tracewayapp/react";
 
@@ -425,21 +332,8 @@ struct MyApp: App {
     }
 }`;
 
-		case 'custom':
 		default:
-			return `package main
-
-import (
-    "go.tracewayapp.com"
-)
-
-func main() {
-    traceway.Init(
-        "${connectionString}",
-        traceway.WithVersion("1.0.0"),
-        traceway.WithServerName("my-server"),
-    )
-}`;
+			return '';
 	}
 }
 
@@ -503,9 +397,7 @@ fatalError("Test error from Traceway integration")`;
 		return `// Trigger a test error
 throw new Error("Test error from Traceway integration");`;
 	}
-	return `r.GET("/testing", func(c *gin.Context) {
-    panic("Test error from Traceway integration")
-})`;
+	return '';
 }
 
 export function getTestingRouteCode2(framework?: Framework): string {
@@ -585,9 +477,7 @@ captureException(new Error("Test error"));`;
 captureException(new Error("Test error"));`;
 		}
 	}
-	return `r.GET("/testing", func(c *gin.Context) {
-    c.AbortWithError(500, traceway.NewStackTraceErrorf("testing"))
-})`;
+	return '';
 }
 
 function getPackageName(framework: Framework): string {

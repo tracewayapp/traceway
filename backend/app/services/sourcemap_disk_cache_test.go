@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/twcache"
 
 	"github.com/google/uuid"
 )

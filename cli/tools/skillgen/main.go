@@ -18,7 +18,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 //go:embed skill.tmpl.md
@@ -39,6 +39,7 @@ var learnTopics = []string{
 	"monitors.md",
 	"alerts.md",
 	"on-call.md",
+	"data-collection.md",
 	"organization.md",
 }
 

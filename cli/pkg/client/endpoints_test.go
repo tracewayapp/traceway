@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
 
 func TestListEndpoints_callsGroupedRoute(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/endpoints/grouped" {
 			t.Errorf("path = %q (want grouped)", r.URL.Path)
 		}
@@ -84,7 +83,7 @@ func TestListRequests_sendOrderByColumns(t *testing.T) {
 }
 
 func TestListEndpointRequests_callsEndpointRoute(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/endpoints/endpoint" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -115,7 +114,7 @@ func TestListEndpointRequests_callsEndpointRoute(t *testing.T) {
 }
 
 func TestGetEndpointChart_callsChartRoute(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/endpoints/chart" {
 			t.Errorf("path = %q (want chart)", r.URL.Path)
 		}
@@ -164,7 +163,7 @@ func TestGetEndpointChart_callsChartRoute(t *testing.T) {
 }
 
 func TestGetSlowEndpoint_callsSlowRoute(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %q (want GET)", r.Method)
 		}

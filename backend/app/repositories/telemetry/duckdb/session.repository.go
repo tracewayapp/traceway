@@ -6,15 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type sessionRow struct {
@@ -99,6 +99,8 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 	if len(sessions) == 0 {
 		return nil
 	}
+	// The id is client-chosen and the ingest token is public in browser projects, so a session only ever takes an
+	// update from its own project; another project naming the same id writes nothing.
 	const stmt = `INSERT INTO sessions
 		(id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id)
 		VALUES (:id, :project_id, :started_at, :ended_at, :duration, :client_ip, :attributes, :app_version, :server_name, :trace_id)
@@ -108,7 +110,8 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 			attributes = excluded.attributes,
 			app_version = excluded.app_version,
 			server_name = excluded.server_name,
-			trace_id = excluded.trace_id`
+			trace_id = excluded.trace_id
+		WHERE sessions.project_id = excluded.project_id`
 
 	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
 	if err != nil {

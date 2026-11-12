@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/sdkconfig"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
 )
 
 func TestSdkConfigInvalidationCannotBeOverwrittenByAnOlderLoad(t *testing.T) {

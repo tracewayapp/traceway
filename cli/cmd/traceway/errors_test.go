@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 func TestClassifyError_tokenExpired_noTrailingSpaceWhenProfileEmpty(t *testing.T) {

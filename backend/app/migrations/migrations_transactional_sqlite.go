@@ -5,7 +5,7 @@ package migrations
 import (
 	"fmt"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 )
 
 func runMainDBMigrations(_ string) error {

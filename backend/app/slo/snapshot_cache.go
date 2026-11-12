@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
 )
 
 const snapshotRefreshInterval = time.Hour

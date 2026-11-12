@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -270,6 +270,96 @@ func TestPreparedStatementsAreTracedAndFolded(t *testing.T) {
 	spans := dbSpans(recorder)
 	if len(spans) != 1 || attr(spans[0], "db.operation.batch.size") != "20" {
 		t.Fatalf("want one folded span of 20, got %d spans", len(spans))
+	}
+}
+
+// lit.Insert on Postgres is INSERT ... RETURNING through QueryRow, so an
+// insert loop is a run of identical reads.
+func TestRepeatedReadsInATransactionFoldIntoOneSpan(t *testing.T) {
+	conn, recorder := openTraced(t)
+	ctx, request := traceway.Tracer().Start(context.Background(), "POST /api/organizations/:organizationId/teams")
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 50; i++ {
+		var id int
+		if err := tx.QueryRow("INSERT INTO items (name) VALUES (?) RETURNING id", "row").Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := tx.Exec("DELETE FROM items WHERE name = 'nothing'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	request.End()
+
+	spans := dbSpans(recorder)
+	if len(spans) != 2 {
+		t.Fatalf("50 identical inserts must fold into one span, got %d spans", len(spans))
+	}
+	if spans[0].Name() != "INSERT items" || attr(spans[0], "db.operation.batch.size") != "50" {
+		t.Fatalf("got %s with batch size %q", spans[0].Name(), attr(spans[0], "db.operation.batch.size"))
+	}
+}
+
+// Folding never joins a read whose rows are still open, and a read's span
+// still lasts until its rows are closed, even when another statement ran
+// while they were open.
+func TestOpenReadsInATransactionKeepTheirOwnSpans(t *testing.T) {
+	conn, recorder := openTraced(t)
+	for i := 0; i < 3; i++ {
+		if _, err := conn.Exec("INSERT INTO items (name) VALUES ('row')"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, request := traceway.Tracer().Start(context.Background(), "GET /api/items")
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, err := tx.Query("SELECT name FROM items")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner, err := tx.Query("SELECT name FROM items")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("UPDATE items SET name = 'seen' WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(dbSpans(recorder)); n != 0 {
+		t.Fatalf("reads must stay open while their rows are, %d spans ended", n)
+	}
+	time.Sleep(20 * time.Millisecond)
+	inner.Close()
+	for outer.Next() {
+	}
+	outer.Close()
+	if n := len(dbSpans(recorder)); n != 2 {
+		t.Fatalf("closing the rows must end both reads, %d spans ended", n)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	request.End()
+
+	spans := dbSpans(recorder)
+	if len(spans) != 3 || spans[2].Name() != "UPDATE items" {
+		t.Fatalf("want two reads and the update, got %d spans", len(spans))
+	}
+	for _, read := range spans[:2] {
+		if read.Name() != "SELECT items" || attr(read, "db.operation.batch.size") != "" {
+			t.Fatalf("got %s with batch size %q", read.Name(), attr(read, "db.operation.batch.size"))
+		}
+		if took := read.EndTime().Sub(read.StartTime()); took < 20*time.Millisecond {
+			t.Fatalf("a read took %v, it must last until its rows were closed", took)
+		}
 	}
 }
 

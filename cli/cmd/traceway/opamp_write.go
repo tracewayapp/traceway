@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 func addOpampWriteCommands(cmd *cobra.Command) {
@@ -50,7 +50,7 @@ func newOpampSaveRuleCmd(update bool) *cobra.Command {
 				}
 			}
 			body, _ := json.Marshal(in)
-			return runWrite(cmd, []string{fmt.Sprintf("About to %s OpAMP rule %q (id %d). Settings affect matching browsers at their next poll.", verb, in.Name, id), string(body)},
+			return runWrite(cmd, []string{opampSaveSummary(update, in.Name, id), string(body)},
 				map[string]any{"action": verb, "message": "Saved the OpAMP rule."},
 				func(ctx context.Context, c *client.Client, projectID string) (json.RawMessage, error) {
 					if update {
@@ -66,6 +66,15 @@ func newOpampSaveRuleCmd(update bool) *cobra.Command {
 		_ = cmd.MarkFlagRequired("expected-updated-at")
 	}
 	return cmd
+}
+
+// opampSaveSummary names the rule a save changes. A create has no id until the
+// server assigns one, so only an update names it.
+func opampSaveSummary(update bool, name string, id int) string {
+	if update {
+		return fmt.Sprintf("About to update OpAMP rule %q (id %d). Settings affect matching browsers at their next poll.", name, id)
+	}
+	return fmt.Sprintf("About to create OpAMP rule %q. Settings affect matching browsers at their next poll.", name)
 }
 
 func newOpampDeleteRuleCmd() *cobra.Command {

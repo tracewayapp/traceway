@@ -18,7 +18,7 @@ init("your-token@https://traceway.example.com", {
 
 Same-origin requests receive the header automatically. Cross-origin requests receive it only when their URL matches `propagateTraceHeaderCorsUrls`. The API's CORS policy must allow `traceparent` in request headers. Axios and jQuery AJAX are covered through XMLHttpRequest; they need no additional interceptor.
 
-Configure your backend's OpenTelemetry instrumentation and exporter using the [OpenTelemetry guides](/client/otel). Standard trace-context extraction replaces the custom header middleware used by SDK 1.x.
+Configure your backend's OpenTelemetry instrumentation and exporter using the [OpenTelemetry guides](/client/otel). Standard trace-context extraction is all the backend needs; it replaces the custom header middleware once written for SDK 1.x.
 
 ## Trace context and exceptions
 
@@ -26,7 +26,7 @@ Request spans carry `session.id`. Their rows in the session timeline link to the
 
 ## Migrating from SDK 1.x
 
-Remove `createAxiosInterceptor()` and `getActiveDistributedTraceId()` calls. The 2.x browser SDK no longer generates `traceway-trace-id`; it uses `traceparent`. Existing server compatibility for older clients can remain while those clients are being upgraded.
+Remove `createAxiosInterceptor()` and `getActiveDistributedTraceId()` calls. The 2.x browser SDK no longer generates `traceway-trace-id`; it uses `traceparent`. Remove the backend middleware that copied `traceway-trace-id` onto the server span as `traceway.distributed_trace_id` as well: Traceway no longer reads that attribute, for 1.x clients either, so it links nothing (see [SDK 1.x](/client/js-sdk/v1/distributed-tracing)).
 
 See [Initialization](/client/js-sdk/initialization) for browser options and [Remote SDK Config](/learn/remote-config) for controlling whether network spans stream, buffer, or remain off.
 

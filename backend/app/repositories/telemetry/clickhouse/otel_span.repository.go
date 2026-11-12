@@ -16,9 +16,9 @@ import (
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 type otelSpanRepository struct{}
@@ -323,14 +323,14 @@ func (r *otelSpanRepository) FindOTLP(ctx context.Context, project uuid.UUID, tr
 
 // FindSessionClientSpans returns the requests a browser session made in a time window (CLIENT spans), oldest first,
 // through the materialized session_id column and its bloom filter.
-func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]shared.SessionSpan, error) {
+func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]shared.SessionSpan, error) {
 	rows, err := chdb.Conn.Query(ctx, `SELECT trace_id, span_id, name, start_time_unix_nano, duration, status_code,
 			span_attributes['http.request.method'], span_attributes['url.full'],
 			span_attributes['http.response.status_code'], span_attributes['error.type']
 		FROM spans_v2
 		WHERE project_id = ? AND session_id = ? AND recorded_at >= ? AND recorded_at <= ? AND span_kind = 3
-		ORDER BY start_time_unix_nano ASC LIMIT ?`,
-		projectId, sessionId, clickhouseOtelCodec.Time(from), clickhouseOtelCodec.Time(to), limit)
+		ORDER BY start_time_unix_nano `+q.Order()+` LIMIT ?`,
+		q.ProjectId, q.SessionId, clickhouseOtelCodec.Time(q.From), clickhouseOtelCodec.Time(q.To), q.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -348,5 +348,8 @@ func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, project
 		span.Duration = time.Duration(duration)
 		spans = append(spans, span)
 	}
-	return spans, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return shared.SessionBreadcrumbsChronological(q, spans), nil
 }

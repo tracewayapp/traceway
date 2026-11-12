@@ -42,8 +42,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/synthetics/browserexec"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/synthetics/browserexec"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const version = "1.0.0"

@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	otellog "go.opentelemetry.io/otel/log"
 )
 
@@ -37,6 +37,16 @@ func LogfContext(ctx context.Context, format string, v ...any) {
 		log.Print("[tracewaybackend] " + msg)
 	}
 	traceway.EmitLog(ctx, severityOf(msg), msg)
+}
+
+// LogfLocal writes to stdout only and is never exported to self-monitoring,
+// whose logs every member of the monitoring project's organization can read.
+// A line that carries a secret (a token, a password reset or invitation
+// link) goes through here.
+func LogfLocal(format string, v ...any) {
+	if LoggingEnabled {
+		log.Print("[tracewaybackend] " + fmt.Sprintf(format, v...))
+	}
 }
 
 func severityOf(msg string) otellog.Severity {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
 )
 
 func TestVersion_table(t *testing.T) {

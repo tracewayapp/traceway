@@ -3,9 +3,9 @@ package main
 import (
 	"time"
 
-	"github.com/tracewayapp/traceway/cli/internal/config"
-	"github.com/tracewayapp/traceway/cli/internal/state"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/config"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // credential is the result of any login path: the access token plus, for the

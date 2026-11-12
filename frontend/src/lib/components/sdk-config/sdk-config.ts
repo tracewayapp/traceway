@@ -89,7 +89,9 @@ export const CONDITION_OPS: Array<{
 	{ value: 'starts_with', label: 'starts with', needsValue: 'one' },
 	{ value: 'glob', label: 'matches pattern (* ?)', needsValue: 'one' },
 	{ value: 'version', label: 'version matches', needsValue: 'one' },
+	{ value: 'gt', label: '>', needsValue: 'one' },
 	{ value: 'gte', label: '≥', needsValue: 'one' },
+	{ value: 'lt', label: '<', needsValue: 'one' },
 	{ value: 'lte', label: '≤', needsValue: 'one' },
 	{ value: 'exists', label: 'is set', needsValue: 'none' },
 	{ value: 'not_exists', label: 'is not set', needsValue: 'none' }
@@ -297,37 +299,77 @@ export function conditionText(condition: Condition): string {
 			: String(condition.value);
 }
 
+const NUMERIC_OPS: ReadonlySet<ConditionOp> = new Set(['gt', 'gte', 'lt', 'lte']);
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+export function isNumericOp(op: ConditionOp): boolean {
+	return NUMERIC_OPS.has(op);
+}
+
+/** The server compares gt/gte/lt/lte against a JSON number, so a numeric text goes out as one. */
+export function conditionValue(op: ConditionOp, text: string): string | number {
+	const trimmed = text.trim();
+	if (isNumericOp(op) && DECIMAL.test(trimmed)) {
+		const number = Number(trimmed);
+		if (Number.isFinite(number)) return number;
+	}
+	return trimmed;
+}
+
+/**
+ * A cleared `<input type="number">` binds null (Svelte 5), and an unparsable one NaN; both mean "not set",
+ * never 0.
+ */
+export function optionalNumber(value: number | string | null | undefined): number | undefined {
+	if (value === null || value === undefined || (typeof value === 'string' && value.trim() === ''))
+		return undefined;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : undefined;
+}
+
 export function buildRuleConditions(
 	rows: ConditionRow[],
-	percent: number | undefined,
+	percent: number | string | null | undefined,
 	by: string
 ): Conditions {
 	const all = rows
 		.filter((row) => row.key.trim() !== '')
 		.map((row): Condition => {
-			if (
-				row.original &&
-				row.key === row.original.key &&
-				row.op === row.original.op &&
-				row.value === conditionText(row.original)
-			)
+			const original = row.original;
+			const sameText = original !== undefined && row.value === conditionText(original);
+			if (sameText && row.key === original.key && row.op === original.op)
 				return {
-					...row.original,
-					...(row.original.values ? { values: [...row.original.values] } : {})
+					...original,
+					...(original.values ? { values: [...original.values] } : {})
 				};
 			const condition: Condition = { key: row.key.trim(), op: row.op };
 			const kind = CONDITION_OPS.find((op) => op.value === row.op)?.needsValue ?? 'one';
 			if (kind === 'many')
-				condition.values = row.value
-					.split(',')
-					.map((value) => value.trim())
-					.filter(Boolean);
-			else if (kind === 'one') condition.value = row.value.trim();
+				condition.values =
+					sameText && original.values
+						? [...original.values]
+						: row.value
+								.split(',')
+								.map((value) => value.trim())
+								.filter(Boolean);
+			else if (kind === 'one')
+				condition.value =
+					sameText && keepsTypedValue(row.op, original.value)
+						? original.value
+						: conditionValue(row.op, row.value);
 			return condition;
 		});
 	const conditions: Conditions = {};
 	if (all.length) conditions.all = all;
-	if (percent !== undefined)
-		conditions.rollout = { percent, ...(by.trim() ? { by: by.trim() } : {}) };
+	const rollout = optionalNumber(percent);
+	if (rollout !== undefined)
+		conditions.rollout = { percent: rollout, ...(by.trim() ? { by: by.trim() } : {}) };
 	return conditions;
+}
+
+// A number or boolean the text still shows (one created through the CLI or the API) keeps its JSON type when
+// the key or operator changes, since the server compares a number numerically and a string as text.
+function keepsTypedValue(op: ConditionOp, value: Condition['value']): boolean {
+	if (typeof value === 'number') return true;
+	return typeof value === 'boolean' && !isNumericOp(op);
 }

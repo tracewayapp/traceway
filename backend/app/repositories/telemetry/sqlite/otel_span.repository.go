@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
 )
 
 type otelSpanRepository struct{}
@@ -208,17 +208,9 @@ func (r *otelSpanRepository) FindOTLP(ctx context.Context, project uuid.UUID, tr
 
 // FindSessionClientSpans returns the requests a browser session made in a time window (CLIENT spans), oldest first.
 // It reads through idx_spans_v2_session.
-func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]shared.SessionSpan, error) {
-	rows, err := db.TelemetryDB.QueryContext(ctx, `SELECT trace_id, span_id, name, start_time_unix_nano, duration, status_code,
-			COALESCE(json_extract(span_attributes, '$."http.request.method"'), ''),
-			COALESCE(json_extract(span_attributes, '$."url.full"'), ''),
-			COALESCE(json_extract(span_attributes, '$."http.response.status_code"'), ''),
-			COALESCE(json_extract(span_attributes, '$."error.type"'), '')
-		FROM spans_v2
-		WHERE project_id = ? AND json_extract(span_attributes, '$."session.id"') = ?
-			AND recorded_at >= ? AND recorded_at <= ? AND span_kind = 3
-		ORDER BY CAST(start_time_unix_nano AS INTEGER) ASC LIMIT ?`,
-		projectId.String(), sessionId, sqliteOtelCodec.Time(from), sqliteOtelCodec.Time(to), limit)
+func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]shared.SessionSpan, error) {
+	rows, err := db.TelemetryDB.QueryContext(ctx, sessionClientSpansQuery(q.Order()),
+		q.ProjectId.String(), q.SessionId, sqliteOtelCodec.Time(q.From), sqliteOtelCodec.Time(q.To), q.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -240,5 +232,20 @@ func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, project
 		span.Duration = time.Duration(duration)
 		spans = append(spans, span)
 	}
-	return spans, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return shared.SessionBreadcrumbsChronological(q, spans), nil
+}
+
+func sessionClientSpansQuery(order string) string {
+	return `SELECT trace_id, span_id, name, start_time_unix_nano, duration, status_code,
+			COALESCE(json_extract(span_attributes, '$."http.request.method"'), ''),
+			COALESCE(json_extract(span_attributes, '$."url.full"'), ''),
+			COALESCE(json_extract(span_attributes, '$."http.response.status_code"'), ''),
+			COALESCE(json_extract(span_attributes, '$."error.type"'), '')
+		FROM spans_v2
+		WHERE project_id = ? AND json_extract(span_attributes, '$."session.id"') = ?
+			AND recorded_at >= ? AND recorded_at <= ? AND span_kind = 3
+		ORDER BY CAST(start_time_unix_nano AS INTEGER) ` + order + ` LIMIT ?`
 }

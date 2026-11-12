@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // ErrInvalid is wrapped by every validation failure in Resolve so callers can

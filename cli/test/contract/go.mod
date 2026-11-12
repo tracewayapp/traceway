@@ -7,8 +7,6 @@ toolchain go1.26.11
 require (
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
-	github.com/tracewayapp/traceway/backend v0.0.0
-	github.com/tracewayapp/traceway/cli v1.9.15
 	go.opentelemetry.io/proto/otlp v1.11.0
 	google.golang.org/protobuf v1.36.12
 )
@@ -101,6 +99,8 @@ require (
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/tracewayapp/lit/v2 v2.0.5 // indirect
+	github.com/tracewayapp/traceway/backend/v2 v2.0.11
+	github.com/tracewayapp/traceway/cli/v2 v2.0.11
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.2 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
@@ -147,6 +147,6 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace github.com/tracewayapp/traceway/cli => ../..
+replace github.com/tracewayapp/traceway/cli/v2 => ../..
 
-replace github.com/tracewayapp/traceway/backend => ../../../backend
+replace github.com/tracewayapp/traceway/backend/v2 => ../../../backend

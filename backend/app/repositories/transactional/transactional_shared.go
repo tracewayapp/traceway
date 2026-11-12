@@ -1,6 +1,6 @@
 package transactional
 
-import "github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
+import "github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/shared"
 
 // Aliases so consumers keep using the transactional package regardless of
 // which relational backend is compiled in.

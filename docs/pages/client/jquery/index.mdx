@@ -50,8 +50,7 @@ Once initialized, the SDK automatically:
 
 - Captures uncaught JavaScript errors and unhandled promise rejections
 - Captures jQuery AJAX errors via `$(document).ajaxError()`
-- Injects `traceway-trace-id` headers into same-origin `$.ajax()` requests
-- Injects `traceway-trace-id` headers into same-origin `fetch()` requests
+- Injects a `traceway-trace-id` header into same-origin `$.ajax()` and `fetch()` requests (no longer used by Traceway, see [Distributed Tracing](#distributed-tracing))
 
 ## AJAX Error Capture
 
@@ -162,23 +161,7 @@ Layering on each event: **defaults < global scope < per-call**. See [Sessions](/
 
 ## Distributed Tracing
 
-The SDK automatically instruments both `XMLHttpRequest` (used by `$.ajax()`) and `fetch` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them.
-
-The backend has to hold up its end: it must set the incoming header on its server span as the `traceway.distributed_trace_id` attribute. The Symfony bundle does this for you, everything else needs one small middleware. See [Distributed Tracing](/client/js-sdk/v1/distributed-tracing#backend-setup).
-
-### With Symfony + OpenTelemetry
-
-If your backend uses the [Symfony OpenTelemetry Bundle](/client/otel/symfony), distributed tracing works out of the box. The bundle reads the `traceway-trace-id` header from incoming requests and attaches it as a span attribute, linking your jQuery frontend errors to Symfony backend traces.
-
-```javascript
-// Frontend: trace header is injected automatically
-$.post("/api/orders", { item: "widget" });
-```
-
-```php
-// Backend: the bundle reads traceway-trace-id automatically
-// No extra configuration needed in your Symfony controllers
-```
+The 1.x SDK adds a `traceway-trace-id` header to same-origin `$.ajax()` and `fetch()` calls, but Traceway no longer uses it, so 1.x does not link browser errors to backend requests, with any backend (the Symfony bundle included). Exceptions still carry their replay clip. To see a browser request and the backend work it caused in one trace, use the [2.x SDK (beta)](/client/js-sdk/distributed-tracing): it sends the W3C `traceparent` header, which a backend instrumented with OpenTelemetry, such as the [Symfony OpenTelemetry Bundle](/client/otel/symfony), picks up with no extra middleware. See [Distributed Tracing (SDK 1.x)](/client/js-sdk/v1/distributed-tracing) for what 1.x sends and which old setup code can go.
 
 ## Test Your Integration
 

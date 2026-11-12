@@ -4,7 +4,7 @@ Traceway speaks [MCP](https://modelcontextprotocol.io) in two ways: the `tracewa
 
 The server is a thin layer over the same API client the CLI uses, and it ships the same operator playbooks the Traceway skill contains, exposed as MCP resources and prompts. One binary, one login, three surfaces.
 
-Both servers described here are read only. A separate write server (`/mcp/write`, or `traceway-write mcp`) adds tools that archive issues, acknowledge pages, snooze alerts and edit post-mortems, behind write credentials and an organization opt-in. See [Agent Write Access](/learn/agent-write-access).
+Both servers described here are read only. A separate write server (`/mcp/write`, or `traceway-write mcp`) adds tools that archive issues, acknowledge pages, snooze alerts, edit post-mortems and change remote SDK config rules, behind write credentials and an organization opt-in. See [Agent Write Access](/learn/agent-write-access).
 
 ## Remote server (zero install)
 
@@ -86,8 +86,10 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `list_notification_rules` | Alert rules, enabled and snoozed state |
 | `list_checks` / `get_check` | Monitors and their incidents |
 | `list_post_mortems` / `get_post_mortem` | Post-mortem documents |
+| `list_sdk_config_rules` | A browser project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
+| `preview_sdk_config` | The settings document saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live browser applied |
 
-The write server adds `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem` and `set_slow_endpoint`.
+The write server adds `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
 
 Project selection is per call: every project-scoped tool accepts a `project_id` parameter and falls back to the CLI's current project.
 
@@ -116,6 +118,7 @@ These are the same documents the Traceway Claude Code skills are generated from,
 | `learn/monitors` | Monitors, incidents, status pages, post-mortems |
 | `learn/alerts` | Every alert rule type, channels, cooldowns, snoozing |
 | `learn/on-call` | Teams, schedules, overrides, escalation policies, pages, contact methods |
+| `learn/data-collection` | Remote SDK config for browser projects: signal modes, rules, triggers, captures, preview |
 | `learn/organization` | Projects, roles, organization views, settings, agent access |
 
 The same guide ships as the `traceway-learn` skill, installed with the other skills (`npx skills add tracewayapp/skills --all`, or the `tw` Claude Code plugin). Ask an agent how paging escalates, why an endpoint is Critical, or how to put a status page on your own domain, and it answers from the guide.

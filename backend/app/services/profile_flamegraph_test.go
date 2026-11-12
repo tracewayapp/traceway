@@ -3,7 +3,7 @@ package services
 import (
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func flameChild(n *FlameNode, name string) *FlameNode {

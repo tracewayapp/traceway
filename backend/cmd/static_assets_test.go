@@ -27,7 +27,17 @@ func assetRouter() *gin.Engine {
 		c.String(http.StatusOK, strings.Repeat("data: x\n\n", 500))
 	})
 	r.GET("/api/big", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"v": strings.Repeat("y", 8192)}) })
+	for path, contentType := range alreadyCompressed {
+		r.GET(path, func(c *gin.Context) { c.Data(http.StatusOK, contentType, []byte(strings.Repeat("z", 8192))) })
+	}
 	return r
+}
+
+var alreadyCompressed = map[string]string{
+	"/api/status/acme/logo":      "image/jpeg",
+	"/api/profiles/export":       "application/gzip",
+	"/api/synthetics/video":      "video/webm",
+	"/api/dashboards/export.zip": "application/zip",
 }
 
 func serve(h http.Handler, method, target string, gzipOK bool) *httptest.ResponseRecorder {
@@ -94,5 +104,10 @@ func TestCompressResponses(t *testing.T) {
 	}
 	if w := serve(h, http.MethodGet, "/api/stream", true); w.Header().Get("Content-Encoding") != "" {
 		t.Fatal("compressed an event stream")
+	}
+	for path, contentType := range alreadyCompressed {
+		if w := serve(h, http.MethodGet, path, true); w.Header().Get("Content-Encoding") != "" {
+			t.Fatalf("compressed %s, which is already compressed", contentType)
+		}
 	}
 }

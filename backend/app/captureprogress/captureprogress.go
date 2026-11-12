@@ -9,14 +9,15 @@ package captureprogress
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const (
@@ -34,6 +35,9 @@ const (
 	pruneInterval     = time.Hour
 	errReportInterval = time.Minute
 )
+
+// errWriteAborted stands for a write that panicked; the panic itself is reported by the task.
+var errWriteAborted = errors.New("capture progress write did not return")
 
 type key struct {
 	projectId uuid.UUID
@@ -91,15 +95,22 @@ func (r *recorder) mark(projectId, captureId uuid.UUID, stage string) {
 	}
 }
 
+// run must outlive every batch: start never launches a second writer, so a dead loop would drop every later mark.
 func (r *recorder) run() {
-	defer traceway.Recover()
 	for range r.wake {
-		traceway.RunTask(context.Background(), "captureprogress.record", r.drain)
+		r.record()
 	}
 }
 
+// record writes one batch. A panic ends that batch only: RunTask reports it on the task and Recover stops it here.
+func (r *recorder) record() {
+	defer traceway.Recover()
+	traceway.RunTask(context.Background(), "captureprogress.record", r.drain)
+}
+
 // drain writes everything pending in one transaction. Entries stay pending while they are written, so a stage
-// noted again meanwhile is not queued twice; a failed batch is dropped and comes back with the next report.
+// noted again meanwhile is not queued twice; a failed batch, or one whose write panicked, is dropped and comes
+// back with the next report.
 func (r *recorder) drain(ctx context.Context) {
 	r.mu.Lock()
 	batch := make(map[key]time.Time, len(r.pending))
@@ -112,8 +123,12 @@ func (r *recorder) drain(ctx context.Context) {
 		return
 	}
 
-	err := r.write(ctx, batch)
+	err := errWriteAborted
+	defer func() { r.settle(ctx, batch, err) }()
+	err = r.write(ctx, batch)
+}
 
+func (r *recorder) settle(ctx context.Context, batch map[key]time.Time, err error) {
 	now := r.now()
 	r.mu.Lock()
 	for k := range batch {
@@ -133,7 +148,7 @@ func (r *recorder) drain(ctx context.Context) {
 	if len(r.recorded) > maxRecorded {
 		r.recorded = map[key]time.Time{}
 	}
-	report := err != nil && now.Sub(r.lastError) >= errReportInterval
+	report := err != nil && !errors.Is(err, errWriteAborted) && now.Sub(r.lastError) >= errReportInterval
 	if report {
 		r.lastError = now
 	}

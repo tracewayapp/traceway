@@ -3,11 +3,10 @@ package main
 import (
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
 )
 
 // TestEnumFlagValidation_acceptsAndRejects asserts that every enum-shaped flag
@@ -140,7 +139,7 @@ func TestEnumFlagValidation_acceptsAndRejects(t *testing.T) {
 			for _, vc := range group.valid {
 				t.Run("accepts/"+vc.name, func(t *testing.T) {
 					body := group.emptyJSON
-					srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						emptyOK(w, r)
 						_, _ = w.Write([]byte(body))
 					}))
@@ -156,7 +155,7 @@ func TestEnumFlagValidation_acceptsAndRejects(t *testing.T) {
 
 			for _, rc := range group.reject {
 				t.Run("rejects/"+rc.name, func(t *testing.T) {
-					srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+					srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 						t.Errorf("server should not be called for invalid enum input: args=%v", rc.args)
 					}))
 					defer srv.Close()

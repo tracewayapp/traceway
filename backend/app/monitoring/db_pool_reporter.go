@@ -3,8 +3,8 @@ package monitoring
 import (
 	"database/sql"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 func reportDBPools(previous map[string]sql.DBStats) {

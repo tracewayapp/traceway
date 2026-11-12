@@ -2,7 +2,7 @@
 
 package transactional
 
-import pgrepo "github.com/tracewayapp/traceway/backend/app/repositories/transactional/pg"
+import pgrepo "github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/pg"
 
 var (
 	AgentWriteEventRepository       = pgrepo.AgentWriteEventRepository

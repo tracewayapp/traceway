@@ -1,7 +1,7 @@
 package telemetry
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 // Aliases and re-exports so consumers keep using the telemetry package

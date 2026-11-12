@@ -51,9 +51,17 @@ func captureStack(skip int) []runtime.Frame {
 
 	frames := runtime.CallersFrames(pcs[:n])
 	result := make([]runtime.Frame, 0, n)
+	keptPrevious := false
 	for {
 		frame, more := frames.Next()
-		result = append(result, frame)
+		hidden := isHiddenFrame(frame.Function)
+		if hidden && keptPrevious && result[len(result)-1].Function == ginNextFunction {
+			result = result[:len(result)-1]
+		}
+		if !hidden {
+			result = append(result, frame)
+		}
+		keptPrevious = !hidden
 		if !more {
 			break
 		}

@@ -115,6 +115,21 @@ export function isOtelFramework(fw: Framework): boolean {
 	return fw === 'opentelemetry' || fw === 'hono';
 }
 
+// Projects created for the retired Traceway Go SDK. Go instruments with OpenTelemetry now, so they get
+// the same setup guide as an `opentelemetry` project.
+export const LEGACY_GO_FRAMEWORKS: Framework[] = [
+	'gin',
+	'fiber',
+	'chi',
+	'fasthttp',
+	'stdlib',
+	'custom'
+];
+
+export function usesOtelSetupGuide(fw: Framework): boolean {
+	return fw === 'opentelemetry' || LEGACY_GO_FRAMEWORKS.includes(fw);
+}
+
 export function isCloudflareFramework(fw: Framework): boolean {
 	return fw === 'cloudflare';
 }

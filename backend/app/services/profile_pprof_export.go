@@ -4,7 +4,7 @@ import (
 	"bytes"
 
 	"github.com/google/pprof/profile"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func BuildPprof(name, unit string, stacks []models.ProfileStackValue) ([]byte, error) {

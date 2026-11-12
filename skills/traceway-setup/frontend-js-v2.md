@@ -1,10 +1,10 @@
 # Browser SDK v2 setup
 
-Use this reference **if stable v2 is live on npm**, or for an existing v2 integration. Check `npm view @tracewayapp/frontend@2 version --json` and the selected framework package's `@2` versions before installing. If those releases are unpublished, use the stable v1 setup in [frontend-js.md](frontend-js.md). Registry failures must be reported, not interpreted as an unpublished release. Do not use a prerelease or a local SDK checkout unless the user requested it.
+Use this reference when the version rules in SKILL.md select v2: stable v2 is `latest` on npm, the app already runs v2, or the user asked for v2 or remote SDK config. Check with `npm view @tracewayapp/frontend dist-tags --json` and the same for the framework package. Today 2.x is published only under the `beta` dist-tag (`2.0.0-beta.N`, while `latest` is 1.x), so `@2` matches nothing and npm answers `E404`; install with `@beta` until `latest` moves to 2.x. When none of those cases applies, use the stable v1 setup in [frontend-js.md](frontend-js.md). Do not use a local SDK checkout.
 
 ## Install and initialize
 
-Install the selected stable v2 package with the repository's package manager (`npm install @tracewayapp/react@2`, or `frontend`, `vue`, `svelte`, `jquery` as appropriate). Keep browser SDK/wrapper majors compatible. Use the published compatible bundler plugin and source-map uploader versions; verify their availability separately rather than assuming all packages publish together. Update the lockfile.
+Install the selected v2 package with the repository's package manager: `npm install @tracewayapp/react@beta` (or `frontend`, `vue`, `svelte`, `jquery` as appropriate) while 2.x is in beta, `@2` once `latest` is 2.x. An app that already runs v2 keeps its version range; update it within 2.x only. Keep browser SDK/wrapper majors compatible. Use the published compatible bundler plugin and source-map uploader versions; verify their availability separately rather than assuming all packages publish together. Update the lockfile.
 
 Use a browser project (React, Vue, Svelte, or jQuery) separate from server and mobile projects. For Next.js/Remix, instrument the browser as React and the server independently with OTel. Initialize in browser code, not in SSR/server modules. The connection string is `PROJECT_TOKEN@https://traceway.example.com`; the old `/api/report` suffix is accepted too.
 
@@ -37,7 +37,7 @@ The provider captures and rethrows render errors; use `TracewayErrorBoundary` wh
 
 Vue uses `app.use(createTracewayPlugin({ connectionString, options: { version: appVersion } }))` from `@tracewayapp/vue`. Svelte uses `setupTraceway({ connectionString, options: { version: appVersion } })` from `@tracewayapp/svelte` during component initialization; in SvelteKit, guard it with `browser` from `$app/environment`. jQuery uses `init(connectionString, options)` from `@tracewayapp/jquery`.
 
-For CDN integration, use the registry-verified v2 version in `https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2/dist/traceway.iife.global.js` (`window.Traceway`) or `@tracewayapp/jquery@2/dist/traceway-jquery.iife.global.js` (`window.TracewayJQuery`). Do not leave an `@1` CDN script alongside v2 modules.
+For CDN integration, use `https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@beta/dist/traceway.iife.global.js` (`window.Traceway`) or `https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@beta/dist/traceway-jquery.iife.global.js` (`window.TracewayJQuery`) while 2.x is in beta, or pin the exact version from the `beta` dist-tag (`@2.0.0-beta.N`) so a later beta cannot change the page unannounced. Switch to `@2` once `latest` is 2.x. Do not leave an `@1` CDN script alongside v2 modules.
 
 ## Production collection policy
 

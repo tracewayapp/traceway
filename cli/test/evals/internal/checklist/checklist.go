@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 // Row is one row of the bottleneck checklist in performance.md.

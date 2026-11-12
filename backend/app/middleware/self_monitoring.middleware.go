@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/attribute"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
@@ -36,6 +36,11 @@ var ingestRoutes = map[string]bool{
 	"/api/otel/v1/metrics":             true,
 	"/api/otel/v1/logs":                true,
 	"/api/otel/v1development/profiles": true,
+}
+
+func init() {
+	traceway.HidePackageFrames(otelgin.Middleware)
+	traceway.HideFrames(recordRequestOutcome)
 }
 
 // SelfMonitoring traces the backend's own requests into the self-monitoring
@@ -109,7 +114,16 @@ func recordRequestOutcome(c *gin.Context) {
 
 	c.Next()
 
+	// A stream lasts as long as the client listens (the MCP routes answer
+	// POSTs as event streams), so it is kept out of latency percentiles.
+	if isEventStream(c.Writer.Header().Get("Content-Type")) {
+		span.SetAttributes(attribute.Bool("traceway.is_stream", true))
+	}
 	for _, ginErr := range c.Errors {
 		traceway.RecordError(span, ginErr.Err)
 	}
+}
+
+func isEventStream(contentType string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "text/event-stream")
 }

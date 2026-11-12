@@ -2,13 +2,12 @@ package main
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 func TestOpampReadsAndEditionBoundary(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("projectId") == "" {
 			t.Error("missing project scope")
 		}
@@ -29,7 +28,7 @@ func TestOpampReadsAndEditionBoundary(t *testing.T) {
 	if !editionWrite {
 		for _, name := range []string{"create", "update", "delete", "reorder"} {
 			cmd, _, err := newRootCmd().Find([]string{"opamp", "rules", name})
-			if err == nil && cmd.Name() == name {
+			if err == nil && cmd.Name() == name && !cmd.Hidden {
 				t.Errorf("read-only edition exposes %s", name)
 			}
 		}

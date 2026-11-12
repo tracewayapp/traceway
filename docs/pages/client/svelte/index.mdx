@@ -93,11 +93,7 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Distributed Tracing
 
-The SDK automatically instruments both `fetch` and `XMLHttpRequest` to propagate a `traceway-trace-id` header on same-origin requests. This links frontend errors to the backend requests that caused them.
-
-Axios needs no setup. It uses `XMLHttpRequest` in the browser, which the SDK already instruments. Do not register `createAxiosInterceptor()` in a browser app: it adds a second ID under the same header name, and the combined value is rejected by the backend.
-
-Your backend still has to set the incoming header on its server span as the `traceway.distributed_trace_id` attribute, or the two sides never join. See the [Distributed Tracing](/client/js-sdk/v1/distributed-tracing) guide for the middleware.
+The 1.x SDK adds a `traceway-trace-id` header to same-origin `fetch` and `XMLHttpRequest` calls, but Traceway no longer uses it, so 1.x does not link browser errors to backend requests. Exceptions still carry their replay clip. To see a browser request and the backend work it caused in one trace, use the [2.x SDK (beta)](/client/js-sdk/distributed-tracing): it sends the W3C `traceparent` header, which a backend instrumented with OpenTelemetry picks up with no extra middleware. See [Distributed Tracing (SDK 1.x)](/client/js-sdk/v1/distributed-tracing) for what 1.x sends and which old setup code can go.
 
 ## Next Steps
 

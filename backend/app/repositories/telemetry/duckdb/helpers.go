@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/db/dbtrace"
-	"github.com/tracewayapp/traceway/backend/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db/dbtrace"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 // The DuckDB Appender rejects typed Go pointers for nullable columns

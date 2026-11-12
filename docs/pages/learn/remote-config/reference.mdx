@@ -157,7 +157,7 @@ Operators, also used by [targeting conditions](#targeting):
 | `starts_with` | starts with `value` |
 | `glob` | matches `value` with `*` (any run) and `?` (one character), ignoring case |
 | `exists`, `not_exists` | is set and not empty, or is not |
-| `gt`, `gte`, `lt`, `lte` | compares as a number |
+| `gt`, `gte`, `lt`, `lte` | compares as a number; in targeting conditions `value` must be a number (a numeric string is saved as the number) |
 | `version` | satisfies a version range such as `>=2.4 <3`: comparators separated by spaces or commas, dotted numbers compared part by part, so `1.10 > 1.9` |
 
 Text operators look at the first 4 KB of a value. There is no regular expression operator; `glob` runs in linear time.
@@ -188,6 +188,8 @@ A rule's conditions are checked against the attributes the browser sends with ev
 | `session.id` | The current session |
 | `user.id`, `tenant.id`, ... | Global attributes from `setAttribute` and the `attributes` option, up to 64 |
 
+The server reads up to 128 attributes per poll, identifying ones first, and ignores a value over 1024 bytes. An array attribute is matched as the JSON text of its string, number and boolean items.
+
 ```json
 {
   "all": [
@@ -202,12 +204,14 @@ All conditions must hold; no conditions match every client. A rule has at most 2
 
 ## Captures from the dashboard
 
-| Field | Values |
-|---|---|
-| Target | A device (`service.instance.id`), a user (`user.id`), a session (`session.id`), or any attribute and value |
-| Duration | 1 minute to 24 hours |
-| Lookback | 0 to 86400 seconds, default 600 |
-| Replay | On by default |
+<img src="/remote-config/capture-dialog.png" alt="The New Capture dialog in the Data Collection tab: a Target kind and its Value, For (how long the capture lasts), Include (how much of what the device holds to upload first) and a Record session replay checkbox" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+| Field | In the dialog | Values |
+|---|---|---|
+| Target | **Target**, **Value** | A device (`service.instance.id`), a user (`user.id`), a session (`session.id`), or any attribute and value |
+| Duration | **For** | 1 minute to 24 hours (the dialog offers 15 minutes, 1 hour, 4 hours and 24 hours) |
+| Lookback | **Include** | 0 to 86400 seconds, default 600 (the dialog offers nothing earlier, the last minute, the last 10 minutes and the last hour) |
+| Replay | **Record session replay** | On by default |
 
 At most 20 captures are active per project. A capture reaches the browsers it matches in their settings document; each tab runs its lookback upload once, even across pages, and streams until the capture ends, with the same rules as the `capture` action. A browser under a capture polls every 60 seconds. Expired captures drop out of the document by themselves. Cancellation takes effect when the next successful poll removes the capture; the SDK immediately removes that capture’s streaming override. Other active captures or stream rules still apply. A zero lookback requests no earlier telemetry.
 
@@ -246,6 +250,7 @@ These stream unless the kill switch is on; session events additionally respect `
 | 200 | Normal answer | Applies the document, reports `APPLIED` (or `FAILED` and keeps the last good one) |
 | 400 | Malformed message, or the uid header does not match | Backs off |
 | 401 | Unknown project token | Stops polling |
+| 403 | The token belongs to a project that is not a browser project (React, Vue, Svelte or jQuery) | Stops polling |
 | 413 | Body over 64 KB, raw or decompressed | Does not retry that message |
 | 415 | Not `application/x-protobuf` | Backs off |
 | 503 | Too many polls at once, or the rules could not load; `Retry-After` set | Waits as told, keeps its settings |
@@ -258,16 +263,16 @@ Errors back off from 30 seconds to 30 minutes. The heartbeat is never shorter th
 
 ## Dashboard API
 
-The Data Collection tab uses these routes; they need dashboard authentication and write access for changes.
+The Data Collection tab uses these routes. They need dashboard authentication, or an agent credential for the rule and preview routes (see [Agent Write Access](/learn/agent-write-access)), and write access on the project for changes. The `/api/sdk-config` routes answer `403` for a project that is not a browser project.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/api/sdk-config/rules` | Rules in order, plus the poll interval |
 | POST | `/api/sdk-config/rules` | Create a rule: `{name, enabled, conditions, settings}`; at most 50 per project |
 | PUT | `/api/sdk-config/rules/reorder` | `{ids}`, every rule once |
-| PUT, DELETE | `/api/sdk-config/rules/:id` | Update, delete |
+| PUT, DELETE | `/api/sdk-config/rules/:id` | Update (the same body, plus an optional `expectedUpdatedAt` that answers `409` when the rule changed since that read; required for agent credentials), delete |
 | POST | `/api/sdk-config/preview` | `{attributes, instanceUid?}` → the document such a client gets, its hash, and the rules and captures it matched |
-| GET, POST | `/api/sdk-config/captures` | Active captures followed by recent expired captures (up to 50, cancelled captures omitted) / start one: `{target: {kind, key?, value}, durationMinutes, lookbackSeconds?, replay?}` with kind `instance`, `user`, `session` or `attribute` |
+| GET, POST | `/api/sdk-config/captures` | Up to 50 captures: the active ones, then the most recent expired and cancelled ones, newest first in each group, each with `active` and a `status` (see [Capture status](#capture-status)) / start one: `{target: {kind, key?, value}, durationMinutes, lookbackSeconds?, replay?}` with kind `instance`, `user`, `session` or `attribute` |
 | DELETE | `/api/sdk-config/captures/:id` | Cancel a capture |
 | GET | `/api/sessions/:id/timeline?from=&to=` | A session's breadcrumbs from its log records and spans, for a window of at most 3 hours |
 
@@ -303,7 +308,10 @@ Preview shows the **server overlay for the attributes you entered**, not proof o
 - **Applied · awaiting data:** a matching browser acknowledged the current configuration hash as applied.
 - **Collecting:** tagged log/span data has reached Traceway.
 - **Expired · no data received:** the capture ended without tagged data reaching Traceway.
-- **Completed / Cancelled:** capture history remains visible after its active period.
+- **Completed:** the capture ended after tagged data reached Traceway.
+- **Cancelled:** someone cancelled the capture.
+
+Expired and cancelled captures stay in the list after the active ones, which shows up to 50 captures in all.
 
 These statuses reflect at least one matching browser, not every member of a cohort. They survive server restarts and work across instances sharing the main database. The dashboard refreshes status every 15 seconds while visible. A suspended or closed browser cannot acknowledge; clients already under capture poll every minute. External-only logs/spans cannot be confirmed by Traceway, so “no data received” does not prove the external platform received nothing.
 

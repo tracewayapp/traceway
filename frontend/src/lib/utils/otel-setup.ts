@@ -566,3 +566,20 @@ end`,
 			];
 	}
 }
+
+const LEGACY_GO_GUIDE: Partial<Record<string, string>> = {
+	gin: 'gin',
+	chi: 'chi',
+	fiber: 'fiber',
+	stdlib: 'nethttp',
+	fasthttp: 'nethttp'
+};
+
+/** The language and framework the setup guide opens on for a project created for the retired Go SDK. */
+export function legacyOtelGuide(
+	framework: string
+): { target: OtelTargetId; framework?: string } | null {
+	if (framework === 'custom') return { target: 'go' };
+	const goFramework = LEGACY_GO_GUIDE[framework];
+	return goFramework ? { target: 'go', framework: goFramework } : null;
+}

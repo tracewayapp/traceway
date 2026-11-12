@@ -71,7 +71,7 @@ All field names mirror the browser, Android, and Flutter SDKs so existing config
 | `captureDeviceInfo` | `boolean` | `true` | Auto-collect `device.locale` and `runtime.engine` and attach them to every report (see [Attributes](#1-device-info-auto-collected)) |
 | `eventsWindowMs` | `number` | `10000` | Rolling window kept in the log/action buffers (ms) |
 | `eventsMaxCount` | `number` | `200` | Hard cap applied independently to logs and actions |
-| `distributedTraceHosts` | `Array<string \| RegExp>` | `[]` | Hosts that receive an outgoing `traceway-trace-id` header, so a server-side capture links back to the client request that caused it. React Native has no `window.location.origin` to infer from, so unlike the browser SDK this is opt-in: list your own backend hosts, e.g. `["api.example.com"]`. Each entry is an exact hostname or a `RegExp` tested against the URL host |
+| `distributedTraceHosts` | `Array<string \| RegExp>` | `[]` | Hosts that receive an outgoing `traceway-trace-id` header. Traceway no longer uses that id, so it links nothing; see [Distributed Tracing](#distributed-tracing). Each entry is an exact hostname or a `RegExp` tested against the URL host |
 | `captureHttpServerErrors` | `boolean` | `false` | Also report every `fetch` / XHR response with `status >= 500` as a synthetic exception, on top of the network action already recorded. 4xx is deliberately excluded (see `DEFAULT_IGNORE_PATTERNS`) |
 
 ```tsx
@@ -90,29 +90,7 @@ The `DEFAULT_IGNORE_PATTERNS` export contains the built-in `ignoreErrors` list (
 
 ## Distributed Tracing
 
-By default the SDK injects nothing into outgoing requests. List your backend hosts in `distributedTraceHosts` to turn it on:
-
-```tsx
-<TracewayProvider
-  connectionString="your-token@https://traceway.example.com/api/report"
-  options={{ distributedTraceHosts: ["api.example.com", /\.internal\.example\.com$/] }}
->
-  <RootNavigator />
-</TracewayProvider>
-```
-
-Each matching `fetch` call gets a `traceway-trace-id` header carrying a fresh id. If your backend reports an error while handling that request, both sides carry the same id and you can jump from the mobile exception to the server one. Entries are matched against the URL's host, so include the port when the URL has one (`"localhost:3000"`). `XMLHttpRequest` calls are still recorded as network actions, but they do not get the header, so route traffic you want linked through `fetch`.
-
-`getActiveDistributedTraceId()` returns the id of the instrumented `fetch` currently in flight, and `null` when there is none. Use it to put that same id on work you kick off from inside such a request (a WebSocket handshake, a native module, a client the SDK does not wrap):
-
-```ts
-import { DISTRIBUTED_TRACE_HEADER, getActiveDistributedTraceId } from "@tracewayapp/react-native";
-
-const traceId = getActiveDistributedTraceId();
-if (traceId) {
-  headers[DISTRIBUTED_TRACE_HEADER] = traceId;
-}
-```
+The SDK can add a `traceway-trace-id` header to the app's `fetch` calls to the hosts listed in `distributedTraceHosts` (off by default), and `getActiveDistributedTraceId()` returns the id of the instrumented `fetch` currently in flight. Traceway no longer uses that id: it is ignored on the exceptions the SDK reports, and the `traceway.distributed_trace_id` span attribute a backend could set from the header no longer joins traces (see [Upgrading to the V2 trace tables](/server/upgrade-v2-tables)). A mobile exception is therefore not linked to the backend request that failed. It still carries its attributes and the logs and actions recorded before it. Leave `distributedTraceHosts` empty, and remove backend code that only existed to read the header.
 
 ## Logs & Actions
 

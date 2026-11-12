@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/controllers/opampcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/controllers/otelcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/opampcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/otelcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
 
 	"github.com/gin-gonic/gin"
 )

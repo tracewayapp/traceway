@@ -3,7 +3,7 @@ package controllers
 import (
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func TestUniqueSegmentFilesKeepsOneRowPerFile(t *testing.T) {

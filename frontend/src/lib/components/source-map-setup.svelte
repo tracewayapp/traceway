@@ -11,6 +11,7 @@
 	import CopyButton from '$lib/components/traceway/copy-button.svelte';
 	import CopyableCodeBlock from '$lib/components/setup/copyable-code-block.svelte';
 	import { projectsState, isProjectReadonly } from '$lib/state/projects.svelte';
+	import { REPLAY_BLOCK_CLASS } from '$lib/utils/self-monitoring';
 
 	type Bundler = 'vite' | 'rollup' | 'webpack';
 
@@ -165,7 +166,8 @@ traceway {
 		<div>
 			<p class="mb-2 text-sm font-medium">Upload Token</p>
 			<div class="flex items-center gap-2">
-				<code class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all"
+				<code
+					class="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-all {REPLAY_BLOCK_CLASS}"
 					>{sourceMapToken}</code
 				>
 				<CopyButton text={sourceMapToken ?? ''} />
@@ -190,7 +192,7 @@ traceway {
 			</div>
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 2: Upload the symbols after each release build</p>
-				<CopyableCodeBlock code={flutterUploadCommand} language={bash} />
+				<CopyableCodeBlock code={flutterUploadCommand} language={bash} secret />
 				<p class="mt-2 text-xs text-muted-foreground">
 					Run from your project root after each release. The uploader auto-discovers build/symbols
 					and pushes every architecture in one go; symbols are unique per build, so re-upload on
@@ -210,7 +212,7 @@ traceway {
 			</div>
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 2: Upload the dSYM after each release build</p>
-				<CopyableCodeBlock code={iosUploadCommand} language={bash} />
+				<CopyableCodeBlock code={iosUploadCommand} language={bash} secret />
 				<p class="mt-2 text-xs text-muted-foreground">
 					Upload the Mach-O DWARF inside the .dSYM bundle. Symbols are keyed by build UUID, so
 					re-upload on each release.
@@ -219,7 +221,7 @@ traceway {
 		{:else if isAndroid}
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 1: Apply the Traceway symbols Gradle plugin</p>
-				<CopyableCodeBlock code={androidSetupSnippet} language={javascript} />
+				<CopyableCodeBlock code={androidSetupSnippet} language={javascript} secret />
 				<p class="mt-2 text-xs text-muted-foreground">
 					Add to your app module's <code class="font-mono">build.gradle.kts</code>. The plugin
 					embeds a ProGuard UUID into BuildConfig (matching Honeycomb's
@@ -269,7 +271,7 @@ traceway {
 				<p class="mb-2 text-sm font-medium">
 					{showBundlerSetup ? 'Step 3: Upload after your production build' : 'Usage'}
 				</p>
-				<CopyableCodeBlock code={uploadCommand} language={bash} />
+				<CopyableCodeBlock code={uploadCommand} language={bash} secret />
 			</div>
 		{/if}
 	</div>

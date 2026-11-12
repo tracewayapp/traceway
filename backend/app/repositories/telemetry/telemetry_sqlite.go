@@ -2,7 +2,7 @@
 
 package telemetry
 
-import sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlite"
+import sqliterepo "github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlite"
 
 var (
 	AiTraceRepository             = sqliterepo.AiTraceRepository

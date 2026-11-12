@@ -18,12 +18,13 @@ import (
 	"github.com/open-telemetry/opamp-go/client"
 	"github.com/open-telemetry/opamp-go/client/types"
 	"github.com/open-telemetry/opamp-go/protobufs"
-	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -171,6 +172,23 @@ func TestPollDeliversMatchingRulesOnceAndHeartbeat(t *testing.T) {
 	}
 }
 
+func TestPollComparesStoredNumericStringsAsNumbers(t *testing.T) {
+	f := newOpampFixture(t)
+	f.rule("Wide screens", `{"all":[{"key":"screen.width","op":"gte","value":"1200"}]}`, `{"replay":{"mode":"stream"}}`)
+	poll := func(width string) map[string]any {
+		description := browserDescription("2.0.0")
+		description.NonIdentifyingAttributes = append(description.NonIdentifyingAttributes, stringKV("screen.width", width))
+		uid := uuid.Must(uuid.NewV7())
+		return remoteDocument(t, f.poll(&protobufs.AgentToServer{InstanceUid: uid[:], Capabilities: sdkCapabilities, AgentDescription: description}))
+	}
+	if doc := poll("1440"); doc["replay"] == nil {
+		t.Fatalf("a rule stored with a numeric string did not match a wider screen: %v", doc)
+	}
+	if doc := poll("800"); doc["replay"] != nil {
+		t.Fatalf("a rule stored with a numeric string matched a narrower screen: %v", doc)
+	}
+}
+
 func TestPollWithoutDescriptionAsksForFullState(t *testing.T) {
 	f := newOpampFixture(t)
 	uid := uuid.Must(uuid.NewV7())
@@ -204,7 +222,7 @@ func TestPollGivesCapturedClientsAShortHeartbeat(t *testing.T) {
 	description.IdentifyingAttributes = append(description.IdentifyingAttributes, stringKV("service.instance.id", uid.String()))
 	resp := f.poll(&protobufs.AgentToServer{InstanceUid: uid[:], Capabilities: sdkCapabilities, AgentDescription: description})
 	captures := remoteDocument(t, resp)["captures"].([]any)
-	if len(captures) != 1 || resp.ConnectionSettings.Opamp.HeartbeatIntervalSeconds != captureHeartbeat {
+	if len(captures) != 1 || resp.ConnectionSettings.Opamp.HeartbeatIntervalSeconds != sdkconfig.CaptureHeartbeatSeconds {
 		t.Fatalf("captured client got %v with heartbeat %d", captures, resp.ConnectionSettings.Opamp.HeartbeatIntervalSeconds)
 	}
 	readProgress := func() *models.SdkCapture {

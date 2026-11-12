@@ -3,7 +3,7 @@ package services
 import (
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 var defaultHealthcheckPaths = map[string]bool{

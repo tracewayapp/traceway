@@ -2,7 +2,7 @@
 
 import { Callout } from "nextra/components";
 
-`traceway` is a command-line client for the Traceway HTTP API: exceptions, logs, endpoints, tasks, traces, metrics, monitors, alerts, on-call pages and post-mortems from a terminal. It is read only. Changes go through the separate `traceway-write` CLI described in [Agent Write Access](/learn/agent-write-access). It is designed to be first-class for both humans (with `gh`-style ergonomics) and LLM agents invoking it via shell tools: JSON output when piped, stable error identifiers and exit codes, and nothing that hangs waiting for input. For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
+`traceway` is a command-line client for the Traceway HTTP API: exceptions, logs, endpoints, tasks, traces, metrics, monitors, alerts, on-call pages, post-mortems and remote SDK config rules from a terminal. It is read only. Changes go through the separate `traceway-write` CLI described in [Agent Write Access](/learn/agent-write-access). It is designed to be first-class for both humans (with `gh`-style ergonomics) and LLM agents invoking it via shell tools: JSON output when piped, stable error identifiers and exit codes, and nothing that hangs waiting for input. For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
 
 ## Installation
 
@@ -78,6 +78,8 @@ The default `traceway login` runs a browser device flow with an auto-refreshing 
 | `traceway alerts list` | Alert rules with their enabled and snoozed state |
 | `traceway monitors {list,show}` | Uptime monitors and their incidents |
 | `traceway post-mortems {list,show}` | Post-mortem documents (`--search`, `--tag`) |
+| `traceway opamp rules list` | A browser project's [remote SDK config](/learn/remote-config) rules, in order, with their `updatedAt` |
+| `traceway opamp preview --file client.json` | The settings document the saved rules give a client: `{"attributes": {...}, "instanceUid": "..."}` from a file, or `-` for stdin |
 | `traceway mcp` | Serve the [MCP server](/learn/mcp) over stdio |
 
 Run `traceway <command> --help` for full per-command flags.
@@ -136,7 +138,7 @@ The `error` field is a stable snake_case identifier that scripts and LLMs can br
 
 ## Write commands
 
-`traceway` changes nothing. Its write commands (`exceptions archive`, `pages ack`, `alerts snooze` and the rest) exist only in `traceway-write`, a separate binary with its own login. Running one of them in `traceway` fails with `write_required` (exit 2). Install the write CLI with:
+`traceway` changes nothing. Its write commands (`exceptions archive`, `pages ack`, `alerts snooze` and the rest) exist only in `traceway-write`, a separate binary with its own login. Running one of them in `traceway` fails with `write_required` (exit 2). `opamp rules create`, `update`, `delete` and `reorder`, which change remote SDK config rules, are also only in `traceway-write`. Install the write CLI with:
 
 ```bash
 curl -fsSL https://cli.tracewayapp.com/install.sh | sh -s -- --write

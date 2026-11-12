@@ -159,12 +159,16 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 // FindBySessionId returns a browser session's log records in a time window, oldest first; it reads through the
 // materialized session_id column and its bloom filter.
 func (r *logRecordRepository) FindBySessionId(ctx context.Context, projectId uuid.UUID, sessionId string, from, to time.Time, limit int) ([]models.LogRecord, error) {
+	// timestamp_date prunes partitions, timestamp alone cannot; the day of slack is the same as in buildWhere.
 	query := `SELECT ` + chLogRecordColumns + `
 	FROM log_records
-	WHERE project_id = ? AND session_id = ? AND timestamp >= ? AND timestamp <= ?
+	WHERE project_id = ? AND session_id = ? AND timestamp_date >= ? AND timestamp_date <= ?
+		AND timestamp >= ? AND timestamp <= ?
 	ORDER BY timestamp ASC LIMIT ?`
 
-	rows, err := chdb.Conn.Query(ctx, query, projectId, sessionId, from.UTC(), to.UTC(), limit)
+	rows, err := chdb.Conn.Query(ctx, query, projectId, sessionId,
+		from.UTC().AddDate(0, 0, -1).Format(time.DateOnly), to.UTC().AddDate(0, 0, 1).Format(time.DateOnly),
+		from.UTC(), to.UTC(), limit)
 	if err != nil {
 		return nil, err
 	}

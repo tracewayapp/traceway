@@ -47,7 +47,7 @@ Inside the SDK:
 - **rrweb** records session replay. It is only loaded when replay is not off.
 - **The OpAMP client** polls Traceway for the settings document and remembers the last one in `localStorage`, so the next page starts with it.
 
-The OpAMP endpoint evaluates rules from each poll's complete client description, so any backend instance can answer any browser. Rules, captures, and their first delivery/application/data-receipt timestamps live in the shared main database. Compiled rules are cached per project; polls matching an active capture also record its progress. A cache miss or the two-minute cache expiry reloads the configuration.
+The OpAMP endpoint evaluates rules from each poll's complete client description, so any backend instance can answer any browser. Rules, captures, and their first delivery/application/data-receipt timestamps live in the shared main database. Compiled rules are cached per project; polls and data matching an active capture also record its progress, in the background and once per stage. A cache miss or the two-minute cache expiry reloads the configuration.
 
 ## Three modes
 

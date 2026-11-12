@@ -2,7 +2,6 @@ package otelcontrollers
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/app/captureprogress"
 	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -20,7 +19,6 @@ import (
 	"github.com/tracewayapp/traceway/backend/app/profiling"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/services"
 	"github.com/tracewayapp/traceway/backend/app/storage"
 	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
@@ -174,7 +172,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 			}
 		}
 	}
-	markCaptureDataReceived(c, projectId, captureMetadata)
+	markCaptureDataReceived(projectId, captureMetadata)
 
 	if len(notStored) > 0 {
 		rejected := make(map[shared.SpanOwner]bool, len(notStored))
@@ -412,7 +410,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 			captureMetadata = append(captureMetadata, ids)
 		}
 	}
-	markCaptureDataReceived(c, projectId, captureMetadata)
+	markCaptureDataReceived(projectId, captureMetadata)
 
 	if len(exceptions) > 0 {
 		if err := telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
@@ -508,7 +506,7 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 	writeProfilesResponse(c)
 }
 
-func markCaptureDataReceived(ctx context.Context, projectId uuid.UUID, metadata []string) {
+func markCaptureDataReceived(projectId uuid.UUID, metadata []string) {
 	ids := map[uuid.UUID]bool{}
 	for _, raw := range metadata {
 		if raw == "" || len(raw) > 4096 {
@@ -527,18 +525,7 @@ func markCaptureDataReceived(ctx context.Context, projectId uuid.UUID, metadata 
 			}
 		}
 	}
-	if len(ids) == 0 {
-		return
-	}
-	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
-		for id := range ids {
-			if err := transactional.SdkConfigRepository.MarkCaptureProgress(tx, projectId, id, "received", time.Now().UTC()); err != nil {
-				return false, err
-			}
-		}
-		return true, nil
-	})
-	if err != nil {
-		traceway.CaptureExceptionContext(ctx, err)
+	for id := range ids {
+		captureprogress.Mark(projectId, id, captureprogress.Received)
 	}
 }

@@ -216,12 +216,23 @@ func TestPollGivesCapturedClientsAShortHeartbeat(t *testing.T) {
 		}
 		return rows[0]
 	}
-	if row := readProgress(); row.DeliveredAt == nil || row.AppliedAt != nil {
+	// Progress is written in the background after the poll is answered.
+	waitForProgress := func(reached func(*models.SdkCapture) bool) *models.SdkCapture {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			row := readProgress()
+			if reached(row) || time.Now().After(deadline) {
+				return row
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	if row := waitForProgress(func(r *models.SdkCapture) bool { return r.DeliveredAt != nil }); row.DeliveredAt == nil || row.AppliedAt != nil {
 		t.Fatalf("delivery acknowledged too early: %+v", row)
 	}
 	f.poll(&protobufs.AgentToServer{InstanceUid: uid[:], Capabilities: sdkCapabilities, AgentDescription: description,
 		RemoteConfigStatus: &protobufs.RemoteConfigStatus{LastRemoteConfigHash: resp.RemoteConfig.ConfigHash, Status: protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED}})
-	if row := readProgress(); row.AppliedAt == nil || row.ReceivedAt != nil {
+	if row := waitForProgress(func(r *models.SdkCapture) bool { return r.AppliedAt != nil }); row.AppliedAt == nil || row.ReceivedAt != nil {
 		t.Fatalf("incorrect applied state: %+v", row)
 	}
 }

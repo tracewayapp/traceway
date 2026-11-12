@@ -145,7 +145,7 @@ func (sdkConfigController) CreateRule(c *gin.Context) {
 		position = existing[n-1].Position + 1
 	}
 	userId := middleware.GetUserId(c)
-	now := time.Now().UTC()
+	now := ruleTimestamp()
 	rule := &models.SdkConfigRule{
 		ProjectId:  projectId,
 		Name:       strings.TrimSpace(req.Name),
@@ -165,6 +165,12 @@ func (sdkConfigController) CreateRule(c *gin.Context) {
 	rule.Id = id
 	invalidateSdkConfigOnCommit(c, projectId)
 	c.JSON(http.StatusCreated, rule)
+}
+
+// ruleTimestamp is microsecond-precise because Postgres stores no more: a nanosecond updatedAt in a response would
+// never equal the stored one, so an agent sending it back as expectedUpdatedAt would get a 409.
+func ruleTimestamp() time.Time {
+	return time.Now().UTC().Truncate(time.Microsecond)
 }
 
 func ruleIdParam(c *gin.Context) (int, bool) {
@@ -230,7 +236,7 @@ func (sdkConfigController) UpdateRule(c *gin.Context) {
 	}
 	rule.Conditions = conditions
 	rule.Settings = settings
-	rule.UpdatedAt = time.Now().UTC()
+	rule.UpdatedAt = ruleTimestamp()
 	if err := transactional.SdkConfigRepository.UpdateRule(tx, rule); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update SDK config rule: %w", err))
 		return

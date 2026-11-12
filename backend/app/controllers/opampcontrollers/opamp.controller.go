@@ -1,12 +1,12 @@
 // Package opampcontrollers evaluates each poll from its complete client description, so any replica can answer.
-// Capture delivery and application acknowledgements are persisted in the shared main database.
+// Capture delivery and application acknowledgements are written to the shared main database in the background
+// (captureprogress), so a poll never waits on it.
 package opampcontrollers
 
 import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,12 +20,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/open-telemetry/opamp-go/protobufs"
 	"github.com/tracewayapp/traceway/backend/app/cache"
+	"github.com/tracewayapp/traceway/backend/app/captureprogress"
 	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/hooks"
 	"github.com/tracewayapp/traceway/backend/app/middleware"
 	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/app/sdkconfig"
 	"github.com/tracewayapp/traceway/backend/app/traceway"
 	"google.golang.org/protobuf/proto"
@@ -163,25 +162,15 @@ func (opampController) Poll(c *gin.Context) {
 		}
 	}
 	if acceptsRemoteConfig && len(result.MatchedCaptures) > 0 {
-		stage := "delivered"
+		stage := captureprogress.Delivered
 		if bytes.Equal(msg.RemoteConfigStatus.GetLastRemoteConfigHash(), hash) &&
 			msg.RemoteConfigStatus.GetStatus() == protobufs.RemoteConfigStatuses_RemoteConfigStatuses_APPLIED {
-			stage = "applied"
+			stage = captureprogress.Applied
 		}
-		_, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (bool, error) {
-			for _, value := range result.MatchedCaptures {
-				id, err := uuid.Parse(value)
-				if err != nil {
-					continue
-				}
-				if err := transactional.SdkConfigRepository.MarkCaptureProgress(tx, projectId, id, stage, time.Now().UTC()); err != nil {
-					return false, err
-				}
+		for _, value := range result.MatchedCaptures {
+			if id, err := uuid.Parse(value); err == nil {
+				captureprogress.Mark(projectId, id, stage)
 			}
-			return true, nil
-		})
-		if err != nil {
-			traceway.CaptureExceptionContext(c, err)
 		}
 	}
 	write(c, resp)

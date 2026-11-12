@@ -198,7 +198,7 @@ In the browser, `Traceway.getInstanceId()` returns the device id to capture or p
 | `OPAMP_POLL_INTERVAL_SECONDS` | How often browsers poll, default `300`, between 60 and 86400. Every open tab of every instrumented app polls, so this is a load setting. Clients under a capture poll every 60 seconds whatever it says |
 | `OPAMP_MAX_CONCURRENT` | Polls processed at once, default 4 × CPU cores (at least 8). Its own gate, so polls and ingest cannot starve each other; above it a poll answers 503 with `Retry-After: 60` and the browser keeps its settings |
 | Routes | `POST /api/otel/v1/opamp` and `POST /api/recordings`, both under `/api`, so existing proxy rules cover them |
-| Load | One small protobuf request per open tab per interval. A poll reads its rules from an in-memory cache; only a client matched by an active capture also writes the capture's progress (delivered, applied, data received) to the main database |
+| Load | One small protobuf request per open tab per interval. A poll reads its rules from an in-memory cache. A capture's progress (delivered, applied, data received) is written to the main database in the background, once per stage, so polls and ingest never wait on it |
 | Several instances | On Postgres, saving a rule or a capture refreshes the cache on every instance; any instance can answer any browser |
 | Content Security Policy | `connect-src` must allow the Traceway origin, as it already must for telemetry |
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/tracewayapp/traceway/backend/app/db"
 	"github.com/tracewayapp/traceway/backend/app/models"
@@ -69,8 +70,19 @@ func TestSDKConfigAgentPermissionsAndLifecycle(t *testing.T) {
 	}
 	rule["expectedUpdatedAt"] = saved.UpdatedAt
 	rule["enabled"] = false
-	if rec := f.do(t, write, http.MethodPut, path, rule); rec.Code != http.StatusOK {
-		t.Fatalf("update: %d %s", rec.Code, rec.Body.String())
+	updated := f.do(t, write, http.MethodPut, path, rule)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", updated.Code, updated.Body.String())
+	}
+	var afterUpdate models.SdkConfigRule
+	if err := json.Unmarshal(updated.Body.Bytes(), &afterUpdate); err != nil {
+		t.Fatal(err)
+	}
+	// Postgres stores microseconds: a finer updatedAt sent back as expectedUpdatedAt would always conflict there.
+	for _, at := range []time.Time{saved.UpdatedAt, afterUpdate.UpdatedAt} {
+		if at.Nanosecond()%1000 != 0 {
+			t.Errorf("updatedAt %s is finer than a microsecond", at.Format(time.RFC3339Nano))
+		}
 	}
 	if rec := f.do(t, write, http.MethodPut, path, rule); rec.Code != http.StatusConflict {
 		t.Fatalf("stale update: %d %s", rec.Code, rec.Body.String())

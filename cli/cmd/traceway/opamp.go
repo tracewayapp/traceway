@@ -12,7 +12,7 @@ import (
 	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
-func readOpampJSON(cmd *cobra.Command, target any) error {
+func readJSONFile(cmd *cobra.Command, target any) error {
 	path, _ := cmd.Flags().GetString("file")
 	r := cmd.InOrStdin()
 	if path != "-" {
@@ -34,11 +34,11 @@ func readOpampJSON(cmd *cobra.Command, target any) error {
 	return nil
 }
 
-func opampUsageError(cmd *cobra.Command, err error) error {
+func jsonFileUsageError(cmd *cobra.Command, err error) error {
 	return renderUsageError(cmd.ErrOrStderr(), output.ResolveMode(flagOutput, output.StdoutIsTerminal()), err.Error(), cmd.CommandPath()+" --help")
 }
 
-func addOpampFileFlag(cmd *cobra.Command) {
+func addJSONFileFlag(cmd *cobra.Command) {
 	cmd.Flags().String("file", "", "JSON request file, or - for stdin")
 	_ = cmd.MarkFlagRequired("file")
 }
@@ -58,15 +58,15 @@ func newOpampCmd() *cobra.Command {
 		Use: "preview", Short: "Preview saved rules for client attributes, including plan limits; does not write", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var in client.SDKConfigPreviewInput
-			if err := readOpampJSON(cmd, &in); err != nil {
-				return opampUsageError(cmd, err)
+			if err := readJSONFile(cmd, &in); err != nil {
+				return jsonFileUsageError(cmd, err)
 			}
 			return runRaw(cmd, func(ctx context.Context, c *client.Client, projectID string) (json.RawMessage, error) {
 				return c.PreviewSDKConfig(ctx, projectID, in)
 			}, nil)
 		},
 	}
-	addOpampFileFlag(preview)
+	addJSONFileFlag(preview)
 	cmd.AddCommand(rules, preview)
 	return cmd
 }

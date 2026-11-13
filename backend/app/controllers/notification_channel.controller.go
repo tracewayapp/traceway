@@ -41,6 +41,7 @@ func (ctrl *notificationChannelController) List(ctx *gin.Context) {
 
 type createChannelRequest struct {
 	Name        string          `json:"name"`
+	Enabled     *bool           `json:"enabled"`
 	ChannelType string          `json:"channelType"`
 	Config      json.RawMessage `json:"config"`
 }
@@ -141,6 +142,10 @@ func (ctrl *notificationChannelController) Create(ctx *gin.Context) {
 		UpdatedAt:   now,
 	}
 
+	if req.Enabled != nil {
+		channel.Enabled = *req.Enabled
+	}
+
 	id, err := transactional.NotificationChannelRepository.Create(tx, channel)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to create notification channel: %w", err))
@@ -204,6 +209,9 @@ func (ctrl *notificationChannelController) Update(ctx *gin.Context) {
 		return
 	}
 
+	if req.Enabled != nil {
+		existing.Enabled = *req.Enabled
+	}
 	existing.Name = req.Name
 	existing.ChannelType = req.ChannelType
 	existing.Config = req.Config

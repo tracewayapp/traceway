@@ -4,7 +4,7 @@ Traceway speaks [MCP](https://modelcontextprotocol.io) in two ways: the `tracewa
 
 The server is a thin layer over the same API client the CLI uses, and it ships the same operator playbooks the Traceway skill contains, exposed as MCP resources and prompts. One binary, one login, three surfaces.
 
-Both servers described here are read only. A separate write server (`/mcp/write`, or `traceway-write mcp`) adds tools that archive issues, acknowledge pages, snooze alerts, edit post-mortems and change remote SDK config rules, behind write credentials and an organization opt-in. See [Agent Write Access](/learn/agent-write-access).
+Both servers described here are read only. A separate write server (`/mcp/write`, or `traceway-write mcp`) adds tools that configure alert channels/rules, teams, schedules, escalation policies, personal delivery and dashboards, archive issues, acknowledge pages, snooze alerts, edit post-mortems and change remote SDK config rules, behind write credentials and an organization opt-in. See [Agent Write Access](/learn/agent-write-access).
 
 ## Remote server (zero install)
 
@@ -80,7 +80,9 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `get_endpoint_request` | One request: span waterfall + linked errors |
 | `endpoints_chart` | Latency over time (find when it changed) |
 | `get_slow_endpoint_config` | Operator-accepted latency baseline |
-| `query_metrics` | Time-bucketed metric series |
+| `query_metrics` | Time-bucketed metric series, including `rate` and `last` |
+| `discover_metrics` | Recorded names, types, units, tag keys; optional `name` + `key` for tag values |
+| `list_dashboards` / `dashboard_library` / `export_dashboard` | Applied dashboards, organization-wide assignments and importable JSON |
 | `get_task` / `get_ai_trace` / `get_session` / `get_trace` | By-id detail lookups |
 | `list_pages` / `get_page` | On-call pages and their delivery log |
 | `list_notification_rules` | Alert rules, enabled and snoozed state |
@@ -89,7 +91,7 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `list_sdk_config_rules` | A browser project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
 | `preview_sdk_config` | The settings document saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live browser applied |
 
-The write server adds `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
+The write server adds `import_dashboards`, `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
 
 Project selection is per call: every project-scoped tool accepts a `project_id` parameter and falls back to the CLI's current project.
 
@@ -126,3 +128,14 @@ The same guide ships as the `traceway-learn` skill, installed with the other ski
 ## Errors
 
 Tool errors carry the CLI's stable error codes in the text, formatted as `error=<code>: <message>. Hint: <hint>`, so agents can branch on `token_expired`, `not_found`, `rate_limited`, `no_project`, and friends. A `forbidden` error carries the server's reason, such as a read-only credential or agent writes being turned off.
+
+## Dashboard authoring
+
+The write server exposes `traceway://knowledge/dashboard-building`, a guide for turning instrumented code into useful charts. `import_dashboards` accepts a dashboard document or bundle in `data`, optional `mode` (`create` or `upsert`), and `project_id`. It validates the document before writing. Upserts replace shared dashboards by organization-wide name without concurrent-edit protection; inspect `dashboard_library` and `export_dashboard` first. See [Dashboards](/learn/dashboards#mcp-workflow) for complete tool arguments and the verification workflow.
+
+
+## Alerting configuration knowledge
+
+The write server exposes channel/rule, team/schedule/override, escalation-policy, contact-method and personal-notification-chain tools. Their read counterparts are available on the read server. See [Alerts](/learn/alerts#configure-alerting-with-the-cli-or-mcp) and [On-Call](/learn/on-call#configure-on-call-with-the-cli-or-mcp) for exact names and examples. Mutations require `project_id` for Agent Access and audit context, including organization and personal settings. Organization resources additionally use integer `organization_id`; JSON payloads go in `data`.
+
+Focused resources under `traceway://knowledge/` are `write-setup`, `alert-configuration`, `oncall-configuration`, `personal-notifications`, `incident-actions`, `dashboard-building` and `sdk-configuration`. The write skill routes to the same Markdown files, so agents can load only the relevant schema and workflow. The learn resources explain product behavior, while these configuration guides explain how to apply changes and verify the result.

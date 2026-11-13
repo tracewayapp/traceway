@@ -43,7 +43,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newAiTracesCmd())
 	cmd.AddCommand(newSessionsCmd())
 	cmd.AddCommand(newTracesCmd())
-	cmd.AddCommand(newMetricsCmd())
+	cmd.AddCommand(newMetricsCmd(), newDashboardsCmd())
 	cmd.AddCommand(newPagesCmd())
 	cmd.AddCommand(newAlertsCmd())
 	cmd.AddCommand(newOpampCmd())

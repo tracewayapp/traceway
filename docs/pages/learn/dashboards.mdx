@@ -90,11 +90,11 @@ Every dashboard is a single JSON document. Widget order in the array is the disp
 **Export/Import** round-trips the same document. Import accepts a single dashboard or a whole-organization bundle, and the API supports an upsert mode that matches dashboards by name, so a CI job can keep dashboards in sync from files in your repository:
 
 ```bash
-curl -X POST "$TRACEWAY_URL/api/dashboards/import?projectId=$PROJECT_ID" \
-  -H "Authorization: Bearer $TRACEWAY_PAT" \
-  -H "Content-Type: application/json" \
-  -d "{\"mode\": \"upsert\", \"data\": $(cat system.dashboard.json)}"
+traceway-write dashboards validate --file system.dashboard.json
+traceway-write dashboards import --file system.dashboard.json --mode upsert --yes
 ```
+
+This requires [agent write access](/learn/agent-write-access).
 
 Widget `id`s are server-generated stable strings; keep them when editing so homepage stars survive, or omit them and they are regenerated.
 
@@ -121,15 +121,73 @@ Anything that cannot be converted faithfully is reported instead of silently dro
 | Line Chart | Trends over time (CPU usage, request rate) |
 | Area Chart | Volume over time with filled area |
 | Stacked Area | Composition of a total across series |
-| Bar Chart | Comparing values across time intervals |
+| Bar Chart | Compare the latest bucket of each source/group |
 | Single Value | Current or aggregated value at a glance |
 | Gauge | A value against thresholds |
-| Table | Tabular view of metric values |
+| Table | Latest, minimum, maximum and average of the first series |
 
-Each widget has one or more **sources**: a metric name (auto-discovered from your project), an aggregation (`avg`, `min`, `max`, `sum`, `count`, `last`), optional tag filters, and an optional group-by that splits the chart into one series per tag value. Multiple sources overlay on the same chart.
+Each widget has one or more **sources**: a metric name (auto-discovered from your project), an aggregation (`avg`, `min`, `max`, `sum`, `count`, `last`, `rate`), optional tag filters, and an optional group-by that splits the chart into one series per tag value. Multiple sources overlay on the same chart.
 
 <img src="/dashboards/dashboards-new-widget.png" alt="Widget editor" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 ## Starring widgets
 
 The star on any widget pins it to that project's homepage, where you can resize and reorder your starred set. Stars are per project, so each project curates its own homepage even when dashboards are shared.
+
+
+## Build dashboards with the CLI or an AI agent
+
+Ask an agent with the `traceway-write` skill to inspect your instrumented codebase and build charts for its important operations. The skill's separate `dashboard-building.md` guide explains all seven chart types, counter/gauge/histogram semantics, JSON configuration and verification. The same guide is available from the write MCP server as `traceway://knowledge/dashboard-building`.
+
+Start by confirming which metrics actually arrived:
+
+```bash
+traceway-write metrics discover --since 24h --output json
+traceway-write metrics discover --name jobs.completed --key outcome --since 24h --output json
+traceway-write metrics query --name jobs.completed --aggregation rate --group-by outcome --since 24h --output json
+traceway-write dashboards library --output json
+```
+
+Replace the example names with names found in your application and discovery results. Inspect metric declarations, recording sites, units, attributes and exporter configuration. Spans and logs do not automatically create metrics. Match each chart to a question: incoming work, completions, failures, dependency latency or capacity. Use `rate` for cumulative counters, `max` or `last` for backlog/saturation, and bounded groups such as queue, outcome or instance. Delta values need different treatment; `count` counts stored samples, not events. Histograms arrive as `.avg` and `.count` series; metric widgets cannot calculate latency percentiles or arbitrary formulas.
+
+Use line charts for trends, stacked areas for additive contributions with matching units, and gauges only where capacity is known. Single values and gauges reduce only the first series, so avoid grouping them. Tables also summarize only the first series. An empty query means no observations, not zero failures.
+
+Save an importable dashboard document as shown above, then validate and import it:
+
+```bash
+traceway-write dashboards validate --file system.dashboard.json
+traceway-write dashboards import --file system.dashboard.json --yes --output json
+traceway-write dashboards list --output json
+traceway-write dashboards export 42 --output json > system.saved.json
+```
+
+Use the returned dashboard ID instead of `42`. Validation runs offline without credentials and rejects malformed documents, unsupported schema versions/chart types/aggregations, missing metric sources and oversized widget configurations. Import runs the same validation before sending a write. The backend still checks authorization and persistence constraints; neither validation nor a successful import proves that a metric has data.
+
+The default `create` mode makes a new dashboard, suffixes duplicate names with ` (imported)`, and applies it to the selected project. It is not idempotent: list dashboards before retrying after an ambiguous timeout. `upsert` matches names case-insensitively across the selected project's organization and replaces the entire definition and description. Every assigned project sees the edit. Inspect `dashboards library` for `appliedProjectIds`, export the original, preserve unrelated widgets and widget IDs, and re-export before saving if someone else may have edited it. Upsert has no concurrent-edit check. Restore an earlier export with another upsert if needed.
+
+Agent imports use only the selected project's organization and apply to that project; body overrides of `organizationId` or `applyToProjectIds` are refused. Deleting dashboards or removing assignments still uses the UI.
+
+### MCP workflow
+
+Both MCP servers offer `discover_metrics`, `query_metrics`, `list_dashboards`, `dashboard_library` and `export_dashboard`. Only `/mcp/write` and `traceway-write mcp` expose `import_dashboards`. Pass the document as an object in `data`, not as a JSON string:
+
+```json
+{
+  "project_id": "<project-uuid>",
+  "mode": "create",
+  "data": {
+    "schemaVersion": 1,
+    "name": "Worker backlog",
+    "widgets": [{
+      "id": "queue_depth",
+      "title": "Peak queue depth",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [{"type": "metric", "name": "jobs.queue.depth", "aggregation": "max"}]
+      }
+    }]
+  }
+}
+```
+
+`data` can also be a bundle with `schemaVersion: 1` and a `dashboards` array. MCP uses the same validation and backend permission checks as CLI imports. After saving, export the returned ID and query each source with its exact aggregation, filters and grouping. Report any absent data or truncated groups rather than claiming the dashboard is verified.

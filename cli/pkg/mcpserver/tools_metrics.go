@@ -13,7 +13,7 @@ import (
 
 type metricQueryIn struct {
 	Name        string            `json:"name" jsonschema:"Metric name, e.g. system.cpu.utilization, system.memory.utilization, jvm.memory.used, go.memory.used. Histogram metrics are stored as <name>.avg and <name>.count."`
-	Aggregation string            `json:"aggregation,omitempty" jsonschema:"avg (default), sum, count, min, or max. p50/p95/p99 are rejected: the server has no quantile aggregation for metric points; latency percentiles come from list_endpoints."`
+	Aggregation string            `json:"aggregation,omitempty" jsonschema:"avg (default), sum, count, min, max, rate, or last. p50/p95/p99 are rejected: the server has no quantile aggregation for metric points; latency percentiles come from list_endpoints."`
 	TagFilters  map[string]string `json:"tag_filters,omitempty" jsonschema:"Exact-match tag filters, e.g. {host: web-1}."`
 	GroupBy     string            `json:"group_by,omitempty" jsonschema:"Tag key to split the series by; without it the series key is __all__."`
 }

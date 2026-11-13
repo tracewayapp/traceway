@@ -17,12 +17,12 @@ var (
 	// The server has no quantile aggregation for metric points: p50/p95/p99
 	// are silently computed as avg. The CLI accepts them for parity with the
 	// dashboard; the MCP server rejects them (see MetricAggregationsExact).
-	MetricAggregations = []string{"avg", "sum", "count", "min", "max", "p50", "p95", "p99"}
+	MetricAggregations = []string{"avg", "sum", "count", "min", "max", "rate", "last", "p50", "p95", "p99"}
 
 	// MetricAggregationsExact are the aggregations the server actually
 	// computes as named. Latency percentiles come from the endpoints
 	// endpoints, never from metrics/query.
-	MetricAggregationsExact = []string{"avg", "sum", "count", "min", "max"}
+	MetricAggregationsExact = []string{"avg", "sum", "count", "min", "max", "rate", "last"}
 )
 
 // orderByColumns maps the camelCase order-by values above to the column names

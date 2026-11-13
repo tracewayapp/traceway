@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -129,10 +130,27 @@ func oauthAccessToken(t *testing.T) string {
 	return oauthScopedAccessToken(t, "")
 }
 
+// Reuse a registered public client: the expanded contract suite otherwise
+// exhausts the production registration rate limit while requesting fresh tokens.
+var contractOAuthClient struct {
+	sync.Mutex
+	id string
+}
+
+func sharedOAuthClient(t *testing.T, redirectURI string) string {
+	t.Helper()
+	contractOAuthClient.Lock()
+	defer contractOAuthClient.Unlock()
+	if contractOAuthClient.id == "" {
+		contractOAuthClient.id = registerOAuthClient(t, redirectURI)
+	}
+	return contractOAuthClient.id
+}
+
 func oauthScopedAccessToken(t *testing.T, scope string) string {
 	t.Helper()
 	redirectURI := "http://127.0.0.1:47831/callback"
-	clientID := registerOAuthClient(t, redirectURI)
+	clientID := sharedOAuthClient(t, redirectURI)
 	verifier, challenge := pkcePair(t)
 	code := approveScopedCode(t, clientID, redirectURI, challenge, "mcp-state", scope)
 	status, body := exchangeCode(t, clientID, redirectURI, code, verifier)
@@ -394,8 +412,8 @@ func TestContract_mcpOverStreamableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 24 {
-		t.Errorf("got %d tools, want 24", len(tools.Tools))
+	if len(tools.Tools) != 40 {
+		t.Errorf("got %d tools, want 40", len(tools.Tools))
 	}
 	for _, tool := range tools.Tools {
 		if !tool.Annotations.ReadOnlyHint {
@@ -536,8 +554,8 @@ func TestContract_mcpWriteMount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 38 {
-		t.Errorf("/mcp/write tools = %d, want 38", len(tools.Tools))
+	if len(tools.Tools) != 82 {
+		t.Errorf("/mcp/write tools = %d, want 82", len(tools.Tools))
 	}
 
 	archive := func() (*mcp.CallToolResult, string) {

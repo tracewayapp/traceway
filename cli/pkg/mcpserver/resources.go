@@ -99,6 +99,17 @@ var knowledgeResources = []struct {
 var writeResources = []struct {
 	uri, file, name, description string
 }{
+	{uri: "traceway://knowledge/write-setup", file: "write-setup.md", name: "Write setup", description: "CLI/MCP authentication, project context, permissions and confirmation."},
+	{uri: "traceway://knowledge/alert-configuration", file: "alert-configuration.md", name: "Configure alerting", description: "Channels, alert rule types, notification history and routing to escalation policies."},
+	{uri: "traceway://knowledge/oncall-configuration", file: "oncall-configuration.md", name: "Configure on-call", description: "Teams, membership, schedules, rotations, overrides and escalation policy definitions."},
+	{uri: "traceway://knowledge/personal-notifications", file: "personal-notifications.md", name: "Personal notification delivery", description: "Own contact methods, SMS verification and high/low urgency notification chains."},
+	{uri: "traceway://knowledge/incident-actions", file: "incident-actions.md", name: "Incident actions", description: "Issue archiving, page acknowledgment/resolution, monitor runs, post-mortems and slow endpoints."},
+	{uri: "traceway://knowledge/sdk-configuration", file: "sdk-configuration.md", name: "SDK configuration", description: "Browser collection rules, targeting, sampling, replay and configuration preview."},
+
+	{
+		uri: "traceway://knowledge/dashboard-building", file: "dashboard-building.md", name: "Build dashboards from code",
+		description: "Metric discovery, chart selection, JSON authoring and verification for instrumented codebases. Includes CLI commands and MCP tool arguments.",
+	},
 	{
 		uri: "traceway://knowledge/operations", file: "operations.md", name: "Operating with write access",
 		description: "The three opt-in levels for agent writes, what each write tool changes, the rules for every write, and playbooks for pages, flapping alerts, confirming fixes, post-mortems and slow endpoints. Read before your first write.",

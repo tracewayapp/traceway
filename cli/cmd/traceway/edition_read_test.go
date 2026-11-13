@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 	"net/http"
 	"strings"
 	"testing"
@@ -67,5 +68,21 @@ func TestReadEdition_refusesWriteTokens(t *testing.T) {
 	t.Setenv("TRACEWAY_TOKEN", "tww_abc")
 	if _, err := resolveMcpConfig(&strings.Builder{}); err == nil || !strings.Contains(err.Error(), "write token") {
 		t.Errorf("mcp with a tww_ TRACEWAY_TOKEN must be refused, got %v", err)
+	}
+}
+
+func TestReadEditionRejectsAlertingWrites(t *testing.T) {
+	called := false
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+	for _, op := range client.AlertingOperations() {
+		if op.ReadOnly {
+			continue
+		}
+		_, _, err := runCmd(t, "", op.Resource, op.Action, "--yes")
+		if err == nil || called {
+			t.Errorf("read edition accepted %s %s or made a network request", op.Resource, op.Action)
+		}
 	}
 }

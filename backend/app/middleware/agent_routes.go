@@ -10,9 +10,41 @@ const (
 // agentRoutes is the complete surface reachable with an agent credential
 // (personal access tokens and CLI/MCP OAuth tokens). Anything missing is
 // denied, so a new dashboard route is never exposed to agents by accident.
-// Every write here is project-scoped, which is what lets the gate resolve the
-// owning organization's opt-in from the projectId query parameter.
+// Writes use projectId to resolve the organization opt-in and audit scope.
+// Organization routes must also match that project's organization.
 var agentRoutes = map[string]agentAccess{
+	"GET /api/organizations/:organizationId/members":                                        agentRead,
+	"GET /api/notification-channels":                                                        agentRead,
+	"POST /api/notification-channels":                                                       agentWrite,
+	"PUT /api/notification-channels/:id":                                                    agentWrite,
+	"DELETE /api/notification-channels/:id":                                                 agentWrite,
+	"POST /api/notification-channels/:id/test":                                              agentWrite,
+	"POST /api/notification-rules":                                                          agentWrite,
+	"PUT /api/notification-rules/:id":                                                       agentWrite,
+	"DELETE /api/notification-rules/:id":                                                    agentWrite,
+	"POST /api/organizations/:organizationId/teams":                                         agentWrite,
+	"PUT /api/organizations/:organizationId/teams/:teamId":                                  agentWrite,
+	"DELETE /api/organizations/:organizationId/teams/:teamId":                               agentWrite,
+	"PUT /api/organizations/:organizationId/teams/:teamId/members":                          agentWrite,
+	"PUT /api/organizations/:organizationId/teams/:teamId/projects":                         agentWrite,
+	"POST /api/organizations/:organizationId/schedules":                                     agentWrite,
+	"PUT /api/organizations/:organizationId/schedules/:scheduleId":                          agentWrite,
+	"DELETE /api/organizations/:organizationId/schedules/:scheduleId":                       agentWrite,
+	"POST /api/organizations/:organizationId/schedules/:scheduleId/overrides":               agentWrite,
+	"DELETE /api/organizations/:organizationId/schedules/:scheduleId/overrides/:overrideId": agentWrite,
+	"POST /api/organizations/:organizationId/escalation-policies":                           agentWrite,
+	"PUT /api/organizations/:organizationId/escalation-policies/:id":                        agentWrite,
+	"DELETE /api/organizations/:organizationId/escalation-policies/:id":                     agentWrite,
+	"GET /api/contact-methods":                                                              agentRead,
+	"POST /api/contact-methods":                                                             agentWrite,
+	"PUT /api/contact-methods/:id":                                                          agentWrite,
+	"DELETE /api/contact-methods/:id":                                                       agentWrite,
+	"POST /api/contact-methods/:id/test":                                                    agentWrite,
+	"POST /api/contact-methods/:id/verify":                                                  agentWrite,
+	"POST /api/contact-methods/:id/resend-code":                                             agentWrite,
+	"GET /api/user-notification-rules":                                                      agentRead,
+	"PUT /api/user-notification-rules":                                                      agentWrite,
+
 	"GET /api/projects": agentRead,
 
 	"GET /api/sdk-config/rules":         agentRead,
@@ -33,6 +65,7 @@ var agentRoutes = map[string]agentAccess{
 	"GET /api/metrics/discover/instances": agentRead,
 	"GET /api/metrics/discover/org":       agentRead,
 
+	"POST /api/dashboards/import":    agentWrite,
 	"GET /api/dashboards":            agentRead,
 	"GET /api/dashboards/library":    agentRead,
 	"GET /api/dashboards/starred":    agentRead,

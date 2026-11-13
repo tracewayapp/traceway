@@ -65,7 +65,7 @@ The numbers in brackets are what the evaluator uses when a setting is missing. T
 | **SLO Burn Rate** | An SLO spends its error budget faster than the threshold over both the long and the short window, plus a recovery notice once either window calms down. Fires on the transition only. | SLO, long window 60 min, short window 5 min, threshold 14.4x; presets Fast 14.4x 1h/5m, Slow 6x 6h/30m, Long 1x 3d/6h; both windows round up to whole slices of a metric SLO | Warning, Critical at 2x the threshold, recovery Info |
 | **SLO Budget Consumed** | An SLO has used at least a share of its window's error budget, plus a recovery notice when the budget recovers. Fires on the transition only. | SLO, consumed 80% | Warning, Critical at 100%, recovery Info |
 
-The aggregation in Metric Threshold spans every series of the metric with no tag filter, so prefer `max` (or `min` for lower-is-bad metrics) where one bad host could hide in an average.
+Metric Threshold supports a `tags` filter and `groupBy` dimensions. Without grouping, aggregation spans the matching series; prefer `max` (or `min` for lower-is-bad metrics) where one bad host could hide in an average.
 
 Apdex uses fixed bands: satisfied up to 750 ms, tolerating up to 1500 ms, anything slower or a 5xx is frustrated. Apdex = (satisfied + tolerating / 2) / total.
 
@@ -115,6 +115,6 @@ History opens on the last 7 days.
 | Turn a rule on or off (write) | `traceway-write alerts enable <id>` / `disable <id>` | `set_notification_rule_enabled` |
 | Snooze a rule (write) | `traceway-write alerts snooze <id> --minutes N` (0 clears) | `snooze_notification_rule` |
 
-Creating and editing rules and channels, the History tab and the Test buttons stay in the dashboard. Channels hold credentials and webhook URLs.
+The write CLI also supports `channels list/create/update/delete/test`, `alerts create/update/delete` and `notification-history list --file query.json`. Create/update take `--file` JSON; `channels validate create --file F` and `alerts validate create --file F` check request envelopes offline. MCP exposes corresponding notification-channel and notification-rule tools. Detailed payloads and examples live in the write skill's `alert-configuration.md` (MCP: `traceway://knowledge/alert-configuration`). Channels hold credentials and webhook URLs: handle configuration as sensitive. Tests send real notifications; an escalation test opens a real page.
 
 To resolve an alert someone pasted, the read skill's `notifications` section explains how to go from an exception or performance alert to the data behind it.

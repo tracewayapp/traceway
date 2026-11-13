@@ -31,11 +31,11 @@ func newOpampSaveRuleCmd(update bool) *cobra.Command {
 		Use: use, Short: "Save a complete rule: name, enabled, conditions and settings", Args: args,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var in client.SDKConfigRuleInput
-			if err := readOpampJSON(cmd, &in); err != nil {
-				return opampUsageError(cmd, err)
+			if err := readJSONFile(cmd, &in); err != nil {
+				return jsonFileUsageError(cmd, err)
 			}
 			if strings.TrimSpace(in.Name) == "" || in.Conditions == nil || in.Settings == nil {
-				return opampUsageError(cmd, fmt.Errorf("--file must contain name, conditions and settings (use {} for all clients)"))
+				return jsonFileUsageError(cmd, fmt.Errorf("--file must contain name, conditions and settings (use {} for all clients)"))
 			}
 			id := 0
 			if update {
@@ -46,7 +46,7 @@ func newOpampSaveRuleCmd(update bool) *cobra.Command {
 				}
 				in.ExpectedUpdatedAt, _ = cmd.Flags().GetString("expected-updated-at")
 				if _, err := time.Parse(time.RFC3339Nano, in.ExpectedUpdatedAt); err != nil {
-					return opampUsageError(cmd, fmt.Errorf("--expected-updated-at must be the updatedAt timestamp from rules list"))
+					return jsonFileUsageError(cmd, fmt.Errorf("--expected-updated-at must be the updatedAt timestamp from rules list"))
 				}
 			}
 			body, _ := json.Marshal(in)
@@ -60,7 +60,7 @@ func newOpampSaveRuleCmd(update bool) *cobra.Command {
 				})
 		},
 	}
-	addOpampFileFlag(cmd)
+	addJSONFileFlag(cmd)
 	if update {
 		cmd.Flags().String("expected-updated-at", "", "updatedAt from rules list; stale edits fail with 409")
 		_ = cmd.MarkFlagRequired("expected-updated-at")

@@ -138,6 +138,22 @@ func (c *dashboardsController) Import(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
+	// Agent policy and auditing are scoped to the query project, never a body override.
+	if identity := middleware.GetBearerIdentity(ctx); identity != nil && identity.IsAgent() {
+		if req.OrganizationId != nil || req.ApplyToProjectIds != nil {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Agent imports use the selected project's organization and apply only to that project; omit organizationId and applyToProjectIds."})
+			return
+		}
+		projectId, err := uuid.Parse(ctx.Query("projectId"))
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "projectId is required"})
+			return
+		}
+		if !requireProjectWrite(ctx, tx, projectId) {
+			return
+		}
+	}
+
 	organizationId, ok := resolveTargetOrganization(ctx, tx, req.OrganizationId)
 	if !ok {
 		return

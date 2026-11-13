@@ -187,6 +187,9 @@ func (c *contactMethodController) Create(ctx *gin.Context) {
 		Verified:  request.MethodType != "sms",
 		CreatedAt: time.Now().UTC(),
 	}
+	if request.Enabled != nil {
+		method.Enabled = *request.Enabled
+	}
 	id, err := transactional.UserContactMethodRepository.Create(tx, method)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to create contact method: %w", err))

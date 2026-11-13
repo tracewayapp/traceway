@@ -16,8 +16,12 @@ import (
 )
 
 func runRaw(cmd *cobra.Command, call func(ctx context.Context, c *client.Client, projectID string) (json.RawMessage, error), table func(w io.Writer, v any) error) error {
+	return runRawWithProject(cmd, true, call, table)
+}
+
+func runRawWithProject(cmd *cobra.Command, requireProject bool, call func(ctx context.Context, c *client.Client, projectID string) (json.RawMessage, error), table func(w io.Writer, v any) error) error {
 	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
-	sess, err := loadSession()
+	sess, err := loadSessionOpts(requireProject)
 	if err != nil {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
 	}

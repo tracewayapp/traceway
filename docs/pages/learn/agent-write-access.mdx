@@ -2,7 +2,7 @@
 
 import { Callout } from "nextra/components";
 
-AI agents can do more than read your telemetry. With write access they can make the routine changes an on-call engineer makes: archive an issue once it is fixed, acknowledge and resolve pages, snooze a noisy alert, run a monitor to confirm a fix, write the post-mortem, and mark an endpoint as expected-slow. They can also change what browser apps collect, through the [remote SDK config](/learn/remote-config) rules of a browser project.
+AI agents can do more than read your telemetry. With write access they can make the routine changes an on-call engineer makes: archive an issue once it is fixed, acknowledge and resolve pages, snooze a noisy alert, run a monitor to confirm a fix, write the post-mortem, and mark an endpoint as expected-slow. They can build dashboards, configure alert channels and rules, manage teams, schedules and escalation policies, and configure their own contact methods and notification chains. They can also change what browser apps collect, through the [remote SDK config](/learn/remote-config) rules of a browser project.
 
 Writes are off by default and opt-in at three levels. All three have to agree before an agent can change anything:
 
@@ -18,6 +18,10 @@ Every write a write credential makes in the organization is recorded in its agen
 
 | Action | `traceway-write` command | MCP tool |
 |---|---|---|
+| Create or replace dashboards and apply to the selected project | `dashboards import --file F [--mode create\|upsert]` | `import_dashboards` |
+| Configure channels and project alert rules | `channels create/update/delete/test`, `alerts create/update/delete` | Notification channel/rule tools |
+| Configure organization on-call routing | `teams`, `schedules`, `escalation-policies` | Team, on-call schedule/override and escalation-policy tools |
+| Configure own delivery methods and urgency chains | `contact-methods`, `notification-chains replace` | Contact-method tools, `set_user_notification_rules` |
 | Archive or unarchive issues | `exceptions archive <hash>...` / `unarchive` | `archive_exceptions` / `unarchive_exceptions` |
 | Acknowledge a page | `pages ack <id>` | `acknowledge_page` |
 | Resolve a page, optionally archiving its issue | `pages resolve <id> [--archive-issue]` | `resolve_page` |
@@ -32,7 +36,13 @@ Every write a write credential makes in the organization is recorded in its agen
   Remote SDK config rules decide what the browsers of a React, Vue, Svelte or jQuery project running the 2.x SDK send. A write credential can therefore switch signals off, stream console lines, requests and clicks for every visitor, turn on full-session replay, and set `maskAllInputs: false`, which records what users type into input fields. The only limits are the ceilings the app sets in `init()` (for example `sessionRecording: false`) and the organization's plan. Turn Agent Access on only for organizations where that is acceptable, and review these writes in the agent activity log.
 </Callout>
 
-Everything else stays in the dashboard. Agent credentials are refused outright on every other route, including creating alert rules and channels, editing schedules and escalation policies, status pages and public incident updates, members and invitations, tokens, the other project settings, targeted SDK captures, and every delete except of a remote SDK config rule. A new dashboard route is never reachable by an agent until it is added to the agent allowlist on purpose.
+Other routes remain restricted, including creating monitors, status pages and public incident updates, member and invitation mutations, tokens, other project settings and targeted SDK captures. A new route is never reachable by an agent until it is added to the agent allowlist on purpose.
+
+Organization teams, schedules and escalation policies require an owner or admin. Any organization member can create a schedule override; its creator, covering responder or an admin can delete it. Contact methods and personal notification chains are always scoped to the authenticated person. Organization and personal writes still need a selected project for the Agent Access check and audit attribution; an organization path must match that project's organization. Organization member discovery is admin-only.
+
+See [Alerts](/learn/alerts#configure-alerting-with-the-cli-or-mcp) for channel and rule examples, and [On-Call](/learn/on-call#configure-on-call-with-the-cli-or-mcp) for routing and personal delivery. Channel/contact tests send real notifications, and escalation-channel tests open real pages. Configuration validation does not test delivery.
+
+Dashboard imports require write access to the organization and selected project. Upsert replaces the entire dashboard matched by organization-wide name, affecting all assigned projects. Agent imports cannot override the organization or apply-to project list. See [building dashboards from code](/learn/dashboards#build-dashboards-with-the-cli-or-an-ai-agent) for discovery, offline validation and the shared-chart workflow.
 
 ## Turning it on
 
@@ -81,7 +91,7 @@ The OAuth consent page shows a **Read and write access** warning when a client a
 
 ### The traceway-write skill
 
-The `traceway-write` skill teaches an agent the rules for writes (only on request, say the change first, prefer the reversible option) and playbooks for pages, flapping alerts, confirming fixes, writing post-mortems and changing remote SDK config rules. `npx skills add tracewayapp/skills --all` installs it with the other skills. In Claude Code it is its own plugin, `tw-write`, separate from the read-only `tw` plugin. The skill alone changes nothing: writes still need the `traceway-write` CLI or a write token, and an admin who turned on Agent Access. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
+The `traceway-write` skill starts with an index of writable areas and how telemetry, rules, channels, policies, schedules, pages and personal delivery interact. Focused Markdown references explain each area, including alert configuration, on-call routing, personal notification chains, dashboard building, incident actions, browser collection and setup. `npx skills add tracewayapp/skills --all` installs it with the other skills. In Claude Code it is its own plugin, `tw-write`, separate from the read-only `tw` plugin. The skill alone changes nothing: writes still need the `traceway-write` CLI or a write token, and an admin who turned on Agent Access. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
 
 ```
 /plugin marketplace add tracewayapp/skills

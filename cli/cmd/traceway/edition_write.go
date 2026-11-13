@@ -29,8 +29,11 @@ func init() {
 }
 
 func addWriteCommands(root *cobra.Command) {
+	addAlertingConfigurationCommands(root, true)
 	for _, sub := range root.Commands() {
 		switch sub.Name() {
+		case "dashboards":
+			sub.AddCommand(newDashboardsImportCmd())
 		case "opamp":
 			addOpampWriteCommands(sub)
 		case "exceptions":
@@ -328,4 +331,8 @@ func newEndpointsMarkSlowCmd() *cobra.Command {
 	// Required because 0 removes the mark: a forgotten flag must not.
 	_ = cmd.MarkFlagRequired("offset-ms")
 	return cmd
+}
+
+func runAlertingMutation(cmd *cobra.Command, summary []string, result map[string]any, call func(context.Context, *client.Client, string) (json.RawMessage, error)) error {
+	return runWrite(cmd, summary, result, call)
 }

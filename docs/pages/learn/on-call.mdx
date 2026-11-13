@@ -91,7 +91,7 @@ An override temporarily replaces whoever the layers would have picked. Use it fo
 
 Overrides beat every layer. Where two overrides overlap, the one created most recently wins. They appear on the timeline as a dashed block labelled `OVERRIDE`.
 
-They are also the one on-call mutation any member can make, not just admins. Covering for a teammate should not need an administrator. An override can cover at most 30 days, and it can be deleted by whoever created it, the person it covers, or an admin.
+They are also the one on-call mutation any member can make, not just admins. Covering for a teammate should not need an administrator. An override can cover at most 30 days, and it can be deleted by whoever created it, the covering replacement responder, or an admin.
 
 <img src="/on-call/oncall-schedule-detail.png" alt="A schedule with its timeline and override list" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
@@ -277,7 +277,7 @@ Add an override for the dates. It beats the rotation without editing it, and it 
 | View teams, schedules, policies, and who is on call | Any member of the organization |
 | Create or edit teams, schedules, and policies | Organization owner or admin |
 | Create a schedule override | Any member of the organization |
-| Delete a schedule override | Its creator, the person it covers, or an organization owner or admin |
+| Delete a schedule override | Its creator, the covering replacement responder, or an organization owner or admin |
 | View, acknowledge, and resolve pages | Project read access, no write access needed |
 | Manage your own contact methods and notification rules | Yourself only |
 
@@ -319,3 +319,55 @@ A freshly opened page does not wait for the next poll. The escalator is woken di
 | Delay per notification rule step | 0 to 120 minutes |
 | Override duration | 30 days |
 | Timeline range per request | 62 days |
+
+
+## Configure on-call with the CLI or MCP
+
+The write CLI can configure teams, schedules, overrides, escalation policies, your own contact methods and your personal notification chains. Select a project in the organization for the write permission/audit context. Organization operations additionally take `--organization <id>`.
+
+A complete route is **team → schedule → escalation policy → project escalation channel → project alert rule**. Responders then configure their personal contact methods and urgency chains. A team target notifies every member; a schedule target resolves to whoever is on call at that moment. Admins discover responder IDs with `organization-members list --organization <id>`.
+
+| CLI group | Operations | MCP tools |
+|---|---|---|
+| `teams` | list/create/update/delete, set-members, set-projects | `list_teams`, `create_team`, `update_team`, `delete_team`, `set_team_members`, `set_team_projects` |
+| `schedules` | list/show/create/update/delete, timeline, create-override, delete-override | `list_oncall_schedules`, `get_oncall_schedule`, `create_oncall_schedule`, `update_oncall_schedule`, `delete_oncall_schedule`, `get_oncall_timeline`, `create_oncall_override`, `delete_oncall_override` |
+| `escalation-policies` | list/create/update/delete | `list_escalation_policies`, `create_escalation_policy`, `update_escalation_policy`, `delete_escalation_policy` |
+| `contact-methods` | list/create/update/delete/test/verify/resend-code | Corresponding contact-method tools |
+| `notification-chains` | show/replace | `get_user_notification_rules`, `set_user_notification_rules` |
+| `oncall` | now/current | `get_oncall_now`, `get_current_oncall` |
+
+Create/update bodies use `--file F`; `validate <action>` checks request envelopes offline. MCP accepts `organization_id` as an integer, `id` as applicable, `data` for the JSON body, and `project_id` for every write. Schedule override deletion additionally takes `child_id`. The full payload schemas and examples are in the write skill's **oncall-configuration.md** and **personal-notifications.md**, also MCP resources under `traceway://knowledge/`.
+
+For example, a weekly schedule document:
+
+```json filename="schedule.json"
+{
+  "teamId":3,"name":"Platform primary","timezone":"Europe/Berlin",
+  "definition":{"schemaVersion":1,"layers":[{
+    "name":"Primary","rotationType":"weekly","handoffDay":1,
+    "handoffTime":"09:00","rotationStart":"2026-11-16",
+    "userIds":[1,2],"restrictions":[]
+  }]}
+}
+```
+
+```bash
+traceway-write schedules create --organization 1 --file schedule.json --yes
+traceway-write schedules timeline 4 --organization 1 --from 2026-11-16T00:00:00Z --to 2026-11-30T00:00:00Z
+traceway-write oncall now --organization 1
+```
+
+Use actual returned team/schedule IDs and organization user IDs. Timelines cover at most 62 days. Verify handoffs and gaps without sending a test page. Schedule/policy updates replace definitions; preserve unrelated layers/steps. Policy edits affect future pages; existing pages retain their snapshots. Team deletion removes its schedules and is blocked by policy references.
+
+Personal chains are replaced together:
+
+```json filename="chains.json"
+{"high":[{"contactMethodId":7,"delayMinutes":0},{"contactMethodId":9,"delayMinutes":5}],"low":[{"contactMethodId":7,"delayMinutes":0}]}
+```
+
+```bash
+traceway-write notification-chains show
+traceway-write notification-chains replace --file chains.json --yes
+```
+
+Preserve the other urgency chain when editing one. Each allows up to 10 steps with 0–120 minute delays measured from when the page reaches you. Contacts must be your own, enabled and verified. Empty chains fall back to all usable methods; they do not silence pages. Only you can change your personal settings, even through an admin credential. SMS creation or destination changes send verification codes, and contact tests send real notifications. See [Agent Write Access](/learn/agent-write-access) for the organization opt-in and role requirements.

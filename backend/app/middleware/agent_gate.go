@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -60,6 +61,14 @@ func authorizeAgentRequest(c *gin.Context, identity *BearerIdentity) {
 	if !p.found {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have access to this project"})
 		return
+	}
+	if organization := c.Param("organizationId"); organization != "" {
+		organizationId, err := strconv.Atoi(organization)
+		if err != nil || organizationId != p.organizationId {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "projectId must belong to the organization in the request path"})
+			recordAgentWrite(c, identity, p.organizationId, projectId)
+			return
+		}
 	}
 	if !p.enabled {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": agentWriteDisabledMessage})

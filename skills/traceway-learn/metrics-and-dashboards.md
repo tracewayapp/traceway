@@ -60,8 +60,10 @@ Editing dashboards and widgets needs an organization role above `readonly`. Star
 - An unknown metric name returns an empty series, so probing names is safe.
 - A grouped query keeps the first 200 groups and says `truncatedGroups: true` when it cut some.
 - The server widens buckets so no series has more than 2000 points, and returns the bucket size it used as `intervalMinutes`.
-- Agents get `avg`, `sum`, `count`, `min` and `max`. `rate`, `last` and inverted sources are dashboard only, so read a counter's increase by comparing buckets.
+- Agents can query `avg`, `sum`, `count`, `min`, `max`, `rate` and `last`. Inversion is a widget display setting.
 - `query_metrics` refuses `p50`, `p95` and `p99`. The CLI accepts them, but the server computes `avg` instead.
-- There is no metric-name discovery tool. Try likely names (an unknown one returns an empty series), or look at a dashboard.
+- Use `traceway metrics discover --since 24h` for recorded names, types, units and tag keys; add `--name <metric> --key <tag>` for tag values. The MCP equivalent is `discover_metrics` with optional `name` and `key`.
 
-Creating, editing and applying dashboards stays in the dashboard.
+Use `traceway-write dashboards import --file dashboard.json` to create and apply dashboards, or `--mode upsert` to replace by organization-wide name. Read `dashboard-building.md` in the `traceway-write` skill for chart selection from instrumented code, JSON examples and verification. Read-only `dashboards list` and `dashboards export <id>` are available in both CLIs.
+
+MCP supports `list_dashboards`, `dashboard_library`, `export_dashboard` and, on the write server, `import_dashboards`. CLI `dashboards validate --file dashboard.json` validates offline with the same checks used by CLI and MCP imports.

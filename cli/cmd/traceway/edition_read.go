@@ -3,6 +3,9 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,14 +28,33 @@ const (
 var writeOnlyCommands = map[string][]string{
 	"exceptions":   {"archive", "unarchive"},
 	"pages":        {"ack", "resolve"},
-	"alerts":       {"enable", "disable", "snooze"},
+	"alerts":       {"enable", "disable", "snooze", "create", "update", "delete"},
 	"monitors":     {"run"},
 	"post-mortems": {"create", "update"},
 	"endpoints":    {"mark-slow"},
 	"opamp rules":  {"create", "update", "delete", "reorder"},
 }
 
+func init() {
+	for _, op := range client.AlertingOperations() {
+		if op.ReadOnly {
+			continue
+		}
+		found := false
+		for _, name := range writeOnlyCommands[op.Resource] {
+			if name == op.Action {
+				found = true
+				break
+			}
+		}
+		if !found {
+			writeOnlyCommands[op.Resource] = append(writeOnlyCommands[op.Resource], op.Action)
+		}
+	}
+}
+
 func addWriteCommands(root *cobra.Command) {
+	addAlertingConfigurationCommands(root, false)
 	for path, names := range writeOnlyCommands {
 		sub, _, err := root.Find(strings.Fields(path))
 		if err != nil || sub == root {
@@ -56,4 +78,8 @@ func addWriteCommands(root *cobra.Command) {
 			})
 		}
 	}
+}
+
+func runAlertingMutation(_ *cobra.Command, _ []string, _ map[string]any, _ func(context.Context, *client.Client, string) (json.RawMessage, error)) error {
+	return fmt.Errorf("mutations require traceway-write")
 }

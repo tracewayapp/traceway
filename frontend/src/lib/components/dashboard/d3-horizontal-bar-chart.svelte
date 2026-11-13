@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { scaleLinear, scaleBand } from 'd3-scale';
 	import { max } from 'd3-array';
+	import { CHART_COLORS } from '$lib/utils/chart-colors';
 
 	type BarData = {
 		endpoint: string;
@@ -21,17 +22,7 @@
 		formatValue?: (value: number) => string;
 	}>();
 
-	// Chart colors using CSS variables
-	const chartColors = [
-		'var(--chart-1)',
-		'var(--chart-2)',
-		'var(--chart-3)',
-		'var(--chart-4)',
-		'var(--chart-5)',
-		'hsl(280, 65%, 60%)',
-		'hsl(200, 65%, 55%)',
-		'hsl(340, 65%, 55%)'
-	];
+	const chartColors = CHART_COLORS;
 
 	let containerRef = $state<HTMLDivElement | null>(null);
 	let width = $state(400);

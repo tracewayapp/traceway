@@ -262,3 +262,58 @@ func TestLogRecordRepository_WholeTracePaginatesAcrossProjects(t *testing.T) {
 	}
 	assertBodies(t, "selected project", bodies, []string{"row 0", "row 2", "row 4", "row 6"})
 }
+
+func TestLogRecordRepository_HistogramGroupsByBucketAndLevel(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	otherProject := uuid.New()
+	base := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+
+	warnByText := makeLogRecord(projectId, 0, "warn by text", base.Add(65*time.Second))
+	warnByText.SeverityText = "warning"
+	records := []models.LogRecord{
+		makeLogRecord(projectId, 17, "error", base.Add(5*time.Second)),
+		makeLogRecord(projectId, 9, "info a", base.Add(10*time.Second)),
+		makeLogRecord(projectId, 9, "info b", base.Add(59*time.Second+900*time.Millisecond)),
+		warnByText,
+		makeLogRecord(projectId, 21, "fatal", base.Add(4*time.Minute)),
+		makeLogRecord(projectId, 0, "no level", base.Add(4*time.Minute)),
+		makeLogRecord(otherProject, 17, "other project", base.Add(5*time.Second)),
+	}
+	if err := LogRecordRepository.InsertAsync(ctx, records); err != nil {
+		t.Fatalf("InsertAsync failed: %v", err)
+	}
+
+	params := shared.LogSearchParams{ProjectId: projectId, FromDate: base, ToDate: base.Add(5*time.Minute - time.Millisecond)}
+	rows, err := LogRecordRepository.Histogram(ctx, params, 60)
+	if err != nil {
+		t.Fatalf("Histogram failed: %v", err)
+	}
+	buckets := shared.BuildLogHistogram(params.FromDate, params.ToDate, 60, rows)
+	if len(buckets) != 5 {
+		t.Fatalf("got %d buckets, want 5", len(buckets))
+	}
+	if b := buckets[0]; b.Error != 1 || b.Info != 2 || b.Total() != 3 {
+		t.Errorf("bucket 0 = %+v, want 1 error and 2 info (a record at :59.9 stays in its minute)", b)
+	}
+	if b := buckets[1]; b.Warn != 1 || b.Total() != 1 {
+		t.Errorf("bucket 1 = %+v, want the text-only warning", b)
+	}
+	if b := buckets[4]; b.Fatal != 1 || b.Unknown != 1 {
+		t.Errorf("bucket 4 = %+v, want 1 fatal and 1 unknown", b)
+	}
+
+	params.MinSeverity = 17
+	rows, err = LogRecordRepository.Histogram(ctx, params, 60)
+	if err != nil {
+		t.Fatalf("Histogram with min severity failed: %v", err)
+	}
+	var total int64
+	for _, b := range shared.BuildLogHistogram(params.FromDate, params.ToDate, 60, rows) {
+		total += b.Total()
+	}
+	if total != 2 {
+		t.Errorf("min severity 17: total %d, want 2 (the error and the fatal)", total)
+	}
+}

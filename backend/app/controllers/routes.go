@@ -180,6 +180,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/spans/traces/:traceId/spans/:spanId/attributes", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.GetSpanAttributes)
 
 	router.POST("/logs", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.List)
+	router.POST("/logs/histogram", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.Histogram)
 
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
 	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ExceptionStackTraceController.ArchiveExceptions)

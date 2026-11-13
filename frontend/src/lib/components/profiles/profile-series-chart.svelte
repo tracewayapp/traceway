@@ -1,20 +1,11 @@
 <script module lang="ts">
+	import { chartColor } from '$lib/utils/chart-colors';
+
 	export type SeriesPoint = { timestamp: string; value: number };
 	export type SeriesGroup = { key: string; points: SeriesPoint[] };
 
-	const PALETTE = [
-		'hsl(217, 91%, 60%)',
-		'hsl(160, 60%, 45%)',
-		'hsl(35, 92%, 55%)',
-		'hsl(280, 65%, 60%)',
-		'hsl(0, 72%, 58%)',
-		'hsl(190, 80%, 45%)',
-		'hsl(50, 90%, 50%)',
-		'hsl(330, 70%, 60%)'
-	];
-
 	export function seriesColor(i: number): string {
-		return PALETTE[i % PALETTE.length];
+		return chartColor(i);
 	}
 
 	function clamp(x: number, lo: number, hi: number): number {

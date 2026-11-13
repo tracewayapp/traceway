@@ -143,6 +143,31 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	return records, int64(count), nil
 }
 
+// Histogram counts the logs Search would match per step-second bucket and level.
+func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSearchParams, step int64) ([]shared.LogHistogramRow, error) {
+	where, args := r.buildWhere(params)
+	query := `SELECT ` + epochBucket("timestamp", int(step)) + ` AS bucket,
+		toUInt8(` + shared.LogLevelSQL + `) AS level, count() AS count
+	FROM log_records WHERE ` + where + `
+	GROUP BY bucket, level`
+	rows, err := chdb.Conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []shared.LogHistogramRow
+	for rows.Next() {
+		var bucket int64
+		var level uint8
+		var count uint64
+		if err := rows.Scan(&bucket, &level, &count); err != nil {
+			return nil, err
+		}
+		out = append(out, shared.LogHistogramRow{Bucket: bucket, Level: int(level), Count: int64(count)})
+	}
+	return out, rows.Err()
+}
+
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
 	query := `SELECT ` + chLogRecordColumns + `
 	FROM log_records

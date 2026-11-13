@@ -19,6 +19,9 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import ExpandedLogRow from '$lib/components/trace-logs/expanded-log-row.svelte';
 	import LogMessage from '$lib/components/trace-logs/log-message.svelte';
+	import LogVolumeChart, {
+		type LogVolumeBucket
+	} from '$lib/components/trace-logs/log-volume-chart.svelte';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
 	import FormField from '$lib/components/traceway/form-field.svelte';
@@ -119,6 +122,12 @@
 	let lastFilterBody: ReturnType<typeof currentFilterBody> | null = null;
 	let requestGen = 0;
 
+	type HistogramResponse = { intervalSeconds: number; total: number; buckets: LogVolumeBucket[] };
+	let volume = $state<HistogramResponse | null>(null);
+	let volumeLoading = $state(false);
+	let volumeEl = $state<HTMLDivElement | null>(null);
+	let volumeGen = 0;
+
 	// Windowed rendering: only rows near the viewport are mounted, spacer rows
 	// keep the scrollbar honest. Row height is measured from the first rendered
 	// row; the (single) expanded row's extra height is measured separately and
@@ -167,6 +176,7 @@
 		void metaFilterChips.length;
 		void attributeFilters.length;
 		void loading;
+		void volume;
 		updateMaxHeight();
 	});
 
@@ -571,6 +581,7 @@
 				...lastFilterBody
 			};
 
+			loadVolume(lastFromISO, lastToISO, lastFilterBody);
 			const response = (await api.post('/logs', requestBody, {
 				projectId: projectsState.currentProjectId ?? undefined
 			})) as LogsResponse;
@@ -588,6 +599,56 @@
 		} finally {
 			if (gen === requestGen) loading = false;
 		}
+	}
+
+	// The volume strip loads beside the list rather than before it: a slow count
+	// over a wide range must never hold back the rows.
+	async function loadVolume(
+		fromISO: string,
+		toISO: string,
+		filters: ReturnType<typeof currentFilterBody>
+	) {
+		const gen = ++volumeGen;
+		volumeLoading = true;
+		try {
+			const maxBuckets = Math.max(
+				20,
+				Math.min(120, Math.floor((volumeEl?.clientWidth || 960) / 12))
+			);
+			const response = (await api.post(
+				'/logs/histogram',
+				{ fromDate: fromISO, toDate: toISO, maxBuckets, ...filters },
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			)) as HistogramResponse;
+			if (gen !== volumeGen) return;
+			volume = response;
+		} catch (e) {
+			if (gen !== volumeGen) return;
+			console.error(e);
+			volume = null;
+		} finally {
+			if (gen === volumeGen) volumeLoading = false;
+		}
+	}
+
+	// Live tail slides the strip's window along with the clock every few polls,
+	// instead of recounting the whole range every 5 seconds.
+	function refreshLiveVolume() {
+		if (!selectedPreset) return;
+		const range = getTimeRangeFromPreset(selectedPreset, timezone);
+		loadVolume(
+			range.from.toISOString(),
+			range.to.toISOString(),
+			lastFilterBody ?? currentFilterBody()
+		);
+	}
+
+	function handleVolumeRangeSelect(from: Date, to: Date) {
+		handleTimeRangeChange(
+			{ date: dateToCalendarDate(from, timezone), time: dateToTimeString(from, timezone) },
+			{ date: dateToCalendarDate(to, timezone), time: dateToTimeString(to, timezone) },
+			null
+		);
 	}
 
 	async function loadMore() {
@@ -696,6 +757,7 @@
 				}
 			}
 			liveSinceMs = nowMs;
+			if (livePollCount % LIVE_CATCHUP_EVERY === 0) refreshLiveVolume();
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -994,6 +1056,28 @@
 	</AlertDialog.Root>
 
 	<TableContainer>
+		<div bind:this={volumeEl}>
+			{#if volume}
+				<LogVolumeChart
+					buckets={volume.buckets}
+					intervalSeconds={volume.intervalSeconds}
+					total={volume.total}
+					{timezone}
+					loading={volumeLoading}
+					onRangeSelect={handleVolumeRangeSelect}
+				/>
+			{:else}
+				<div
+					class="flex h-[95px] items-center justify-center border-b text-xs text-muted-foreground"
+				>
+					{#if volumeLoading}
+						<LoadingCircle size="sm" />
+					{:else}
+						Log volume is unavailable for this search.
+					{/if}
+				</div>
+			{/if}
+		</div>
 		<div
 			bind:this={scrollEl}
 			bind:clientHeight={viewportH}

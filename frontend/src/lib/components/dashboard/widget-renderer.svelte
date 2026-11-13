@@ -2,6 +2,7 @@
 	import D3LineChart from './d3-line-chart.svelte';
 	import D3HorizontalBarChart from './d3-horizontal-bar-chart.svelte';
 	import D3StackedAreaChart from './d3-stacked-area-chart.svelte';
+	import { CHART_COLORS } from '$lib/utils/chart-colors';
 	import D3Gauge from './d3-gauge.svelte';
 	import WidgetTable from './widget-table.svelte';
 	import Sparkline from './sparkline.svelte';
@@ -53,14 +54,7 @@
 	let rangeError = $state('');
 	let loadSequence = 0;
 
-	const colors = [
-		'var(--chart-1)',
-		'var(--chart-2)',
-		'var(--chart-3)',
-		'var(--chart-4)',
-		'var(--chart-5)',
-		'var(--crit)'
-	];
+	const colors = CHART_COLORS;
 
 	const effectiveUnit = $derived(widget.config.unit ?? resolvedUnit);
 	const scopeFilterKey = $derived(JSON.stringify(scopeTagFilters));

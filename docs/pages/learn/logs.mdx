@@ -2,7 +2,20 @@
 
 Logs are time-stamped records emitted by your application as it runs. Traceway ingests OpenTelemetry logs via OTLP/HTTP, indexes them by body, severity, service, trace, and attributes, and links each log back to the trace and span that produced it.
 
-<img src="/logs/logs-overview.png" alt="The Logs page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/logs/logs-overview.png" alt="The Logs page, with log volume by severity charted above the list" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+## Log Volume
+
+The top of the list shows how many logs matched over the selected time range: one bar per time slice, stacked by severity from Fatal at the bottom through Error, Warn, Info, Debug and Trace, plus No level for records that carry none. The header shows the total and a count for each level.
+
+<img src="/logs/logs-volume-chart.png" alt="The log volume chart, with a tooltip showing error, warning and info counts for one minute" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+- Each record counts toward the level its badge shows in the table: the severity text when it names a level (`WARNING` and `CRITICAL` included), otherwise the range of its severity number.
+- Every filter and search applies, so the chart always describes the same logs as the list below it.
+- Hover a bar to see its time range and its count per level.
+- Click a bar to zoom in on it, or drag across several to zoom in on that stretch. Zooming sets a custom time range. Press Esc to cancel a drag.
+- The bar width follows the time range, from one second to whole days, so a range of any length fits the chart.
+- During [live tail](#live-tail) the chart refreshes every 30 seconds.
 
 ## Log Record Structure
 
@@ -77,7 +90,7 @@ The **Logs** page supports filtering and search across all three attribute layer
 - **Trace**: exact match on the hex trace ID.
 - **Body search**: full-text search over the log message. Single-token queries use a token-bloom index for speed; multi-word or punctuation-heavy queries fall back to substring matching.
 - **Attribute filters**: match on any `resource.*`, `scope.*`, or log attribute key, either as equals or not equals.
-- **Time range**: pick from presets (24h, 7d, 30d) or a custom window.
+- **Time range**: pick from presets (24h, 7d, 30d) or a custom window, or drag across the [volume chart](#log-volume).
 
 All filters combine. Results load newest first, and a "Load more" button at the end of the list fetches older records in the same query.
 
@@ -127,4 +140,4 @@ See the SDK-specific guides for setup instructions:
 - [Symfony](/client/otel/symfony/logs): Monolog handler and the OTel PHP Logs API
 - [Cloudflare Workers](/client/otel/cloudflare): Worker-side OTel logs exporter
 
-For API callers, `POST /api/logs` accepts `traceId` and optional `spanId`, scoped to the selected project and time window. The retired `distributedTraceId` and `excludeTraceId` selectors return 400, so stale clients cannot silently widen a query. Invalid trace IDs also return 400.
+For API callers, `POST /api/logs` accepts `traceId` and optional `spanId`, scoped to the selected project and time window. The retired `distributedTraceId` and `excludeTraceId` selectors return 400, so stale clients cannot silently widen a query. Invalid trace IDs also return 400. `POST /api/logs/histogram` takes the same filters plus `maxBuckets` (10 to 200, default 80) and returns the counts behind the volume chart: `intervalSeconds`, `total`, and one bucket per interval with a count for each level.

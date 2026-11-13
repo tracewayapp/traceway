@@ -37,8 +37,11 @@ export const FRONTEND_FRAMEWORKS: Framework[] = [
 	'android',
 	'ios'
 ];
-// Browser frameworks whose SDK (@tracewayapp/frontend 2.x) takes remote collection settings over OpAMP.
-export const SDK_CONFIG_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery'];
+// Browser frameworks, instrumented by the OpenTelemetry SDK (@tracewayapp/frontend 2.x): it sends logs, spans
+// and metrics like a backend does, unlike the mobile SDKs.
+export const BROWSER_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery'];
+// The 2.x SDK is also what takes remote collection settings over OpAMP.
+export const SDK_CONFIG_FRAMEWORKS: Framework[] = BROWSER_FRAMEWORKS;
 
 export const JS_FRAMEWORKS: Framework[] = [
 	'react',
@@ -91,6 +94,10 @@ export function isMobileFramework(fw: Framework): boolean {
 
 export function isFrontendFramework(fw: Framework): boolean {
 	return FRONTEND_FRAMEWORKS.includes(fw);
+}
+
+export function isBrowserFramework(fw: Framework): boolean {
+	return BROWSER_FRAMEWORKS.includes(fw);
 }
 
 export function isBackendFramework(fw: Framework): boolean {

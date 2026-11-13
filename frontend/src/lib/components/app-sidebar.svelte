@@ -30,6 +30,7 @@
 	import {
 		projectsState,
 		isFrontendFramework,
+		isBrowserFramework,
 		isCloudflareFramework
 	} from '$lib/state/projects.svelte';
 	import { LayoutDashboard } from '@lucide/svelte';
@@ -48,17 +49,17 @@
 		exact?: boolean;
 	}
 
-	const hiddenForFrontend = new Set([
+	const hiddenForBrowser = new Set([
 		'Dashboard',
-		'Logs',
 		'Endpoints',
 		'Tasks',
-		'Spans',
 		'Profiles',
-		'Dashboards',
 		'AI Traces',
 		'Monitors'
 	]);
+	// Browser projects report through the OpenTelemetry SDK, which fills Logs, Spans and Dashboards;
+	// mobile projects report through the native SDKs and keep the shorter list.
+	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans', 'Dashboards']);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
 	// the sidebar for any other framework, so a Go backend project doesn't
@@ -98,16 +99,19 @@
 		{ Icon: Link2, href: '/connection', title: 'Connection', stickyParams: [] }
 	];
 
-	const sidebarItems = $derived(
-		projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
-			? allSidebarItems.filter((item) => !hiddenForFrontend.has(item.title))
-			: projectsState.currentProject &&
-				  isCloudflareFramework(projectsState.currentProject.framework)
-				? allSidebarItems.filter(
-						(item) => !hiddenForCloudflare.has(item.title) && !frontendOnly.has(item.title)
-					)
-				: allSidebarItems.filter((item) => !frontendOnly.has(item.title))
-	);
+	const sidebarItems = $derived.by(() => {
+		const framework = projectsState.currentProject?.framework;
+		if (framework && isFrontendFramework(framework)) {
+			const hidden = isBrowserFramework(framework) ? hiddenForBrowser : hiddenForMobile;
+			return allSidebarItems.filter((item) => !hidden.has(item.title));
+		}
+		if (framework && isCloudflareFramework(framework)) {
+			return allSidebarItems.filter(
+				(item) => !hiddenForCloudflare.has(item.title) && !frontendOnly.has(item.title)
+			);
+		}
+		return allSidebarItems.filter((item) => !frontendOnly.has(item.title));
+	});
 
 	const allOrganizationItems: SidebarItem[] = [
 		{

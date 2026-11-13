@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 // The telemetry ingest path decompresses and decodes every request body it
@@ -36,6 +37,9 @@ func newAdmissionGate(capacity int, wait time.Duration, message string, onReject
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": message})
 	}
 	return func(c *gin.Context) {
+		waitCtx, waitSpan := traceway.StartSpan(c, "admission.wait")
+		traceway.SetAttribute(waitCtx, "admission.capacity", strconv.Itoa(capacity))
+		defer func() { waitSpan.End() }()
 		select {
 		case slots <- struct{}{}:
 		default:
@@ -61,6 +65,8 @@ func newAdmissionGate(capacity int, wait time.Duration, message string, onReject
 				return
 			}
 		}
+		waitSpan.End()
+		waitSpan = nil
 		restartBodyGuard(c)
 		defer func() { <-slots }()
 		c.Next()

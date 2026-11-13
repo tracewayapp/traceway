@@ -98,26 +98,36 @@ func projectHasData(ctx context.Context, projectId uuid.UUID, now time.Time) boo
 	select {
 	case a := <-result:
 		if a.err != nil {
-			traceway.CaptureException(fmt.Errorf("dashboard overview: checking whether project %s has data: %w", projectId, a.err))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("dashboard overview: checking whether project %s has data: %w", projectId, a.err))
 			return true
 		}
 		return a.hasData
 	case <-ctx.Done():
-		traceway.CaptureException(fmt.Errorf("dashboard overview: checking whether project %s has data: %w", projectId, ctx.Err()))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("dashboard overview: checking whether project %s has data: %w", projectId, ctx.Err()))
 		return true
 	}
 }
 
 func countEndpointsAndExceptions(ctx context.Context, projectId uuid.UUID, now time.Time) (bool, error) {
 	var epoch time.Time
-	endpointCount, err := telemetry.EndpointRepository.CountBetween(ctx, projectId, epoch, now)
+	countCtx, countSpan := traceway.StartSpan(ctx, "dashboard.count_endpoints")
+	endpointCount, err := telemetry.EndpointRepository.CountBetween(countCtx, projectId, epoch, now)
+	if err == nil {
+		traceway.SetAttribute(countCtx, "dashboard.record_count", fmt.Sprint(endpointCount))
+	}
+	countSpan.End()
 	if err != nil {
 		return true, fmt.Errorf("counting endpoints: %w", err)
 	}
 	if endpointCount > 0 {
 		return true, nil
 	}
-	exceptionCount, err := telemetry.ExceptionStackTraceRepository.CountBetween(ctx, projectId, epoch, now)
+	countCtx, countSpan = traceway.StartSpan(ctx, "dashboard.count_exceptions")
+	exceptionCount, err := telemetry.ExceptionStackTraceRepository.CountBetween(countCtx, projectId, epoch, now)
+	if err == nil {
+		traceway.SetAttribute(countCtx, "dashboard.record_count", fmt.Sprint(exceptionCount))
+	}
+	countSpan.End()
 	if err != nil {
 		return true, fmt.Errorf("counting exceptions: %w", err)
 	}

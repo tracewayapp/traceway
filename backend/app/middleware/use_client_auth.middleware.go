@@ -3,6 +3,7 @@ package middleware
 import (
 	"errors"
 	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"net/http"
 	"strings"
 
@@ -39,6 +40,7 @@ func InitUseClientAuth() {
 		// Set project in context for downstream handlers
 		c.Set(ProjectContextKey, project)
 		c.Set(ProjectIdContextKey, project.Id)
+		traceway.SetAttribute(c, "project_id", project.Id.String())
 
 		c.Next()
 	}

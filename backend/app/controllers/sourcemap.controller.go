@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +25,10 @@ func (s sourceMapController) Upload(c *gin.Context) {
 		return
 	}
 
-	if !parseMultipartCapped(c, maxUploadBytes, uploadMultipartMemory) {
+	_, parseSpan := traceway.StartSpan(c, "reading source map upload")
+	parsed := parseMultipartCapped(c, maxUploadBytes, uploadMultipartMemory)
+	parseSpan.End()
+	if !parsed {
 		return
 	}
 	defer c.Request.MultipartForm.RemoveAll()
@@ -33,6 +37,21 @@ func (s sourceMapController) Upload(c *gin.Context) {
 	if len(files) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No files uploaded"})
 		return
+	}
+
+	spanCtx, span := traceway.StartSpan(c, "storing source map upload")
+	defer span.End()
+	traceway.SetAttribute(spanCtx, "upload.file_count", strconv.Itoa(len(files)))
+	write := func(name, key string, data []byte) error {
+		writeCtx, writeSpan := traceway.StartSpan(spanCtx, name)
+		defer writeSpan.End()
+		traceway.SetAttribute(writeCtx, "upload.bytes", strconv.Itoa(len(data)))
+		return storage.Store.Write(writeCtx, key, data)
+	}
+	invalidate := func(name string) {
+		_, invalidateSpan := traceway.StartSpan(spanCtx, "sourcemap.invalidate_cache")
+		defer invalidateSpan.End()
+		services.InvalidateSourceMap(projectId, name)
 	}
 
 	uploaded := 0
@@ -59,38 +78,45 @@ func (s sourceMapController) Upload(c *gin.Context) {
 			return
 		}
 
+		readCtx, readSpan := traceway.StartSpan(spanCtx, "sourcemap.read_file")
 		f, err := fileHeader.Open()
 		if err != nil {
+			readSpan.End()
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to open uploaded file %s: %w", fileHeader.Filename, err))
 			return
 		}
 
 		data, err := io.ReadAll(f)
 		f.Close()
+		traceway.SetAttribute(readCtx, "upload.bytes", strconv.Itoa(len(data)))
+		readSpan.End()
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to read uploaded file %s: %w", fileHeader.Filename, err))
 			return
 		}
 
 		storageKey := services.SourceMapStorageKey(projectId, fileHeader.Filename)
-		if err := storage.Store.Write(c, storageKey, data); err != nil {
+		if err := write("sourcemap.write_file", storageKey, data); err != nil {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write source map to storage: %w", err))
 			return
 		}
-		services.InvalidateSourceMap(projectId, fileHeader.Filename)
+		invalidate(fileHeader.Filename)
 		storedNames = append(storedNames, fileHeader.Filename)
 
-		if debugId := services.ExtractDebugId(fileHeader.Filename, data); debugId != "" {
+		_, debugSpan := traceway.StartSpan(spanCtx, "sourcemap.extract_debug_id")
+		debugId := services.ExtractDebugId(fileHeader.Filename, data)
+		debugSpan.End()
+		if debugId != "" {
 			aliasName := services.DebugIdBundleName(debugId)
 			if strings.HasSuffix(fileHeader.Filename, ".map") {
 				aliasName = services.DebugIdMapName(debugId)
 			}
 			aliasKey := services.SourceMapStorageKey(projectId, aliasName)
-			if err := storage.Store.Write(c, aliasKey, data); err != nil {
+			if err := write("sourcemap.write_debug_id_alias", aliasKey, data); err != nil {
 				c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to write debug id artifact to storage: %w", err))
 				return
 			}
-			services.InvalidateSourceMap(projectId, aliasName)
+			invalidate(aliasName)
 			storedNames = append(storedNames, aliasName)
 		}
 

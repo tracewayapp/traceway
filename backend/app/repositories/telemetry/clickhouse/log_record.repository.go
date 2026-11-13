@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"strings"
 	"time"
 
@@ -75,7 +76,10 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 
 	countQuery := "SELECT count() FROM log_records WHERE " + where
 	var count uint64
-	if err := chdb.Conn.QueryRow(ctx, countQuery, args...).Scan(&count); err != nil {
+	countCtx, countSpan := traceway.StartSpan(ctx, "logs.count")
+	err := chdb.Conn.QueryRow(countCtx, countQuery, args...).Scan(&count)
+	countSpan.End()
+	if err != nil {
 		return nil, 0, err
 	}
 	if count == 0 {
@@ -106,7 +110,9 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 
 	args = append(args, params.PageSize, offset)
 
-	rows, err := chdb.Conn.Query(ctx, query, args...)
+	fetchCtx, fetchSpan := traceway.StartSpan(ctx, "logs.fetch")
+	defer fetchSpan.End()
+	rows, err := chdb.Conn.Query(fetchCtx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}

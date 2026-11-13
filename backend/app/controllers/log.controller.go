@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -150,6 +151,12 @@ func (l logController) List(c *gin.Context) {
 	}
 
 	spanCtx, span := traceway.StartSpan(c, "loading logs")
+	traceway.SetAttribute(spanCtx, "logs.range_seconds", strconv.FormatFloat(request.ToDate.Sub(request.FromDate).Seconds(), 'f', 0, 64))
+	traceway.SetAttribute(spanCtx, "logs.trace_filter", strconv.FormatBool(request.TraceId != ""))
+	traceway.SetAttribute(spanCtx, "logs.body_search", strconv.FormatBool(request.Search != "" && searchType == "body"))
+	traceway.SetAttribute(spanCtx, "logs.attribute_filter_count", strconv.Itoa(len(attrFilters)))
+	traceway.SetAttribute(spanCtx, "logs.page", strconv.Itoa(request.Pagination.Page))
+	traceway.SetAttribute(spanCtx, "logs.page_size", strconv.Itoa(request.Pagination.PageSize))
 	records, total, err := telemetry.LogRecordRepository.Search(spanCtx, params)
 	span.End()
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"strings"
 
 	"github.com/google/uuid"
@@ -138,8 +139,10 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 		traceIdIn = " AND trace_id IN (" + strings.Join(placeholders, ", ") + ")"
 	}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
+	countCtx, countSpan := traceway.StartSpan(ctx, "logs.count")
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(countCtx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count FROM log_records WHERE "+where+traceIdIn, args)
+	countSpan.End()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -189,11 +192,15 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 			logRecordColumns, where+traceIdIn, orderBy, direction)
 	}
 
-	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB), query, args)
+	fetchCtx, fetchSpan := traceway.StartSpan(ctx, "logs.fetch")
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(fetchCtx, db.TelemetryDB), query, args)
+	fetchSpan.End()
 	if err != nil {
 		return nil, 0, err
 	}
 
+	_, convertSpan := traceway.StartSpan(ctx, "logs.decode_rows")
+	defer convertSpan.End()
 	records := make([]models.LogRecord, 0, len(rows))
 	for _, row := range rows {
 		records = append(records, row.toModel())

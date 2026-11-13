@@ -1,0 +1,493 @@
+{
+  "projectId": "${TRACEWAY_PROJECT_ID}",
+  "recipient": "${TRACEWAY_EMAIL_RECIPIENT}",
+  "channelId": "${TRACEWAY_CHANNEL_ID}",
+  "rules": [
+    {
+      "name": "Reliability: POST /api/otel/v1/logs P95 above 500 ms",
+      "ruleType": "endpoint_p95_threshold",
+      "config": {
+        "endpoint": "POST /api/otel/v1/logs",
+        "thresholdMs": 500,
+        "lookbackMinutes": 10
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "24h observed P95 approximately 147 ms; threshold provides regression headroom."
+    },
+    {
+      "name": "Reliability: POST /api/otel/v1/traces P95 above 1000 ms",
+      "ruleType": "endpoint_p95_threshold",
+      "config": {
+        "endpoint": "POST /api/otel/v1/traces",
+        "thresholdMs": 1000,
+        "lookbackMinutes": 10
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "24h observed P95 approximately 299 ms; threshold provides regression headroom."
+    },
+    {
+      "name": "Reliability: POST /api/otel/v1/metrics P95 above 1000 ms",
+      "ruleType": "endpoint_p95_threshold",
+      "config": {
+        "endpoint": "POST /api/otel/v1/metrics",
+        "thresholdMs": 1000,
+        "lookbackMinutes": 10
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "24h observed P95 approximately 297 ms; threshold provides regression headroom."
+    },
+    {
+      "name": "Reliability: POST /api/report P95 above 2000 ms",
+      "ruleType": "endpoint_p95_threshold",
+      "config": {
+        "endpoint": "POST /api/report",
+        "thresholdMs": 2000,
+        "lookbackMinutes": 10
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "24h observed P95 approximately 938 ms; threshold provides regression headroom."
+    },
+    {
+      "name": "Reliability: API Apdex below 0.85",
+      "ruleType": "apdex_drop",
+      "config": {
+        "thresholdApdex": 0.85,
+        "lookbackMinutes": 15,
+        "minRequests": 100
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Service-wide responsiveness with a minimum traffic guard."
+    },
+    {
+      "name": "Reliability: API throughput drops 60%",
+      "ruleType": "throughput_drop",
+      "config": {
+        "dropPercent": 60,
+        "lookbackMinutes": 15,
+        "baselineWindowMinutes": 60
+      },
+      "cooldownMinutes": 60,
+      "severity": "warning",
+      "rationale": "Relative regression versus the preceding hour; no baseline traffic does not alert."
+    },
+    {
+      "name": "Reliability: server error rate above 5%",
+      "ruleType": "error_rate_threshold",
+      "config": {
+        "thresholdPercent": 5,
+        "lookbackMinutes": 10,
+        "minRequests": 100
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Existing native report error share was 3.2%; notify on material worsening."
+    },
+    {
+      "name": "Reliability: monitoring telemetry silent for 10 minutes",
+      "ruleType": "no_data",
+      "config": {
+        "dataType": "metrics",
+        "silenceMinutes": 10
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Threshold rules do not fire when data is missing."
+    },
+    {
+      "name": "Reliability: client logs dropped above 1000 per 30s",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ingest.logs.dropped_30s",
+        "aggregation": "max",
+        "operator": "gt",
+        "thresholdValue": 1000,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "A substantial client flood exceeding one default IP budget; smaller drops remain visible on charts."
+    },
+    {
+      "name": "Reliability: client IP limiter capacity exhausted",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ingest.logs.limiter_saturated_30s",
+        "aggregation": "max",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Any saturation denies new IPs and requires investigation."
+    },
+    {
+      "name": "Reliability: ingest failures above 50 per 30s",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ingest.failures_30s",
+        "aggregation": "max",
+        "operator": "gt",
+        "thresholdValue": 50,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Includes client 4xx and server 5xx; server error-rate rule distinguishes failures requiring urgent action."
+    },
+    {
+      "name": "Reliability: ingest admission rejected requests",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ingest.admission_rejected.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Any concurrency rejection indicates load shedding; exporters retry."
+    },
+    {
+      "name": "Reliability: storage rejected telemetry rows",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.storage.rows_dropped.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Nonzero indicates telemetry loss."
+    },
+    {
+      "name": "Reliability: ingest storage batch exceeds 5 seconds",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ingest.batch.insert_ms",
+        "aggregation": "max",
+        "operator": "gt",
+        "thresholdValue": 5000,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Observed 24h peak 3266 ms; 5000 ms signals worsening storage latency."
+    },
+    {
+      "name": "Reliability: CPU above 85 percent for 10 minutes",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.proc.cpu_pcnt",
+        "aggregation": "avg",
+        "operator": "gt",
+        "thresholdValue": 85,
+        "lookbackMinutes": 10,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "85% leaves 15% CPU headroom; evaluated independently per server."
+    },
+    {
+      "name": "Reliability: ClickHouse disk above 85 percent",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ch.disk.used_pcnt",
+        "aggregation": "max",
+        "operator": "gt",
+        "thresholdValue": 85,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Observed 24h peak 81.1%; preserve at least 15% free capacity."
+    },
+    {
+      "name": "Reliability: ClickHouse insert failures",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ch.failed_inserts.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Any failed inserts threaten ingestion."
+    },
+    {
+      "name": "Reliability: ClickHouse rejected inserts",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ch.rejected_inserts.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Any rejected inserts threaten ingestion."
+    },
+    {
+      "name": "Reliability: ClickHouse delayed inserts",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.ch.delayed_inserts.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Insertion backpressure before outright rejection."
+    },
+    {
+      "name": "Reliability: notification backlog older than 120 seconds",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.outbox.oldest_pending_sec",
+        "aggregation": "max",
+        "operator": "gt",
+        "thresholdValue": 120,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Two minutes exceeds multiple normal 15-second drain cycles."
+    },
+    {
+      "name": "Reliability: notification delivery exhausted retries",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.outbox.terminal_failures.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Any exhausted delivery retry is actionable; historical failed_rows is charted without repeated stale alerts."
+    },
+    {
+      "name": "Reliability: replay recordings dropped",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.recordings.dropped.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Any queue drop loses session replay data."
+    },
+    {
+      "name": "Reliability: replay recording uploads failed",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.recordings.failed.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Any failed upload loses replay data."
+    },
+    {
+      "name": "Reliability: synthetic check queue older than 120 seconds",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.synthetics.oldest_queued_sec",
+        "aggregation": "max",
+        "operator": "gt",
+        "thresholdValue": 120,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Delayed checks create monitoring blind spots."
+    },
+    {
+      "name": "Reliability: synthetic check executions missed",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.synthetics.missed.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "Missed check runs weaken availability coverage."
+    },
+    {
+      "name": "Reliability: no synthetic runners online for 5 minutes",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.synthetics.runners_online",
+        "aggregation": "max",
+        "operator": "lt",
+        "thresholdValue": 1,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "critical",
+      "rationale": "At least one runner is currently deployed; max below one requires no healthy sample throughout the window."
+    },
+    {
+      "name": "Reliability: SLO computation errors",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.slo.errors.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Failed computation can hide SLO breaches."
+    },
+    {
+      "name": "Reliability: SLO computation timeouts",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.slo.timeouts.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Timeouts indicate worker or database pressure."
+    },
+    {
+      "name": "Reliability: SLO data stale by more than 180 seconds",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.slo.max_staleness_sec",
+        "aggregation": "max",
+        "operator": "gt",
+        "thresholdValue": 180,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Three normal 60-second evaluator cycles without fresh SLO data."
+    },
+    {
+      "name": "Reliability: source map loads failed",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.sourcemap.load_failures.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 0,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 30,
+      "severity": "warning",
+      "rationale": "Errors may be unsymbolicated; normal not-found cache misses do not alert."
+    },
+    {
+      "name": "Reliability: source map warmups dropped above 100 in 5 minutes",
+      "ruleType": "metric_threshold",
+      "config": {
+        "metricName": "traceway.sourcemap.warmup_dropped.delta",
+        "aggregation": "sum",
+        "operator": "gt",
+        "thresholdValue": 100,
+        "lookbackMinutes": 5,
+        "groupBy": [
+          "server_name"
+        ]
+      },
+      "cooldownMinutes": 60,
+      "severity": "warning",
+      "rationale": "On-demand fallback exists, so tolerate small deploy bursts; large drops suggest capacity pressure."
+    }
+  ]
+}

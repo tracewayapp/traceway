@@ -1,0 +1,9 @@
+{
+  "name": "Traceway reliability email",
+  "channelType": "email",
+  "config": {
+    "recipients": [
+      "${TRACEWAY_EMAIL_RECIPIENT}"
+    ]
+  }
+}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/v2/app/services"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
@@ -15,6 +16,8 @@ import (
 const backendReportInterval = 30 * time.Second
 
 type backendBaselines struct {
+	ingestRejected  uint64
+	storageDropped  uint64
 	smHits          uint64
 	smMisses        uint64
 	smEvictions     uint64
@@ -55,6 +58,14 @@ func StartBackendReporter(ctx context.Context) {
 }
 
 func reportBackendOnce(b *backendBaselines) {
+	reportIngestVolume()
+	rejected := db.GetIngestRejects()
+	_, dropped, _ := db.GetTelemetryIngestCounters()
+	if !b.first {
+		traceway.CaptureMetric("traceway.ingest.admission_rejected.delta", float64(safeDelta(b.ingestRejected, rejected)))
+		traceway.CaptureMetric("traceway.storage.rows_dropped.delta", float64(safeDelta(b.storageDropped, dropped)))
+	}
+	b.ingestRejected, b.storageDropped = rejected, dropped
 	traceway.CaptureMetric("traceway.ingest.in_flight", float64(InFlightIngest()))
 
 	if rss, ok := ReadRSSBytes(); ok {

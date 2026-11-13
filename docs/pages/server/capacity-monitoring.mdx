@@ -56,6 +56,38 @@ Recorded for every ingest request, tagged with `signal` and `table`. Metrics are
 | `traceway.ingest.batch.bytes` | Decompressed size of the largest payload in bytes |
 | `traceway.ingest.rate_limited` | Fired when an org hits its ingest quota (tagged `org_id`) |
 
+### Log volume and ingestion outcomes
+
+The backend reports these gauges every 30 seconds. Each `_30s` value covers the most recent 30 one-second receipt-time buckets, including zero during idle periods. Counts are per backend process; use the server filter to investigate a replica. For charts over larger time buckets, use `max` for peaks or `avg` for typical window volume, rather than summing overlapping window snapshots.
+
+| Metric | Meaning |
+|--------|---------|
+| `traceway.ingest.logs.received_30s` | Decoded OTLP log records and native captured messages received, before client throttling and plan permissions |
+| `traceway.ingest.logs.accepted_30s` | Log records/messages accepted by the storage API; excludes generated review issues and duplicate exception projections of an OTLP log |
+| `traceway.ingest.logs.dropped_30s` | Records discarded by the client IP limiter, including limiter capacity exhaustion |
+| `traceway.ingest.logs.limiter_saturated_30s` | Requests denied because the bounded IP limiter cannot track another active project/IP |
+| `traceway.ingest.failures_30s` | Ingest requests ending in HTTP 4xx or 5xx, including requests without a sampled trace |
+| `traceway.ingest.admission_rejected.delta` | Requests rejected by the ingest concurrency gate since the previous reporting tick (503, clients may retry) |
+| `traceway.storage.rows_dropped.delta` | Rows rejected by instrumented storage validation paths since the previous reporting tick |
+
+`traceway.ingest.logs.received`, `.accepted`, and `.dropped` are also OTel counters for longer-range totals and rates. Received need not equal accepted plus throttled: plan restrictions, storage failures, and requests spanning reporting windows account for differences. Storage acceptance is not a guarantee of durable flush for asynchronous storage backends. Consult storage-specific failure metrics as well.
+
+`traceway.ingest.requests` counts requests by `route` and `status_class` (such as `4xx` or `5xx`). `traceway.ingest.request.duration_ms` reports the maximum complete ingest request duration per export interval with the same labels, including admission waiting and decoding. `traceway.ingest.batches` and `traceway.ingest.rows` count completed batches and their rows by `signal` and `table`. These labels never include customer IPs, session IDs, or device IDs.
+
+### Client log flood protection
+
+Browser and mobile projects share a budget across the native report and OTLP logs endpoints: **1,000 records per project and trusted client IP per fixed 30-second window**, anchored to that IP's first request. Set a positive `CLIENT_LOG_LIMIT_30S` to change the budget; missing, invalid, or non-positive values use 1,000. The setting is read on first use after startup environment loading. Backend projects are exempt so applications behind a collector or NAT do not lose server logs to this client protection.
+
+For OTLP, every log event counts, including lifecycle and exception events. Within an oversized batch, lifecycle events and then exception events receive priority over ordinary logs. Once the budget is exhausted, additional events are discarded. Native reports count captured messages; native exceptions, traces, metrics, and replay payloads use their existing admission/body limits. Replay-embedded breadcrumbs are not standalone log records and are outside this limiter.
+
+Excess OTLP records return HTTP 200 with `partialSuccess.rejectedLogRecords` and an explanation, in either JSON or protobuf. Native reports return HTTP 200 and `X-Traceway-Dropped-Logs`. This deliberately discards excess records instead of telling exporters to repeatedly resend a flood. The allowance counts admitted attempts, including retries after storage errors; it is not a deduplication mechanism.
+
+The first throttled request for an IP in each window creates a **Client log volume exceeded: review this device or shared network** message issue in the customer's project, subject to the project's exception-ingestion permission. Its occurrence contains the trusted IP, rejected count for that request, configured limit, and the first rejected record's session/device identifiers when supplied. Customers can review it through Issues and follow the linked session. Repeated requests from that IP in the same window do not generate more review issues. A shared IP can represent several devices: the issue is a network-volume signal, not proof that the linked device alone caused the flood.
+
+Configure `TRUSTED_PROXIES` correctly: the limiter uses the same server-derived `ClientIP()` as sessions, never an IP in the uploaded log attributes. Untrusted forwarded headers do not change the key. The limiter holds at most 65,536 project/IP entries; when full it discards logs from unknown keys until expired entries can be reclaimed and increments `limiter_saturated_30s`. Existing active keys are not evicted to admit new ones.
+
+Limits and counters reset on restart and are local to each replica. A deployment with N replicas can admit up to N times the configured budget without sticky routing or a shared external limiter. Fixed-window boundaries can also allow two budgets close together. The 1,000-record default is a starting point for runaway client logging; adjust it for shared corporate networks using observed traffic and review issues.
+
 ### Backend process (every 30s)
 
 | Metric | Meaning |

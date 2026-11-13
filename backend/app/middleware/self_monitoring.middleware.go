@@ -3,9 +3,11 @@ package middleware
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/monitoring"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/attribute"
@@ -82,6 +84,17 @@ func shouldTraceRequest(c *gin.Context, selfAuth string) bool {
 // outside it, so without this a panic would leave the span with no status
 // and no exception.
 func recordRequestOutcome(c *gin.Context) {
+	if ingestRoutes[c.FullPath()] {
+		start := time.Now()
+		defer func() {
+			if r := recover(); r != nil {
+				monitoring.RecordIngestOutcome(c.FullPath(), http.StatusInternalServerError, time.Since(start))
+				panic(r)
+			}
+			monitoring.RecordIngestOutcome(c.FullPath(), c.Writer.Status(), time.Since(start))
+		}()
+	}
+
 	span := trace.SpanFromContext(c.Request.Context())
 	if !span.IsRecording() {
 		c.Next()

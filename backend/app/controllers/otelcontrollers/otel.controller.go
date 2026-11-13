@@ -372,10 +372,14 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		return
 	}
 
+	droppedLogs, review := throttleLogs(existingProject, projectId, c.ClientIP(), req)
 	convertStart := time.Now()
 	result := convertLogs(c, existingProject, projectId, c.ClientIP(), req)
 	records, sessions, exceptions := result.Records, result.Sessions, result.Exceptions
 	convertMs := msSince(convertStart)
+	if review != nil {
+		exceptions = append(exceptions, *review)
+	}
 
 	if !perm.Data {
 		records = nil
@@ -394,6 +398,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 			return
 		}
 	}
+	monitoring.RecordLogsAccepted(len(records))
 	if len(sessions) > 0 {
 		if err := telemetry.SessionRepository.Upsert(c, sessions); err != nil {
 			abortIngestStorage(c, "sessions", err)
@@ -420,7 +425,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	}
 	insertMs := msSince(insertStart)
 
-	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records)+len(exceptions), bodyBytes)
+	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
 
 	if hasOrg && (perm.Data || len(exceptions) > 0) {
 		ev := hooks.ReportEvent{
@@ -439,7 +444,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		hooks.BroadcastReport(ev)
 	}
 
-	writeLogsResponse(c)
+	writeLogsResponse(c, droppedLogs)
 }
 
 func (o otelController) ExportProfiles(c *gin.Context) {

@@ -34,6 +34,8 @@ func RecordIngestBatch(signal, table string, convertMs, insertMs float64, size, 
 		"signal": signal,
 		"table":  table,
 	}
+	traceway.CaptureCount("traceway.ingest.batches", 1, tags)
+	traceway.CaptureCount("traceway.ingest.rows", int64(size), tags)
 	traceway.CaptureMetricMax("traceway.ingest.batch.convert_ms", convertMs, tags)
 	traceway.CaptureMetricMax("traceway.ingest.batch.insert_ms", insertMs, tags)
 	traceway.CaptureMetricMax("traceway.ingest.batch.size", float64(size), tags)

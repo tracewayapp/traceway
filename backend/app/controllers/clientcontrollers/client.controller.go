@@ -166,6 +166,10 @@ func (e clientController) Report(c *gin.Context) {
 		}
 	}
 
+	droppedLogs, review := throttleMessages(project, projectId, c.ClientIP(), &request)
+	if droppedLogs > 0 {
+		c.Header("X-Traceway-Dropped-Logs", fmt.Sprint(droppedLogs))
+	}
 	bodyBytes := 0
 	if cb, ok := c.Get(gin.BodyBytesKey); ok {
 		if b, ok := cb.([]byte); ok {
@@ -287,6 +291,9 @@ func (e clientController) Report(c *gin.Context) {
 			}
 		}
 	}
+	if review != nil {
+		exceptionStackTraceToInsert = append(exceptionStackTraceToInsert, *review)
+	}
 	convertSpan.End()
 
 	var droppedHealthchecks map[string]bool
@@ -378,6 +385,14 @@ func (e clientController) Report(c *gin.Context) {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting exceptionStackTraceToInsert: %w", err))
 		return
 	}
+
+	acceptedMessages := 0
+	for _, row := range exceptionStackTraceToInsert {
+		if row.IsMessage && (review == nil || row.Id != review.Id) {
+			acceptedMessages++
+		}
+	}
+	monitoring.RecordLogsAccepted(acceptedMessages)
 
 	if len(metricPointsToInsert) > 0 {
 		insertCtx, insertSpan := traceway.StartSpan(c, "report.insert.metric_points")

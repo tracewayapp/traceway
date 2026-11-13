@@ -54,12 +54,13 @@
 		'Endpoints',
 		'Tasks',
 		'Profiles',
+		'Dashboards',
 		'AI Traces',
 		'Monitors'
 	]);
-	// Browser projects report through the OpenTelemetry SDK, which fills Logs, Spans and Dashboards;
-	// mobile projects report through the native SDKs and keep the shorter list.
-	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans', 'Dashboards']);
+	// Browser projects report through the OpenTelemetry SDK, which exports logs and spans but no
+	// metrics; mobile projects report through the native SDKs, which send neither.
+	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans']);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
 	// the sidebar for any other framework, so a Go backend project doesn't

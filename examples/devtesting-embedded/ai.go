@@ -19,9 +19,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// An AI chat agent backed by OpenRouter, OrcaRouter or Cheaper Inference,
-// instrumented with gen_ai.* span attributes so every LLM call lands in
-// Traceway's AI Traces / Conversations analytics: conversation grouping
+// An AI chat agent backed by OpenRouter, OrcaRouter, Cheaper Inference or
+// UberLLM, instrumented with gen_ai.* span attributes so every LLM call lands
+// in Traceway's AI Traces / Conversations analytics: conversation grouping
 // (gen_ai.conversation.id), per-user stats (user.id), tool calls parsed from
 // the completion payload, and sub-agents as separate trace names inside the
 // same conversation.
@@ -29,12 +29,14 @@ import (
 // The provider is selected by environment: setting ORCAROUTER_API_KEY routes
 // through OrcaRouter (https://api.orcarouter.ai/v1), setting
 // CHEAPER_INFERENCE_API_KEY routes through Cheaper Inference
-// (https://api.cheaperinference.com/v1), otherwise the agent falls back to
-// OpenRouter.
+// (https://api.cheaperinference.com/v1), setting UBERLLM_API_KEY routes
+// through UberLLM (https://api.uberllm.dev/v1), otherwise the agent falls back
+// to OpenRouter.
 
 const openRouterURL = "https://openrouter.ai/api/v1/chat/completions"
 const orcaRouterURL = "https://api.orcarouter.ai/v1/chat/completions"
 const cheaperInferenceURL = "https://api.cheaperinference.com/v1/chat/completions"
+const uberLLMURL = "https://api.uberllm.dev/v1/chat/completions"
 
 var aiHTTPClient = &http.Client{Timeout: 120 * time.Second}
 
@@ -199,13 +201,16 @@ type toolEvent struct {
 // callGateway makes one chat-completions call and emits the gen_ai.* span
 // Traceway promotes to an ai_traces row. The gateway is selected by env:
 // ORCAROUTER_API_KEY routes through OrcaRouter, CHEAPER_INFERENCE_API_KEY
-// routes through Cheaper Inference, otherwise OpenRouter is used.
+// routes through Cheaper Inference, UBERLLM_API_KEY routes through UberLLM,
+// otherwise OpenRouter is used.
 func (cc *chatContext) callGateway(ctx context.Context, agent agentDef, messages []orMessage) (*orResponse, error) {
 	endpoint, apiKey, system := openRouterURL, os.Getenv("OPENROUTER_API_KEY"), "openrouter"
 	if os.Getenv("ORCAROUTER_API_KEY") != "" {
 		endpoint, apiKey, system = orcaRouterURL, os.Getenv("ORCAROUTER_API_KEY"), "orcarouter"
 	} else if os.Getenv("CHEAPER_INFERENCE_API_KEY") != "" {
 		endpoint, apiKey, system = cheaperInferenceURL, os.Getenv("CHEAPER_INFERENCE_API_KEY"), "cheaperinference"
+	} else if os.Getenv("UBERLLM_API_KEY") != "" {
+		endpoint, apiKey, system = uberLLMURL, os.Getenv("UBERLLM_API_KEY"), "uberllm"
 	}
 
 	reqBody := orRequest{Model: cc.model, Messages: messages, Tools: agent.Tools}
@@ -562,6 +567,12 @@ func defaultModel() string {
 		}
 		return "gpt-5.4-mini"
 	}
+	if os.Getenv("UBERLLM_API_KEY") != "" {
+		if model := os.Getenv("UBERLLM_MODEL"); model != "" {
+			return model
+		}
+		return "openai/gpt-5.4-mini"
+	}
 	if model := os.Getenv("OPENROUTER_MODEL"); model != "" {
 		return model
 	}
@@ -572,8 +583,8 @@ func registerAIChatRoutes(router *gin.Engine, svc *otelService) {
 	model := defaultModel()
 
 	router.POST("/api/ai/chat", func(c *gin.Context) {
-		if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("CHEAPER_INFERENCE_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "ORCAROUTER_API_KEY, CHEAPER_INFERENCE_API_KEY or OPENROUTER_API_KEY is not set; add it to examples/devtesting-embedded/.env"})
+		if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("CHEAPER_INFERENCE_API_KEY") == "" && os.Getenv("UBERLLM_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "ORCAROUTER_API_KEY, CHEAPER_INFERENCE_API_KEY, UBERLLM_API_KEY or OPENROUTER_API_KEY is not set; add it to examples/devtesting-embedded/.env"})
 			return
 		}
 

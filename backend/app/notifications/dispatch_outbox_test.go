@@ -14,6 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
@@ -129,6 +130,51 @@ func TestDispatchFailureLeavesNoCooldown(t *testing.T) {
 	}
 	if !cooldowns.canFire(fixture.Rule.Id, fixture.Rule.CooldownMinutes) {
 		t.Error("cooldown must not be recorded when dispatch fails")
+	}
+}
+
+func TestDispatchChannelLoadFailureRecordsAppliedSeverityAndURL(t *testing.T) {
+	fixture := setupDispatchDB(t)
+	fixture.Rule.ChannelId = 99999
+	fixture.Rule.Severity = "warning"
+	setAppBaseURL(t, "https://traceway.example.com/")
+
+	if dispatch(context.Background(), fixture.Rule, Message{
+		Subject:  "s",
+		Severity: SeverityCritical,
+		URL:      "/issues/0123456789abcdef",
+	}) {
+		t.Fatal("dispatch with a dangling channel should fail")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	var rows []*models.NotificationHistoryEntry
+	for {
+		var err error
+		rows, _, err = telemetry.FiredNotificationRepository.FindByProject(context.Background(), fixture.Rule.ProjectId, 1, 10, "", nil, nil)
+		if err != nil {
+			t.Fatalf("load history: %v", err)
+		}
+		if len(rows) > 0 || !time.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 history row, got %d", len(rows))
+	}
+	row := rows[0]
+	if row.Severity != "warning" {
+		t.Errorf("severity = %q, want warning", row.Severity)
+	}
+	if row.URL != "https://traceway.example.com/issues/0123456789abcdef" {
+		t.Errorf("URL = %q, want https://traceway.example.com/issues/0123456789abcdef", row.URL)
+	}
+	if row.Status != "failed" {
+		t.Errorf("status = %q, want failed", row.Status)
+	}
+	if row.ErrorMessage != "failed to load channel" {
+		t.Errorf("error = %q, want failed to load channel", row.ErrorMessage)
 	}
 }
 

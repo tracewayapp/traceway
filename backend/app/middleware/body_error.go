@@ -43,6 +43,7 @@ func RejectIngestBindError(c *gin.Context, err error, fallback string) {
 	}
 	traceway.SetAttribute(c, "ingest.rejection_reason", reason)
 	traceway.SetAttribute(c, "ingest.content_length", strconv.FormatInt(c.Request.ContentLength, 10))
+	traceway.CaptureCount("traceway.ingest.body_rejected", 1, map[string]string{"reason": reason})
 	status, message, ok := BodyReadError(err)
 	if !ok {
 		status, message = http.StatusBadRequest, fallback

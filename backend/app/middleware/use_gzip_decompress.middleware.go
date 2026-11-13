@@ -77,6 +77,11 @@ type ingestBodyMeter struct {
 	wireTime     time.Duration
 	decodedBytes int64
 	decodedTime  time.Duration
+
+	// Kept apart from wireTime: these reads bypass the decompressor, so
+	// counting them as wire time would be subtracted from the gunzip time.
+	discardedBytes int64
+	discardTime    time.Duration
 }
 
 type meteredBody struct {
@@ -96,8 +101,9 @@ func (m *meteredBody) Read(b []byte) (int, error) {
 func (m *meteredBody) Close() error { return m.rc.Close() }
 
 func (m *ingestBodyMeter) record(c *gin.Context) {
-	traceway.SetAttribute(c, "ingest.body.wire_bytes", strconv.FormatInt(m.wireBytes, 10))
-	traceway.SetAttribute(c, "ingest.body.network_ms", strconv.FormatInt(m.wireTime.Milliseconds(), 10))
+	traceway.SetAttribute(c, "ingest.body.wire_bytes", strconv.FormatInt(m.wireBytes+m.discardedBytes, 10))
+	traceway.SetAttribute(c, "ingest.body.network_ms", strconv.FormatInt((m.wireTime+m.discardTime).Milliseconds(), 10))
+	traceway.CaptureMetricMax("traceway.ingest.body.network_ms", float64((m.wireTime + m.discardTime).Milliseconds()), nil)
 	if !m.gzip {
 		return
 	}
@@ -109,7 +115,7 @@ func (m *ingestBodyMeter) record(c *gin.Context) {
 // a response written afterwards reaches a client that only reads it once its
 // upload is complete. It gives up past the body cap or on a read error.
 func (m *ingestBodyMeter) discardRest() bool {
-	metered := &meteredBody{rc: m.wire, bytes: &m.wireBytes, spent: &m.wireTime}
+	metered := &meteredBody{rc: m.wire, bytes: &m.discardedBytes, spent: &m.discardTime}
 	n, err := io.Copy(io.Discard, io.LimitReader(metered, m.limit+1))
 	return err == nil && n <= m.limit
 }

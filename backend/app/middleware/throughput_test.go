@@ -243,7 +243,7 @@ func TestAdmissionGateRestartsTheGuardAfterWaiting(t *testing.T) {
 	readErrs := make(chan error, 1)
 	r := gin.New()
 	r.Use(GuardBodyReads(DefaultBodyIdle, DefaultBodyTotal))
-	gate := newAdmissionGate(1, 5*time.Second, "saturated", nil, "2")
+	gate := newAdmissionGate("test", 1, 5*time.Second, "saturated", nil, "2")
 	r.POST("/hold", gate, func(c *gin.Context) {
 		time.Sleep(700 * time.Millisecond)
 		c.Status(http.StatusOK)

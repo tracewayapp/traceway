@@ -23,12 +23,21 @@ import (
 // a connection; a request that cannot get a slot within the wait window is
 // rejected with 503 + Retry-After, which SDKs and OTLP collectors retry.
 func newIngestAdmission(capacity int, wait time.Duration) gin.HandlerFunc {
-	return newAdmissionGate(capacity, wait, "ingest saturated, retry later", db.RecordIngestRejected, "2")
+	return newAdmissionGate("ingest", capacity, wait, "ingest saturated, retry later", db.RecordIngestRejected, "2")
 }
 
-func newAdmissionGate(capacity int, wait time.Duration, message string, onReject func(), retryAfter string) gin.HandlerFunc {
+// Each gate reports, per export interval and under its name, the largest share
+// of its slots that was in use and the longest a request waited for one. Both
+// rise before the first rejection, which is the only thing the reject counter
+// can show.
+func newAdmissionGate(name string, capacity int, wait time.Duration, message string, onReject func(), retryAfter string) gin.HandlerFunc {
 	slots := make(chan struct{}, capacity)
 	waiters := make(chan struct{}, max(4*capacity, 16))
+	tags := map[string]string{"gate": name}
+	admitted := func(waited time.Duration) {
+		traceway.CaptureMetricMax("traceway.admission.in_use_pcnt", 100*float64(len(slots))/float64(capacity), tags)
+		traceway.CaptureMetricMax("traceway.admission.wait_ms", float64(waited.Microseconds())/1000, tags)
+	}
 	reject := func(c *gin.Context) {
 		if onReject != nil {
 			onReject()
@@ -40,6 +49,7 @@ func newAdmissionGate(capacity int, wait time.Duration, message string, onReject
 		waitCtx, waitSpan := traceway.StartSpan(c, "admission.wait")
 		traceway.SetAttribute(waitCtx, "admission.capacity", strconv.Itoa(capacity))
 		defer func() { waitSpan.End() }()
+		waitStart := time.Now()
 		select {
 		case slots <- struct{}{}:
 		default:
@@ -65,6 +75,7 @@ func newAdmissionGate(capacity int, wait time.Duration, message string, onReject
 				return
 			}
 		}
+		admitted(time.Since(waitStart))
 		waitSpan.End()
 		waitSpan = nil
 		restartBodyGuard(c)
@@ -107,7 +118,7 @@ func IngestAdmission(c *gin.Context) {
 }
 
 var uploadAdmission = sync.OnceValue(func() gin.HandlerFunc {
-	return newAdmissionGate(uploadCapacityFromEnv(), 30*time.Second, "upload queue saturated, retry later", nil, "2")
+	return newAdmissionGate("upload", uploadCapacityFromEnv(), 30*time.Second, "upload queue saturated, retry later", nil, "2")
 })
 
 func uploadCapacityFromEnv() int {
@@ -137,7 +148,7 @@ func opampCapacityFromEnv() int {
 // OpAMP polls get their own gate so a wave of polls cannot starve ingest, or the other way round. A rejected poll
 // waits a minute: the client keeps its last config meanwhile, so nothing is lost by backing off.
 var opampAdmission = sync.OnceValue(func() gin.HandlerFunc {
-	return newAdmissionGate(opampCapacityFromEnv(), time.Second, "remote config is busy, retry later", nil, "60")
+	return newAdmissionGate("opamp", opampCapacityFromEnv(), time.Second, "remote config is busy, retry later", nil, "60")
 })
 
 func OpampAdmission(c *gin.Context) {

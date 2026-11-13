@@ -1,0 +1,1 @@
+import"../chunks/DsnmJJEf.js";import{p as o,a as r}from"../chunks/DNpkCxwR.js";import{S as a}from"../chunks/ANMFSjfS.js";const s=!1,n=({params:e})=>({slug:e.slug}),g=Object.freeze(Object.defineProperty({__proto__:null,load:n,prerender:s},Symbol.toStringTag,{value:"Module"}));function i(e,t){o(t,!0),a(e,{get slug(){return t.data.slug}}),r()}export{i as component,g as universal};

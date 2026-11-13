@@ -44,7 +44,7 @@ Concurrent uploads are limited by `UPLOAD_MAX_CONCURRENT` (default 4). Excess up
 
 ## Ingest body caps
 
-`/api/report` and `/api/profiles/ingest` accept at most 64 MB after decompression, tunable with `REPORT_MAX_BODY_MB`. A larger body answers `413` and is not ingested. Gzip does not raise the cap.
+`/api/report` and `/api/profiles/ingest` accept at most 64 MB after decompression, tunable with `REPORT_MAX_BODY_MB`. A larger body is not ingested: `/api/profiles/ingest` answers `413`, and `/api/report` reads the rest of the upload without keeping it and answers `200` with an `X-Traceway-Discarded: body_too_large` header. The 1.x browser and mobile SDKs treat every status but `200` as a failure and send the same batch again, merged with whatever they collected since, so a `413` there never ends. Each discarded report is counted in `traceway.ingest.oversized_discarded`. Gzip does not raise the cap.
 
 OTLP endpoints keep their 10 MB cap, but an oversized batch is now rejected with `413` instead of being truncated into a `400`. Exporters treat both as permanent and drop the batch, so the change is only in what the log says.
 

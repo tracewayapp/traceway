@@ -79,6 +79,7 @@ func reportBackendOnce(b *backendBaselines) {
 	traceway.CaptureMetric("traceway.sourcemap.bytes", float64(smStats.Bytes))
 	traceway.CaptureMetric("traceway.sourcemap.negative_entries", float64(smStats.NegativeEntries))
 	traceway.CaptureMetric("traceway.sourcemap.parse_ms", smStats.LastParseMs)
+	traceway.CaptureMetric("traceway.sourcemap.warmup_backlog", float64(smStats.WarmupBacklog))
 
 	if !b.first {
 		traceway.CaptureMetric("traceway.sourcemap.hits.delta", float64(safeDelta(b.smHits, smStats.Hits)))

@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/google/uuid"
 )
 
@@ -128,6 +131,27 @@ type ReportRequest struct {
 	ProguardUuid     string                          `json:"proguardUuid"`
 }
 
+// readReportBody is ShouldBindBodyWithJSON with the read and the decode timed
+// apart: the read is the client's upload plus decompression (split further by
+// the ingest.body.* attributes of the request), the decode is server CPU.
+func readReportBody(c *gin.Context, request *ReportRequest) error {
+	parseCtx, parseSpan := traceway.StartSpan(c, "report.parse_body")
+	defer parseSpan.End()
+
+	_, readSpan := traceway.StartSpan(parseCtx, "report.read_body")
+	body, err := io.ReadAll(c.Request.Body)
+	readSpan.End()
+	if err != nil {
+		return err
+	}
+	c.Set(gin.BodyBytesKey, body)
+
+	decodeCtx, decodeSpan := traceway.StartSpan(parseCtx, "report.decode_json")
+	defer decodeSpan.End()
+	traceway.SetAttribute(decodeCtx, "report.body_bytes", strconv.Itoa(len(body)))
+	return binding.JSON.BindBody(body, request)
+}
+
 func (e clientController) Report(c *gin.Context) {
 	monitoring.IngestStarted()
 	defer monitoring.IngestFinished()
@@ -151,14 +175,14 @@ func (e clientController) Report(c *gin.Context) {
 		orgId = *project.OrganizationId
 	}
 
-	_, parseSpan := traceway.StartSpan(c, "report.parse_body")
 	var request ReportRequest
-	if err := c.ShouldBindBodyWithJSON(&request); err != nil {
-		parseSpan.End()
+	if err := readReportBody(c, &request); err != nil {
+		if middleware.DiscardOversizedReport(c, err) {
+			return
+		}
 		middleware.RejectIngestBindError(c, err, err.Error())
 		return
 	}
-	parseSpan.End()
 	for _, frame := range request.CollectionFrames {
 		if err := frame.Validate(); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

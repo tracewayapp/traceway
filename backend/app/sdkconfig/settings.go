@@ -39,7 +39,8 @@ const (
 var (
 	severities  = map[string]bool{"trace": true, "debug": true, "info": true, "warn": true, "error": true, "fatal": true}
 	signalNames = map[string]bool{"errors": true, "messages": true, "network": true, "console": true, "navigation": true,
-		"userActions": true, "webVitals": true, "resourceTiming": true, "custom": true, "*": true}
+		"userActions": true, "webVitals": true, "resourceTiming": true, "longTasks": true, "routeTiming": true, "custom": true,
+		"*": true}
 	triggerIdRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 	matcherOps  = map[string]bool{"eq": true, "neq": true, "in": true, "not_in": true, "contains": true, "icontains": true,
 		"starts_with": true, "glob": true, "exists": true, "not_exists": true, "gt": true, "gte": true, "lt": true, "lte": true,
@@ -70,6 +71,8 @@ type Signals struct {
 	UserActions    *SignalSettings `json:"userActions,omitempty"`
 	WebVitals      *SignalSettings `json:"webVitals,omitempty"`
 	ResourceTiming *SignalSettings `json:"resourceTiming,omitempty"`
+	LongTasks      *SignalSettings `json:"longTasks,omitempty"`
+	RouteTiming    *SignalSettings `json:"routeTiming,omitempty"`
 	Custom         *SignalSettings `json:"custom,omitempty"`
 }
 
@@ -82,6 +85,8 @@ func (s *Signals) each(fn func(name string, field **SignalSettings)) {
 	fn("userActions", &s.UserActions)
 	fn("webVitals", &s.WebVitals)
 	fn("resourceTiming", &s.ResourceTiming)
+	fn("longTasks", &s.LongTasks)
+	fn("routeTiming", &s.RouteTiming)
 	fn("custom", &s.Custom)
 }
 
@@ -336,7 +341,7 @@ func validSignals(signals []string) bool {
 
 func (a TriggerAction) validate() error {
 	if !validSignals(a.Signals) {
-		return invalid("signals may name errors, messages, network, console, navigation, userActions, webVitals, resourceTiming, custom or *")
+		return invalid("signals may name errors, messages, network, console, navigation, userActions, webVitals, resourceTiming, longTasks, routeTiming, custom or *")
 	}
 	switch a.Type {
 	case "flush":

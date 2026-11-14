@@ -50,6 +50,18 @@ func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID
 	return services.ResolveAndroidStackTrace(ctx, projectId, stackTrace, proguardUuid)
 }
 
+// otelSymbolicateDart resolves an obfuscated Flutter build's trace against the project's uploaded symbols, the
+// same as the native report protocol does. A readable trace passes through untouched.
+func otelSymbolicateDart(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language string) string {
+	if !isDartLanguage(language) {
+		return stackTrace
+	}
+	if existingProject == nil || existingProject.SourceMapToken == nil {
+		return stackTrace
+	}
+	return services.ResolveDartStackTrace(ctx, projectId, stackTrace)
+}
+
 type otelController struct{}
 
 var traceStore = struct {

@@ -67,7 +67,7 @@ func (opampController) Poll(c *gin.Context) {
 	project, _ := c.Get(middleware.ProjectContextKey)
 	browserProject, ok := project.(*models.Project)
 	if !ok || browserProject == nil || !sdkconfig.SupportsFramework(browserProject.Framework) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "OpAMP is only available for browser frontend projects"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "OpAMP is only available for browser and Flutter projects"})
 		return
 	}
 

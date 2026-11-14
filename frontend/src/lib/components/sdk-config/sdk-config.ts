@@ -66,6 +66,8 @@ export const SIGNALS: Array<{ key: string; label: string; hint: string }> = [
 	{ key: 'userActions', label: 'User actions', hint: 'Clicks' },
 	{ key: 'webVitals', label: 'Web vitals', hint: 'LCP, INP, CLS, ...' },
 	{ key: 'resourceTiming', label: 'Resource timing', hint: 'Page and asset load timings' },
+	{ key: 'longTasks', label: 'Long tasks', hint: 'Main-thread blocks of 50 ms or more' },
+	{ key: 'routeTiming', label: 'Route timing', hint: 'How long route changes take to render' },
 	{ key: 'custom', label: 'Custom events', hint: 'track() and recordAction()' }
 ];
 
@@ -174,6 +176,26 @@ export const TRIGGER_TEMPLATES: Array<{ label: string; trigger: Record<string, u
 		}
 	},
 	{
+		label: 'Frozen page → capture',
+		trigger: performanceTrigger({
+			id: 'frozen-page',
+			name: 'The page froze for a second or more',
+			signal: 'longTasks',
+			attribute: 'browser.long_task.duration',
+			thresholdMs: 1000
+		})
+	},
+	{
+		label: 'Slow route change → capture',
+		trigger: performanceTrigger({
+			id: 'slow-route-change',
+			name: 'A route change took 3 seconds or more',
+			signal: 'routeTiming',
+			attribute: 'browser.route_timing.duration',
+			thresholdMs: 3000
+		})
+	},
+	{
 		label: 'Custom event',
 		trigger: {
 			id: 'checkout-failed',
@@ -183,6 +205,43 @@ export const TRIGGER_TEMPLATES: Array<{ label: string; trigger: Record<string, u
 		}
 	}
 ];
+
+/**
+ * "When this measurement reaches the threshold, capture this device for ten minutes." The signal is matched while
+ * it is off, and it is off by default, so the capture names it next to `*` to have it sent.
+ */
+function performanceTrigger(o: {
+	id: string;
+	name: string;
+	signal: 'longTasks' | 'routeTiming';
+	attribute: string;
+	thresholdMs: number;
+}): Record<string, unknown> {
+	return {
+		id: o.id,
+		name: o.name,
+		cooldownSeconds: 300,
+		steps: [
+			{
+				match: {
+					all: [
+						{ key: 'signal', op: 'eq', value: o.signal },
+						{ key: `attributes.${o.attribute}`, op: 'gte', value: o.thresholdMs }
+					]
+				}
+			}
+		],
+		actions: [
+			{
+				type: 'capture',
+				durationSeconds: 600,
+				lookbackSeconds: 120,
+				signals: ['*', 'longTasks', 'routeTiming'],
+				replay: true
+			}
+		]
+	};
+}
 
 export type LogMatchOp = 'icontains' | 'glob' | 'starts_with';
 

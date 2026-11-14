@@ -41,7 +41,7 @@ A rule stores a **partial** document: only what it changes. The server merges th
 
 ### Signals
 
-`errors`, `messages`, `network`, `console`, `navigation`, `userActions`, `webVitals`, `resourceTiming`, `custom`, each with:
+`errors`, `messages`, `network`, `console`, `navigation`, `userActions`, `webVitals`, `resourceTiming`, `longTasks`, `routeTiming`, `custom`, each with:
 
 | Field | Values | Meaning |
 |---|---|---|
@@ -81,9 +81,11 @@ What the 2.x SDK does with no rules.
 | `errors`, `messages` | stream | stream |
 | `network`, `console`, `navigation`, `userActions`, `custom` | buffer | stream |
 | `webVitals` | stream | stream |
-| `resourceTiming` | off | off |
+| `resourceTiming`, `longTasks`, `routeTiming` | off | off |
 | replay | buffer | stream |
 | sessions | on | on |
+
+The performance signals that are off are still measured on the page, so a rule can switch one on for a cohort, a trigger can match it while it is off, and a trigger or capture that names it streams it for a while. See [Performance signals](#performance-signals).
 
 Production defaults keep session lifecycle metadata and web vitals on, with healthy breadcrumbs and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
 
@@ -135,8 +137,8 @@ Keys a step can test:
 
 | Key | On | Value |
 |---|---|---|
-| `event.name` | logs | The event name: `exception`, `traceway.message`, `browser.console`, `browser.navigation`, `browser.user_action.click`, `browser.web_vital`, or a `track()` name |
-| `signal` | logs, spans | `errors`, `messages`, `console`, `navigation`, `userActions`, `webVitals`, `resourceTiming`, `custom`; `network` for spans |
+| `event.name` | logs | The event name: `exception`, `traceway.message`, `browser.console`, `browser.navigation`, `browser.user_action.click`, `browser.web_vital`, `browser.long_task`, `browser.route_timing`, or a `track()` name |
+| `signal` | logs, spans | `errors`, `messages`, `console`, `navigation`, `userActions`, `webVitals`, `resourceTiming`, `longTasks`, `routeTiming`, `custom`; `network` for spans |
 | `severity` | logs | Severity number: 1 trace, 5 debug, 9 info, 13 warn, 17 error, 21 fatal |
 | `severity.text` | logs | Severity text as recorded |
 | `body` | logs | The log body, for example the console line |
@@ -174,7 +176,58 @@ Text operators look at the first 4 KB of a value. There is no regular expression
 
 `signals` lists signal names or `"*"` (the default when omitted). An explicit `[]` selects no telemetry signals; replay is controlled separately. Durations are at most 86400 seconds.
 
-A `capture` action uploads its lookback, sends the record that fired it, and streams for `durationSeconds`. Its `"*"` also brings back signals a rule switched off: every signal the defaults collect; `resourceTiming` only if named. It is stored in `localStorage` (`traceway:local-captures:<token>`), so later pages keep streaming until it ends; the same trigger firing again extends it instead of uploading again. Each start emits `traceway.capture.started` with `traceway.capture.source: trigger`.
+A `capture` action uploads its lookback, sends the record that fired it, and streams for `durationSeconds`. Its `"*"` also brings back signals a rule switched off: every signal the defaults collect; `resourceTiming`, `longTasks` and `routeTiming` only if named. It is stored in `localStorage` (`traceway:local-captures:<token>`), so later pages keep streaming until it ends; the same trigger firing again extends it instead of uploading again. Each start emits `traceway.capture.started` with `traceway.capture.source: trigger`.
+
+## Performance signals
+
+`longTasks` and `routeTiming` are measured by the SDK itself (2.x, from the release that adds them; older SDKs ignore both names). Both are off by default and both are log records, so they are searched in [Logs](/learn/logs) by event name.
+
+| Event | Attributes |
+|---|---|
+| `browser.long_task` | `browser.long_task.duration` (ms), `browser.long_task.type` (`long-animation-frame` or `longtask`), `url.full`; from long animation frames also `browser.long_task.blocking_duration` and the longest script of the frame: `browser.long_task.script.url`, `.script.function`, `.script.invoker`, `.script.duration`; from long tasks `browser.long_task.container.type` and `.container.src` |
+| `browser.route_timing` | `browser.route_timing.duration` (ms), `url.full`, `browser.route_timing.from`, `browser.route_timing.type` (`push`, `replace`, `traverse`), `browser.route_timing.outcome` (`settled`, `timeout` after 30 s, `interrupted` by the next route change), `browser.route_timing.requests` |
+
+Long tasks need a Chromium browser; at most 30 are recorded per minute. A route change is a History API change of the path or query (a hash change is not one). Its duration runs until the page goes quiet: no DOM change, no finished resource and no traced request in flight for half a second, ending at the last of those. A load that is still running and has not touched the DOM yet, such as a lazy chunk, is invisible to it.
+
+Three ways to turn one on:
+
+```json
+{ "signals": { "longTasks": { "mode": "stream" } } }
+```
+
+in a rule for everyone, or in a rule whose conditions name one user (`user.id` equals `u-9481`), a release or a rollout percentage. Or leave it off and let a trigger react to it, since triggers see records of a signal that is off:
+
+```json
+{
+  "triggers": [
+    {
+      "id": "frozen-page",
+      "cooldownSeconds": 300,
+      "steps": [
+        {
+          "match": {
+            "all": [
+              { "key": "signal", "op": "eq", "value": "longTasks" },
+              { "key": "attributes.browser.long_task.duration", "op": "gte", "value": 1000 }
+            ]
+          }
+        }
+      ],
+      "actions": [
+        {
+          "type": "capture",
+          "durationSeconds": 600,
+          "lookbackSeconds": 120,
+          "signals": ["*", "longTasks", "routeTiming"],
+          "replay": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+Any other trigger can do the same by naming the signals in its `stream` or `capture` action, for example streaming `routeTiming` for ten minutes after an error.
 
 ## Targeting
 

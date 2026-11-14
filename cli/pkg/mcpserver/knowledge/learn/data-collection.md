@@ -17,6 +17,8 @@ Every signal is in one mode: **stream** (sent within about a second), **buffer**
 | `console`, `navigation`, `userActions`, `custom` | Console lines (info and above), route changes, clicks, `track()` and `recordAction()` | buffer |
 | `webVitals` | LCP, INP, CLS and the rest | stream |
 | `resourceTiming` | Page and asset load timings | off |
+| `longTasks` | Main-thread blocks of 50 ms or more (`browser.long_task`, Chromium only) | off |
+| `routeTiming` | How long single-page-app route changes take to render (`browser.route_timing`) | off |
 | replay | rrweb session replay | buffer |
 
 Session start and end events are sent unless `sessions.enabled` is false. The built-in `default-exception` trigger uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip on each exception (5-second cooldown, at most 20 per session). `recordAllSessions: true` in `init()` streams breadcrumbs and replay instead of buffering them.

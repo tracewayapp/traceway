@@ -28,6 +28,8 @@ For a request to stream every session, breadcrumb and replay, retain masking and
       "userActions": { "mode": "stream", "sampleRate": 1 },
       "webVitals": { "mode": "stream", "sampleRate": 1 },
       "resourceTiming": { "mode": "stream", "sampleRate": 1 },
+      "longTasks": { "mode": "stream", "sampleRate": 1 },
+      "routeTiming": { "mode": "stream", "sampleRate": 1 },
       "custom": { "mode": "stream", "sampleRate": 1 }
     },
     "sessions": { "enabled": true, "baselineSampleRate": 1 },

@@ -67,6 +67,8 @@ Every signal is in exactly one mode at any moment:
 | `userActions` | Clicks |
 | `webVitals` | LCP, INP, CLS and the other web vitals |
 | `resourceTiming` | Page and asset load timings |
+| `longTasks` | Main-thread blocks of 50 ms or more, with the script that caused them where the browser tells |
+| `routeTiming` | How long single-page-app route changes take to render |
 | `custom` | `track()` and `recordAction()` events |
 
 Replay has the same three modes, plus a per-session sample rate. Session start and end events additionally respect `sessions.enabled`. Except when the kill switch is on, bookkeeping events of the SDK itself (`traceway.config.applied`, `traceway.trigger.fired`, `traceway.capture.started`, session events) always stream, so you can see in [Logs](/learn/logs) what the control plane did on each device.
@@ -75,7 +77,7 @@ Replay has the same three modes, plus a per-session sample rate. Session start a
 
 <img src="/remote-config/remote-config-precedence.png" alt="Five layers decide a signal's mode: SDK defaults, then the rules that match the client in order, then the ceilings from init() options and the plan's limits, then timed overrides from triggers and captures, then the kill switch. The result is stream, buffer or off for each signal." style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
-1. **SDK defaults.** With no rules, errors and messages stream; console, network, navigation, clicks, custom events and replay are buffered; web vitals stream; resource timing is off. A built-in trigger, `default-exception`, uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip. Replay has a 5-second cooldown and a limit of 20 clips per session; breadcrumb flushing continues during those replay limits, within the diagnostic budget. `recordAllSessions: true` in `init()` streams breadcrumbs and replay instead.
+1. **SDK defaults.** With no rules, errors and messages stream; console, network, navigation, clicks, custom events and replay are buffered; web vitals stream; resource timing, long tasks and route timing are off. A built-in trigger, `default-exception`, uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip. Replay has a 5-second cooldown and a limit of 20 clips per session; breadcrumb flushing continues during those replay limits, within the diagnostic budget. `recordAllSessions: true` in `init()` streams breadcrumbs and replay instead.
 2. **Rules.** Every enabled rule whose conditions match the client contributes the fields it sets, in the order of the rules list; a later rule wins. A rule only lists what it changes, and the server sends the browser the merged result, never the defaults. A client that no rule matches gets an empty document and runs on the defaults.
 3. **Ceilings.** The `capture*`, `sessionRecording` and `sessions` options of `init()` are the most the page allows. If the app sets `sessionRecording: false`, nothing on the server can turn replay on. The organization's plan adds its own limits: what the plan does not include (replay, exceptions or other data) is switched off at the source, so browsers stop sending data that would be dropped on arrival.
 4. **Timed overrides.** A trigger's `stream` action streams the signals that are buffered for a while. A capture goes further and also brings back signals that a rule switched off. Both stay within the ceilings and the plan's limits.

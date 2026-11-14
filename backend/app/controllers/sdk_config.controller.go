@@ -85,7 +85,7 @@ func sdkConfigProjectId(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	if project == nil || !sdkconfig.SupportsFramework(project.Framework) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Remote SDK configuration is only available for browser frontend projects"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Remote SDK configuration is only available for browser and Flutter projects"})
 		return uuid.Nil, false
 	}
 	return projectId, true

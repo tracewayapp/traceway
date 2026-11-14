@@ -46,7 +46,7 @@ init("your-token@https://traceway.example.com/api/report", {
 | `errorLimits` | `{ maxPerMinute: 60, duplicateWindowMs: 1000 }` | Per-client rolling error limit and duplicate suppression |
 | `recordAllSessions` | `false` | Stream every replay segment and every breadcrumb by default instead of keeping them for error clips |
 | `sessions` | `true` | Record session start and end |
-| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions`, `captureWebVitals`, `captureResourceTiming` | `true` | Allow a signal at all |
+| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions`, `captureWebVitals`, `captureResourceTiming`, `captureLongTasks`, `captureRouteTiming` | `true` | Allow a signal at all |
 | `captureHttpServerErrors` | `false` | Report fetch / XHR responses with status >= 500 as message issues |
 | `propagateTraceHeaderCorsUrls` | none | Cross-origin URLs that get the W3C `traceparent` header (same-origin requests always do) |
 | `exportDelayMs` | `1000` | Delay between OTLP exports |

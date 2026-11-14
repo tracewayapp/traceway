@@ -84,6 +84,7 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 				}
 
 				issue := logIssue{
+					ctx: ctx, project: existingProject,
 					record: record, lr: lr, resource: resource, clientResource: clientResource,
 					serviceName: serviceName, appVersion: appVersion, language: language, ingestedAt: ingestedAt,
 				}
@@ -109,6 +110,8 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 }
 
 type logIssue struct {
+	ctx            context.Context
+	project        *models.Project
 	record         models.LogRecord
 	lr             *logspb.LogRecord
 	resource       []*commonpb.KeyValue
@@ -124,6 +127,8 @@ type logIssue struct {
 func (l logIssue) exception(projectId uuid.UUID) models.ExceptionStackTrace {
 	attrs := l.record.LogAttributes
 	stackTrace := formatExceptionStackTrace(attrs["exception.type"], attrs["exception.message"], attrs["exception.stacktrace"])
+	// Dart symbolication reads the error line together with the frames, so it runs on the formatted trace.
+	stackTrace = otelSymbolicateDart(l.project, projectId, l.ctx, stackTrace, l.language)
 	return l.row(projectId, stackTrace, clientcontrollers.ComputeExceptionHash(stackTrace, false), false)
 }
 

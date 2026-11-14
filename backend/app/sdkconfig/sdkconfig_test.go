@@ -301,3 +301,32 @@ func TestBaselineOverlayPreservesLifecycle(t *testing.T) {
 		t.Fatalf("unexpected session settings: %+v", settings.Sessions)
 	}
 }
+
+func TestPerformanceSignalsAreTargetedLikeAnyOther(t *testing.T) {
+	trigger := `{"id":"frozen-page","steps":[{"match":{"all":[{"key":"signal","op":"eq","value":"longTasks"},
+		{"key":"attributes.browser.long_task.duration","op":"gte","value":1000}]}}],
+		"actions":[{"type":"capture","durationSeconds":600,"lookbackSeconds":120,"signals":["*","longTasks","routeTiming"],"replay":true}]}`
+	compiled := &Compiled{Rules: []Rule{
+		{Id: "everyone", Settings: mustSettings(t, `{"signals":{"routeTiming":{"mode":"stream","sampleRate":0.1}},"triggers":[`+trigger+`]}`)},
+		{Id: "one user", Conditions: mustConditions(t, `{"all":[{"key":"user.id","op":"eq","value":"u-9481"}]}`),
+			Settings: mustSettings(t, `{"signals":{"longTasks":{"mode":"stream"},"routeTiming":{"sampleRate":1}}}`)},
+	}}
+
+	anyone := compiled.Evaluate(map[string]string{"user.id": "u-1"}, uid("0195f2a0-0000-7000-8000-000000000001"), time.Now()).Settings
+	if anyone.Signals.LongTasks != nil || *anyone.Signals.RouteTiming.Mode != ModeStream || *anyone.Signals.RouteTiming.SampleRate != 0.1 {
+		t.Errorf("a client the user rule does not match keeps long tasks on the SDK default: %+v", anyone.Signals)
+	}
+	targeted := compiled.Evaluate(map[string]string{"user.id": "u-9481"}, uid("0195f2a0-0000-7000-8000-000000000002"), time.Now()).Settings
+	if *targeted.Signals.LongTasks.Mode != ModeStream || *targeted.Signals.RouteTiming.Mode != ModeStream || *targeted.Signals.RouteTiming.SampleRate != 1 {
+		t.Errorf("the targeted user gets both: %+v", targeted.Signals)
+	}
+	body, _, err := Render(targeted)
+	if err != nil || !strings.Contains(string(body), `"longTasks":{"mode":"stream"}`) || !strings.Contains(string(body), `"signals":["*","longTasks","routeTiming"]`) {
+		t.Errorf("rendered document: %s (%v)", body, err)
+	}
+
+	ApplyPermission(&targeted, true, false, true)
+	if *targeted.Signals.LongTasks.Mode != ModeOff || targeted.Limits.Signals["longTasks"] != ModeOff || targeted.Limits.Signals["routeTiming"] != ModeOff {
+		t.Errorf("a plan that drops data at ingest switches them off at the source: %+v", targeted.Limits)
+	}
+}

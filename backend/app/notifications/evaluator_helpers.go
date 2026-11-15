@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -16,6 +17,12 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
+
+// ClickHouse's quantile() over zero rows is NaN, and NaN compares false with
+// everything, so an empty window must be ruled out before the threshold.
+func latencyBreached(valueMs, thresholdMs float64) bool {
+	return !math.IsNaN(valueMs) && valueMs >= thresholdMs
+}
 
 type newErrorConfig struct {
 	IgnorePatterns []string `json:"ignorePatterns"`

@@ -8,6 +8,7 @@ import {
 	optionalNumber,
 	summarizeConditions,
 	summarizeSettings,
+	TRIGGER_TEMPLATES,
 	uniqueTriggerId,
 	type Condition,
 	type ConditionRow
@@ -90,6 +91,26 @@ describe('log-line triggers', () => {
 				}
 			]
 		});
+	});
+
+	it('names the performance signals in the captures they start, since `*` leaves out what is off by default', () => {
+		const frozen = TRIGGER_TEMPLATES.find((t) => t.trigger.id === 'frozen-page')!.trigger;
+		expect(frozen.steps).toEqual([
+			{
+				match: {
+					all: [
+						{ key: 'signal', op: 'eq', value: 'longTasks' },
+						{ key: 'attributes.browser.long_task.duration', op: 'gte', value: 1000 }
+					]
+				}
+			}
+		]);
+		for (const id of ['frozen-page', 'slow-route-change']) {
+			const actions = TRIGGER_TEMPLATES.find((t) => t.trigger.id === id)!.trigger.actions as Array<{
+				signals: string[];
+			}>;
+			expect(actions[0].signals).toEqual(['*', 'longTasks', 'routeTiming']);
+		}
 	});
 
 	it('keeps trigger ids unique', () => {

@@ -56,7 +56,7 @@ This guide explains every part of the product: what each page shows, the terms i
 | Connection | `/connection` | organization.md |
 | Account | `/account` | organization.md, on-call.md |
 | Settings | `/settings` (owners and admins) | organization.md |
-| Data Collection | project switcher, **Edit Project**, **Data Collection** (browser projects) | data-collection.md |
+| Data Collection | **Data Collection** in the sidebar (browser and Flutter projects) | data-collection.md |
 | Organization | `/organization` (Servers, Issues, Monitors, On-Call, Projects) | organization.md |
 | Project setup | `/setup` | organization.md |
 

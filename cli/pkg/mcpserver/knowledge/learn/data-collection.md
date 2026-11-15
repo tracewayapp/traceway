@@ -3,7 +3,7 @@
 Remote SDK config decides, per group of browsers, what the browser SDK sends right away, what it keeps on the device in case it is needed, and what it drops, without shipping a new build. It is in beta.
 
 - **Who has it**: browser projects (React, Vue.js, Svelte, jQuery) whose app runs the 2.x browser SDK (`@tracewayapp/frontend` 2.x or a wrapper of the same version, published under the npm `beta` tag). The 1.x SDK and the mobile SDKs never ask for settings. Backend and mobile projects have no Data Collection tab, and the API refuses them with 403.
-- **Where**: project switcher, **Edit Project**, **Data Collection** tab. It lists the **Rules** in order (enable switch, move up and down, edit, delete) with **Preview** and **New Rule**, and below them the **Captures** with their status, refreshed every 15 seconds, and **New Capture**.
+- **Where**: **Data Collection** in the sidebar (`/data-collection`), shown for browser and Flutter projects. It lists the **Rules** in order (enable switch, move up and down, edit, delete) with **Preview** and **New Rule**, and below them the **Captures** with their status, refreshed every 15 seconds, and **New Capture**.
 - **How it travels**: the SDK polls Traceway over OpAMP at start, every 5 minutes by default (`OPAMP_POLL_INTERVAL_SECONDS` on self-hosted servers), when a tab becomes visible after that interval, and when the app calls `refreshConfig()`. There is no push, so a saved change reaches a browser at its next poll.
 
 ## Modes and defaults
@@ -20,6 +20,8 @@ Every signal is in one mode: **stream** (sent within about a second), **buffer**
 | `longTasks` | Main-thread blocks of 50 ms or more (`browser.long_task`, Chromium only) | off |
 | `routeTiming` | How long single-page-app route changes take to render (`browser.route_timing`) | off |
 | replay | rrweb session replay | buffer |
+
+**Page performance as metrics.** The server also stores `browser.web_vital`, `browser.long_task`, `browser.route_timing` and `browser.navigation_timing` events of a browser project as metric points: `browser.web_vital.lcp` / `.inp` / `.fcp` / `.ttfb` (ms) and `.cls` (score), `browser.long_task.duration`, `browser.route_timing.duration`, `browser.page_load.duration` and `browser.page_load.dom_content_loaded` (ms), tagged with `browser.name`, `browser.mobile`, `os.name`, `service.version`, `deployment.environment.name`, `url.path` (long tasks, route timing, page load) and `rating` (web vitals). So a browser project has **Dashboards** (the **Web Performance** template is its default; an empty Dashboards page offers to add it) and **Metric Threshold** alerts, with presets for slow LCP, slow interactions, layout shift, slow route changes and frozen pages. A metric exists only for what a client actually sends: long tasks and route timing need a rule, trigger or capture that turns them on.
 
 Session start and end events are sent unless `sessions.enabled` is false. The built-in `default-exception` trigger uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip on each exception (5-second cooldown, at most 20 per session). `recordAllSessions: true` in `init()` streams breadcrumbs and replay instead of buffering them.
 

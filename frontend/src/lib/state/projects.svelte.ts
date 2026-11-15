@@ -38,7 +38,7 @@ export const FRONTEND_FRAMEWORKS: Framework[] = [
 	'ios'
 ];
 // Browser frameworks, instrumented by the OpenTelemetry SDK (@tracewayapp/frontend 2.x): it sends logs and
-// spans (no metrics), unlike the mobile SDKs.
+// spans, and the backend turns its page performance events (web vitals, long tasks, route timing) into metrics.
 export const BROWSER_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery'];
 // The OpenTelemetry SDKs take remote collection settings over OpAMP: the browser 2.x SDK and the Flutter 2.x SDK.
 export const SDK_CONFIG_FRAMEWORKS: Framework[] = [...BROWSER_FRAMEWORKS, 'flutter'];

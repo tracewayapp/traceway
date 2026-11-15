@@ -14,6 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
 	dashboardsvc "github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
@@ -270,6 +271,8 @@ func defaultTemplateKeysForFramework(framework string) []string {
 		return []string{"traceway-otel-agent"}
 	case goFrameworks[framework]:
 		return []string{"golang"}
+	case sdkconfig.IsBrowserFramework(framework):
+		return []string{"browser-performance"}
 	default:
 		return nil
 	}

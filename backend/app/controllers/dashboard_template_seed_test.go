@@ -58,7 +58,7 @@ func TestSeededDashboardTemplatesAreValid(t *testing.T) {
 
 	expectedKeys := []string{
 		"traceway-clickhouse", "traceway-duckdb",
-		"golang", "traceway-otel-agent",
+		"golang", "traceway-otel-agent", "browser-performance",
 	}
 	byKey := map[string]*models.DashboardTemplate{}
 	for _, tpl := range templates {
@@ -82,6 +82,13 @@ func TestSeededDashboardTemplatesAreValid(t *testing.T) {
 		if msg := validateDefinitionWidgets(def); msg != "" {
 			t.Errorf("template %s definition invalid: %s", tpl.Key, msg)
 		}
+	}
+
+	if keys := defaultTemplateKeysForFramework("react"); len(keys) != 1 || keys[0] != "browser-performance" {
+		t.Errorf("a browser project starts with the Web Performance dashboard, got %v", keys)
+	}
+	if keys := defaultTemplateKeysForFramework("flutter"); len(keys) != 0 {
+		t.Errorf("mobile SDKs send no browser metrics, got %v", keys)
 	}
 
 	for _, framework := range []string{"opentelemetry", "react", "gin", ""} {

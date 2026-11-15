@@ -9,7 +9,16 @@
 	import * as Alert from '$lib/components/ui/alert';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
-	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import {
+		projectsState,
+		isBrowserFramework,
+		isFrontendFramework
+	} from '$lib/state/projects.svelte';
+	import {
+		BROWSER_METRIC_NAMES,
+		BROWSER_METRIC_PRESETS,
+		type BrowserMetricPreset
+	} from './browser-metric-presets';
 	import { ruleTypeOptions } from './rule-types';
 	import type { NotificationChannelConfig, NotificationRuleConfig } from '$lib/types/notifications';
 	import { BURN_RATE_PRESETS } from '$lib/utils/slo-math';
@@ -163,12 +172,31 @@
 		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
 
-	const frontendRuleTypes = new Set(['new_error', 'slo_burn_rate', 'slo_budget_consumed']);
-	const visibleRuleTypes = $derived(
-		isFrontendProject
-			? ruleTypeOptions.filter((o) => frontendRuleTypes.has(o.value))
-			: ruleTypeOptions
+	const isBrowserProject = $derived(
+		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
 	);
+
+	const frontendRuleTypes = new Set(['new_error', 'slo_burn_rate', 'slo_budget_consumed']);
+	// Browser projects have metrics: the page performance the backend derives from the SDK's events.
+	const browserRuleTypes = new Set([...frontendRuleTypes, 'metric_threshold']);
+	const visibleRuleTypes = $derived(
+		isBrowserProject
+			? ruleTypeOptions.filter((o) => browserRuleTypes.has(o.value))
+			: isFrontendProject
+				? ruleTypeOptions.filter((o) => frontendRuleTypes.has(o.value))
+				: ruleTypeOptions
+	);
+
+	function applyBrowserMetricPreset(preset: BrowserMetricPreset) {
+		metricName = preset.metricName;
+		aggregation = preset.aggregation;
+		operator = preset.operator;
+		thresholdValue = preset.thresholdValue;
+		lookbackMinutes = preset.lookbackMinutes;
+		metricGroupBy = preset.groupBy;
+		metricTags = '';
+		if (!name.trim()) name = preset.ruleName;
+	}
 
 	$effect(() => {
 		if (open && !visibleRuleTypes.some((o) => o.value === ruleType)) {
@@ -635,9 +663,42 @@
 						<Input id="cfg-min-req-a" type="number" bind:value={minRequests} min="1" />
 					</div>
 				{:else if ruleType === 'metric_threshold'}
+					{#if isBrowserProject}
+						<div class="space-y-2">
+							<Label>Page performance presets</Label>
+							<div class="flex flex-wrap gap-2">
+								{#each BROWSER_METRIC_PRESETS as preset (preset.id)}
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onclick={() => applyBrowserMetricPreset(preset)}
+									>
+										{preset.label}
+									</Button>
+								{/each}
+							</div>
+							<p class="text-xs text-muted-foreground">
+								Web vitals are sent by default. Long tasks and route timing are measured only where
+								Data Collection turns them on.
+							</p>
+						</div>
+					{/if}
 					<div class="space-y-2">
 						<Label for="cfg-metric">Metric Name</Label>
-						<Input id="cfg-metric" bind:value={metricName} placeholder="cpu.used_pcnt" />
+						<Input
+							id="cfg-metric"
+							bind:value={metricName}
+							placeholder={isBrowserProject ? 'browser.web_vital.lcp' : 'cpu.used_pcnt'}
+							list={isBrowserProject ? 'cfg-browser-metrics' : undefined}
+						/>
+						{#if isBrowserProject}
+							<datalist id="cfg-browser-metrics">
+								{#each BROWSER_METRIC_NAMES as metric (metric)}
+									<option value={metric}></option>
+								{/each}
+							</datalist>
+						{/if}
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-operator">Operator</Label>

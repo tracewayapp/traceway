@@ -24,14 +24,16 @@
 		Server,
 		Settings,
 		BookOpen,
-		KeyRound
+		KeyRound,
+		Upload
 	} from '@lucide/svelte';
 	import { themeState } from '$lib/state/theme.svelte';
 	import {
 		projectsState,
 		isFrontendFramework,
 		isBrowserFramework,
-		isCloudflareFramework
+		isCloudflareFramework,
+		SDK_CONFIG_FRAMEWORKS
 	} from '$lib/state/projects.svelte';
 	import { LayoutDashboard } from '@lucide/svelte';
 	import { page } from '$app/state';
@@ -54,18 +56,20 @@
 		'Endpoints',
 		'Tasks',
 		'Profiles',
-		'Dashboards',
 		'AI Traces',
 		'Monitors'
 	]);
-	// Browser projects report through the OpenTelemetry SDK, which exports logs and spans but no
-	// metrics; mobile projects report through the native SDKs, which send neither.
-	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans']);
+	// Browser projects report through the OpenTelemetry SDK: logs and spans, plus the page
+	// performance events the backend turns into metrics, which is what their dashboards chart.
+	// Mobile projects report through the native SDKs, which send none of those.
+	const hiddenForMobile = new Set([...hiddenForBrowser, 'Dashboards', 'Logs', 'Spans']);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
 	// the sidebar for any other framework, so a Go backend project doesn't
 	// surface a Sessions tab that can never be populated.
 	const frontendOnly = new Set(['Sessions']);
+	// Remote collection settings exist only for the SDKs that poll for them over OpAMP.
+	const sdkConfigOnly = new Set(['Data Collection']);
 
 	const allSidebarItems: SidebarItem[] = [
 		{ Icon: LayoutDashboard, href: '/', title: 'Dashboard', stickyParams: [] },
@@ -97,21 +101,26 @@
 		{ Icon: Goal, href: '/slos', title: 'SLOs', stickyParams: [] },
 		{ Icon: Bell, href: '/notifications', title: 'Alerts', stickyParams: ['preset', 'from', 'to'] },
 		{ Icon: PhoneCall, href: '/on-call', title: 'On-Call', stickyParams: [] },
+		{ Icon: Upload, href: '/data-collection', title: 'Data Collection', stickyParams: [] },
 		{ Icon: Link2, href: '/connection', title: 'Connection', stickyParams: [] }
 	];
 
 	const sidebarItems = $derived.by(() => {
 		const framework = projectsState.currentProject?.framework;
+		const items =
+			framework && SDK_CONFIG_FRAMEWORKS.includes(framework)
+				? allSidebarItems
+				: allSidebarItems.filter((item) => !sdkConfigOnly.has(item.title));
 		if (framework && isFrontendFramework(framework)) {
 			const hidden = isBrowserFramework(framework) ? hiddenForBrowser : hiddenForMobile;
-			return allSidebarItems.filter((item) => !hidden.has(item.title));
+			return items.filter((item) => !hidden.has(item.title));
 		}
 		if (framework && isCloudflareFramework(framework)) {
-			return allSidebarItems.filter(
+			return items.filter(
 				(item) => !hiddenForCloudflare.has(item.title) && !frontendOnly.has(item.title)
 			);
 		}
-		return allSidebarItems.filter((item) => !frontendOnly.has(item.title));
+		return items.filter((item) => !frontendOnly.has(item.title));
 	});
 
 	const allOrganizationItems: SidebarItem[] = [

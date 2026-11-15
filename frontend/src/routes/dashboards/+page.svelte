@@ -17,7 +17,7 @@
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, isBrowserFramework } from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { toUTCISO, calendarDateTimeToLuxon, formatDateTime } from '$lib/utils/formatters';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
@@ -42,6 +42,7 @@
 		Upload,
 		Share2,
 		CircleMinus,
+		ChartNoAxesCombined,
 		Search
 	} from '@lucide/svelte';
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
@@ -352,6 +353,33 @@
 	function handleTabDragEnd() {
 		tabDragIndex = null;
 		tabDropIndex = null;
+	}
+
+	// A browser project created before its default dashboard existed (or by a seed) has none assigned.
+	const canInstallWebPerformance = $derived(
+		!!projectsState.currentProject &&
+			isBrowserFramework(projectsState.currentProject.framework) &&
+			projectsState.canWriteCurrentProject
+	);
+	let installingDefaults = $state(false);
+
+	async function installDefaultDashboards() {
+		installingDefaults = true;
+		try {
+			await api.post(
+				'/dashboards/populate-defaults',
+				{},
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+			toast.success('Successfully added the Web Performance Dashboard', { position: 'top-center' });
+			await loadDashboards();
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to add the dashboard');
+			}
+		} finally {
+			installingDefaults = false;
+		}
 	}
 
 	async function reorderDashboards(dashboardIds: number[]) {
@@ -1053,6 +1081,18 @@
 			description={listError}
 			onRetry={() => loadDashboards()}
 		/>
+	{:else if dashboards.length === 0 && canInstallWebPerformance}
+		<EmptyState
+			message="No dashboards yet. Web Performance charts the web vitals, route changes and long tasks this project's SDK reports."
+			actionLabel={installingDefaults ? 'Adding…' : 'Add Web Performance Dashboard'}
+			onAction={() => {
+				if (!installingDefaults) void installDefaultDashboards();
+			}}
+		>
+			{#snippet icon()}
+				<ChartNoAxesCombined class="h-6 w-6 text-muted-foreground" />
+			{/snippet}
+		</EmptyState>
 	{:else if dashboards.length === 0}
 		<EmptyState
 			message="No dashboards yet."

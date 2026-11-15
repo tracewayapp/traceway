@@ -56,6 +56,7 @@ curl -s http://localhost:8080/api/ai/chat -H 'Content-Type: application/json' -d
   - Traces via OTLP/HTTP → `http://localhost:8082/api/otel/v1/traces`
   - **Logs via OTLP/HTTP** → `http://localhost:8082/api/otel/v1/logs`
   - Two OTel providers in the same process to exercise the distributed-logs flow: `backend-service` and `worker-service`, both reporting to the `Backend API` project.
+- A **Shoply Storefront** React project (token `shop-dev-token`) for `testing/shop`'s storefront, which exercises remote data collection and the browser performance metrics; see that README.
 - **jQuery frontend** pages (`/` and `/cdn`) — unchanged; useful for exercising the jQuery SDK independently.
 
 ## Testing the logs feature

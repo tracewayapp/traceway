@@ -47,6 +47,7 @@ const (
 	appPort            = 8080
 	backendToken       = "backend-dev-token"
 	frontendToken      = "frontend-dev-token"
+	shopToken          = "shop-dev-token"
 	monitoringToken    = "monitoring-dev-token"
 	flutterToken       = "flutter-dev-token"
 	flutterUploadToken = "flutter-upload-token"
@@ -153,6 +154,8 @@ func main() {
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
 		tracewaybackend.WithDefaultProject("Backend API", "opentelemetry", backendToken),
 		tracewaybackend.WithDefaultProject("jQuery Frontend", "jquery", frontendToken),
+		// testing/shop's React storefront, when it is pointed at this instance (see README).
+		tracewaybackend.WithDefaultProject("Shoply Storefront", "react", shopToken),
 		tracewaybackend.WithDefaultProject("Traceway Monitoring", "opentelemetry", monitoringToken),
 		tracewaybackend.WithDefaultProject("Flutter App", "flutter", flutterToken),
 		tracewaybackend.WithDefaultProjectSourceMapToken("Flutter App", flutterUploadToken),

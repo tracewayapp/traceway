@@ -132,7 +132,7 @@
 	}
 </script>
 
-<div class="space-y-6 px-6 pb-6">
+<div class="space-y-6">
 	<SdkVersionWarning />
 	<p class="text-sm text-muted-foreground">
 		The browser SDK asks Traceway for these settings over OpAMP. Clients pick up a change within

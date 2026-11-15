@@ -411,6 +411,13 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		}
 	}
 	monitoring.RecordLogsAccepted(len(records))
+	if perm.Data && len(result.Metrics) > 0 {
+		if err := telemetry.MetricPointRepository.InsertAsync(c, result.Metrics); err != nil {
+			abortIngestStorage(c, "metric points", err)
+			return
+		}
+		go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.MetricEntries)
+	}
 	if len(sessions) > 0 {
 		if err := telemetry.SessionRepository.Upsert(c, sessions); err != nil {
 			abortIngestStorage(c, "sessions", err)

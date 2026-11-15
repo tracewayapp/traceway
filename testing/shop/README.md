@@ -41,6 +41,39 @@ the frontend issues symbolicate at ingest.
 
 Dev mode: `cd frontend && npm run dev` (:5175, proxies /api to :8090).
 
+## Run against a local Traceway (remote config and page performance)
+
+`examples/devtesting-embedded` seeds a React project, **Shoply Storefront** (token `shop-dev-token`), next to its
+**Backend API** project. Point the shop at it:
+
+```
+# frontend/.env
+VITE_API_BASE=/api
+VITE_TW_CONNECTION=shop-dev-token@http://localhost:8082/api/report
+
+# backend/.env
+TRACEWAY_URL=http://localhost:8082
+TRACEWAY_BACKEND_TOKEN=backend-dev-token
+TRACEWAY_SERVICE_NAME=shop-backend
+```
+
+Remote config, long tasks and route timing need the 2.x browser SDK. Until a release carries them, install a local
+build over the published one without touching `package.json`: in `js-client`, `npm run build` and `npm pack` the
+`core`, `opamp`, `frontend` and `react` packages, then `npm install --no-save <the four tarballs>` in `frontend/`.
+
+Run `go run .` in `backend/` (after sourcing `.env`) and `npm run dev` in `frontend/` (:5175), then
+
+```bash
+cd traffic && DASHBOARD_URL=http://localhost:5180 node data-collection-e2e.mjs ./screenshots
+```
+
+`data-collection-e2e.mjs` drives the dashboard and the storefront in Chromium: it creates Data Collection rules (route
+timing for everyone, long tasks for one user, a frozen-page trigger), checks on the wire that each user sends exactly
+what its rules allow, that the events are stored as metrics and charted by the Web Performance dashboard, and that a
+metric alert built from a preset fires to a local webhook. It deletes the project's rules, alert rules and channels
+first, so it can be repeated. Serve the dashboard from a build (`npm run build && npx vite preview --port 5180` in
+`frontend/`); headless Chromium does not load the unbundled dev server reliably.
+
 ## Seed platform entities (monitors, on-call, status page, dashboards...)
 
 ```bash

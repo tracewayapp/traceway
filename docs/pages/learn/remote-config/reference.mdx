@@ -187,7 +187,7 @@ A `capture` action uploads its lookback, sends the record that fired it, and str
 | `browser.long_task` | `browser.long_task.duration` (ms), `browser.long_task.type` (`long-animation-frame` or `longtask`), `url.full`; from long animation frames also `browser.long_task.blocking_duration` and the longest script of the frame: `browser.long_task.script.url`, `.script.function`, `.script.invoker`, `.script.duration`; from long tasks `browser.long_task.container.type` and `.container.src` |
 | `browser.route_timing` | `browser.route_timing.duration` (ms), `url.full`, `browser.route_timing.from`, `browser.route_timing.type` (`push`, `replace`, `traverse`), `browser.route_timing.outcome` (`settled`, `timeout` after 30 s, `interrupted` by the next route change), `browser.route_timing.requests` |
 
-Long tasks need a Chromium browser; at most 30 are recorded per minute. A route change is a History API change of the path or query (a hash change is not one). Its duration runs until the page goes quiet: no DOM change, no finished resource and no traced request in flight for half a second, ending at the last of those. A load that is still running and has not touched the DOM yet, such as a lazy chunk, is invisible to it.
+Long tasks need a Chromium browser; at most 30 are recorded per minute. Each block is reported once: as a long animation frame when the browser provides one, otherwise as a long task about a second later (Chromium gives no frame entry for a block that contains a route change). A route change is a History API change of the path or query (a hash change is not one). Its duration runs until the page goes quiet: no DOM change, no finished resource and no traced request in flight for half a second, ending at the last of those. A load that is still running and has not touched the DOM yet, such as a lazy chunk, is invisible to it.
 
 Three ways to turn one on:
 
@@ -228,6 +228,21 @@ in a rule for everyone, or in a rule whose conditions name one user (`user.id` e
 ```
 
 Any other trigger can do the same by naming the signals in its `stream` or `capture` action, for example streaming `routeTiming` for ten minutes after an error.
+
+### Dashboards and alerts on page performance
+
+Traceway also stores the performance events of a browser project as metrics, so they can be charted and alerted on like any other metric:
+
+| Metric | From | Tags besides the common ones |
+|---|---|---|
+| `browser.web_vital.lcp`, `.inp`, `.fcp`, `.ttfb` (ms), `.cls` (score) | `browser.web_vital` | `rating`, `navigation_type` |
+| `browser.route_timing.duration` (ms) | `browser.route_timing` | `url.path`, `outcome`, `type` |
+| `browser.long_task.duration` (ms) | `browser.long_task` | `url.path`, `type` |
+| `browser.page_load.duration`, `browser.page_load.dom_content_loaded` (ms) | `browser.navigation_timing` (the `resourceTiming` signal) | `url.path` |
+
+The common tags are `browser.name`, `browser.mobile`, `os.name`, `service.version` and `deployment.environment.name`. `url.path` is the page's path without its query or fragment.
+
+A browser project's **Dashboards** page starts with the **Web Performance** dashboard (an empty page offers to add it). In **Alerts**, the **Metric Threshold** rule type has presets for slow LCP, slow interactions, layout shift, slow route changes and frozen pages; grouping by `url.path` names the page in the alert. A metric only has data for what clients send: web vitals by default, the others once a rule, trigger or capture turns their signal on.
 
 ## Targeting
 
@@ -316,7 +331,7 @@ Errors back off from 30 seconds to 30 minutes. The heartbeat is never shorter th
 
 ## Dashboard API
 
-The Data Collection tab uses these routes. They need dashboard authentication, or an agent credential for the rule and preview routes (see [Agent Write Access](/learn/agent-write-access)), and write access on the project for changes. The `/api/sdk-config` routes answer `403` for a project that is not a browser project.
+The Data Collection page uses these routes. They need dashboard authentication, or an agent credential for the rule and preview routes (see [Agent Write Access](/learn/agent-write-access)), and write access on the project for changes. The `/api/sdk-config` routes answer `403` for a project that is not a browser project.
 
 | Method | Endpoint | Purpose |
 |---|---|---|

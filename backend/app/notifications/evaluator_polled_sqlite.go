@@ -109,7 +109,7 @@ func evaluateEndpointP95Threshold(ctx context.Context, rule *models.Notification
 
 	p95 := queryPercentile(ctx, projectId, cfg.Endpoint, from, now, 0.95)
 
-	if p95 < cfg.ThresholdMs {
+	if !latencyBreached(p95, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -138,7 +138,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 
 	p99 := queryPercentile(ctx, projectId, cfg.Endpoint, from, now, 0.99)
 
-	if p99 < cfg.ThresholdMs {
+	if !latencyBreached(p99, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -512,7 +512,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 
 	p95 := computePercentile(durations, 0.95)
 
-	if p95 < cfg.ThresholdMs {
+	if !latencyBreached(p95, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 

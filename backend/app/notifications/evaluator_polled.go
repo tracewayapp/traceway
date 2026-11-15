@@ -119,7 +119,7 @@ func evaluateEndpointP95Threshold(ctx context.Context, rule *models.Notification
 		return nil, err
 	}
 
-	if p95 < cfg.ThresholdMs {
+	if !latencyBreached(p95, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -159,7 +159,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 		return nil, err
 	}
 
-	if p99 < cfg.ThresholdMs {
+	if !latencyBreached(p99, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -411,7 +411,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 		return nil, err
 	}
 
-	if p95 < cfg.ThresholdMs {
+	if !latencyBreached(p95, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 

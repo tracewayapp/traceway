@@ -268,7 +268,9 @@ func TestLogRecordRepository_HistogramGroupsByBucketAndLevel(t *testing.T) {
 	ctx := context.Background()
 	projectId := uuid.New()
 	otherProject := uuid.New()
-	base := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	// Recent on purpose: ClickHouse's log_records TTL drops rows older than 90
+	// days, so a fixed date eventually leaves this test reading an empty table.
+	base := time.Now().UTC().Truncate(time.Hour).Add(-time.Hour)
 
 	warnByText := makeLogRecord(projectId, 0, "warn by text", base.Add(65*time.Second))
 	warnByText.SeverityText = "warning"

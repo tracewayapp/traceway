@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/controllers/clientcontrollers"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
@@ -35,9 +35,8 @@ type convertedLogs struct {
 	Records    []models.LogRecord
 	Exceptions []models.ExceptionStackTrace
 	Sessions   []models.Session
-	// Metrics are the points derived from a browser SDK's performance events, with the registry entries naming them.
-	Metrics       []models.MetricPoint
-	MetricEntries []transactional.MetricRegistrationEntry
+	// Observations are the values of client metrics read from a browser SDK's performance events.
+	Observations []clientObservation
 }
 
 // convertLogs stores every record and additionally turns the events browser SDKs emit into the rows the dashboard
@@ -47,7 +46,6 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 	clientSide := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
 	ingestedAt := time.Now().UTC()
 	sessions := map[uuid.UUID]int{}
-	metricNames := map[string]bool{}
 
 	for _, rl := range req.ResourceLogs {
 		resource := rl.GetResource().GetAttributes()
@@ -56,6 +54,8 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 		serviceName := getStringAttribute(resource, "service.name")
 		appVersion := getStringAttribute(resource, "service.version")
 		language := getStringAttribute(resource, "telemetry.sdk.language")
+		// An SDK that aggregates on the device sends these numbers as metrics already.
+		countEvents := clientSide && resAttrs[clientmetrics.AttrAggregated] != clientmetrics.AggregatedValue
 		resourceSchemaUrl := rl.GetSchemaUrl()
 		clientResource := resource
 		if !clientSide {
@@ -106,15 +106,8 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 						result.Sessions = mergeSession(result.Sessions, sessions, session)
 					}
 				}
-				if clientSide {
-					points, entries := browserMetricPoints(projectId, eventName, record)
-					result.Metrics = append(result.Metrics, points...)
-					for _, entry := range entries {
-						if !metricNames[entry.Name] {
-							metricNames[entry.Name] = true
-							result.MetricEntries = append(result.MetricEntries, entry)
-						}
-					}
+				if countEvents {
+					result.Observations = append(result.Observations, browserObservations(eventName, record)...)
 				}
 				result.Records = append(result.Records, record)
 			}

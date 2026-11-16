@@ -17,6 +17,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/backfill"
 	"github.com/tracewayapp/traceway/backend/v2/app/cache"
 	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
 	"github.com/tracewayapp/traceway/backend/v2/app/config"
 	"github.com/tracewayapp/traceway/backend/v2/app/controllers"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
@@ -127,6 +128,9 @@ func Run(opts ...Option) {
 	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
 		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
 	}
+	if err := backfill.RunBrowserPerformanceDashboards(); err != nil {
+		panic(fmt.Errorf("Web Performance dashboard backfill failed: %w", err))
+	}
 
 	if o != nil {
 		if err := seed(o); err != nil {
@@ -194,6 +198,8 @@ func Run(opts ...Option) {
 	slo.Start(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
+	services.SetClientMetricsInstances(slo.Instances)
+	services.StartClientMetrics(ctx)
 	sourcemapbackfill.Start(ctx)
 
 	var router *gin.Engine
@@ -223,6 +229,7 @@ func Run(opts ...Option) {
 		monitoring.StartOutboxReporter(ctx)
 		monitoring.StartSyntheticsReporter(ctx)
 		monitoring.StartSLOReporter(ctx)
+		monitoring.StartClientMetricsReporter(ctx, func() clientmetrics.HealthStats { return services.ClientMetrics().Snapshot() })
 	}
 
 	router.GET("/health", func(c *gin.Context) {

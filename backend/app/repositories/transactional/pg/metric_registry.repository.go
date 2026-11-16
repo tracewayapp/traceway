@@ -87,6 +87,17 @@ func (r *metricRegistryRepository) EnsureRegisteredWithUnits(tx *sql.Tx, project
 			return err
 		}
 		if existing != nil {
+			// A metric that starts arriving as a distribution was registered as a
+			// gauge by an earlier release that stored it point by point.
+			if entry.MetricType == models.MetricTypeHistogram && existing.MetricType != models.MetricTypeHistogram {
+				existing.MetricType = models.MetricTypeHistogram
+				if entry.Unit != "" {
+					existing.Unit = entry.Unit
+				}
+				if err := r.Update(tx, existing); err != nil {
+					return err
+				}
+			}
 			r.knownMetrics.Store(key, true)
 			continue
 		}

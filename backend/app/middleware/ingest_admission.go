@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientlogs"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
@@ -153,4 +155,37 @@ var opampAdmission = sync.OnceValue(func() gin.HandlerFunc {
 
 func OpampAdmission(c *gin.Context) {
 	opampAdmission()(c)
+}
+
+func clientMetricsCapacityFromEnv() int {
+	// A slot costs one body of at most 64 KB, and is held while a phone on a slow
+	// network delivers it, so there are many of them.
+	n := max(runtime.NumCPU()*64, 256)
+	if v := os.Getenv("CLIENT_METRICS_MAX_CONCURRENT"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+	return n
+}
+
+// Client metrics get their own gate: a flood of browsers and phones must not take
+// slots from backend ingest, or the other way round. A request only touches memory,
+// so the gate does not wait: over the limit the answer is an immediate 503 and the
+// SDK drops the payload, which metrics are built to survive.
+var clientMetricsAdmission = sync.OnceValue(func() gin.HandlerFunc {
+	return newAdmissionGate("client_metrics", clientMetricsCapacityFromEnv(), 0, "metrics ingest is busy", nil, "60")
+})
+
+// MetricsAdmission picks the gate of the OTLP metrics endpoint by the kind of
+// project: client projects go through the client metrics gate, everything else
+// through the ingest gate.
+func MetricsAdmission(c *gin.Context) {
+	if project, ok := c.Get(ProjectContextKey); ok {
+		if p, ok := project.(*models.Project); ok && clientlogs.IsClient(p) {
+			clientMetricsAdmission()(c)
+			return
+		}
+	}
+	ingestAdmission()(c)
 }

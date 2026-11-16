@@ -67,6 +67,13 @@ Run `go run .` in `backend/` (after sourcing `.env`) and `npm run dev` in `front
 cd traffic && DASHBOARD_URL=http://localhost:5180 node data-collection-e2e.mjs ./screenshots
 ```
 
+`client-metrics-e2e.mjs` checks the performance metrics end to end (start the backend with `HEALTH_DEEP_TOKEN`,
+`GEOIP_COUNTRY_HEADER=X-Test-Country`, `NOTIFICATION_POLL_SECONDS=10` and `SLO_POLL_SECONDS=10`, and pass the same
+`HEALTH_DEEP_TOKEN` to the script). It visits the storefront as two releases on desktops and phones from several
+countries, with release 0.2.0 made slow on purpose, and then reads what the SDK uploaded, what the server stored, and
+what the Web Performance dashboard, its filters, a percentile alert, a release regression alert and an SLO per release
+make of it. It also uploads `app.*` metrics for the Flutter project and opens Mobile Performance.
+
 `data-collection-e2e.mjs` drives the dashboard and the storefront in Chromium: it creates Data Collection rules (route
 timing for everyone, long tasks for one user, a frozen-page trigger), checks on the wire that each user sends exactly
 what its rules allow, that the events are stored as metrics and charted by the Web Performance dashboard, and that a

@@ -59,10 +59,10 @@
 		'AI Traces',
 		'Monitors'
 	]);
-	// Browser projects report through the OpenTelemetry SDK: logs and spans, plus the page
-	// performance events the backend turns into metrics, which is what their dashboards chart.
-	// Mobile projects report through the native SDKs, which send none of those.
-	const hiddenForMobile = new Set([...hiddenForBrowser, 'Dashboards', 'Logs', 'Spans']);
+	// Browser projects report through the OpenTelemetry SDK: logs, spans, and the performance
+	// metrics their dashboards chart. Mobile projects report through the native SDKs, which send
+	// no logs or spans; their dashboards chart the app.* performance metrics.
+	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans']);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
 	// the sidebar for any other framework, so a Go backend project doesn't

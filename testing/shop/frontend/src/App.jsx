@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { setAttributes } from '@tracewayapp/react'
+import { setAttributes, setMetricDimension } from '@tracewayapp/react'
 import { getCart } from './api.js'
 import { getDemoUser } from './demoUser.js'
 import ProductsPage from './ProductsPage.jsx'
@@ -49,6 +49,7 @@ export default function App() {
   useEffect(() => {
     const user = getDemoUser()
     setAttributes({ 'user.id': user.email, 'user.email': user.email, 'user.name': user.name, plan: user.plan })
+    setMetricDimension('plan', user.plan)
   }, [])
 
   useEffect(() => {

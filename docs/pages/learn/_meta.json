@@ -15,6 +15,7 @@
   "spans": "Spans",
   "healthchecks": "Healthchecks",
   "metrics": "Metrics",
+  "client-metrics": "Client Metrics",
   "dashboards": "Dashboards",
   "logs": "Logs",
   "alerts": "Alerts",

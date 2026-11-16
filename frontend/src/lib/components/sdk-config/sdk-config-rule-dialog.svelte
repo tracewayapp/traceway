@@ -52,6 +52,8 @@
 	let replayChoice = $state<Choice>('inherit');
 	let sessionsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let collectionChoice = $state<'inherit' | 'on' | 'off'>('inherit');
+	let metricsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
+	let metricsSamplePercent = $state<number | null | undefined>(undefined);
 	let settingsJson = $state('');
 	let saving = $state(false);
 	let dialogError = $state('');
@@ -100,6 +102,10 @@
 					? 'on'
 					: 'off';
 		collectionChoice = settings.enabled === undefined ? 'inherit' : settings.enabled ? 'on' : 'off';
+		metricsChoice =
+			settings.metrics?.enabled === undefined ? 'inherit' : settings.metrics.enabled ? 'on' : 'off';
+		metricsSamplePercent =
+			settings.metrics?.sampleRate === undefined ? undefined : settings.metrics.sampleRate * 100;
 	}
 
 	function formSettings(): SettingsDocument {
@@ -115,6 +121,10 @@
 		if (baseline !== undefined)
 			settings.sessions = { ...settings.sessions, baselineSampleRate: baseline / 100 };
 		if (collectionChoice !== 'inherit') settings.enabled = collectionChoice === 'on';
+		if (metricsChoice !== 'inherit') settings.metrics = { enabled: metricsChoice === 'on' };
+		const metricsSample = optionalNumber(metricsSamplePercent);
+		if (metricsSample !== undefined)
+			settings.metrics = { ...settings.metrics, sampleRate: metricsSample / 100 };
 		return settings;
 	}
 
@@ -382,6 +392,22 @@
 							</Button>
 						{/each}
 					</div>
+					<div class="space-y-2">
+						<Label for="sdk-rule-metrics-sample">Sessions that record metrics (%)</Label>
+						<Input
+							id="sdk-rule-metrics-sample"
+							type="number"
+							min="0"
+							max="100"
+							step="0.1"
+							bind:value={metricsSamplePercent}
+							placeholder="Inherit (100% by default)"
+						/>
+						<p class="text-xs text-muted-foreground">
+							Counts are scaled back up by the sample rate, so charts stay comparable. Lower it for
+							very high traffic.
+						</p>
+					</div>
 					<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} />
 					<CodeEditor bind:value={settingsJson} minHeight="260px" />
 				{:else}
@@ -430,6 +456,22 @@
 							</div>
 							<Select.Root type="single" bind:value={sessionsChoice} disabled={saving}>
 								<Select.Trigger class="w-28">{toggleLabels[sessionsChoice]}</Select.Trigger>
+								<Select.Content>
+									{#each Object.entries(toggleLabels) as [value, label] (value)}
+										<Select.Item {value}>{label}</Select.Item>
+									{/each}
+								</Select.Content>
+							</Select.Root>
+						</div>
+						<div class="flex items-center justify-between gap-3">
+							<div>
+								<div class="text-sm">Performance metrics</div>
+								<div class="text-xs text-muted-foreground">
+									Aggregated on the device, one small upload per flush
+								</div>
+							</div>
+							<Select.Root type="single" bind:value={metricsChoice} disabled={saving}>
+								<Select.Trigger class="w-28">{toggleLabels[metricsChoice]}</Select.Trigger>
 								<Select.Content>
 									{#each Object.entries(toggleLabels) as [value, label] (value)}
 										<Select.Item {value}>{label}</Select.Item>

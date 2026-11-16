@@ -167,7 +167,24 @@ type Capture struct {
 type Limits struct {
 	Signals map[string]Mode `json:"signals,omitempty"`
 	Replay  *Mode           `json:"replay,omitempty"`
+	Metrics *Mode           `json:"metrics,omitempty"`
 }
+
+// MetricsSettings govern the aggregates: the histograms and counters an SDK builds on the device and uploads as
+// one small payload per flush. The per-signal settings govern the detailed events of the same measurements, so
+// a signal can be off (no events) while its numbers are still charted.
+type MetricsSettings struct {
+	Enabled *bool `json:"enabled,omitempty"`
+	// SampleRate is the share of sessions that record metrics. The SDK reports it and ingest weights counts by
+	// 1/rate, so counts and ratios stay unbiased.
+	SampleRate   *float64 `json:"sampleRate,omitempty"`
+	FlushSeconds *int     `json:"flushSeconds,omitempty"`
+}
+
+const (
+	MinMetricsFlushSeconds = 30
+	MaxMetricsFlushSeconds = 3600
+)
 
 // Settings is a partial settings document: nil fields inherit from earlier rules and finally from the SDK's
 // built-in defaults. Field order is fixed, so marshalling the same settings always yields the same bytes and hash.
@@ -177,6 +194,7 @@ type Settings struct {
 	Signals       *Signals         `json:"signals,omitempty"`
 	Sessions      *SessionSettings `json:"sessions,omitempty"`
 	Replay        *ReplaySettings  `json:"replay,omitempty"`
+	Metrics       *MetricsSettings `json:"metrics,omitempty"`
 	Buffer        *BufferSettings  `json:"buffer,omitempty"`
 	Triggers      []Trigger        `json:"triggers,omitempty"`
 	Captures      []Capture        `json:"captures,omitempty"`
@@ -254,6 +272,14 @@ func (s Settings) Validate() error {
 		}
 		if !validRate(s.Replay.SessionSampleRate) {
 			return invalid("replay.sessionSampleRate must be between 0 and 1")
+		}
+	}
+	if m := s.Metrics; m != nil {
+		if !validRate(m.SampleRate) {
+			return invalid("metrics.sampleRate must be between 0 and 1")
+		}
+		if m.FlushSeconds != nil && (*m.FlushSeconds < MinMetricsFlushSeconds || *m.FlushSeconds > MaxMetricsFlushSeconds) {
+			return invalid("metrics.flushSeconds must be between %d and %d", MinMetricsFlushSeconds, MaxMetricsFlushSeconds)
 		}
 	}
 	if b := s.Buffer; b != nil {

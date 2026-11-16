@@ -162,7 +162,7 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 			return def, "Metric name is required.", nil
 		}
 		if !models.SLOMetricAggregations[c.Aggregation] {
-			return def, "Aggregation must be one of: avg, min, max, sum, last.", nil
+			return def, "Aggregation must be one of: avg, min, max, sum, last, distribution.", nil
 		}
 		if !models.SLOMetricOperators[c.Operator] {
 			return def, "Operator must be one of: gt, gte, lt, lte.", nil

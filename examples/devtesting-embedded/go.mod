@@ -18,7 +18,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.47.0
 )
 
-require github.com/tracewayapp/traceway/cli/v2 v2.0.11 // indirect
+require (
+	github.com/oschwald/maxminddb-golang/v2 v2.4.1 // indirect
+	github.com/tracewayapp/traceway/cli/v2 v2.0.11 // indirect
+)
 
 require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect

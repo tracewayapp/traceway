@@ -14,10 +14,15 @@
 	import WidgetConfigPanel from '$lib/components/dashboard/widget-config-panel.svelte';
 	import DashboardCommand from '$lib/components/dashboard/dashboard-command.svelte';
 	import InstanceFilter from '$lib/components/dashboard/instance-filter.svelte';
+	import DimensionFilter from '$lib/components/dashboard/dimension-filter.svelte';
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
-	import { projectsState, isBrowserFramework } from '$lib/state/projects.svelte';
+	import {
+		projectsState,
+		isBrowserFramework,
+		isFrontendFramework
+	} from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { toUTCISO, calendarDateTimeToLuxon, formatDateTime } from '$lib/utils/formatters';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
@@ -164,7 +169,7 @@
 	const initialUrlParams = parseTimeRangeFromUrl(initialTimezone);
 	const initialRange = getResolvedTimeRange(initialUrlParams, initialTimezone);
 
-	let selectedPreset = $state<string | null>(initialUrlParams.preset ?? '24h');
+	let selectedPreset = $state<string | null>(initialUrlParams.preset);
 	let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, initialTimezone));
 	let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to, initialTimezone));
 	let fromTime = $state(dateToTimeString(initialRange.from, initialTimezone));
@@ -181,26 +186,56 @@
 			: []
 	);
 	let serverScope = $state(page.url.searchParams.get('server')?.trim() ?? '');
-	const scopeTagFilters = $derived.by(
-		(): Record<string, string> => (serverScope ? { server_name: serverScope } : {})
+	// Client metrics are distributions over a population: nobody charts one phone. A client
+	// project is narrowed by release and OS where a backend project is narrowed by instance.
+	let releaseScope = $state(page.url.searchParams.get('release')?.trim() ?? '');
+	let osScope = $state(page.url.searchParams.get('os')?.trim() ?? '');
+	let countryScope = $state(page.url.searchParams.get('country')?.trim() ?? '');
+	const isClientProject = $derived(
+		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
+	const isBrowserProject = $derived(
+		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
+	);
+	const scopeMetrics = $derived(
+		isBrowserProject
+			? ['browser.page_view', 'browser.web_vital.lcp']
+			: ['app.session', 'app.start.duration']
+	);
+	const scopeTagFilters = $derived.by((): Record<string, string> => {
+		const filters: Record<string, string> = {};
+		if (serverScope) filters.server_name = serverScope;
+		if (isClientProject && releaseScope) filters['service.version'] = releaseScope;
+		if (isClientProject && osScope) filters['os.name'] = osScope;
+		if (isClientProject && countryScope) filters.country = countryScope;
+		return filters;
+	});
 
-	function setServerScope(scope: string) {
-		const normalized = scope.trim();
+	function setScopeParam(name: string, value: string): string {
+		const normalized = value.trim();
 		const url = new URL(window.location.href);
 		if (normalized) {
-			url.searchParams.set('server', normalized);
+			url.searchParams.set(name, normalized);
 		} else {
-			url.searchParams.delete('server');
+			url.searchParams.delete(name);
 		}
-		serverScope = normalized;
 		let target = resolve('/dashboards');
 		target += url.search + url.hash;
 		replaceState(target, {});
+		return normalized;
+	}
+
+	function setServerScope(scope: string) {
+		serverScope = setScopeParam('server', scope);
 	}
 
 	function updateDashboardUrl(params: Record<string, string>) {
-		updateUrl(serverScope ? { ...params, server: serverScope } : params);
+		const scoped = { ...params };
+		if (serverScope) scoped.server = serverScope;
+		if (releaseScope) scoped.release = releaseScope;
+		if (osScope) scoped.os = osScope;
+		if (countryScope) scoped.country = countryScope;
+		updateUrl(scoped);
 	}
 
 	function reloadDashboardWidgets() {
@@ -355,11 +390,12 @@
 		tabDropIndex = null;
 	}
 
-	// A browser project created before its default dashboard existed (or by a seed) has none assigned.
-	const canInstallWebPerformance = $derived(
-		!!projectsState.currentProject &&
-			isBrowserFramework(projectsState.currentProject.framework) &&
-			projectsState.canWriteCurrentProject
+	// A client project created before its default dashboard existed (or by a seed) has none assigned.
+	const canInstallDefaultDashboard = $derived(
+		isClientProject && projectsState.canWriteCurrentProject
+	);
+	const defaultDashboardName = $derived(
+		isBrowserProject ? 'Web Performance' : 'Mobile Performance'
 	);
 	let installingDefaults = $state(false);
 
@@ -371,7 +407,7 @@
 				{},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
-			toast.success('Successfully added the Web Performance Dashboard', { position: 'top-center' });
+			toast.success('Successfully created the Dashboard', { position: 'top-center' });
 			await loadDashboards();
 		} catch (e) {
 			if (getErrorStatus(e) !== 403) {
@@ -959,6 +995,9 @@
 	afterNavigate(() => {
 		routerReady = true;
 		serverScope = page.url.searchParams.get('server')?.trim() ?? '';
+		releaseScope = page.url.searchParams.get('release')?.trim() ?? '';
+		osScope = page.url.searchParams.get('os')?.trim() ?? '';
+		countryScope = page.url.searchParams.get('country')?.trim() ?? '';
 	});
 
 	$effect(() => {
@@ -1051,13 +1090,41 @@
 						{isMac ? '⌘' : 'Ctrl'}K
 					</kbd>
 				</button>
-				<InstanceFilter
-					value={serverScope}
-					from={getFromDateTimeUTC()}
-					to={getToDateTimeUTC()}
-					projectId={projectsState.currentProjectId}
-					onValueChange={setServerScope}
-				/>
+				{#if isClientProject}
+					<DimensionFilter
+						label="Release"
+						dimension="service.version"
+						metrics={scopeMetrics}
+						value={releaseScope}
+						projectId={projectsState.currentProjectId}
+						onValueChange={(v) => (releaseScope = setScopeParam('release', v))}
+					/>
+					<DimensionFilter
+						label="OS"
+						dimension="os.name"
+						metrics={scopeMetrics}
+						value={osScope}
+						projectId={projectsState.currentProjectId}
+						onValueChange={(v) => (osScope = setScopeParam('os', v))}
+					/>
+					<DimensionFilter
+						label="Country"
+						dimension="country"
+						metrics={scopeMetrics}
+						value={countryScope}
+						projectId={projectsState.currentProjectId}
+						hideWhenEmpty
+						onValueChange={(v) => (countryScope = setScopeParam('country', v))}
+					/>
+				{:else}
+					<InstanceFilter
+						value={serverScope}
+						from={getFromDateTimeUTC()}
+						to={getToDateTimeUTC()}
+						projectId={projectsState.currentProjectId}
+						onValueChange={setServerScope}
+					/>
+				{/if}
 				<TimeRangePicker
 					bind:fromDate
 					bind:toDate
@@ -1081,10 +1148,12 @@
 			description={listError}
 			onRetry={() => loadDashboards()}
 		/>
-	{:else if dashboards.length === 0 && canInstallWebPerformance}
+	{:else if dashboards.length === 0 && canInstallDefaultDashboard}
 		<EmptyState
-			message="No dashboards yet. Web Performance charts the web vitals, route changes and long tasks this project's SDK reports."
-			actionLabel={installingDefaults ? 'Adding…' : 'Add Web Performance Dashboard'}
+			message={isBrowserProject
+				? "No dashboards yet. Web Performance charts the web vitals, route changes and main-thread blocking this project's SDK reports, as percentiles over every page view."
+				: 'No dashboards yet. Mobile Performance charts app start, screen display times, frames, hangs and crashes, as percentiles over every session.'}
+			actionLabel={installingDefaults ? 'Adding…' : `Add ${defaultDashboardName} Dashboard`}
 			onAction={() => {
 				if (!installingDefaults) void installDefaultDashboards();
 			}}

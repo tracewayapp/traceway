@@ -8,6 +8,7 @@ var (
 	AgentWriteEventRepository       = pgrepo.AgentWriteEventRepository
 	AuthorizationCodeRepository     = pgrepo.AuthorizationCodeRepository
 	CheckIncidentRepository         = pgrepo.CheckIncidentRepository
+	ClientMetricGuardRepository     = pgrepo.ClientMetricGuardRepository
 	CheckRunRepository              = pgrepo.CheckRunRepository
 	DashboardRepository             = pgrepo.DashboardRepository
 	DashboardTemplateRepository     = pgrepo.DashboardTemplateRepository

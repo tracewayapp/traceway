@@ -220,6 +220,22 @@ func setupNotificationsTestDB(t *testing.T) {
 	)`); err != nil {
 		t.Fatalf("failed to create metric_points table: %v", err)
 	}
+
+	if _, err := telemetryDB.Exec(`CREATE TABLE metric_histograms (
+		project_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		recorded_at DATETIME NOT NULL,
+		grain_seconds INTEGER NOT NULL DEFAULT 60,
+		dims TEXT NOT NULL DEFAULT '{}',
+		cnt REAL NOT NULL DEFAULT 0,
+		total REAL NOT NULL DEFAULT 0,
+		min_val REAL NOT NULL DEFAULT 0,
+		max_val REAL NOT NULL DEFAULT 0,
+		zero_cnt REAL NOT NULL DEFAULT 0,
+		buckets TEXT NOT NULL DEFAULT '{}'
+	)`); err != nil {
+		t.Fatalf("failed to create metric_histograms table: %v", err)
+	}
 }
 
 func TestEvaluateMetricThresholdTagFilter(t *testing.T) {

@@ -219,4 +219,14 @@ describe('optionalNumber', () => {
 		expect(optionalNumber(1.5)).toBe(1.5);
 		expect(optionalNumber('25')).toBe(25);
 	});
+
+	it('edits the metrics block in the form and names it in the summary', () => {
+		expect(fitsForm({ metrics: { enabled: false } })).toBe(true);
+		expect(fitsForm({ metrics: { enabled: true, sampleRate: 0.1 } })).toBe(true);
+		expect(fitsForm({ metrics: { flushSeconds: 60 } })).toBe(false);
+		expect(summarizeSettings({ metrics: { enabled: false } })).toBe('metrics off');
+		expect(summarizeSettings({ metrics: { sampleRate: 0.25 } })).toBe(
+			'metrics from 25% of sessions'
+		);
+	});
 });

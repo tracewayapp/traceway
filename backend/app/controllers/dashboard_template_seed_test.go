@@ -58,7 +58,7 @@ func TestSeededDashboardTemplatesAreValid(t *testing.T) {
 
 	expectedKeys := []string{
 		"traceway-clickhouse", "traceway-duckdb",
-		"golang", "traceway-otel-agent", "browser-performance",
+		"golang", "traceway-otel-agent", "browser-performance", "mobile-performance",
 	}
 	byKey := map[string]*models.DashboardTemplate{}
 	for _, tpl := range templates {
@@ -87,11 +87,13 @@ func TestSeededDashboardTemplatesAreValid(t *testing.T) {
 	if keys := defaultTemplateKeysForFramework("react"); len(keys) != 1 || keys[0] != "browser-performance" {
 		t.Errorf("a browser project starts with the Web Performance dashboard, got %v", keys)
 	}
-	if keys := defaultTemplateKeysForFramework("flutter"); len(keys) != 0 {
-		t.Errorf("mobile SDKs send no browser metrics, got %v", keys)
+	for _, framework := range []string{"flutter", "ios", "android", "react-native"} {
+		if keys := defaultTemplateKeysForFramework(framework); len(keys) != 1 || keys[0] != "mobile-performance" {
+			t.Errorf("a %s project starts with the Mobile Performance dashboard, got %v", framework, keys)
+		}
 	}
 
-	for _, framework := range []string{"opentelemetry", "react", "gin", ""} {
+	for _, framework := range []string{"opentelemetry", "react", "gin", "flutter", ""} {
 		for _, key := range defaultTemplateKeysForFramework(framework) {
 			if byKey[key] == nil {
 				t.Errorf("default template %s for framework %q is not seeded", key, framework)

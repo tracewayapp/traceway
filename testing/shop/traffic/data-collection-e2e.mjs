@@ -279,10 +279,10 @@ try {
     }
     await shopBrowser.close()
     const count = (email, name) => sent.get(email).filter((event) => event === name).length
+    // Web vitals are no longer events: SDK 2.1 uploads them as histograms, which client-metrics-e2e.mjs checks.
     for (const persona of [TARGETED, ...OTHERS]) {
       // The last route change may still be loading when the page is hidden, which discards its measurement.
       assert(count(persona.email, 'browser.route_timing') >= 2, `${persona.name}: route timing is on for everyone`)
-      assert(count(persona.email, 'browser.web_vital') >= 1, `${persona.name}: web vitals are on by default`)
     }
     assert(count(TARGETED.email, 'browser.long_task') >= 2, 'the targeted user streams long tasks')
     for (const persona of OTHERS) {
@@ -355,7 +355,7 @@ try {
     const offered = await page.getByRole('option').allTextContents()
     assert.deepEqual(
       offered.map((option) => option.trim()),
-      ['New Issue', 'Metric Threshold', 'SLO Burn Rate', 'SLO Budget Consumed']
+      ['New Issue', 'Metric Threshold', 'Release Regression', 'SLO Burn Rate', 'SLO Budget Consumed']
     )
     await page.getByRole('option', { name: 'Metric Threshold' }).click()
     await dialog().getByRole('button', { name: 'Slow route change' }).click()

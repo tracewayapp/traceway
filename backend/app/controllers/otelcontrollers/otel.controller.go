@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientlogs"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
 	"net/http"
 	"slices"
 	"strings"
@@ -294,11 +296,15 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 
 	orgId := 0
 	hasOrg := false
+	var clientProject *models.Project
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
-			orgId = *p.OrganizationId
-			hasOrg = true
-			traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
+		if p, ok := project.(*models.Project); ok {
+			clientProject = p
+			if p.OrganizationId != nil {
+				orgId = *p.OrganizationId
+				hasOrg = true
+				traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
+			}
 		}
 	}
 	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
@@ -306,7 +312,12 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		perm = hooks.IngestPermissionFor(orgId)
 	}
 
-	req, bodyBytes, err := decodeMetricsRequest(c)
+	if clientlogs.IsClient(clientProject) {
+		o.exportClientMetrics(c, projectId, orgId, hasOrg, perm)
+		return
+	}
+
+	req, bodyBytes, err := decodeMetricsRequest(c, maxBodySize)
 	if err != nil {
 		writeDecodeError(c, err)
 		return
@@ -319,8 +330,19 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	if !perm.Data {
 		result.Points = nil
 		result.Entries = nil
+		result.Histograms = nil
 		if hasOrg {
 			monitoring.RecordRateLimited(orgId)
+		}
+	}
+
+	if len(result.Histograms) > 0 {
+		now := time.Now()
+		for _, h := range result.Histograms {
+			services.ClientMetrics().AddSeriesHistogram(projectId, h.Name, h.At, h.Tags, h.Hist, h.Cumulative, now)
+		}
+		if len(result.Points) == 0 && len(result.Entries) > 0 {
+			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
 		}
 	}
 
@@ -334,7 +356,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		insertMs = msSince(insertStart)
 
 		if len(result.Entries) > 0 {
-			go services.AutoRegisterMetricsWithUnits(c.Request.Context(), projectId, result.Entries)
+			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
 		}
 	}
 
@@ -348,6 +370,38 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		})
 	}
 
+	writeMetricsResponse(c)
+}
+
+// exportClientMetrics takes the metrics of a browser or mobile project. Nothing is
+// written here: the samples are merged into the in-memory cells and the request
+// ends, so the cost of a request does not depend on storage and storage does not
+// see one write per client.
+func (o otelController) exportClientMetrics(c *gin.Context, projectId uuid.UUID, orgId int, hasOrg bool, perm hooks.IngestPermission) {
+	req, bodyBytes, err := decodeMetricsRequest(c, clientmetrics.MaxBodyBytes)
+	if err != nil {
+		writeDecodeError(c, err)
+		return
+	}
+	if !perm.Data {
+		if hasOrg {
+			monitoring.RecordRateLimited(orgId)
+		}
+		writeMetricsResponse(c)
+		return
+	}
+
+	start := time.Now()
+	result := services.ClientMetrics().IngestOTLP(projectId, req, services.ClientOf(c.GetHeader, c.ClientIP()), start)
+	monitoring.RecordIngestBatch(monitoring.SignalMetrics, "metric_histograms", msSince(start), 0, result.Accepted, bodyBytes)
+
+	if hasOrg {
+		hooks.BroadcastReport(hooks.ReportEvent{
+			OrganizationId: orgId,
+			ProjectId:      projectId,
+			TelemetryBytes: bodyBytes,
+		})
+	}
 	writeMetricsResponse(c)
 }
 
@@ -411,12 +465,12 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		}
 	}
 	monitoring.RecordLogsAccepted(len(records))
-	if perm.Data && len(result.Metrics) > 0 {
-		if err := telemetry.MetricPointRepository.InsertAsync(c, result.Metrics); err != nil {
-			abortIngestStorage(c, "metric points", err)
-			return
+	if perm.Data && len(result.Observations) > 0 {
+		// Into memory only: no storage write per event.
+		now, client := time.Now(), services.ClientOf(c.GetHeader, c.ClientIP())
+		for _, observation := range result.Observations {
+			services.ClientMetrics().ObserveEvent(projectId, observation.Name, observation.Value, observation.At, observation.Resource, observation.Attrs, client, now)
 		}
-		go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.MetricEntries)
 	}
 	if len(sessions) > 0 {
 		if err := telemetry.SessionRepository.Upsert(c, sessions); err != nil {

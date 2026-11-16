@@ -35,6 +35,11 @@ export type SettingsDocument = Record<string, unknown> & {
 	signals?: Record<string, { mode?: Mode; sampleRate?: number; minSeverity?: string }>;
 	sessions?: { enabled?: boolean; baselineSampleRate?: number };
 	replay?: { mode?: Mode; sessionSampleRate?: number; maskAllInputs?: boolean };
+	/**
+	 * The aggregates: histograms and counters built on the device and uploaded as one small payload.
+	 * The signals above govern the detailed events of the same measurements.
+	 */
+	metrics?: { enabled?: boolean; sampleRate?: number; flushSeconds?: number };
 	triggers?: unknown[];
 };
 
@@ -328,6 +333,9 @@ export function summarizeSettings(settings: SettingsDocument): string {
 	if (settings.sessions?.baselineSampleRate !== undefined)
 		parts.push(`${settings.sessions.baselineSampleRate * 100}% healthy session sample`);
 	if (settings.sessions?.enabled === false) parts.push('sessions off');
+	if (settings.metrics?.enabled === false) parts.push('metrics off');
+	else if (settings.metrics?.sampleRate !== undefined)
+		parts.push(`metrics from ${settings.metrics.sampleRate * 100}% of sessions`);
 	const triggers = settings.triggers?.length ?? 0;
 	if (triggers > 0) parts.push(`${triggers} trigger${triggers === 1 ? '' : 's'}`);
 	return parts.length > 0 ? parts.join(', ') : 'No changes';
@@ -336,7 +344,14 @@ export function summarizeSettings(settings: SettingsDocument): string {
 /** Whether the form can show every field the document sets; anything more is edited as JSON. */
 export function fitsForm(settings: SettingsDocument): boolean {
 	if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
-	const allowedTop = new Set(['schemaVersion', 'enabled', 'signals', 'sessions', 'replay']);
+	const allowedTop = new Set([
+		'schemaVersion',
+		'enabled',
+		'signals',
+		'sessions',
+		'replay',
+		'metrics'
+	]);
 	if (Object.keys(settings).some((k) => !allowedTop.has(k))) return false;
 	for (const value of Object.values(settings.signals ?? {})) {
 		if (Object.keys(value ?? {}).some((k) => k !== 'mode')) return false;
@@ -344,7 +359,9 @@ export function fitsForm(settings: SettingsDocument): boolean {
 	return (
 		Object.keys(settings.sessions ?? {}).every(
 			(k) => k === 'enabled' || k === 'baselineSampleRate'
-		) && Object.keys(settings.replay ?? {}).every((k) => k === 'mode')
+		) &&
+		Object.keys(settings.replay ?? {}).every((k) => k === 'mode') &&
+		Object.keys(settings.metrics ?? {}).every((k) => k === 'enabled' || k === 'sampleRate')
 	);
 }
 

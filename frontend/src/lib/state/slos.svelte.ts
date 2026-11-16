@@ -5,7 +5,9 @@ import type { NotificationRuleConfig } from '$lib/types/notifications';
 export type SliKind = 'endpoint' | 'span' | 'task' | 'monitor' | 'metric' | 'session';
 export type SloStatus = 'ok' | 'breached' | 'no_data';
 export type GoodCondition = 'availability' | 'latency';
-export type MetricAggregation = 'avg' | 'min' | 'max' | 'sum' | 'last';
+// `distribution` counts events, not time slices: every observation of a distribution metric on
+// the good side of the threshold is a good event.
+export type MetricAggregation = 'avg' | 'min' | 'max' | 'sum' | 'last' | 'distribution';
 export type MetricOperator = 'gt' | 'gte' | 'lt' | 'lte';
 
 export interface EndpointSliConfig {
@@ -116,7 +118,8 @@ export const SLI_KIND_LABELS: Record<SliKind, string> = {
 };
 
 export const BACKEND_SLI_KINDS: SliKind[] = ['endpoint', 'span', 'task', 'monitor', 'metric'];
-export const FRONTEND_SLI_KINDS: SliKind[] = ['session'];
+// Client projects have sessions and the performance metrics their SDKs report.
+export const FRONTEND_SLI_KINDS: SliKind[] = ['session', 'metric'];
 
 export const SLO_WINDOW_OPTIONS = [
 	{ value: '7', label: '7 days' },

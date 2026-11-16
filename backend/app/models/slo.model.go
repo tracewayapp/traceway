@@ -31,7 +31,7 @@ const (
 var (
 	SLOWindowDays         = []int{7, 30, 90}
 	SLOMetricSliceMinutes = []int{1, 5, 15, 60}
-	SLOMetricAggregations = map[string]bool{"avg": true, "min": true, "max": true, "sum": true, "last": true}
+	SLOMetricAggregations = map[string]bool{"avg": true, "min": true, "max": true, "sum": true, "last": true, SLOAggregationDistribution: true}
 	SLOMetricOperators    = map[string]bool{"gt": true, "gte": true, "lt": true, "lte": true}
 )
 
@@ -208,3 +208,8 @@ func ValidSLIKind(kind string) bool {
 	}
 	return false
 }
+
+// SLOAggregationDistribution makes a metric SLO count events and not time slices:
+// every observation of a distribution metric on the good side of the threshold is a
+// good event ("75% of page views have an LCP under 2.5 s").
+const SLOAggregationDistribution = "distribution"

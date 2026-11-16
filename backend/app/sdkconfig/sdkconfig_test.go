@@ -330,3 +330,30 @@ func TestPerformanceSignalsAreTargetedLikeAnyOther(t *testing.T) {
 		t.Errorf("a plan that drops data at ingest switches them off at the source: %+v", targeted.Limits)
 	}
 }
+
+func TestMetricsSettingsMergeValidateAndFollowThePlan(t *testing.T) {
+	base := mustSettings(t, `{"metrics":{"sampleRate":0.5,"flushSeconds":120}}`)
+	Merge(&base, mustSettings(t, `{"metrics":{"enabled":true,"sampleRate":0.1}}`))
+	if !*base.Metrics.Enabled || *base.Metrics.SampleRate != 0.1 || *base.Metrics.FlushSeconds != 120 {
+		t.Fatalf("merged metrics: %+v", base.Metrics)
+	}
+	body, _, err := Render(base)
+	if err != nil || !strings.Contains(string(body), `"metrics":{"enabled":true,"sampleRate":0.1,"flushSeconds":120}`) {
+		t.Errorf("rendered document: %s (%v)", body, err)
+	}
+	for _, invalid := range []string{`{"metrics":{"sampleRate":1.5}}`, `{"metrics":{"flushSeconds":5}}`, `{"metrics":{"flushSeconds":7200}}`, `{"metrics":{"buckets":8}}`} {
+		if _, err := ParseSettings([]byte(invalid)); err == nil {
+			t.Errorf("%s was accepted", invalid)
+		}
+	}
+
+	ApplyPermission(&base, true, false, true)
+	if *base.Metrics.Enabled || base.Limits == nil || base.Limits.Metrics == nil || *base.Limits.Metrics != ModeOff {
+		t.Errorf("a plan that drops data switches the aggregates off at the source: %+v %+v", base.Metrics, base.Limits)
+	}
+	kept := mustSettings(t, `{"metrics":{"enabled":true}}`)
+	ApplyPermission(&kept, false, true, true)
+	if !*kept.Metrics.Enabled || (kept.Limits != nil && kept.Limits.Metrics != nil) {
+		t.Errorf("metrics are data, not exceptions: %+v %+v", kept.Metrics, kept.Limits)
+	}
+}

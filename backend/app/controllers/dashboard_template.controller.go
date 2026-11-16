@@ -261,6 +261,10 @@ func (c *dashboardTemplateController) Install(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, dashboardListItem(dashboard))
 }
 
+// mobileFrameworks get the Mobile Performance template. React Native is a mobile app
+// although its SDK is JavaScript.
+var mobileFrameworks = map[string]bool{"react-native": true, "flutter": true, "ios": true, "android": true}
+
 func defaultTemplateKeysForFramework(framework string) []string {
 	goFrameworks := map[string]bool{
 		"gin": true, "fiber": true, "chi": true,
@@ -273,6 +277,8 @@ func defaultTemplateKeysForFramework(framework string) []string {
 		return []string{"golang"}
 	case sdkconfig.IsBrowserFramework(framework):
 		return []string{"browser-performance"}
+	case mobileFrameworks[framework]:
+		return []string{"mobile-performance"}
 	default:
 		return nil
 	}

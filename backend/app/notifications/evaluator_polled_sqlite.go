@@ -27,22 +27,23 @@ type EvalResult struct {
 type RuleEvaluator func(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error)
 
 var polledEvaluators = map[string]RuleEvaluator{
-	"error_rate_threshold":    evaluateErrorRateThreshold,
-	"endpoint_p95_threshold":  evaluateEndpointP95Threshold,
-	"endpoint_p99_threshold":  evaluateEndpointP99Threshold,
-	"apdex_drop":              evaluateApdexDrop,
-	"metric_threshold":        evaluateMetricThreshold,
-	"no_data":                 evaluateNoData,
-	"error_count_threshold":   evaluateErrorCountThreshold,
-	"task_duration_threshold": evaluateTaskDurationThreshold,
-	"task_failure_rate":       evaluateTaskFailureRate,
-	"throughput_drop":         evaluateThroughputDrop,
-	"endpoint_error_rate":     evaluateEndpointErrorRate,
-	"impact_score_critical":   evaluateImpactScoreCritical,
-	"impact_score_high":       evaluateImpactScoreHigh,
-	"impact_score_medium":     evaluateImpactScoreMedium,
-	"slo_burn_rate":           evaluateSLOBurnRate,
-	"slo_budget_consumed":     evaluateSLOBudgetConsumed,
+	"error_rate_threshold":      evaluateErrorRateThreshold,
+	"endpoint_p95_threshold":    evaluateEndpointP95Threshold,
+	"endpoint_p99_threshold":    evaluateEndpointP99Threshold,
+	"apdex_drop":                evaluateApdexDrop,
+	"metric_threshold":          evaluateMetricThreshold,
+	"metric_release_regression": evaluateMetricReleaseRegression,
+	"no_data":                   evaluateNoData,
+	"error_count_threshold":     evaluateErrorCountThreshold,
+	"task_duration_threshold":   evaluateTaskDurationThreshold,
+	"task_failure_rate":         evaluateTaskFailureRate,
+	"throughput_drop":           evaluateThroughputDrop,
+	"endpoint_error_rate":       evaluateEndpointErrorRate,
+	"impact_score_critical":     evaluateImpactScoreCritical,
+	"impact_score_high":         evaluateImpactScoreHigh,
+	"impact_score_medium":       evaluateImpactScoreMedium,
+	"slo_burn_rate":             evaluateSLOBurnRate,
+	"slo_budget_consumed":       evaluateSLOBudgetConsumed,
 }
 
 // --- Error Rate Threshold ---
@@ -249,6 +250,11 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 	}
 
 	now := time.Now().UTC()
+	if series, isDistribution, err := histogramMetricSeries(ctx, cfg, projectId, now); err != nil {
+		return nil, err
+	} else if isDistribution {
+		return metricThresholdResult(ctx, rule, cfg, series, projectId), nil
+	}
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
 	tagExtract := "json_extract"
@@ -281,6 +287,8 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 			aggFunc = "min"
 		case "sum":
 			aggFunc = "sum"
+		case "count":
+			aggFunc = "count"
 		}
 		query := fmt.Sprintf("SELECT %s AS group_key, COALESCE(%s(value), 0) FROM metric_points WHERE %s GROUP BY group_key ORDER BY group_key LIMIT ?", groupExpr, aggFunc, where)
 		series, err = scanMetricSeries(ctx, query, append(args, maxMetricRuleSeriesScanned))

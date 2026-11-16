@@ -152,6 +152,36 @@ func TestWorkerMetricTimeslices(t *testing.T) {
 	}
 }
 
+func TestWorkerCountsEventsOfADistribution(t *testing.T) {
+	projectId := setupSLODB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(5 * time.Minute).Add(time.Minute)
+	lastClosed := now.Truncate(5 * time.Minute)
+	cell := func(ago time.Duration, value float64, n int) shared.MetricHistogramCell {
+		h := shared.NewHistogram()
+		for i := 0; i < n; i++ {
+			h.Observe(value, 1)
+		}
+		return shared.MetricHistogramCell{ProjectId: projectId, Name: "browser.web_vital.lcp", RecordedAt: lastClosed.Add(-ago), Dims: map[string]string{"service.version": "4.2"}, Hist: h}
+	}
+	if err := telemetry.MetricHistogramRepository.InsertCells(ctx, []shared.MetricHistogramCell{
+		cell(4*time.Minute, 1200, 60), cell(4*time.Minute, 5000, 20), cell(12*time.Minute, 1900, 15), cell(13*time.Minute, 8000, 5),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	slo := createTestSLO(t, projectId, models.SLIKindMetric, `{"metricName":"browser.web_vital.lcp","tags":{},"aggregation":"distribution","operator":"lte","threshold":2500}`, 75, 7, 5)
+
+	RunOnce(ctx, now)
+
+	good, total, err := telemetry.SLOBucketRepository.SumRange(ctx, projectId, slo.Id, lastClosed.Add(-7*24*time.Hour), lastClosed)
+	if err != nil || total != 100 || good != 75 {
+		t.Fatalf("page views under 2.5 s: %d/%d (%v), want 75/100", good, total, err)
+	}
+	if got := reloadSLO(t, slo.Id); got.Status != models.SLOStatusOk {
+		t.Fatalf("75 of 100 good against a 75%% target is ok, got %q", got.Status)
+	}
+}
+
 func TestWorkerMonitorUptime(t *testing.T) {
 	projectId := setupSLODB(t)
 	ctx := context.Background()

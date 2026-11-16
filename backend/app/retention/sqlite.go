@@ -8,6 +8,7 @@ import (
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/v2/app/config"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
@@ -27,6 +28,8 @@ var telemetryRetentionTargets = []struct {
 	{"exception_stack_traces", "recorded_at"},
 	{"spans", "recorded_at"},
 	{"metric_points", "recorded_at"},
+	{"metric_histograms", "recorded_at"},
+	{"metric_exemplars", "recorded_at"},
 	{"session_recordings", "recorded_at"},
 	{"fired_notifications", "fired_at"},
 	{"check_results", "recorded_at"},
@@ -98,6 +101,7 @@ func pruneTelemetry(ctx context.Context, days int) {
 				traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: delete from telemetry.%s failed: %w", tgt.table, err))
 			}
 		}
+		compactHistograms(ctx)
 		reclaimTelemetryDisk(ctx)
 	}
 }
@@ -120,5 +124,15 @@ func reclaimTelemetryDisk(ctx context.Context) {
 		if _, err := db.TelemetryDB.ExecContext(ctx, stmt); err != nil {
 			traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: telemetry maintenance %q failed: %w", stmt, err))
 		}
+	}
+}
+
+// histogramMinuteWindow is how long histogram rows stay at minute grain before the
+// hourly pass folds them into one row per cell per hour.
+const histogramMinuteWindow = 6 * time.Hour
+
+func compactHistograms(ctx context.Context) {
+	if _, err := telemetry.MetricHistogramRepository.Compact(ctx, time.Now().UTC().Add(-histogramMinuteWindow)); err != nil {
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: metric_histograms compaction failed: %w", err))
 	}
 }

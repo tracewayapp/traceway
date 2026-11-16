@@ -69,7 +69,7 @@ The backend reports these gauges every 30 seconds. Each `_30s` value covers the 
 | `traceway.ingest.failures_30s` | Ingest requests ending in HTTP 4xx or 5xx, including requests without a sampled trace |
 | `traceway.ingest.admission_rejected.delta` | Requests rejected by the ingest concurrency gate since the previous reporting tick (503, clients may retry) |
 | `traceway.ingest.oversized_discarded` | `/api/report` bodies over `REPORT_MAX_BODY_MB` that were answered `200` and discarded, so the SDK drops the batch instead of resending it. The request carries `ingest.oversized_discarded=true` and the project id |
-| `traceway.ingest.body_rejected` | Ingest bodies turned away while they were being read, tagged `reason`: `body_too_slow` (the client stalled; 503), `invalid_body` (malformed or cut off; 400) or `body_too_large` (413) |
+| `traceway.ingest.body_rejected` | Ingest bodies turned away while they were being read, tagged `reason`: `body_too_slow` (the client stalled; 503), `client_aborted` (the client hung up or lost its connection mid-upload; 400), `invalid_body` (malformed; 400) or `body_too_large` (413) |
 | `traceway.ingest.body.network_ms` | Longest time one ingest request spent blocked on its client's upload in the interval. High values with normal `traceway.ingest.batch.*` timings mean slow clients, not a slow server |
 | `traceway.admission.in_use_pcnt` | Largest share of an admission gate's slots in use in the interval, tagged `gate` (`ingest`, `upload`, `opamp`). It reaches 100 before the first request has to wait |
 | `traceway.admission.wait_ms` | Longest a request waited for a slot of that gate in the interval. Above zero the gate is saturated; at `INGEST_ADMISSION_WAIT_SECONDS` requests are being rejected |

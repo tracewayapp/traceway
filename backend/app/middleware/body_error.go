@@ -40,6 +40,8 @@ func RejectIngestBindError(c *gin.Context, err error, fallback string) {
 		traceway.SetAttribute(c, "ingest.body_limit_bytes", strconv.FormatInt(maxBytesErr.Limit, 10))
 	} else if errors.Is(err, ErrBodyTooSlow) || errors.Is(err, os.ErrDeadlineExceeded) {
 		reason = "body_too_slow"
+	} else if bodyCutOff(c) {
+		reason = "client_aborted"
 	}
 	traceway.SetAttribute(c, "ingest.rejection_reason", reason)
 	traceway.SetAttribute(c, "ingest.content_length", strconv.FormatInt(c.Request.ContentLength, 10))

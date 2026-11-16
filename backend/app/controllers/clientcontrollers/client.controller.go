@@ -453,6 +453,7 @@ func (e clientController) Report(c *gin.Context) {
 		if perm.Exceptions {
 			ev.ErrorCount = len(exceptionStackTraceToInsert)
 			ev.ExceptionHashes = exceptionHashes
+			ev.Exceptions = exceptionStackTraceToInsert
 		}
 		if perm.Replay {
 			ev.RecordingCount = len(recordingsWork)

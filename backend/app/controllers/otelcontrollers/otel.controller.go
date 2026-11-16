@@ -263,6 +263,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		if perm.Exceptions {
 			ev.ErrorCount = len(exceptions)
 			ev.ExceptionHashes = exceptionHashes
+			ev.Exceptions = exceptions
 		}
 		hooks.BroadcastReport(ev)
 	}
@@ -437,6 +438,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		}
 		if perm.Exceptions {
 			ev.ErrorCount = len(exceptions)
+			ev.Exceptions = exceptions
 			for _, ex := range exceptions {
 				ev.ExceptionHashes = append(ev.ExceptionHashes, ex.ExceptionHash)
 			}

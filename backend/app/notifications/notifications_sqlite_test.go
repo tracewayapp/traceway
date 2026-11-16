@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	_ "modernc.org/sqlite"
 )
@@ -481,6 +482,77 @@ func TestEvaluateTaskFailureRate(t *testing.T) {
 		}
 		if !strings.Contains(result.Message.Body, "2 of 5") {
 			t.Errorf("body %q does not contain 2 of 5", result.Message.Body)
+		}
+	})
+}
+
+func TestExceptionDetails(t *testing.T) {
+	setupNotificationsTestDB(t)
+	for _, column := range []string{"exception_hash", "stack_trace", "attributes", "app_version", "server_name"} {
+		if _, err := db.TelemetryDB.Exec("ALTER TABLE exceptions_v2 ADD COLUMN " + column + " TEXT NOT NULL DEFAULT ''"); err != nil {
+			t.Fatalf("failed to add %s: %v", column, err)
+		}
+	}
+
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	t.Run("described from the event without reading storage", func(t *testing.T) {
+		older := models.ExceptionStackTrace{
+			Id:            uuid.New(),
+			ProjectId:     projectId,
+			ExceptionHash: "05d3a12f49088c31",
+			StackTrace:    "TypeError: this.i.at is not a function\n    at web-vitals.attribution.js:1:2",
+			Attributes:    map[string]string{"url.path": "/login"},
+			RecordedAt:    now.Add(-time.Second),
+		}
+		newer := older
+		newer.Id = uuid.New()
+		newer.RecordedAt = now
+		other := models.ExceptionStackTrace{Id: uuid.New(), ProjectId: projectId, ExceptionHash: "ffffffffffffffff", StackTrace: "RangeError: x", RecordedAt: now.Add(time.Second)}
+		event := hooks.ReportEvent{
+			ProjectId:       projectId,
+			ExceptionHashes: []string{older.ExceptionHash, other.ExceptionHash, newer.ExceptionHash},
+			Exceptions:      []models.ExceptionStackTrace{older, other, newer},
+		}
+
+		details := exceptionDetails(ctx, event, "05d3a12f49088c31")
+		if details.ErrorType != "TypeError" {
+			t.Errorf("ErrorType = %q, want TypeError", details.ErrorType)
+		}
+		if details.Id != newer.Id.String() || !details.RecordedAt.Equal(newer.RecordedAt) {
+			t.Errorf("described %s at %v, want the newest occurrence %s at %v", details.Id, details.RecordedAt, newer.Id, newer.RecordedAt)
+		}
+		if details.Attributes["url.path"] != "/login" {
+			t.Errorf("Attributes = %v, want url.path", details.Attributes)
+		}
+	})
+
+	t.Run("read from storage when the event carries no rows", func(t *testing.T) {
+		id := uuid.New()
+		if _, err := db.TelemetryDB.Exec(
+			"INSERT INTO exceptions_v2 (id, project_id, exception_hash, stack_trace, attributes, app_version, server_name, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			id.String(), projectId.String(), "0123456789abcdef", "RuntimeError: boom", `{"user.id":"7"}`, "1.2.3", "web-1", now.Format(time.RFC3339Nano)); err != nil {
+			t.Fatalf("failed to insert exception: %v", err)
+		}
+
+		details := exceptionDetails(ctx, hooks.ReportEvent{ProjectId: projectId, ExceptionHashes: []string{"0123456789abcdef"}}, "0123456789abcdef")
+		if details.Id != id.String() || details.ErrorType != "RuntimeError" || details.AppVersion != "1.2.3" || details.ServerName != "web-1" {
+			t.Errorf("details = %+v, want the stored row", details)
+		}
+		if !details.RecordedAt.Equal(now) {
+			t.Errorf("RecordedAt = %v, want %v", details.RecordedAt, now)
+		}
+		if details.Attributes["user.id"] != "7" {
+			t.Errorf("Attributes = %v, want user.id", details.Attributes)
+		}
+	})
+
+	t.Run("unknown when neither has it", func(t *testing.T) {
+		details := exceptionDetails(ctx, hooks.ReportEvent{ProjectId: projectId}, "aaaaaaaaaaaaaaaa")
+		if details.ErrorType != "Unknown Error" || details.Id != "" {
+			t.Errorf("details = %+v, want an unknown error", details)
 		}
 	})
 }

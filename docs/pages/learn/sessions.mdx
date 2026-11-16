@@ -1,6 +1,8 @@
-# Sessions
+# Sessions & Replay
 
-A **session** is a full recording of one user's interactions with a browser app, typically the lifetime of an open tab. Where an [Issue](/learn/issues) shows you a single moment that something broke, a session shows you the entire journey: what the user clicked, navigated to, scrolled past, and saw on screen, with the same console logs and network calls layered on top.
+Sessions and replay are the investigation layer of [Real User Monitoring (RUM)](/learn/rum). Start with frontend performance across your users, then open a slow-session exemplar or an issue to investigate an individual experience. Metrics do not require every session to have a replay; recording depends on your SDK and Data Collection settings.
+
+A **session** groups one visit to a browser app, typically the lifetime of an open tab. Its metadata, events and errors can exist without an uploaded replay. Where an [Issue](/learn/issues) shows you a single moment that something broke, a session helps you investigate the journey: what the user clicked, navigated to, scrolled past, and saw on screen, with the same console logs and network calls layered on top.
 
 Sessions are a browser-only concept, emitted by the JavaScript SDK and its framework wrappers (React, Vue, Svelte, jQuery). The stable 1.x SDK emits them only when **always-on session recording** is enabled (`recordAllSessions: true`). The 2.x SDK (beta) reports every session unless `sessions: false` is set, and keeps the replay on the device until an error, a trigger or a capture asks for it (see [Remote SDK Config](/learn/remote-config)). Backend and mobile SDKs do not produce sessions.
 

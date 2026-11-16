@@ -232,7 +232,8 @@ func setupNotificationsTestDB(t *testing.T) {
 		min_val REAL NOT NULL DEFAULT 0,
 		max_val REAL NOT NULL DEFAULT 0,
 		zero_cnt REAL NOT NULL DEFAULT 0,
-		buckets TEXT NOT NULL DEFAULT '{}'
+		buckets TEXT NOT NULL DEFAULT '{}',
+ weight_squares REAL NOT NULL DEFAULT 0
 	)`); err != nil {
 		t.Fatalf("failed to create metric_histograms table: %v", err)
 	}

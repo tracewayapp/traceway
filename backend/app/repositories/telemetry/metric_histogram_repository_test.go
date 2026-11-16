@@ -239,3 +239,25 @@ func TestMetricHistogramRepository_CompactKeepsTheNumbers(t *testing.T) {
 		t.Errorf("a second pass replaced %d rows (err %v), want 0", again, err)
 	}
 }
+
+func TestMetricHistogramRepositoryPreservesEffectiveCount(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	project := uuid.New()
+	at := time.Now().UTC().Add(-time.Hour).Truncate(time.Minute)
+	h := histogramOf()
+	h.Observe(5000, 1000)
+	if err := MetricHistogramRepository.InsertCells(ctx, []MetricHistogramCell{{ProjectId: project, Name: "browser.web_vital.lcp", RecordedAt: at, Dims: map[string]string{}, Hist: h}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, window := range []time.Duration{time.Minute, 4 * 24 * time.Hour, 91 * 24 * time.Hour} {
+		series, _, err := MetricHistogramRepository.Query(ctx, project, "browser.web_vital.lcp", at.Add(-window), at.Add(time.Minute), 24*60, nil, nil, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := series["__all__"][0].Hist
+		if got.Count != 1000 || got.EffectiveCount() != 1 {
+			t.Fatalf("stored weighted sample: %+v", got)
+		}
+	}
+}

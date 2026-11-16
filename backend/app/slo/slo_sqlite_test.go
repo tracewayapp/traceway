@@ -405,3 +405,23 @@ func derefSLI(sli *float64) any {
 	}
 	return *sli
 }
+
+func TestDistributionSLIThresholdEquality(t *testing.T) {
+	projectId := setupSLODB(t)
+	ctx := context.Background()
+	at := time.Now().UTC().Truncate(time.Minute).Add(-time.Minute)
+	h := shared.NewHistogram()
+	h.Observe(2500, 10)
+	if err := telemetry.MetricHistogramRepository.InsertCells(ctx, []shared.MetricHistogramCell{{ProjectId: projectId, Name: "browser.web_vital.lcp", RecordedAt: at, Dims: map[string]string{}, Hist: h}}); err != nil {
+		t.Fatal(err)
+	}
+	for operator, want := range map[string]int64{"lt": 0, "lte": 10, "gt": 0, "gte": 10} {
+		points, err := distributionBuckets(ctx, &models.SLO{ProjectId: projectId, BucketMinutes: 1}, &models.MetricSLIConfig{MetricName: "browser.web_vital.lcp", Operator: operator, Threshold: 2500}, at, at.Add(time.Minute), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(points) != 1 || points[0].Good != want || points[0].Total != 10 {
+			t.Errorf("%s: %+v, want %d/10", operator, points, want)
+		}
+	}
+}

@@ -68,3 +68,16 @@ func TestValidateSLIDefinitionCapsMonitors(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestClientMetricSLIRejectsIncompatibleCounting(t *testing.T) {
+	for _, raw := range []string{
+		`{"metricName":"browser.web_vital.lcp","aggregation":"avg","operator":"lte","threshold":2500}`,
+		`{"metricName":"browser.page_view","aggregation":"distribution","operator":"lte","threshold":1}`,
+		`{"metricName":"browser.web_vital.lcp","aggregation":"distribution","operator":"lte","threshold":2500,"missingIsBad":true}`,
+	} {
+		_, message, err := validateSLIDefinition(nil, uuid.New(), "metric", []byte(raw), 5)
+		if err != nil || message == "" {
+			t.Errorf("invalid SLI accepted: %s (%v)", raw, err)
+		}
+	}
+}

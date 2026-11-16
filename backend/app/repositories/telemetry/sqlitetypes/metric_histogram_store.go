@@ -36,7 +36,7 @@ const (
 	maxExemplarRows  = 50
 )
 
-const histogramInsert = "INSERT INTO metric_histograms (project_id, name, recorded_at, grain_seconds, dims, cnt, total, min_val, max_val, zero_cnt, buckets) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+const histogramInsert = "INSERT INTO metric_histograms (project_id, name, recorded_at, grain_seconds, dims, cnt, total, min_val, max_val, zero_cnt, buckets, weight_squares) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
 func encodeDims(dims map[string]string) string {
 	if len(dims) == 0 {
@@ -55,9 +55,9 @@ func decodeDims(raw string) map[string]string {
 }
 
 // HistogramRowValues is one stored row, in column order after project_id.
-func HistogramRowValues(cell shared.MetricHistogramCell, grainSeconds int) (string, string, time.Time, int, string, float64, float64, float64, float64, float64, string) {
+func HistogramRowValues(cell shared.MetricHistogramCell, grainSeconds int) (string, string, time.Time, int, string, float64, float64, float64, float64, float64, string, float64) {
 	h := cell.Hist
-	return cell.ProjectId.String(), cell.Name, cell.RecordedAt.UTC(), grainSeconds, encodeDims(cell.Dims), h.Count, h.Sum, h.Min, h.Max, h.Zero, h.EncodeBuckets()
+	return cell.ProjectId.String(), cell.Name, cell.RecordedAt.UTC(), grainSeconds, encodeDims(cell.Dims), h.Count, h.Sum, h.Min, h.Max, h.Zero, h.EncodeBuckets(), h.WeightSquareSum()
 }
 
 func (s *HistogramStore) InsertCells(ctx context.Context, cells []shared.MetricHistogramCell) error {
@@ -90,8 +90,8 @@ func (s *HistogramStore) insertCells(ctx context.Context, tx *sql.Tx, cells []sh
 	}
 	defer stmt.Close()
 	for _, cell := range cells {
-		projectId, name, recordedAt, grain, dims, cnt, total, minVal, maxVal, zero, buckets := HistogramRowValues(cell, grainSeconds)
-		if _, err := stmt.ExecContext(ctx, projectId, name, s.TimeArg(recordedAt), grain, dims, cnt, total, minVal, maxVal, zero, buckets); err != nil {
+		projectId, name, recordedAt, grain, dims, cnt, total, minVal, maxVal, zero, buckets, weightSquares := HistogramRowValues(cell, grainSeconds)
+		if _, err := stmt.ExecContext(ctx, projectId, name, s.TimeArg(recordedAt), grain, dims, cnt, total, minVal, maxVal, zero, buckets, weightSquares); err != nil {
 			return err
 		}
 	}
@@ -118,10 +118,10 @@ func (s *HistogramStore) filterClause(filters map[string]string) (string, []any)
 }
 
 func scanHistogram(recordedAt *SQLiteTime, dims *string, h *shared.Histogram, buckets *string) []any {
-	return []any{recordedAt, dims, &h.Count, &h.Sum, &h.Min, &h.Max, &h.Zero, buckets}
+	return []any{recordedAt, dims, &h.Count, &h.Sum, &h.Min, &h.Max, &h.Zero, buckets, &h.WeightSquares}
 }
 
-const histogramColumns = "recorded_at, dims, cnt, total, min_val, max_val, zero_cnt, buckets"
+const histogramColumns = "recorded_at, dims, cnt, total, min_val, max_val, zero_cnt, buckets, CASE WHEN weight_squares > 0 THEN weight_squares ELSE cnt * 1000 END"
 
 // Query returns one merged histogram per group per time bucket, keyed like the metric
 // point queries. The boolean reports that more groups existed than maxGroups.

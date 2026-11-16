@@ -11,6 +11,20 @@ SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge
 | No data | Nothing matched the indicator in the window yet |
 | Paused | The SLO is disabled; nothing is computed, and an alert that was firing on it sends its recovery notice |
 
+## Frontend performance objectives
+
+[RUM](/learn/rum) supports objectives over the experience itself: for example, the share of observed INP values at or below 200 ms. Choose **Metric**, select `browser.web_vital.inp`, and use **Every observation**, `≤`, and `200`. Choose the target and rolling window for your product; 75% is a p75 benchmark, not an automatic reliability promise. Add tags for the environment and population you want to protect.
+
+**One SLO per** creates a separate objective for each selected release, device or other dimension value (up to 20). Each gets its own error budget. Use this to see a regression that an aggregate can hide.
+
+![Frontend SLOs comparing two releases in a controlled demo](/rum/slos-releases.png)
+
+The histogram supplies estimated good and total observations, including sampling weights. Bucket boundary interpolation makes threshold counts approximate. Missing observations contribute neither success nor failure: **Slices without data count as bad** is not supported for distributions. A page without an interaction has no INP observation; it is not a zero-latency interaction. Monitor telemetry delivery separately.
+
+![A breached frontend interaction SLO with its error budget and burn rates](/rum/slo-detail.png)
+
+Pair the objective with multi-window burn-rate alerts to distinguish sustained budget consumption from a brief spike. A fast frontend can still crash, so retain a separate session-reliability objective where session reporting is enabled.
+
 ## SLI kinds
 
 | Kind | Counts | Good when | View bad events opens |
@@ -28,7 +42,7 @@ The session kind counts the sessions an SDK reports. The 1.x browser SDK reports
 
 The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Endpoints and tasks are promoted from spans, so a span SLO covers them too.
 
-The metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat. Empty slices count only from the moment the SLO was saved, or its indicator last changed. The backfill of older history never turns the time before the metric existed, or past its retention, into bad slices.
+For point metrics, the metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat. Empty slices count only from the moment the SLO was saved, or its indicator last changed. The backfill of older history never turns the time before the metric existed, or past its retention, into bad slices.
 
 Endpoint latency indicators leave streaming endpoints out, since a connection lifetime is not a response time. They also ignore the status code, so a fast 500 counts as good; pair a latency SLO with an availability one.
 

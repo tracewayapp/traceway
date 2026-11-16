@@ -285,6 +285,15 @@ func (c *metricQueryController) Query(ctx *gin.Context) {
 				spanCtx, projectId, q.Name, req.From, req.To,
 				req.IntervalMinutes, agg, q.TagFilters, q.GroupBy, metricQueryMaxGroups,
 			)
+			if err == nil && req.WholeRange {
+				var counts map[string][]models.TimeSeriesPoint
+				if agg == "avg" {
+					counts, err = telemetry.MetricPointRepository.QueryTimeSeries(spanCtx, projectId, q.Name, req.From, req.To, req.IntervalMinutes, "count", q.TagFilters, q.GroupBy, metricQueryMaxGroups)
+				}
+				if err == nil {
+					series = wholeRangePoints(series, counts, agg, req.From, req.To, req.IntervalMinutes)
+				}
+			}
 		}
 		span.End()
 		if err != nil {
@@ -680,4 +689,51 @@ func rateUnit(aggregation string, unit string) string {
 		return "count/s"
 	}
 	return unit + "/s"
+}
+
+// Epoch-aligned buckets can split even a window shorter than one interval. Merge
+// point aggregates explicitly; averages need their original point counts.
+func wholeRangePoints(series, counts map[string][]models.TimeSeriesPoint, aggregation string, from, to time.Time, intervalMinutes int) map[string][]models.TimeSeriesPoint {
+	for key, points := range series {
+		if len(points) == 0 {
+			continue
+		}
+		weights := map[int64]float64{}
+		for _, p := range counts[key] {
+			weights[p.Timestamp.Unix()] = p.Value
+		}
+		value, weight := 0.0, 0.0
+		last := points[0]
+		for i, p := range points {
+			switch aggregation {
+			case "avg":
+				n := weights[p.Timestamp.Unix()]
+				value += p.Value * n
+				weight += n
+			case "min":
+				if i == 0 || p.Value < value {
+					value = p.Value
+				}
+			case "max":
+				if i == 0 || p.Value > value {
+					value = p.Value
+				}
+			case "last":
+				if !p.Timestamp.Before(last.Timestamp) {
+					last = p
+				}
+				value = last.Value
+			default:
+				value += p.Value
+			}
+		}
+		if aggregation == "avg" && weight > 0 {
+			value /= weight
+		}
+		if aggregation == "rate" {
+			value *= float64(intervalMinutes*60) / max(1, to.Sub(from).Seconds())
+		}
+		series[key] = []models.TimeSeriesPoint{{Timestamp: from, Value: value}}
+	}
+	return series
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/services/contentflag"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -195,6 +196,9 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 		return nil, err
 	}
 
+	if err := dashboards.EnsureBrowserDefault(tx, project); err != nil {
+		return nil, err
+	}
 	return project, nil
 }
 

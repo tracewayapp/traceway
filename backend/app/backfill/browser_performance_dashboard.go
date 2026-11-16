@@ -173,9 +173,20 @@ func upgradeBrowserPerformanceDashboard(dashboard *models.Dashboard, template []
 
 	if untouched == len(def.Widgets) && len(def.Widgets) == len(originalBrowserPerformanceWidgets) {
 		// Nobody edited it: it becomes the template as it is now, new widgets included.
+		ids := make(map[string]string, len(def.Widgets))
+		for _, widget := range def.Widgets {
+			title := strings.TrimSuffix(widget.Title, " (ms)")
+			if renamed, ok := renamedBrowserPerformanceWidgets[widget.Title]; ok {
+				title = renamed
+			}
+			ids[title] = widget.Id
+		}
 		def.Widgets = make([]models.DashboardWidget, len(template))
 		for i, widget := range template {
-			widget.Id = dashboardsvc.NewWidgetId()
+			widget.Id = ids[widget.Title]
+			if widget.Id == "" {
+				widget.Id = dashboardsvc.NewWidgetId()
+			}
 			def.Widgets[i] = widget
 		}
 	} else {

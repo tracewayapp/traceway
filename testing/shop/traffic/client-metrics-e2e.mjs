@@ -106,6 +106,20 @@ const mobileProject = projects.find((p) => p.name === MOBILE_PROJECT)
 assert(project, `project "${PROJECT}" not found; start examples/devtesting-embedded`)
 assert(mobileProject, `project "${MOBILE_PROJECT}" not found`)
 
+await check('new browser projects have a dashboard immediately', async () => {
+  const name = `Metrics E2E ${Date.now()}`
+  const response = await api(token, 'POST', '/projects', { name, framework: 'react' }, project.id)
+  const created = response.project ?? response
+  assert(created.id, 'project creation returned an id')
+  try {
+    const result = await api(token, 'GET', '/dashboards', undefined, created.id)
+    const dashboards = result.dashboards ?? []
+    assert(dashboards.some((d) => d.templateKey === 'browser-performance'), 'Web Performance is assigned before the first dashboard visit')
+  } finally {
+    await api(token, 'DELETE', '/projects', { name }, created.id)
+  }
+})
+
 for (const rule of await api(token, 'GET', '/notification-rules', undefined, project.id).then((r) => r.rules))
   await api(token, 'DELETE', `/notification-rules/${rule.id}`, undefined, project.id)
 for (const channel of await api(token, 'GET', '/notification-channels', undefined, project.id).then((r) => r.channels))
@@ -714,6 +728,7 @@ try {
       await counts.click()
       await page.getByRole('option', { name: 'Every observation' }).click()
     }
+    await selectIn(sheet, 'Slice length', '1 minute')
     await sheet.locator('#slo-metric-threshold').fill('200')
     await shot(page, 'slo-sheet-one-per-release')
     await sheet.getByRole('button', { name: 'New SLO', exact: true }).click()
@@ -728,8 +743,8 @@ try {
     }
     console.log(`  SLOs: ${JSON.stringify(slos.map((slo) => ({ name: slo.name, sli: slo.currentSli, budgetRemaining: slo.budgetRemaining, status: slo.status, config: slo.sliConfig })))}`)
     assert(of(OLD) && of(NEW), 'one SLO per release')
-    assert(of(OLD).currentSli > 99, `every interaction of ${OLD} is good`)
-    assert(of(NEW).currentSli < 1, `no interaction of ${NEW} is good`)
+    assert(typeof of(OLD).currentSli === 'number' && of(OLD).currentSli > 99, `every interaction of ${OLD} is good`)
+    assert(typeof of(NEW).currentSli === 'number' && of(NEW).currentSli < 1, `no interaction of ${NEW} is good`)
     await page.reload()
     await page.getByText('Fast interactions').first().waitFor()
     await page.waitForTimeout(1500)

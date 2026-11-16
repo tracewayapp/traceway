@@ -19,7 +19,7 @@ type metricHistogramRepository struct{}
 
 const maxExemplarRows = 50
 
-var histogramInsert = "INSERT INTO metric_histograms (project_id, name, recorded_at, " + strings.Join(shared.HistogramDimensionColumnOrder, ", ") + ", tags, cnt, total, min_val, max_val, zero_cnt, buckets)"
+var histogramInsert = "INSERT INTO metric_histograms (project_id, name, recorded_at, " + strings.Join(shared.HistogramDimensionColumnOrder, ", ") + ", tags, cnt, total, min_val, max_val, zero_cnt, buckets, weight_squares)"
 
 // InsertCells writes one row per cell. Rows of the same cell, from another flush or
 // another instance, are merged by the table engine, and the hourly and daily rollups
@@ -37,7 +37,7 @@ func (r *metricHistogramRepository) InsertCells(ctx context.Context, cells []sha
 			for _, column := range columns {
 				values = append(values, column)
 			}
-			values = append(values, tags, cell.Hist.Count, cell.Hist.Sum, cell.Hist.Min, cell.Hist.Max, cell.Hist.Zero, []any{indexes, counts})
+			values = append(values, tags, cell.Hist.Count, cell.Hist.Sum, cell.Hist.Min, cell.Hist.Max, cell.Hist.Zero, []any{indexes, counts}, cell.Hist.WeightSquareSum())
 			if err := batch.Append(values...); err != nil {
 				return err
 			}
@@ -90,7 +90,7 @@ func (r *metricHistogramRepository) Query(ctx context.Context, projectId uuid.UU
 		groupExpr = strings.Join(parts, " || '"+shared.GroupKeySeparator+"' || ")
 	}
 	query := "SELECT " + epochBucket("recorded_at", intervalMinutes*60) + " AS bucket, " + groupExpr + " AS group_key, " +
-		"sum(cnt), sum(total), min(min_val), max(max_val), sum(zero_cnt), (sumMap(buckets.1, buckets.2) AS merged).1, merged.2 " +
+		"sum(cnt), sum(total), min(min_val), max(max_val), sum(zero_cnt), (sumMap(buckets.1, buckets.2) AS merged).1, merged.2, sum(if(weight_squares > 0, weight_squares, cnt * 1000)) " +
 		"FROM " + histogramTable(to.Sub(from)) + " WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args = append(args, projectId, name, from.UTC(), to.UTC())
 	query += histogramFilters(tagFilters, &args) + " GROUP BY bucket, group_key ORDER BY group_key ASC, bucket ASC"
@@ -111,7 +111,7 @@ func (r *metricHistogramRepository) Query(ctx context.Context, projectId uuid.UU
 		var indexes []int32
 		var counts []float64
 		h := shared.NewHistogram()
-		if err := rows.Scan(&bucket, &groupKey, &h.Count, &h.Sum, &h.Min, &h.Max, &h.Zero, &indexes, &counts); err != nil {
+		if err := rows.Scan(&bucket, &groupKey, &h.Count, &h.Sum, &h.Min, &h.Max, &h.Zero, &indexes, &counts, &h.WeightSquares); err != nil {
 			return nil, false, err
 		}
 		for i, index := range indexes {

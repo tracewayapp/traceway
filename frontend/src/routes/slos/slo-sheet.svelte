@@ -416,7 +416,7 @@
 					aggregation: metricAggregation,
 					operator: metricOperator,
 					threshold: String(metricThreshold ?? '').trim() === '' ? null : Number(metricThreshold),
-					missingIsBad
+					missingIsBad: metricAggregation === 'distribution' ? false : missingIsBad
 				};
 			case 'session':
 				return { appVersion: sessionAppVersion.trim(), includeMessages };

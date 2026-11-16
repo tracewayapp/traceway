@@ -71,7 +71,7 @@ func histogramRuleValue(h *shared.Histogram, cfg metricThresholdConfig) (float64
 	if minCount <= 0 {
 		minCount = defaultHistogramRuleMinCount
 	}
-	if h.Count < float64(minCount) {
+	if h.EffectiveCount() < float64(minCount) {
 		return 0, false
 	}
 	if cfg.Aggregation == shared.AggregationGoodRatio {
@@ -249,7 +249,13 @@ func releaseRegression(ctx context.Context, cfg releaseRegressionConfig, project
 		}
 		return strings.Compare(a.name, b.name)
 	})
-	enough := func(r *release) bool { return r.count >= float64(cfg.MinCount) }
+	enough := func(r *release) bool {
+		h := shared.NewHistogram()
+		for _, segment := range r.segments {
+			h.Merge(segment)
+		}
+		return h.EffectiveCount() >= float64(cfg.MinCount)
+	}
 	if len(ordered) < 2 || !enough(ordered[0]) {
 		return nil, nil
 	}
@@ -289,15 +295,7 @@ func (c *releaseComparison) mixAdjusted() (newest, previous *shared.Histogram, a
 		previous.Merge(pair.previous.Scaled(pair.newest.Count / pair.previous.Count))
 	}
 	if total > 0 && newest.Count >= minMixCoverage*total && len(c.segments) > 1 {
-		// The scaled histogram keeps the old release's real sample size for the
-		// confidence interval.
-		var sample float64
-		for _, pair := range c.segments {
-			if pair.previous != nil {
-				sample += pair.previous.Count
-			}
-		}
-		return newest, previous.Scaled(sample / previous.Count), true
+		return newest, previous, true
 	}
 	for _, pair := range c.segments {
 		if pair.previous != nil {
@@ -311,7 +309,7 @@ func (c *releaseComparison) mixAdjusted() (newest, previous *shared.Histogram, a
 // than the allowed percentage and by more than chance explains: the low end of the
 // new release's confidence interval has to lie above the high end of the old one's.
 func regressed(cfg releaseRegressionConfig, newest, previous *shared.Histogram) (current, baseline float64, fired bool) {
-	if newest == nil || previous == nil || newest.Count < float64(cfg.MinCount) || previous.Count < float64(cfg.MinCount) {
+	if newest == nil || previous == nil || newest.EffectiveCount() < float64(cfg.MinCount) || previous.EffectiveCount() < float64(cfg.MinCount) {
 		return 0, 0, false
 	}
 	current, baseline = newest.Aggregate(cfg.Aggregation, 0), previous.Aggregate(cfg.Aggregation, 0)

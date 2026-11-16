@@ -33,8 +33,8 @@ func appendHistogramCells(ctx context.Context, cells []shared.MetricHistogramCel
 	}
 	return withAppender(ctx, "metric_histograms", func(appender *duckdb.Appender) {
 		for _, cell := range cells {
-			projectId, name, recordedAt, grain, dims, cnt, total, minVal, maxVal, zero, buckets := sqlitetypes.HistogramRowValues(cell, 60)
-			if err := appender.AppendRow(projectId, name, recordedAt, int64(grain), dims, cnt, total, minVal, maxVal, zero, buckets); err != nil {
+			projectId, name, recordedAt, grain, dims, cnt, total, minVal, maxVal, zero, buckets, weightSquares := sqlitetypes.HistogramRowValues(cell, 60)
+			if err := appender.AppendRow(projectId, name, recordedAt, int64(grain), dims, cnt, total, minVal, maxVal, zero, buckets, weightSquares); err != nil {
 				captureDroppedRow("metric_histograms", err)
 			}
 		}

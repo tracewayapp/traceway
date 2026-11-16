@@ -105,7 +105,11 @@ func distributionBuckets(ctx context.Context, slo *models.SLO, cfg *models.Metri
 				continue
 			}
 			total := point.Hist.Count
-			good := point.Hist.CountAtOrBelow(cfg.Threshold)
+			threshold := cfg.Threshold
+			if cfg.Operator == "lt" || cfg.Operator == "gte" {
+				threshold = math.Nextafter(threshold, math.Inf(-1))
+			}
+			good := point.Hist.CountAtOrBelow(threshold)
 			if cfg.Operator == "gt" || cfg.Operator == "gte" {
 				good = total - good
 			}

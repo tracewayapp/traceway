@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
@@ -68,6 +69,7 @@ func TestAnUneditedDashboardBecomesTheCurrentTemplate(t *testing.T) {
 	current := templateDefinition(t, "0087_update_template_browser_performance.up.sql")
 	dashboard := installed(t, templateDefinition(t, "0086_seed_template_browser_performance.up.sql"))
 
+	originalIDs := widgetsByTitle(t, dashboard)
 	changed, err := upgradeBrowserPerformanceDashboard(dashboard, current.Widgets)
 	if err != nil || !changed {
 		t.Fatalf("changed %v err %v", changed, err)
@@ -85,6 +87,16 @@ func TestAnUneditedDashboardBecomesTheCurrentTemplate(t *testing.T) {
 	for title, widget := range widgets {
 		if widget.Id == "" {
 			t.Errorf("%q has no id", title)
+		}
+	}
+
+	for oldTitle, oldWidget := range originalIDs {
+		title := strings.TrimSuffix(oldTitle, " (ms)")
+		if renamed, ok := renamedBrowserPerformanceWidgets[oldTitle]; ok {
+			title = renamed
+		}
+		if replacement, ok := widgets[title]; ok && replacement.Id != oldWidget.Id {
+			t.Errorf("%s lost its starred-widget reference", oldTitle)
 		}
 	}
 

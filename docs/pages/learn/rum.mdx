@@ -1,0 +1,83 @@
+# Real User Monitoring (RUM)
+
+Real User Monitoring connects frontend performance across your users with the evidence needed to explain an individual experience. In Traceway, that means **Web Vitals and browser metrics, dashboards, release comparisons, SLOs, alerts, sessions and replay** in one workflow.
+
+A successful API request does not tell you whether a page loaded slowly, a button froze or content shifted under a user's pointer. RUM measures those browser experiences. Session replay is the investigation layer: use it to understand a recorded journey after metrics show where to look.
+
+## Start with Web Performance
+
+Create a React, Vue, Svelte or jQuery project. Traceway assigns **Web Performance** immediately, before the first upload. Connect your [browser SDK](/client/js-sdk) and let it collect traffic; an empty chart on a new project means there is no matching data yet. The aggregated metrics path requires SDK 2.1 or later and a compatible server. Follow the SDK guide's current release-channel instructions; the 2.x docs currently use `@beta`.
+
+![Web Performance with real browser telemetry from a controlled storefront demo](/rum/dashboard.png)
+
+The dashboard brings together:
+
+- **Loading:** LCP, FCP, TTFB and page-load timing.
+- **Interaction and stability:** INP, CLS, route timings, blocking time and long tasks.
+- **Impact:** requests, page views, sessions and affected browser profiles.
+- **Context:** release, route, device, OS, country, element and script breakdowns where available.
+
+Use p75 to track Web Vitals and p95 to inspect the tail. Read observation volume alongside a percentile. A few slow samples deserve investigation, but are different evidence from a regression across thousands of observed interactions.
+
+## Find the population that changed
+
+Start with a release comparison, then narrow by OS or country. Use a breakdown table for routes, device form factors or other dimensions. A healthy aggregate can conceal a poor phone experience; a changing mix of devices can also move a percentile without a code regression.
+
+![The same dashboard narrowed to the slow demo release on Android](/rum/release.png)
+
+**Metric Threshold** alerts detect a bad current experience. **Metric Release Regression** alerts compare a sufficiently observed new release with an earlier one. The default comparison can adjust for device and OS mix; **Compare Within** compares matching segments. Minimum-count gates and percentile confidence intervals use effective sample size, so one heavily weighted observation cannot pretend to be thousands of independent measurements. See [client metrics](/learn/client-metrics#alerts-and-slos).
+
+## Make performance an objective
+
+An SLO answers a different question from a chart: *what share of observed experiences should meet our promise over time?*
+
+For example, select `browser.web_vital.inp`, **Every observation**, **≤ 200 ms**, and choose the target and rolling window for your application. Each estimated good interaction contributes to the numerator; all observed interactions contribute to the denominator. **One SLO per** release or device gives each population its own budget.
+
+![Fast and intentionally slow releases with separate frontend SLOs](/rum/slos-releases.png)
+
+The demo's fast release meets its objective and the intentionally slow release breaches it. This makes the decision concrete: which release changed, which population suffered, and how much budget remains? Use multi-window burn-rate alerts for sustained budget consumption. Keep a separate crash-free-session objective for reliability; a fast interaction does not prove a session was error-free.
+
+![A breached frontend SLO and its error budget](/rum/slo-detail.png)
+
+A page with no interaction has no INP sample, not a zero-millisecond interaction. Missing telemetry is not success. Histogram threshold counts and sampled totals are estimates, and a distribution SLO cannot count an unobserved event as a failure. [SLO setup and semantics →](/learn/slos)
+
+## Follow the signal into a session
+
+Open **Slow sessions** on a distribution widget. When an exemplar was retained, it links a poor observation to its session and may name the responsible element. Inspect the session's timeline, errors and network activity, then watch replay if a recording was captured.
+
+![A slow interaction opened in its session investigation](/rum/slow-session.png)
+
+Replay does not need to record every session for metrics to work. Its availability depends on your SDK version and [Data Collection settings](/learn/remote-config). Review masking and consent before enabling collection. [Sessions and replay →](/learn/sessions) · [SDK recording controls →](/client/js-sdk/session-replay)
+
+## Query and build your own charts
+
+Use a line chart for the trend, a **Rating Bar** for good / needs improvement / poor shares, and a **Breakdown Table** for a whole-window comparison. Create metric sources with stable tag filters and a group-by dimension. Save reusable definitions through [Dashboards as code](/learn/dashboards#dashboards-as-code).
+
+For an API query, use an authenticated account token with access to the project, not its public ingest token. Send `POST /api/metrics/query?projectId=PROJECT_UUID` with UTC timestamps for your chosen range:
+
+```json
+{
+  "queries": [
+    { "name": "browser.web_vital.inp", "aggregation": "p75", "groupBy": "service.version" },
+    { "name": "browser.web_vital.inp", "aggregation": "count", "groupBy": "service.version" },
+    { "name": "browser.web_vital.inp", "aggregation": "good_ratio", "threshold": 200, "groupBy": "service.version" }
+  ],
+  "from": "2026-11-16T00:00:00Z",
+  "to": "2026-11-17T00:00:00Z",
+  "wholeRange": true
+}
+```
+
+`wholeRange` merges the window before calculating each result. Never average a series of p75 values to get the window's p75. Query `good_ratio` is a fraction from 0 to 1; notification-rule thresholds use percentages from 0 to 100. Use `count` for distribution observations and `sum` for delta counters such as page views. Counter `count` counts stored points, not events.
+
+Use `tagFilters` to restrict an environment or population. For a trend, omit `wholeRange` and choose `intervalMinutes`, such as `15`. Inspect response errors and truncation information before interpreting an empty result as healthy. [Metric names, dimensions, sampling and limits →](/learn/client-metrics)
+
+## Why this workflow helps
+
+**Prioritize with context.** Combine experience quality with volume and affected users, rather than treating every slow value as equally urgent. Browser-profile counts are not globally deduplicated people; across days they represent user-days.
+
+**Agree on a measurable promise.** Product and engineering can discuss a specific population, threshold and budget. Choose objectives from your users' needs and history rather than adopting a universal target.
+
+**Keep diagnosis connected.** A release comparison narrows the problem, a session provides individual context, and replay and source-mapped errors help explain the failure. Each layer answers the next question.
+
+Screenshots use a controlled storefront demo and real browser visits. Release 0.2.0 was deliberately slowed to demonstrate the workflow; these results are not a customer benchmark or a claim of production-scale validation.

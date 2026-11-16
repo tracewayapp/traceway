@@ -2,11 +2,11 @@
 
 Client metrics are the performance numbers of browsers and mobile apps: web vitals, route changes, main-thread blocking, app start, screen display times, requests. Nobody charts one phone. The question is always about a population, such as "p75 LCP of release 4.2 on Android", so Traceway stores them as **distributions**: one mergeable histogram per metric, set of dimensions and minute. Storage grows with the number of dimension combinations, not with the number of users.
 
-A project's **Dashboards** page starts with **Web Performance** (browser projects) or **Mobile Performance** (mobile projects); an empty page offers to add it.
+Browser metrics are the measurement layer of [Real User Monitoring (RUM)](/learn/rum). **Web Performance** is assigned in the same transaction that creates a React, Vue, Svelte or jQuery project, before the first telemetry arrives. An upgrade migration adds missing defaults to existing browser projects without changing custom dashboards. Removing a default after that migration remains your choice. Mobile projects offer **Mobile Performance** from the empty dashboard page.
 
 ## How the numbers travel
 
-1. **On the device.** The browser SDK (2.1 and later) keeps a histogram per metric and dimension set in memory. An observation increments a bucket. It uploads one small payload when the page is hidden, at session end, and every five minutes for long sessions. A payload that fails, or whose page went away before the answer came, is kept in the browser's storage (at most three, for a day) and sent once more on the next page load. Every payload has an id, so one that did arrive the first time is not counted twice.
+1. **On the device.** The browser SDK (2.1 and later) keeps a histogram per metric and dimension set in memory. An observation increments a bucket. It uploads one small payload when the page is hidden, at session end, and every five minutes for long sessions. A payload that fails, or whose page went away before the answer came, is kept in the browser's storage (at most three, for a day) and sent once more on the next page load. Every payload has an id so the receiving instance can recognize retries within its duplicate-filter window; see the multi-instance limitation below.
 2. **At ingest.** The payload is merged into cells in memory and the request is answered. No storage write happens per request. Every 10 seconds the cells are written as one batch per table.
 3. **In storage.** Rows of the same cell merge. On ClickHouse, minutes roll up to hours and days (kept 7 days, 90 days and 2 years). On SQLite and DuckDB, minute rows older than six hours are folded into hour rows and follow the telemetry retention.
 
@@ -14,7 +14,7 @@ The wire format is standard OTLP/HTTP metrics to `/api/otel/v1/metrics`: delta `
 
 Browser SDKs 2.0 send only performance events. The server reads the same metrics from the events they upload, one observation each, so dashboards work before an app upgrades.
 
-A percentile read from the buckets is within about 4.5% of the true value.
+Histogram buckets are about 9% wide, with roughly 4.5% midpoint resolution for ordinary positive values. Percentiles and threshold counts are estimates; bucket resolution does not bound sampling error or restore missing observations.
 
 ## Metrics
 
@@ -76,7 +76,7 @@ A value past its cap, longer than 64 bytes, or outside a fixed set becomes `othe
 
 ## Reading them
 
-`POST /api/metrics/query` takes the aggregations `p50`, `p75`, `p90`, `p95`, `p99` and `good_ratio` for a distribution, besides `avg`, `min`, `max`, `sum`, `count` and `rate`. `good_ratio` is the share of observations at or under `threshold`; the web vitals default to their "good" limit. `wholeRange: true` returns one value per series for the whole range. The same aggregations on a metric that is not a distribution answer 422.
+`POST /api/metrics/query` takes the aggregations `p50`, `p75`, `p90`, `p95`, `p99` and `good_ratio` for a distribution, besides `avg`, `min`, `max`, `sum`, `count` and `rate`. `good_ratio` is the share of observations at or under `threshold`; the web vitals default to their "good" limit. `wholeRange: true` returns one value per series for the whole range. Percentile and good-ratio aggregations require a distribution; requesting them for a point metric returns 422.
 
 Two widget types exist for them: a **Rating Bar** (the good / needs improvement / poor share) and a **Breakdown Table** (the values of one dimension, busiest first, with an aggregation and a count). A breakdown of a counter (`sum`) ranks by the total. On a client project the dashboard is narrowed by release, OS and country instead of by instance.
 
@@ -86,18 +86,18 @@ Backend projects get the same storage for OTLP histograms: `http.server.request.
 
 ## Alerts and SLOs
 
-**Metric Threshold** rules read distributions with the same aggregations, where `good_ratio` is a percentage. They evaluate data older than two minutes, since clients upload late, and skip a series with fewer than 10 observations in the window (`Minimum Observations`).
+**Metric Threshold** rules read distributions with the same aggregations, where `good_ratio` is a percentage. They evaluate data older than two minutes, since clients upload late, and skip a percentile or good-ratio series with fewer than 10 effective observations in the window (`Minimum Observations`). Choose a larger minimum for paging or tail percentiles. Volume aggregations such as count and sum do not use that sample gate.
 
 **Release Regression** compares the newest release with the busiest earlier one, once the new one has enough observations, and fires once per release. Two things keep it from crying wolf:
 
 - **Device mix.** A rollout often reaches one platform first. By default the earlier release is weighted to the new release's mix of form factors and operating systems before the two are compared. With **Compare Within** set to a dimension (form factor, OS, browser, device class, country, network type), each value is compared with the same value of the earlier release and notifies on its own, which is how "4.2 regressed on phones" is found.
-- **Chance.** A percentile must be worse by more than the allowed percentage and by more than the sample sizes explain: the 95% intervals of the two releases must not overlap. Sampled sessions are weighted, which makes these intervals somewhat narrower than they should be at low sample rates.
+- **Chance.** A percentile must be worse by more than the allowed percentage and by more than the sample sizes explain: the 95% intervals of the two releases must not overlap. Minimum-count gates and quantile intervals use effective sample size, `(sum of weights)² / sum of squared weights`. One observed value weighted to 1,000 events still contributes an effective sample size of one. Device-mix reweighting preserves this information. Intervals remain approximate, and measurements from the same session can be correlated. Historical rows without stored weights use a conservative fallback until fresh data accumulates.
 
 A metric [SLO](/learn/slos) with **Every observation** counts good events straight from the buckets. An SLO covers one segment, the one its tag filters select. **One SLO per** in the form creates one for each value of a dimension (up to 20), so every OS or form factor has its own error budget.
 
 ## Sampling and limits
 
-`metrics.sampleRate` in [Data Collection](/learn/remote-config/reference) sets the share of sessions that record metrics. The payload carries the rate and counts are multiplied by its inverse, so counts and ratios stay unbiased.
+`metrics.sampleRate` in [Data Collection](/learn/remote-config/reference) sets the share of sessions that record metrics. The payload carries the rate and counts are multiplied by its inverse, so totals estimate the full population. Ratios and percentiles are estimates from the sampled population, not a guarantee of an unbiased result in every window.
 
 What a forged client can do with a public project token is bounded: it cannot create metric names or series, values are clamped per metric, and one address can add at most 6,000 observations per project per minute (shared between instances). That is enough for statistics, not for billing-grade counts.
 

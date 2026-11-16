@@ -23,12 +23,13 @@ const (
 // Histogram counts are float64 because a sampled client's observations are weighted
 // by 1/rate before they are added.
 type Histogram struct {
-	Count   float64
-	Sum     float64
-	Min     float64
-	Max     float64
-	Zero    float64
-	Buckets map[int32]float64
+	Count         float64
+	WeightSquares float64
+	Sum           float64
+	Min           float64
+	Max           float64
+	Zero          float64
+	Buckets       map[int32]float64
 }
 
 func NewHistogram() *Histogram {
@@ -62,6 +63,7 @@ func (h *Histogram) Observe(value, weight float64) bool {
 		value = histogramMaxValue
 	}
 	h.noteRange(value, value)
+	h.WeightSquares = h.WeightSquareSum() + weight*weight
 	h.Count += weight
 	h.Sum += value * weight
 	if value < histogramZeroThreshold {
@@ -77,6 +79,7 @@ func (h *Histogram) Merge(other *Histogram) {
 		return
 	}
 	h.noteRange(other.Min, other.Max)
+	h.WeightSquares = h.WeightSquareSum() + other.WeightSquareSum()
 	h.Count += other.Count
 	h.Sum += other.Sum
 	h.Zero += other.Zero
@@ -88,7 +91,7 @@ func (h *Histogram) Merge(other *Histogram) {
 // Scaled returns a copy with every count multiplied by factor. Quantiles do not
 // change; it is how one population is reweighted to another's mix before a merge.
 func (h *Histogram) Scaled(factor float64) *Histogram {
-	out := &Histogram{Count: h.Count * factor, Sum: h.Sum * factor, Min: h.Min, Max: h.Max, Zero: h.Zero * factor, Buckets: make(map[int32]float64, len(h.Buckets))}
+	out := &Histogram{WeightSquares: h.WeightSquareSum() * factor * factor, Count: h.Count * factor, Sum: h.Sum * factor, Min: h.Min, Max: h.Max, Zero: h.Zero * factor, Buckets: make(map[int32]float64, len(h.Buckets))}
 	for index, count := range h.Buckets {
 		out.Buckets[index] = count * factor
 	}
@@ -102,7 +105,7 @@ func (h *Histogram) QuantileInterval(q float64) (low, high float64) {
 	if h.Count <= 0 {
 		return 0, 0
 	}
-	spread := 1.96 * math.Sqrt(q*(1-q)/h.Count)
+	spread := 1.96 * math.Sqrt(q*(1-q)/h.EffectiveCount())
 	return h.Quantile(math.Max(0, q-spread)), h.Quantile(math.Min(1, q+spread))
 }
 
@@ -114,6 +117,7 @@ func (h *Histogram) Sub(previous *Histogram) (*Histogram, bool) {
 		return nil, false
 	}
 	delta := NewHistogram()
+	delta.WeightSquares = math.Max(0, h.WeightSquareSum()-previous.WeightSquareSum())
 	delta.Count = h.Count - previous.Count
 	delta.Sum = h.Sum - previous.Sum
 	delta.Zero = h.Zero - previous.Zero
@@ -178,6 +182,7 @@ func HistogramFromExponential(src ExponentialHistogramSource, weight float64) *H
 	}
 	h.Zero = src.ZeroCount * weight
 	h.Count = (bucketTotal + src.ZeroCount) * weight
+	h.WeightSquares = h.Count * weight
 	if h.Count <= 0 {
 		return NewHistogram()
 	}
@@ -220,6 +225,7 @@ func HistogramFromExplicit(bounds []float64, counts []uint64, sum float64, hasSu
 			}
 		}
 		n := float64(c) * weight
+		h.WeightSquares += n * weight
 		h.Count += n
 		if value < histogramZeroThreshold {
 			h.Zero += n
@@ -310,7 +316,7 @@ func (h *Histogram) Quantile(q float64) float64 {
 // side of a rated distribution. A bucket the threshold cuts through is split on a
 // log scale.
 func (h *Histogram) CountAtOrBelow(threshold float64) float64 {
-	if h.Count <= 0 || threshold < 0 {
+	if h.Count <= 0 || threshold < 0 || threshold < h.Min {
 		return 0
 	}
 	if threshold >= h.Max {
@@ -402,4 +408,21 @@ func (h *Histogram) BucketArrays() ([]int32, []float64) {
 		counts[i] = h.Buckets[index]
 	}
 	return indexes, counts
+}
+
+// WeightSquareSum falls back to unit weights for in-process, unweighted histograms.
+func (h *Histogram) WeightSquareSum() float64 {
+	if h.WeightSquares > 0 {
+		return h.WeightSquares
+	}
+	return h.Count
+}
+
+// EffectiveCount is the independent sample size after weighting. Scaling traffic
+// estimates must not manufacture evidence for a minimum-count gate or interval.
+func (h *Histogram) EffectiveCount() float64 {
+	if h.Count <= 0 {
+		return 0
+	}
+	return h.Count * h.Count / h.WeightSquareSum()
 }

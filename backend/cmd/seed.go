@@ -10,6 +10,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/v2/app/services"
 	"github.com/tracewayapp/traceway/backend/v2/app/services/contentflag"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -65,6 +66,9 @@ func seed(opts *options) error {
 				project.SourceMapToken = &token
 			}
 			if err := lit.InsertExistingUuid(tx, project); err != nil {
+				return struct{}{}, err
+			}
+			if err := dashboards.EnsureBrowserDefault(tx, project); err != nil {
 				return struct{}{}, err
 			}
 			config.LogfLocal("Seed: project %q connection string: %s@%s/api/report", project.Name, project.Token, opts.serverURL)

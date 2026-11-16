@@ -252,3 +252,14 @@ func contains(s, part string) bool {
 	}
 	return false
 }
+
+func TestSamplingDoesNotBypassHistogramMinimumCount(t *testing.T) {
+	h := shared.NewHistogram()
+	h.Observe(5000, 1000)
+	if _, enough := histogramRuleValue(h, metricThresholdConfig{MetricName: "browser.web_vital.lcp", Aggregation: "p75", MinCount: 10}); enough {
+		t.Fatal("one sampled visit passed the ten-observation gate")
+	}
+	if _, _, fired := regressed(releaseRegressionConfig{Aggregation: "p75", MinCount: 10, ThresholdPercent: 20}, h, h); fired {
+		t.Fatal("undersampled release fired")
+	}
+}

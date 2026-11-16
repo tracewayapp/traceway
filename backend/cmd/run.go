@@ -128,6 +128,9 @@ func Run(opts ...Option) {
 	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
 		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
 	}
+	if err := backfill.RunBrowserDefaults(); err != nil {
+		panic(fmt.Errorf("browser defaults migration failed: %w", err))
+	}
 	if err := backfill.RunBrowserPerformanceDashboards(); err != nil {
 		panic(fmt.Errorf("Web Performance dashboard backfill failed: %w", err))
 	}

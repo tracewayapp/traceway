@@ -223,3 +223,43 @@ func TestHistogramDimsSplitAndJoin(t *testing.T) {
 		t.Errorf("joined %v", joined)
 	}
 }
+
+func TestHistogramThresholdBelowObservedMinimum(t *testing.T) {
+	h := NewHistogram()
+	h.Observe(2501, 10)
+	if got := h.CountAtOrBelow(2500); got != 0 {
+		t.Fatalf("count below minimum = %v, want 0", got)
+	}
+	if got := h.CountAtOrBelow(2501); got != 10 {
+		t.Fatalf("count at maximum = %v, want 10", got)
+	}
+}
+
+func TestHistogramEffectiveSampleSizeSurvivesWeighting(t *testing.T) {
+	h := NewHistogram()
+	h.Observe(100, 1000)
+	if h.Count != 1000 || h.EffectiveCount() != 1 {
+		t.Fatalf("weighted one observation: %+v", h)
+	}
+	for i := 0; i < 9; i++ {
+		h.Observe(float64(i+1)*100, 1000)
+	}
+	if h.EffectiveCount() != 10 {
+		t.Fatalf("sample size = %v", h.EffectiveCount())
+	}
+	lo, hi := h.QuantileInterval(0.75)
+	scaled := h.Scaled(0.01)
+	if scaled.EffectiveCount() != 10 {
+		t.Fatalf("scaled sample size = %v", scaled.EffectiveCount())
+	}
+	slo, shi := scaled.QuantileInterval(0.75)
+	if math.Abs(slo-lo) > 1e-8 || math.Abs(shi-hi) > 1e-8 {
+		t.Fatalf("scaling changed confidence interval: %v %v vs %v %v", lo, hi, slo, shi)
+	}
+	merged := NewHistogram()
+	merged.Merge(h)
+	merged.Merge(h)
+	if merged.EffectiveCount() != 20 {
+		t.Fatalf("merged sample size = %v", merged.EffectiveCount())
+	}
+}

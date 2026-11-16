@@ -4,6 +4,12 @@ Dashboards visualize your metrics as tabs of chart widgets. A dashboard belongs 
 
 <img src="/dashboards/dashboards-page.png" alt="The Dashboards page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
+## Frontend dashboards
+
+React, Vue, Svelte and jQuery projects receive **Web Performance** immediately when created. It includes LCP, INP and CLS, rating shares, page and release breakdowns, route timings, blocking time, request metrics and user-impact counts. Existing browser projects receive missing defaults through a one-time migration; custom dashboards remain intact. See the [RUM walkthrough](/learn/rum) for the workflow and fresh screenshots.
+
+Client projects filter by release, OS and country, rather than backend instance. Use a **Rating Bar** for experience quality and a **Breakdown Table** for whole-window comparisons; line charts show the trend. Show observation counts beside percentiles.
+
 ## The Dashboards page
 
 Each tab on the Dashboards page is one dashboard applied to the current project. A project with no dashboards yet shows a single **Browse Dashboards & Templates** button that opens the command palette described below. The active tab's menu holds everything you can do with a dashboard:
@@ -33,6 +39,8 @@ Templates are ready-made dashboards you install and then customize freely. The m
 
 | Template | Category | Source of the metrics |
 | --- | --- | --- |
+| Web Performance | browser | Browser SDK: Web Vitals, route timings, blocking, requests and user impact |
+| Mobile Performance | mobile | Mobile SDK: app start, screen timing and app metrics |
 | OTelemetry Server Agent | server | [Traceway OTel Agent](/learn/otel-agent) host CPU, memory, disk and network metrics |
 | Go Application | go | Go runtime and process metrics (goroutines, heap, GC, CPU, memory) |
 | Traceway ClickHouse | traceway | A monitored Traceway instance's `traceway.ch.*` metrics |

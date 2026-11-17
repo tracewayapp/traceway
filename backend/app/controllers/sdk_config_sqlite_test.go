@@ -253,9 +253,21 @@ func TestSdkCapturesDoNotLoseActiveRowsBehindExpiredHistory(t *testing.T) {
 	}
 }
 
-func TestSdkConfigRejectsNonBrowserProjects(t *testing.T) {
+func TestSdkConfigServesFlutterProjects(t *testing.T) {
 	f := newSdkConfigFixture(t)
-	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "flutter", "ios", "android"} {
+	if _, err := db.DB.Exec("UPDATE projects SET framework = ? WHERE id = ?", "flutter", f.projectId); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/sdk-config/rules", "/api/sdk-config/captures"} {
+		if code, body := f.do("GET", path, ""); code != http.StatusOK {
+			t.Fatalf("%s: %d %v", path, code, body)
+		}
+	}
+}
+
+func TestSdkConfigRejectsUnsupportedProjects(t *testing.T) {
+	f := newSdkConfigFixture(t)
+	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "ios", "android"} {
 		t.Run(framework, func(t *testing.T) {
 			if _, err := db.DB.Exec("UPDATE projects SET framework = ? WHERE id = ?", framework, f.projectId); err != nil {
 				t.Fatal(err)

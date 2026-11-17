@@ -42,6 +42,16 @@ export default function MetricsPage() {
       <div className="band-light">
         <section className="wrap">
           <FeatureRow
+            eyebrow="Frontend metrics"
+            title={<>Measure the experience <em>inside the browser</em></>}
+            description="Web Vitals, route timings and blocking time tell you what backend metrics cannot. Browser projects receive Web Performance immediately, with percentiles, rating shares and release breakdowns. Follow a slow observation into its session or give the experience an SLO."
+            image={{ src: "/images/rum-dashboard.png", alt: "Frontend Web Performance dashboard with controlled-demo browser telemetry" }}
+            cta={<Link href="/product/rum" className="btn btn-ghost">Explore Real User Monitoring <ArrowRight className="h-4 w-4" /></Link>}
+          />
+        </section>
+
+        <section className="wrap">
+          <FeatureRow
             eyebrow="Application metrics"
             title={
               <>

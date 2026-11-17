@@ -189,6 +189,17 @@ func setupNotificationsTestDB(t *testing.T) {
 	db.Driver = lit.SQLite
 	models.Init(db.Driver)
 
+	if _, err := mainDB.Exec(`CREATE TABLE notification_rule_states (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER NOT NULL UNIQUE,
+		firing INTEGER NOT NULL DEFAULT 0,
+		since DATETIME,
+		updated_at DATETIME NOT NULL,
+		detail TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("failed to create notification_rule_states table: %v", err)
+	}
+
 	if _, err := telemetryDB.Exec(`CREATE TABLE tasks_v2 (
 		id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
@@ -220,6 +231,23 @@ func setupNotificationsTestDB(t *testing.T) {
 		recorded_at DATETIME NOT NULL
 	)`); err != nil {
 		t.Fatalf("failed to create metric_points table: %v", err)
+	}
+
+	if _, err := telemetryDB.Exec(`CREATE TABLE metric_histograms (
+		project_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		recorded_at DATETIME NOT NULL,
+		grain_seconds INTEGER NOT NULL DEFAULT 60,
+		dims TEXT NOT NULL DEFAULT '{}',
+		cnt REAL NOT NULL DEFAULT 0,
+		total REAL NOT NULL DEFAULT 0,
+		min_val REAL NOT NULL DEFAULT 0,
+		max_val REAL NOT NULL DEFAULT 0,
+		zero_cnt REAL NOT NULL DEFAULT 0,
+		buckets TEXT NOT NULL DEFAULT '{}',
+ weight_squares REAL NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatalf("failed to create metric_histograms table: %v", err)
 	}
 }
 

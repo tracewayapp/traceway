@@ -16,7 +16,7 @@ type Rule struct {
 // CaptureActions is what a capture asks its clients to do, as stored with the capture.
 type CaptureActions struct {
 	LookbackSeconds *float64 `json:"lookbackSeconds,omitempty"`
-	Signals         []string `json:"signals,omitempty"`
+	Signals         []string `json:"signals,omitzero"`
 	Replay          *bool    `json:"replay,omitempty"`
 }
 

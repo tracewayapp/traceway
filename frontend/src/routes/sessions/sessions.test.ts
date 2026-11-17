@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 
-const { post, goto } = vi.hoisted(() => ({ post: vi.fn(), goto: vi.fn() }));
-vi.mock('$lib/api', () => ({ api: { post } }));
+const { post, get, goto } = vi.hoisted(() => ({ post: vi.fn(), get: vi.fn(), goto: vi.fn() }));
+vi.mock('$lib/api', () => ({ api: { post, get } }));
 vi.mock('$lib/state/projects.svelte', () => ({ projectsState: { currentProjectId: 'project-1' } }));
 vi.mock('$lib/state/timezone.svelte', () => ({ getTimezone: () => 'UTC' }));
 vi.mock('$app/navigation', () => ({ goto }));
@@ -23,6 +23,11 @@ beforeEach(() => {
 	window.history.replaceState({}, '', '/sessions?preset=24h&attr=userId%3Du_42');
 	goto.mockImplementation(async (url: string) => {
 		window.history.replaceState({}, '', url);
+	});
+	get.mockResolvedValue({
+		reasons: [
+			{ triggerId: 'journey', name: 'User journey', sequence: 'click(#open)', revision: 'v1' }
+		]
 	});
 	post.mockResolvedValue({
 		data: [
@@ -108,4 +113,14 @@ it('opens an attribute filter from a row without navigating to the session', asy
 	expect(goto).not.toHaveBeenCalled();
 	expect(await screen.findByDisplayValue('email')).toBeTruthy();
 	expect(screen.getByDisplayValue('alice@example.com')).toBeTruthy();
+});
+
+it('round-trips the recording trigger through the URL and API filter', async () => {
+	window.history.replaceState({}, '', '/sessions?preset=24h&triggerId=journey');
+	render(SessionsPage);
+	await waitFor(() => expect(post.mock.lastCall?.[1].triggerId).toBe('journey'));
+	const select = screen.getByLabelText('Recording trigger');
+	await fireEvent.change(select, { target: { value: '' } });
+	await waitFor(() => expect(post.mock.lastCall?.[1].triggerId).toBe(''));
+	expect(new URLSearchParams(window.location.search).has('triggerId')).toBe(false);
 });

@@ -13,6 +13,8 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
 )
 
+const telemetryBackendCompacts = true
+
 func setupTestDB(t *testing.T) {
 	t.Helper()
 	dbtest.SetupSQLite(t)

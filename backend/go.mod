@@ -21,6 +21,7 @@ require (
 	github.com/markbates/goth v1.82.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/open-telemetry/opamp-go v0.25.0
+	github.com/oschwald/maxminddb-golang/v2 v2.4.1
 	github.com/tracewayapp/lit/v2 v2.0.5
 	go.opentelemetry.io/collector/component v1.60.0
 	go.opentelemetry.io/collector/component/componenttest v0.154.0

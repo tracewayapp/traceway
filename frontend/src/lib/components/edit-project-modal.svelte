@@ -10,13 +10,7 @@
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { DEFAULT_HEALTHCHECK_PATHS } from '$lib/utils/healthcheck';
-	import {
-		projectsState,
-		SDK_CONFIG_FRAMEWORKS,
-		type Project,
-		type Framework
-	} from '$lib/state/projects.svelte';
-	import DataCollectionTab from '$lib/components/sdk-config/data-collection-tab.svelte';
+	import { projectsState, type Project, type Framework } from '$lib/state/projects.svelte';
 	import { Check, Trash2, CircleAlert } from '@lucide/svelte';
 	import CopyButton from '$lib/components/traceway/copy-button.svelte';
 	import { underlineTabTriggerClass, underlineTabListClass } from '$lib/utils/tabs';
@@ -72,10 +66,7 @@
 
 	$effect(() => {
 		if (open && project) {
-			activeTab =
-				initialTab === 'data-collection' && !SDK_CONFIG_FRAMEWORKS.includes(project.framework)
-					? 'project'
-					: initialTab;
+			activeTab = initialTab;
 			projectName = project.name;
 			selectedFramework = project.framework;
 			dropHealthyHealthchecks = project.dropHealthyHealthchecks ?? true;
@@ -102,14 +93,10 @@
 				? 'Choose which pprof sample labels are recorded and searchable.'
 				: activeTab === 'ai'
 					? 'Flag AI conversations that contain specific terms.'
-					: activeTab === 'data-collection'
-						? 'Decide remotely what the browser SDK sends, per group of clients.'
-						: activeTab === 'danger'
-							? 'Irreversible and destructive actions.'
-							: ''
+					: activeTab === 'danger'
+						? 'Irreversible and destructive actions.'
+						: ''
 	);
-
-	let showDataCollection = $derived(!!project && SDK_CONFIG_FRAMEWORKS.includes(project.framework));
 
 	let profileLabelKeys = $derived(
 		profileLabelsText
@@ -238,11 +225,6 @@
 				>
 				<Tabs.Trigger value="profiles" class={underlineTabTriggerClass}>Profiles</Tabs.Trigger>
 				<Tabs.Trigger value="ai" class={underlineTabTriggerClass}>AI</Tabs.Trigger>
-				{#if showDataCollection}
-					<Tabs.Trigger value="data-collection" class={underlineTabTriggerClass}
-						>Data Collection</Tabs.Trigger
-					>
-				{/if}
 				<Tabs.Trigger value="danger" class={underlineTabTriggerClass}>Danger Zone</Tabs.Trigger>
 			</Tabs.List>
 		</Tabs.Root>
@@ -251,9 +233,7 @@
 			<Sheet.Description class="px-6">{subtitle}</Sheet.Description>
 		{/if}
 
-		{#if activeTab === 'data-collection' && showDataCollection}
-			<DataCollectionTab />
-		{:else if activeTab === 'danger'}
+		{#if activeTab === 'danger'}
 			<div class="space-y-3 px-6 pb-6">
 				<p class="text-sm text-muted-foreground">
 					Permanently delete this project along with all of its data, including transactions,

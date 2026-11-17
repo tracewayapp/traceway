@@ -8,6 +8,7 @@ import (
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/v2/app/config"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
@@ -27,6 +28,8 @@ var telemetryRetentionTargets = []struct {
 	{"exception_stack_traces", "recorded_at"},
 	{"spans", "recorded_at"},
 	{"metric_points", "recorded_at"},
+	{"metric_histograms", "recorded_at"},
+	{"metric_exemplars", "recorded_at"},
 	{"session_recordings", "recorded_at"},
 	{"fired_notifications", "fired_at"},
 	{"check_results", "recorded_at"},
@@ -55,6 +58,28 @@ func startSQLiteRetention(ctx context.Context, days int, source string) {
 	}
 	if days == 0 {
 		config.Logf("Telemetry retention disabled (%s=0)", source)
+		// Folding histogram minute rows into hour rows is not retention: without it every read of
+		// a long range merges minute rows for as long as the data is kept, which is forever here.
+		go func() {
+			defer traceway.Recover()
+			compact := func() {
+				traceway.RunTask(ctx, "retention.histograms", func(ctx context.Context) {
+					compactHistograms(ctx)
+					reclaimTelemetryDisk(ctx)
+				})
+			}
+			compact()
+			ticker := time.NewTicker(tickInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					compact()
+				}
+			}
+		}()
 		return
 	}
 
@@ -98,6 +123,10 @@ func pruneTelemetry(ctx context.Context, days int) {
 				traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: delete from telemetry.%s failed: %w", tgt.table, err))
 			}
 		}
+		if _, err := db.TelemetryDB.ExecContext(ctx, "DELETE FROM session_recording_reasons WHERE fired_at < ?", time.Now().UTC().AddDate(0, 0, -days).UnixMilli()); err != nil {
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: recording reasons: %w", err))
+		}
+		compactHistograms(ctx)
 		reclaimTelemetryDisk(ctx)
 	}
 }
@@ -120,5 +149,15 @@ func reclaimTelemetryDisk(ctx context.Context) {
 		if _, err := db.TelemetryDB.ExecContext(ctx, stmt); err != nil {
 			traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: telemetry maintenance %q failed: %w", stmt, err))
 		}
+	}
+}
+
+// histogramMinuteWindow is how long histogram rows stay at minute grain before the
+// hourly pass folds them into one row per cell per hour.
+const histogramMinuteWindow = 6 * time.Hour
+
+func compactHistograms(ctx context.Context) {
+	if _, err := telemetry.MetricHistogramRepository.Compact(ctx, time.Now().UTC().Add(-histogramMinuteWindow)); err != nil {
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: metric_histograms compaction failed: %w", err))
 	}
 }

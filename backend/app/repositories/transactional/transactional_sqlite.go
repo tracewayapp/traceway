@@ -8,6 +8,7 @@ var (
 	AgentWriteEventRepository       = sqliterepo.AgentWriteEventRepository
 	AuthorizationCodeRepository     = sqliterepo.AuthorizationCodeRepository
 	CheckIncidentRepository         = sqliterepo.CheckIncidentRepository
+	ClientMetricGuardRepository     = sqliterepo.ClientMetricGuardRepository
 	CheckRunRepository              = sqliterepo.CheckRunRepository
 	DashboardRepository             = sqliterepo.DashboardRepository
 	DashboardTemplateRepository     = sqliterepo.DashboardTemplateRepository

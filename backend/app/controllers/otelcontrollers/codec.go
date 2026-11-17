@@ -21,7 +21,7 @@ import (
 
 const maxBodySize = 10 * 1024 * 1024 // 10MB
 
-var errBodyTooLarge = errors.New("request body exceeds the 10MB limit")
+var errBodyTooLarge = errors.New("request body exceeds the size limit")
 
 const (
 	otlpBodyIdle  = 20 * time.Second
@@ -29,6 +29,11 @@ const (
 )
 
 func readBody(c *gin.Context) ([]byte, error) {
+	return readBodyUpTo(c, maxBodySize)
+}
+
+// readBodyUpTo bounds both the raw and the decompressed body, so gzip cannot raise the limit.
+func readBodyUpTo(c *gin.Context, maxBodySize int64) ([]byte, error) {
 	middleware.GuardBodyRead(c, otlpBodyIdle, otlpBodyTotal)
 
 	raw := http.MaxBytesReader(c.Writer, c.Request.Body, maxBodySize)
@@ -52,7 +57,7 @@ func readBody(c *gin.Context) ([]byte, error) {
 		}
 		return nil, err
 	}
-	if len(body) > maxBodySize {
+	if int64(len(body)) > maxBodySize {
 		return nil, errBodyTooLarge
 	}
 	return body, nil
@@ -98,8 +103,8 @@ func decodeTraceRequest(c *gin.Context) (*coltracepb.ExportTraceServiceRequest, 
 	return req, len(body), nil
 }
 
-func decodeMetricsRequest(c *gin.Context) (*colmetricspb.ExportMetricsServiceRequest, int, error) {
-	body, err := readBody(c)
+func decodeMetricsRequest(c *gin.Context, maxBytes int64) (*colmetricspb.ExportMetricsServiceRequest, int, error) {
+	body, err := readBodyUpTo(c, maxBytes)
 	if err != nil {
 		return nil, 0, err
 	}

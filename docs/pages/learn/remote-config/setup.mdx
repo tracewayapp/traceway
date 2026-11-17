@@ -8,7 +8,7 @@ import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
 This page takes a browser app from install to its first rule, trigger and capture. How the pieces fit together is on [Remote SDK Config](/learn/remote-config); every field of the settings document is in the [settings reference](/learn/remote-config/reference).
 
 <Callout type="info">
-  You need `@tracewayapp/frontend` 2.x (beta), or the React, Vue, Svelte or jQuery wrapper of the same version, and a React, Vue, Svelte or jQuery project in Traceway. The **Data Collection** tab is only shown for those project types.
+  You need `@tracewayapp/frontend` 2.x (beta), or the React, Vue, Svelte or jQuery wrapper of the same version, and a React, Vue, Svelte or jQuery project in Traceway. The **Data Collection** page is shown for those project types and for Flutter projects, which use the Flutter SDK's own setup.
 </Callout>
 
 <Steps>
@@ -36,7 +36,7 @@ That is all remote config needs: it is on by default (`remoteConfig: true`). The
 
 Set `version` and `environment`. They are what most rules target, and without them you cannot tell a canary from production.
 
-The React, Vue, Svelte and jQuery wrappers take the same options. The React, Vue and Svelte wrappers re-export every function used below (`setAttribute`, `refreshConfig`, `track`, `recordAction`, `getInstanceId`, ...). The jQuery wrapper (`TracewayJQuery` on the CDN) re-exports the same functions except `recordAction` (as of `2.0.0-beta.1`): use `track()` there.
+The React, Vue, Svelte and jQuery wrappers take the same options. The React, Vue and Svelte wrappers re-export every function used below (`setAttribute`, `refreshConfig`, `track`, `recordAction`, `getInstanceId`, ...). The jQuery wrapper (`TracewayJQuery` on the CDN) re-exports the same functions except `recordAction` (as of 2.1.0): use `track()` there.
 
 ### Decide what the page may never send
 
@@ -59,6 +59,9 @@ Traceway.init(connection, {
 | `captureUserActions` | Clicks |
 | `captureWebVitals` | Web vitals |
 | `captureResourceTiming` | Resource and navigation timing |
+| `captureLongTasks` | Long tasks |
+| `captureRouteTiming` | Route change timing |
+| `captureMetrics` | Aggregated performance metrics |
 | `sessions` | Session start and end events |
 
 All of them default to `true`. Use them for data your app must never collect, such as console output that could carry personal data.
@@ -79,11 +82,11 @@ Traceway.track("checkout_failed", { step: "payment" });
 Traceway.recordAction("cart", "add_item", { sku: "CHAIR-1" }); // not in the jQuery wrapper: use track() there
 ```
 
-### Open the Data Collection tab
+### Open the Data Collection page
 
-In the dashboard, open the project's settings (project switcher → **Edit Project**) and choose **Data Collection**.
+In the dashboard, choose **Data Collection** in the sidebar of the project.
 
-<img src="/remote-config/data-collection-tab.png" alt="The Data Collection tab: a list of rules, each with its targeting and its effect on one line, an enable switch, reorder, edit and delete buttons; below them the active captures" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+<img src="/remote-config/data-collection-tab.png" alt="The Data Collection page: a list of rules, each with its targeting and its effect on one line, an enable switch, reorder, edit and delete buttons; below them the active captures" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
 The rules apply top to bottom, and a later rule wins where two set the same field. Each row shows who it targets and what it changes; the switch turns a rule off without deleting it. Below the rules are the active captures, with the time they have left.
 
@@ -169,7 +172,7 @@ When someone reports a problem, capture them:
 
 - On a **session** page, **Capture this device** targets the browser that recorded the session, so it also covers that device's next visits.
 - On an **issue**, the event card offers **Capture device** (or user, or session, whichever the event carries).
-- In the Data Collection tab, **New Capture** targets a device, a user, a session or any attribute.
+- On the Data Collection page, **New Capture** targets a device, a user, a session or any attribute.
 
 Pick a duration (up to 24 hours), a lookback (how much of what the device was holding to upload first), and whether to include replay.
 
@@ -187,7 +190,7 @@ The SDK reports what it did as log events that always stream. In [Logs](/learn/l
 | `traceway.trigger.fired` | A trigger fired (`traceway.trigger.id`) |
 | `traceway.capture.started` | A capture started on this device (`traceway.capture.id`; `traceway.capture.source: trigger` for a trigger's capture) |
 
-In the browser, `Traceway.getInstanceId()` returns the device id to capture or preview, and `debug: true` in `init()` prints what the SDK does to the console.
+In the browser, `Traceway.getInstanceId()` returns the device id to capture or preview, and `debug: true` in `init()` logs rejected remote-config credentials and a `beforeCapture` that throws.
 
 </Steps>
 

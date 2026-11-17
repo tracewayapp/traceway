@@ -44,9 +44,9 @@ const PILLARS = [
   },
   {
     icon: Video,
-    title: "Session replay",
-    description: "Web DOM capture, attached to exceptions",
-    href: "/product/session-replay",
+    title: "Real user monitoring",
+    description: "Web Vitals, release regressions, SLOs and replay",
+    href: "/product/rum",
   },
   {
     icon: Bug,

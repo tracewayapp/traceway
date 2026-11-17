@@ -38,6 +38,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/open-telemetry/opamp-go v0.25.0 // indirect
+	github.com/oschwald/maxminddb-golang/v2 v2.4.1 // indirect
 	github.com/tracewayapp/traceway/cli/v2 v2.0.11 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect

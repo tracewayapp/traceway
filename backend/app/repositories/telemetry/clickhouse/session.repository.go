@@ -256,6 +256,15 @@ func buildSessionFilterClause(search string, filters []shared.SessionAttributeFi
 		args = append(args, s, s, s)
 	}
 	for _, f := range filters {
+		if f.Key == "__recording_trigger" {
+			// One trigger id, or the ids of a rule's triggers separated by commas (an id cannot contain one).
+			ids := strings.Split(f.Value, ",")
+			sb.WriteString(" AND (project_id, id) IN (SELECT project_id, session_id FROM session_recording_reasons WHERE trigger_id IN (" + strings.TrimSuffix(strings.Repeat("?, ", len(ids)), ", ") + "))")
+			for _, id := range ids {
+				args = append(args, id)
+			}
+			continue
+		}
 		if f.Key == "" {
 			continue
 		}

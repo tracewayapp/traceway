@@ -33,7 +33,7 @@
 		isFrontendFramework,
 		isBrowserFramework,
 		isCloudflareFramework,
-		SDK_CONFIG_FRAMEWORKS
+		isProjectViewAvailable
 	} from '$lib/state/projects.svelte';
 	import { LayoutDashboard } from '@lucide/svelte';
 	import { page } from '$app/state';
@@ -59,17 +59,13 @@
 		'AI Traces',
 		'Monitors'
 	]);
-	// Browser projects report through the OpenTelemetry SDK: logs, spans, and the performance
-	// metrics their dashboards chart. Mobile projects report through the native SDKs, which send
-	// no logs or spans; their dashboards chart the app.* performance metrics.
+	// Native SDKs do not populate the browser log and span views.
 	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans']);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
 	// the sidebar for any other framework, so a Go backend project doesn't
 	// surface a Sessions tab that can never be populated.
 	const frontendOnly = new Set(['Sessions']);
-	// Remote collection settings exist only for the SDKs that poll for them over OpAMP.
-	const sdkConfigOnly = new Set(['Data Collection']);
 
 	const allSidebarItems: SidebarItem[] = [
 		{ Icon: LayoutDashboard, href: '/', title: 'Dashboard', stickyParams: [] },
@@ -107,10 +103,9 @@
 
 	const sidebarItems = $derived.by(() => {
 		const framework = projectsState.currentProject?.framework;
-		const items =
-			framework && SDK_CONFIG_FRAMEWORKS.includes(framework)
-				? allSidebarItems
-				: allSidebarItems.filter((item) => !sdkConfigOnly.has(item.title));
+		const items = allSidebarItems.filter((item) =>
+			framework ? isProjectViewAvailable(framework, item.href) : item.href !== '/data-collection'
+		);
 		if (framework && isFrontendFramework(framework)) {
 			const hidden = isBrowserFramework(framework) ? hiddenForBrowser : hiddenForMobile;
 			return items.filter((item) => !hidden.has(item.title));

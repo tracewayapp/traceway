@@ -14,7 +14,8 @@
 	import {
 		projectsState,
 		isFrontendFramework,
-		SDK_CONFIG_FRAMEWORKS
+		SDK_CONFIG_FRAMEWORKS,
+		isBrowserFramework
 	} from '$lib/state/projects.svelte';
 	import SessionReplay from './session-replay.svelte';
 	import SessionLogsTable from './session-logs-table.svelte';
@@ -129,6 +130,9 @@
 		replayRef?.seek(offsetMs);
 	}
 
+	const hasFullSessions = $derived(
+		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
+	);
 	let captureOpen = $state(false);
 	const canCapture = $derived(
 		!!projectsState.currentProject &&
@@ -146,25 +150,27 @@
 </script>
 
 {#snippet sessionActions()}
-	<div class="flex items-center gap-2">
-		{#if canCapture && captureTarget}
-			<Button variant="outline" size="sm" onclick={() => (captureOpen = true)}>
-				<Radar class="size-4" />
-				Capture {captureTarget.label}
+	{#if hasFullSessions}
+		<div class="flex items-center gap-2">
+			{#if canCapture && captureTarget}
+				<Button variant="outline" size="sm" onclick={() => (captureOpen = true)}>
+					<Radar class="size-4" />
+					Capture {captureTarget.label}
+				</Button>
+			{/if}
+			<Button variant="outline" size="sm" onclick={() => goto(resolve(`/sessions/${sessionId}`))}>
+				View full session
+				<ArrowRight class="size-4" />
 			</Button>
-		{/if}
-		<Button variant="outline" size="sm" onclick={() => goto(resolve(`/sessions/${sessionId}`))}>
-			View full session
-			<ArrowRight class="size-4" />
-		</Button>
-	</div>
+		</div>
+	{/if}
 {/snippet}
 
 {#if canCapture && captureTarget}
 	<SdkCaptureDialog bind:open={captureOpen} kind={captureTarget.kind} value={captureTarget.value} />
 {/if}
 
-{#if isFrontend && (Number(occurrence.attributes?.['traceway.context.evicted']) > 0 || Number(occurrence.attributes?.['traceway.collection.dropped']) > 0)}
+{#if hasFullSessions && (Number(occurrence.attributes?.['traceway.context.evicted']) > 0 || Number(occurrence.attributes?.['traceway.collection.dropped']) > 0)}
 	<p class="text-sm text-muted-foreground" role="status">
 		This context may be incomplete. The SDK reported {occurrence.attributes?.[
 			'traceway.context.evicted'
@@ -173,11 +179,11 @@
 	</p>
 {/if}
 
-{#if isFrontend && !hasReplay}
+{#if hasFullSessions && !hasReplay}
 	<div class="rounded-md border p-4 text-sm" role="status">
 		<p class="font-medium">Replay unavailable</p>
 		<p class="mt-1 text-muted-foreground">{replayExplanation}</p>
-		{#if sessionId}
+		{#if sessionId && hasFullSessions}
 			<Button variant="link" class="px-0" onclick={() => goto(resolve(`/sessions/${sessionId}`))}
 				>Open session context</Button
 			>
@@ -189,7 +195,7 @@
 	<Card.Root class="pb-0">
 		<Card.Header class="flex flex-row items-center justify-between gap-2">
 			<Card.Title>Session Replay</Card.Title>
-			{#if sessionId}
+			{#if sessionId && hasFullSessions}
 				{@render sessionActions()}
 			{/if}
 		</Card.Header>

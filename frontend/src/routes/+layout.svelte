@@ -4,7 +4,8 @@
 	import './layout.css';
 	import { goto, afterNavigate } from '$app/navigation';
 	import { authState } from '$lib/state/auth.svelte';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, isProjectViewAvailable } from '$lib/state/projects.svelte';
+	import EmptyState from '$lib/components/traceway/empty-state.svelte';
 	import { themeState, initTheme, toggleTheme } from '$lib/state/theme.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { DateTime } from 'luxon';
@@ -56,6 +57,16 @@
 		startMonitoring(page.url);
 	});
 
+	const projectViewAvailable = $derived(
+		!projectsState.currentProject ||
+			isProjectViewAvailable(projectsState.currentProject.framework, page.url.pathname)
+	);
+
+	const dashboardsAvailable = $derived(
+		!!projectsState.currentProject &&
+			isProjectViewAvailable(projectsState.currentProject.framework, '/dashboards')
+	);
+
 	let { children } = $props();
 	let showAddProjectModal = $state(false);
 	let showEditProjectModal = $state(false);
@@ -66,7 +77,8 @@
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-			if (!authState.isAuthenticated || isPublicPath(page.url.pathname)) return;
+			if (!authState.isAuthenticated || isPublicPath(page.url.pathname) || !dashboardsAvailable)
+				return;
 			if (isMacPlatform && !e.metaKey) return;
 			if (page.url.pathname === '/dashboards' || isOrganizationPath(page.url.pathname)) return;
 			e.preventDefault();
@@ -312,7 +324,9 @@
 		project={projectsState.currentProject}
 	/>
 
-	<DashboardCommand bind:open={showCommandPalette} />
+	{#if dashboardsAvailable}
+		<DashboardCommand bind:open={showCommandPalette} />
+	{/if}
 	<Toaster position="top-center" />
 {/snippet}
 
@@ -358,7 +372,11 @@
 				</header>
 				<main class="min-w-0 flex-1 p-4">
 					{@render contextNotices()}
-					{@render children()}
+					{#if projectViewAvailable}
+						{@render children()}
+					{:else}
+						<EmptyState message="This view is not available for this project type." />
+					{/if}
 				</main>
 			</Sidebar.SidebarInset>
 		</Sidebar.SidebarProvider>

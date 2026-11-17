@@ -26,12 +26,9 @@ import (
 // the completion payload, and sub-agents as separate trace names inside the
 // same conversation.
 //
-// The provider is selected by environment: setting ORCAROUTER_API_KEY routes
-// through OrcaRouter (https://api.orcarouter.ai/v1), setting
-// CHEAPER_INFERENCE_API_KEY routes through Cheaper Inference
-// (https://api.cheaperinference.com/v1), setting UBERLLM_API_KEY routes
-// through UberLLM (https://api.uberllm.dev/v1), otherwise the agent falls back
-// to OpenRouter.
+// Set one provider API key. If multiple keys are set, selection order is
+// ORCAROUTER_API_KEY, CHEAPER_INFERENCE_API_KEY, UBERLLM_API_KEY, then
+// OPENROUTER_API_KEY.
 
 const openRouterURL = "https://openrouter.ai/api/v1/chat/completions"
 const orcaRouterURL = "https://api.orcarouter.ai/v1/chat/completions"
@@ -199,10 +196,7 @@ type toolEvent struct {
 }
 
 // callGateway makes one chat-completions call and emits the gen_ai.* span
-// Traceway promotes to an ai_traces row. The gateway is selected by env:
-// ORCAROUTER_API_KEY routes through OrcaRouter, CHEAPER_INFERENCE_API_KEY
-// routes through Cheaper Inference, UBERLLM_API_KEY routes through UberLLM,
-// otherwise OpenRouter is used.
+// Traceway promotes to an ai_traces row.
 func (cc *chatContext) callGateway(ctx context.Context, agent agentDef, messages []orMessage) (*orResponse, error) {
 	endpoint, apiKey, system := openRouterURL, os.Getenv("OPENROUTER_API_KEY"), "openrouter"
 	if os.Getenv("ORCAROUTER_API_KEY") != "" {

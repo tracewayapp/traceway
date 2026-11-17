@@ -560,7 +560,7 @@ Leaving the SDK defaults on is expensive. Web framework instrumentation (`otelgi
 
 1. **The SDK default temporality is cumulative.** Every series the process has seen since it started is re-sent on every export with its running total, whether or not a request arrived. An idle server costs as much as a busy one.
 2. **Each series is about 550 bytes** of attributes, bucket counts and bucket boundaries. Usage is billed on the request body after decompression, so gzip does not reduce it.
-3. **Traceway discards the buckets.** A histogram is stored as `<name>.avg` and `<name>.count` only (`data-model.md`), so the bucket bytes are billed and thrown away, and the endpoints already carry the same information.
+3. **HTTP metrics overlap endpoint analytics.** Current Traceway retains histogram distributions (and legacy average/count series), but endpoints already provide request latency and throughput. Enable HTTP histograms when a metric-based objective or integration needs them, rather than collecting duplicate signals by default. This backend policy does not apply to browser RUM metrics: keep those enabled for population coverage.
 
 Measured on a production Gin API serving about 1,400 requests a day, exporting every 30 seconds: about 117 histogram series per export, about 187 MB a day, 91% of the project's ingest. That uses up a 1 GB allowance in five days. Without the HTTP histograms the same project sends about 18 MB a day.
 
@@ -688,11 +688,13 @@ Zero-code path for OpenRouter users: in OpenRouter Settings -> Observability, ad
 
 ## Step 7: Frontend and Mobile
 
+For browser RUM setup, read [rum.md](rum.md): version capabilities, release/environment/route dimensions, production collection policy and verification. Full device-aggregated RUM needs a compatible server and SDK 2.1+; a published 2.0 beta does not satisfy that requirement. If the registry has no compatible release, report the limitation and integrate only available features.
+
 Browser and mobile integrations use the Traceway SDKs. Choose the browser SDK generation from the live npm registry, not from SDK versions seen in a source checkout or an assumption that `latest` has moved:
 
 - **Read the dist-tags first**: `npm view @tracewayapp/frontend dist-tags --json`, and the same for the selected wrapper (`@tracewayapp/react`, `vue`, `svelte` or `jquery`). It lists every dist-tag, for example `{"latest": "1.2.2", "beta": "2.0.0-beta.1"}`. Do not query `@tracewayapp/frontend@2`: while 2.x exists only as `2.0.0-beta.N` that range matches nothing and npm exits `E404`, which says nothing about the registry being down.
 - **`latest` is 2.x on every package you need**: stable v2 is published. Install it (`npm install @tracewayapp/react@2`, or the plain package name) and read [frontend-js-v2.md](frontend-js-v2.md).
-- **`latest` is 1.x** (2.x only under `beta`, as today): a new integration installs the stable v1 SDK (`npm install @tracewayapp/react@1`, or the plain package name) and follows [frontend-js.md](frontend-js.md). Use the beta instead only when the user asked for v2 or for remote SDK config (Data Collection, OpAMP), or when the repository already depends on `@tracewayapp/*` `2.x`: then install the version in the `beta` tag (`npm install @tracewayapp/react@beta`) and read [frontend-js-v2.md](frontend-js-v2.md). Never mix v1 and v2 packages, never substitute a local checkout, and never add v2-only options to v1.
+- **`latest` is 1.x** (2.x only under `beta`, as today): a new integration installs the stable v1 SDK (`npm install @tracewayapp/react@1`, or the plain package name) and follows [frontend-js.md](frontend-js.md). Use the beta instead only when the user asked for RUM features requiring v2, v2 itself, or remote SDK config (Data Collection, OpAMP), or when the repository already depends on `@tracewayapp/*` `2.x`: then install the version in the `beta` tag (`npm install @tracewayapp/react@beta`) and read [frontend-js-v2.md](frontend-js-v2.md). Never mix v1 and v2 packages, never substitute a local checkout, and never add v2-only options to v1.
 - **An existing integration keeps its major**: a v2 app stays on v2 (`@beta` while 2.x is in beta), and a v1 app is not silently moved to the beta.
 - **The command itself fails** (network, proxy or authentication error, not an answer from the registry): retry once. If it still fails, say that the SDK version could not be verified, keep an existing integration on its current major, and for a new integration ask the user before choosing.
 - v2 exports logs/spans through OTLP, replay through `/api/recordings`, and receives browser-only remote configuration through OpAMP. Keep production defaults; do not turn on `recordAllSessions` merely to prove setup works.
@@ -770,6 +772,7 @@ When the CLI applied the plan, the local env files hold real values, so run loca
    - Run `traceway metrics discover --since 15m`. With metrics off (the default) only the agent's `system.*` names appear. If the app exports its own metrics, they appear too, and no `http.server.*` name is among them; if one is, the view from "Metrics" is missing.
    - If host or Kubernetes metrics were set up, open `/organization`. Every host and node appears as its own instance row with CPU, memory and disk. Kubernetes nodes are grouped by cluster. One row where you expected several means `service.name` is not distinct per machine; empty rings mean the `*.utilization` metrics are not enabled.
 2. **Browser project**
+   - Verify the installed SDK actually supports the requested RUM features. Set release/environment metadata and normalized route names; generate interactions and a SPA navigation, hide the page to flush metrics, allow the server flush interval, then inspect Web Performance and recorded metric names. Missing INP without an interaction is expected. Metrics and diagnostic replay are separate checks; do not enable full-session recording to make charts populate.
    - Trigger a test browser error and confirm it appears in this project, not the backend project.
    - Confirm the stack resolves to original source files and lines after the matching source maps and bundles are uploaded.
    - If distributed tracing was configured, confirm a browser issue or request links to its backend trace.

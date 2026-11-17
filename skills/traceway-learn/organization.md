@@ -70,7 +70,7 @@ Stacked sections, with an organization switcher for people who manage several:
 - **Team Members**: name, email, role, status, per-project role overrides. **Pending Invitations**. Invitations carry a role.
 - **Agent Access**: the **Allow agent writes** switch and the **Agent activity** log (when, who, credential, project, action, result). See below.
 
-Per-project settings open from the project switcher (**Edit Project**), not from Settings: **Project** (name, framework), **Healthchecks** (drop healthy healthcheck requests, extra healthcheck paths), **Profiles** (extra pprof labels), **AI** (flagged term packs and custom terms), and the **Danger Zone**. Remote SDK config (rules and captures) is not here: browser and Flutter projects have a **Data Collection** page in the sidebar, see `data-collection.md`.
+Per-project settings open from the project switcher (**Edit Project**), not from Settings: **Project** (name, framework), **Healthchecks** (drop healthy healthcheck requests, extra healthcheck paths), **Profiles** (extra pprof labels), **AI** (flagged term packs and custom terms), and the **Danger Zone**. Remote SDK config (rules and captures) is not here: browser projects have a **Data Collection** page in the sidebar, see `data-collection.md`.
 
 ## How agents get access
 

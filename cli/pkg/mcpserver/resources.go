@@ -83,6 +83,10 @@ var knowledgeResources = []struct {
 		description: "Teams, schedules (layers, rotations, restrictions, overrides), escalation policies, pages and their lifecycle, contact methods and personal notification rules.",
 	},
 	{
+		uri: "traceway://knowledge/learn/rum", file: "learn/rum.md", name: "Learn: Real User Monitoring",
+		description: "Browser metrics, Web Vitals, release comparisons, frontend SLOs, sessions, sampling and agent capability limits.",
+	},
+	{
 		uri: "traceway://knowledge/learn/data-collection", file: "learn/data-collection.md", name: "Learn: remote SDK config (Data Collection)",
 		description: "Remote SDK config for browser projects on the 2.x SDK: stream, buffer and off per signal, the defaults, ordered rules with targeting and rollout, init() and plan ceilings, triggers, captures and their status, preview, and how to verify on a device.",
 	},

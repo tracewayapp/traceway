@@ -31,6 +31,7 @@ var writeSkillTemplate string
 var learnSkillTemplate string
 
 var learnTopics = []string{
+	"rum.md",
 	"issues.md",
 	"endpoints-and-tasks.md",
 	"traces-and-logs.md",
@@ -66,6 +67,9 @@ func main() {
 	}
 
 	writeDir := filepath.Join(root, "plugins", "tw-write", "skills", "traceway-write")
+	for _, dir := range []string{readDir, writeDir, filepath.Join(root, "skills", "traceway-setup")} {
+		write(filepath.Join(dir, "rum.md"), copiedHeader("learn/rum.md")+knowledge.MustRead("learn/rum.md"))
+	}
 	write(filepath.Join(writeDir, "SKILL.md"), render(writeSkillTemplate))
 	for _, topic := range []string{"dashboard-building.md", "write-setup.md", "alert-configuration.md", "oncall-configuration.md", "personal-notifications.md", "incident-actions.md", "sdk-configuration.md"} {
 		write(filepath.Join(writeDir, topic), copiedHeader(topic)+knowledge.MustRead(topic))

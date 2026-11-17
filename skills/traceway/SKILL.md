@@ -1,6 +1,6 @@
 ---
 name: traceway
-description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue <hash|url|title>", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
+description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, investigate browser RUM and release regressions, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue HASH", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
 ---
 <!-- GENERATED FILE: assembled from cli/pkg/mcpserver/knowledge by cli/tools/skillgen. Edit the chunks there and run just gen-skills in cli/. -->
 
@@ -275,7 +275,7 @@ traceway metrics query --name system.cpu.utilization --tag state=idle --aggregat
 traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
 ```
 
-The CLI also accepts `p50|p95|p99`, but the server has no quantile aggregation for metric points and silently computes `avg` for them — never present those as percentiles. Latency percentiles come from `traceway endpoints list`, computed from raw request durations. There is no `metrics list`; a bogus name returns an empty `series: {}` cleanly, so probing names is safe. Host metrics from the Traceway OTel Agent live under `system.*` names, and OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`.
+Current servers compute CLI p50/p95/p99 for distribution metrics; point metrics cannot yield percentiles. MCP query validation still rejects these aggregations. Use endpoint statistics for request-population percentiles and [rum.md](rum.md) for browser distributions and query limits. Discover names with `traceway metrics discover`; no `metrics list` exists. Host metrics use `system.*`; explicit-bound backend histograms retain `.avg`/`.count` alongside distributions. An empty series can mean missing data or an unsupported query; inspect errors before drawing conclusions.
 
 ### 4. Correlate with the code
 
@@ -346,9 +346,13 @@ The loop, using the read commands documented in this skill:
 
 If the waterfall does not localize the cost, stop before proposing a fix. An unexplained gap, one fat span covering the whole handler, or a tail you cannot reproduce all mean the same thing: the trace is too coarse to act on. Add child spans around the suspect steps inside that handler, then wait for the next slow request to point at the real one. See "When the evidence is not enough" in the Debug flow.
 
+## Browser RUM investigations
+
+For Web Vitals, frontend release regressions, affected users or slow browser journeys, read [rum.md](rum.md) first. It covers distributions, segments, SLOs, session exemplars and the current CLI/MCP limitations. Do not route a browser experience question solely through backend endpoint latency.
+
 ## Flow: Query
 
-For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "show errors for service X"), use the read commands directly. A request specifically about latency or slowness routes to the Performance flow above.
+For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "show errors for service X"), use the read commands directly. Backend latency or slowness routes to the Performance flow above; browser experience routes to the RUM reference.
 
 ### Command reference
 
@@ -378,7 +382,7 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 
 The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above.
 
-Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list/discover`.
+Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list`. Metric discovery is available as `metrics discover`.
 
 ### Recipes
 

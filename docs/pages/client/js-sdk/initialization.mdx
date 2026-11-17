@@ -40,6 +40,8 @@ init("your-token@https://traceway.example.com/api/report", {
 | `ignoreErrors` | sensible defaults | `string \| RegExp` patterns matched against `Type: message`; matching exceptions are dropped |
 | `beforeCapture` | none | `({ type, message, stack, attributes }) => boolean`; return `false` to drop |
 | `remoteConfig` | `true` | Fetch collection settings from Traceway over OpAMP (see below) |
+| `collection` | SDK defaults | Local signal modes, sampling, triggers, buffer limits, and metric upload interval |
+| `telemetry` | Traceway endpoints | OTLP/HTTP base URL, per-signal URLs, and headers; required in standalone mode |
 | `sessionRecording` | `true` | Allow rrweb session replay at all |
 | `sessionRecordingSegmentDuration` | `30000` | Replay segment length (ms) |
 | `baselineSampleRate` | `0` | Stable healthy-session breadcrumb/request sample, from 0 to 1; does not stream replay |

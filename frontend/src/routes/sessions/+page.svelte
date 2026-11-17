@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SessionRecordingReasons from '$lib/components/issues/session-recording-reasons.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
@@ -54,7 +55,10 @@
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
 
+	type Reason = { triggerId: string; name: string; sequence: string; revision: string };
+	let reasonOptions = $state<Reason[]>([]);
 	type Session = {
+		recordingReasons?: Reason[];
 		id: string;
 		startedAt: string;
 		endedAt?: string | null;
@@ -88,7 +92,13 @@
 
 	function parseSessionsUrlParams() {
 		const timeParams = parseTimeRangeFromUrl(timezone);
-		if (!browser) return { ...timeParams, search: '', attributeFilters: [] as AttributeFilter[] };
+		if (!browser)
+			return {
+				...timeParams,
+				search: '',
+				triggerId: '',
+				attributeFilters: [] as AttributeFilter[]
+			};
 		const params = new URLSearchParams(window.location.search);
 		const attrs: AttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
@@ -98,11 +108,13 @@
 		return {
 			...timeParams,
 			search: params.get('search') ?? '',
+			triggerId: params.get('triggerId') ?? '',
 			attributeFilters: attrs
 		};
 	}
 
 	const initialUrlParams = parseSessionsUrlParams();
+	let triggerId = $state(initialUrlParams.triggerId);
 	const initialRange = getResolvedTimeRange(initialUrlParams, initialTimezone);
 
 	let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -195,6 +207,7 @@
 				from: selectedPreset ? null : getFromDateTimeUTC(),
 				to: selectedPreset ? null : getToDateTimeUTC(),
 				search: searchQuery.trim() || null,
+				triggerId: triggerId || null,
 				attr: attributeFilters.map((f) => `${f.key}${filterOperator(f)}${f.value}`)
 			},
 			{ pushToHistory }
@@ -203,6 +216,7 @@
 
 	function handlePopState() {
 		const urlParams = parseSessionsUrlParams();
+		triggerId = urlParams.triggerId;
 		const range = getResolvedTimeRange(urlParams, timezone);
 		selectedPreset = urlParams.preset;
 		fromDate = dateToCalendarDate(range.from, timezone);
@@ -286,9 +300,21 @@
 				pagination: { page, pageSize }
 			};
 
-			const response = await api.post('/sessions', requestBody, {
-				projectId: projectsState.currentProjectId ?? undefined
+			const reasonsResponse = await api.get('/sessions/recording-reasons', {
+				projectId: projectsState.currentProjectId!
 			});
+			reasonOptions = [
+				...new Map<string, Reason>(
+					[...(reasonsResponse.reasons ?? [])].reverse().map((r: Reason) => [r.triggerId, r])
+				).values()
+			];
+			const response = await api.post(
+				'/sessions',
+				{ ...requestBody, triggerId },
+				{
+					projectId: projectsState.currentProjectId ?? undefined
+				}
+			);
 
 			sessions = response.data || [];
 			total = response.pagination.total;
@@ -344,8 +370,9 @@
 				</Tooltip.Trigger>
 				<Tooltip.Content side="right" class="max-w-xs">
 					<p class="text-xs">
-						Sessions are full recordings of user interactions and are only recorded when manually
-						enabled (<code class="font-mono">recordAllSessions: true</code> in the SDK init options).
+						Sessions group a visit. Replay is uploaded when collection settings or a recording
+						trigger request it. A trigger tag records the request; recording availability confirms
+						whether replay arrived.
 					</p>
 				</Tooltip.Content>
 			</Tooltip.Root>
@@ -362,6 +389,26 @@
 		{/snippet}
 	</PageHeader>
 
+	<div class="space-y-1">
+		<label for="recording-trigger-filter" class="text-sm font-medium">Recording trigger</label>
+		<select
+			id="recording-trigger-filter"
+			class="h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+			bind:value={triggerId}
+			onchange={() => {
+				page = 1;
+				loadData();
+			}}
+		>
+			<option value="">All recording triggers</option>
+			{#if triggerId && !reasonOptions.some((r) => r.triggerId === triggerId)}<option
+					value={triggerId}>{triggerId}</option
+				>{/if}
+			{#each reasonOptions as reason (reason.triggerId)}<option value={reason.triggerId}
+					>{reason.name}</option
+				>{/each}
+		</select>
+	</div>
 	<SearchBar
 		placeholder="Search session ID, user, or attribute value..."
 		bind:value={searchQuery}
@@ -486,7 +533,7 @@
 						colspan={5}
 						message={searchQuery.trim() || attributeFilters.length
 							? 'No sessions match your search and filters.'
-							: 'No sessions recorded in this time range. Enable recordAllSessions in the SDK to start capturing them.'}
+							: 'No sessions reported in this time range. Check the SDK session collection settings.'}
 					/>
 				</Table.Body>
 			{:else}
@@ -497,7 +544,7 @@
 							tooltip="Session UUID. Open to play back the recording."
 						/>
 						<TracewayTableHeader
-							label="Attributes"
+							label="Attributes & recording triggers"
 							tooltip="User and session context. Click an attribute to filter sessions."
 						/>
 						<TracewayTableHeader
@@ -572,6 +619,7 @@
 										>
 									{/if}
 								</div>
+								<SessionRecordingReasons reasons={session.recordingReasons} />
 							</Table.Cell>
 							<Table.Cell class="text-sm"
 								>{formatRelativeTimeAgo(session.startedAt, timezone)}</Table.Cell

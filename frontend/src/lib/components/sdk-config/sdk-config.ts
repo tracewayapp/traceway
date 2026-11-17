@@ -346,6 +346,7 @@ export function fitsForm(settings: SettingsDocument): boolean {
 	if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
 	const allowedTop = new Set([
 		'schemaVersion',
+		'triggers',
 		'enabled',
 		'signals',
 		'sessions',

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Mode says what the SDK does with a signal: drop it, keep it on the device until a trigger or capture flushes
@@ -109,14 +110,26 @@ type BufferSettings struct {
 }
 
 // Matcher is a condition (Key, Op and Value or Values) or exactly one of All, Any and Not.
+var selectorAtom = `(?:[.#][-A-Za-z_][A-Za-z0-9_-]*|\[[-A-Za-z_][A-Za-z0-9_-]*(?:[~|^$*]?=(?:"[^"\r\n]*"|'[^'\r\n]*'|[-A-Za-z0-9_]+))?\])`
+var selectorCompound = `(?:(?:[A-Za-z][A-Za-z0-9_-]*|\*)` + selectorAtom + `*|` + selectorAtom + `+)`
+var sequenceSelector = regexp.MustCompile(`^\s*` + selectorCompound + `(?:(?:\s*[>+~]\s*|\s+)` + selectorCompound + `)*\s*$`)
+var sequenceRouteParameter = regexp.MustCompile(`^\{[A-Za-z_][A-Za-z0-9_]*\}$`)
+
+type BrowserEventMatcher struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	Mode  string `json:"mode,omitempty"`
+}
+
 type Matcher struct {
-	Key    string     `json:"key,omitempty"`
-	Op     string     `json:"op,omitempty"`
-	Value  any        `json:"value,omitempty"`
-	Values []any      `json:"values,omitempty"`
-	All    []*Matcher `json:"all,omitempty"`
-	Any    []*Matcher `json:"any,omitempty"`
-	Not    *Matcher   `json:"not,omitempty"`
+	Event  *BrowserEventMatcher `json:"event,omitempty"`
+	Key    string               `json:"key,omitempty"`
+	Op     string               `json:"op,omitempty"`
+	Value  any                  `json:"value,omitempty"`
+	Values []any                `json:"values,omitempty"`
+	All    []*Matcher           `json:"all,omitempty"`
+	Any    []*Matcher           `json:"any,omitempty"`
+	Not    *Matcher             `json:"not,omitempty"`
 }
 
 type TriggerStep struct {
@@ -401,6 +414,9 @@ func (m *Matcher) validate(depth int, nodes *int) error {
 		return invalid("matcher is nested too deeply or has too many conditions")
 	}
 	forms := 0
+	if m.Event != nil {
+		forms++
+	}
 	if m.Key != "" || m.Op != "" {
 		forms++
 	}
@@ -424,6 +440,34 @@ func (m *Matcher) validate(depth int, nodes *int) error {
 				return err
 			}
 		}
+	}
+	if m.Event != nil {
+		e := m.Event
+		if len(e.Value) == 0 || len(e.Value) > 256 || strings.TrimSpace(e.Value) == "" {
+			return invalid("event value must be 1-256 characters")
+		}
+		if e.Mode != "" && e.Mode != "exact" && e.Mode != "contains" {
+			return invalid("event mode must be exact or contains")
+		}
+		switch e.Type {
+		case "click", "hover":
+			if strings.ContainsAny(e.Value, ":,\\") || !sequenceSelector.MatchString(e.Value) {
+				return invalid("selectors support tags, ids, classes, attributes and combinators, without pseudo-classes or selector lists")
+			}
+		case "navigation":
+			if !strings.HasPrefix(e.Value, "/") || strings.ContainsAny(e.Value, "?#*") {
+				return invalid("navigation uses a pathname with optional {parameter} segments")
+			}
+			for _, segment := range strings.Split(e.Value, "/") {
+				if strings.ContainsAny(segment, "{}") && !sequenceRouteParameter.MatchString(segment) {
+					return invalid("invalid route parameter")
+				}
+			}
+		case "log":
+		default:
+			return invalid("event type must be click, hover, navigation or log")
+		}
+		return nil
 	}
 	if m.Not != nil {
 		return m.Not.validate(depth+1, nodes)

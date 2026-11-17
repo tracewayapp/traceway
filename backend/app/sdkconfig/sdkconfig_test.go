@@ -357,3 +357,28 @@ func TestMetricsSettingsMergeValidateAndFollowThePlan(t *testing.T) {
 		t.Errorf("metrics are data, not exceptions: %+v %+v", kept.Metrics, kept.Limits)
 	}
 }
+
+func TestBrowserSequenceMatchers(t *testing.T) {
+	for _, raw := range []string{
+		`{"event":{"type":"hover","value":"#menu .item"}}`,
+		`{"event":{"type":"navigation","value":"/users/{id}"}}`,
+		`{"event":{"type":"log","value":"ready","mode":"contains"}}`,
+	} {
+		_, err := ParseSettings([]byte(`{"schemaVersion":1,"triggers":[{"id":"journey","steps":[{"match":` + raw + `}],"actions":[{"type":"capture","replay":true,"durationSeconds":30}]}]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, raw := range []string{
+		`{"event":{"type":"click","value":":has(*)"}}`,
+		`{"event":{"type":"click","value":"[broken"}}`,
+		`{"event":{"type":"navigation","value":"/users/{id}/?token=x"}}`,
+		`{"event":{"type":"log","value":""}}`,
+		`{"event":{"type":"hover","value":"#a"},"key":"body","op":"exists"}`,
+	} {
+		_, err := ParseSettings([]byte(`{"schemaVersion":1,"triggers":[{"id":"journey","steps":[{"match":` + raw + `}],"actions":[{"type":"capture","replay":true,"durationSeconds":30}]}]}`))
+		if err == nil {
+			t.Fatalf("accepted %s", raw)
+		}
+	}
+}

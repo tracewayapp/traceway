@@ -46,7 +46,7 @@ describe('sdk-config helpers', () => {
 			fitsForm({ schemaVersion: 1, signals: { console: { mode: 'stream' } }, enabled: false })
 		).toBe(true);
 		expect(fitsForm({ signals: { console: { mode: 'stream', minSeverity: 'warn' } } })).toBe(false);
-		expect(fitsForm({ triggers: [] })).toBe(false);
+		expect(fitsForm({ triggers: [] })).toBe(true);
 		expect(fitsForm({ sessions: { enabled: true, baselineSampleRate: 0.01 } })).toBe(true);
 		expect(fitsForm({ sessions: { futureSetting: true } } as never)).toBe(false);
 		expect(fitsForm({ replay: { mode: 'buffer', sessionSampleRate: 0.5 } })).toBe(false);

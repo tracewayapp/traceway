@@ -256,6 +256,11 @@ func buildSessionFilterClause(search string, filters []shared.SessionAttributeFi
 		args = append(args, s, s, s)
 	}
 	for _, f := range filters {
+		if f.Key == "__recording_trigger" {
+			sb.WriteString(" AND (project_id, id) IN (SELECT project_id, session_id FROM session_recording_reasons WHERE trigger_id = ?)")
+			args = append(args, f.Value)
+			continue
+		}
 		if f.Key == "" {
 			continue
 		}

@@ -134,6 +134,8 @@ A trigger with neither steps nor actions only patches the fields it sets on a tr
 
 ### Matchers
 
+For UI-built browser journeys, a matcher can instead be `{ "event": { "type": "click", "value": "#open-user" } }`. Types are `click`, `hover`, `navigation` and `log`; only `log` accepts `mode` (`exact` or `contains`). Values are limited to 256 characters. This form is exclusive with condition/all/any/not forms. See [Recording trigger sequences](/learn/remote-config/trigger-sequences) for selector restrictions, route parameters, reload recovery and session tags.
+
 A matcher is a condition, `{ "key": "...", "op": "...", "value": ... }` (or `"values": [...]` for `in` and `not_in`), or exactly one of `{ "all": [matchers] }`, `{ "any": [matchers] }` and `{ "not": matcher }`. A step's matcher may nest 8 levels and hold 50 conditions; values are strings, numbers or booleans, at most 256 characters, and at most 100 per condition.
 
 Keys a step can test:

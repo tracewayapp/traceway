@@ -57,6 +57,18 @@ export default function RumPage() {
             image={{ src: "/images/rum-slow-session.png", alt: "Session investigation opened from a poor INP observation in the frontend dashboard" }}
             cta={<Link href="https://docs.tracewayapp.com/learn/sessions" className="btn btn-ghost">Sessions and replay <ArrowRight className="h-4 w-4" /></Link>} />
         </section>
+        <section className="wrap">
+          <FeatureRow eyebrow="Capture the journey you need to understand" title={<>Choose the actions. <em>Keep the explanation.</em></>}
+            description="Build a sequence of clicks, hovers, navigations and log messages in the visual editor. When the journey completes, the browser requests a replay capture. Find those visits through readable trigger tags, including multiple reasons on the same session."
+            bullets={["Configure ordered steps without writing an expression", "Capture bounded history with cooldowns and per-session limits", "Filter by trigger and preserve its historical name and sequence"]}
+            image={{ src: "/images/rum-sequence-builder.png", alt: "Traceway visual editor configuring click, navigation and log steps for a replay capture" }}
+            cta={<Link href="https://docs.tracewayapp.com/learn/remote-config/trigger-sequences" className="btn btn-ghost">Build a recording trigger <ArrowRight className="h-4 w-4" /></Link>} />
+        </section>
+        <section className="wrap">
+          <FeatureRow reverse eyebrow="Every recording has context" title={<>Find the sessions <em>that followed your rule</em></>}
+            description="A session can match more than one journey. Its trigger tags explain which sequences requested capture, and each tag opens a shareable filter. Historical reasons survive rule edits and deletion; replay availability is shown separately."
+            image={{ src: "/images/rum-sequence-sessions.png", alt: "Session list showing multiple recording trigger tags with readable action sequences" }} />
+        </section>
         <section className="wrap py-10">
           <SectionHead eyebrow="Why it helps" title={<>Measure, prioritize, <em>then explain</em></>} />
           <BentoGrid>
@@ -64,7 +76,7 @@ export default function RumPage() {
             <BentoCell size="tall" icon={Goal} title="Share a concrete quality target" iconColor="var(--ok)"><p>An objective turns “the app feels slow” into a measurable population, threshold and budget. Product and engineering can discuss the same evidence.</p></BentoCell>
             <BentoCell size="wide" icon={ScanSearch} title="Keep the evidence connected" iconColor="var(--a2)"><p>Metrics tell you where to look. Sessions, replay and errors help explain why. You can move from a release comparison to an individual experience without starting a separate investigation.</p></BentoCell>
           </BentoGrid>
-          <p className="mt-8 text-sm text-muted-foreground">Screenshots show a controlled storefront demo with real browser telemetry. Release 0.2.0 is intentionally slowed to demonstrate regressions; these are not customer benchmarks.</p>
+          <p className="mt-8 text-sm text-muted-foreground">Screenshots show controlled storefront and user-directory demos with real browser telemetry. Release 0.2.0 is intentionally slowed to demonstrate regressions; these are not customer benchmarks.</p>
         </section>
       </div>
       <FinalCTA title={<>Ship a frontend <em>you can measure.</em></>} description="Frontend metrics, objectives, alerts and replay in the same investigation workflow. Available with Cloud or a self-hosted Traceway server." primary={{ label: "Read the RUM guide", href: "https://docs.tracewayapp.com/learn/rum" }} />

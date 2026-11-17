@@ -14,6 +14,7 @@
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import LogTriggerBuilder from './log-trigger-builder.svelte';
+	import SequenceTriggerBuilder from './sequence-trigger-builder.svelte';
 	import {
 		CONDITION_OPS,
 		SIGNALS,
@@ -42,6 +43,7 @@
 	type Choice = 'inherit' | Mode;
 
 	let name = $state('');
+	let formTriggers = $state<unknown[]>([]);
 	let enabled = $state(true);
 	let rows = $state<ConditionRow[]>([]);
 	let rolloutPercent = $state<number | null | undefined>(undefined);
@@ -86,6 +88,7 @@
 	});
 
 	function loadForm(settings: SettingsDocument) {
+		formTriggers = JSON.parse(JSON.stringify(settings.triggers ?? []));
 		baselinePercent =
 			settings.sessions?.baselineSampleRate === undefined
 				? undefined
@@ -110,6 +113,7 @@
 
 	function formSettings(): SettingsDocument {
 		const settings: SettingsDocument = { schemaVersion: 1 };
+		if (formTriggers.length) settings.triggers = formTriggers;
 		const signals: NonNullable<SettingsDocument['signals']> = {};
 		for (const [key, choice] of Object.entries(signalChoices)) {
 			if (choice !== 'inherit') signals[key] = { mode: choice };
@@ -143,7 +147,7 @@
 		}
 		if (!fitsForm(parsed)) {
 			dialogError =
-				'This rule sets triggers, sample rates or buffer sizes, which only the JSON editor can show.';
+				'This rule sets advanced sample rates or buffer sizes, which only the JSON editor can show.';
 			return;
 		}
 		dialogError = '';
@@ -411,6 +415,7 @@
 					<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} />
 					<CodeEditor bind:value={settingsJson} minHeight="260px" />
 				{:else}
+					<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} />
 					<p class="text-xs text-muted-foreground">
 						<strong>Buffer</strong> keeps telemetry on the device until a trigger or capture uploads
 						it; <strong>Stream</strong> sends it straight away; <strong>Inherit</strong> leaves it to

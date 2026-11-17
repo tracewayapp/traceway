@@ -464,6 +464,10 @@ func (o otelController) ExportLogs(c *gin.Context) {
 			return
 		}
 	}
+	if err := telemetry.StoreSessionRecordingReasons(c, records); err != nil {
+		abortIngestStorage(c, "session recording reasons", err)
+		return
+	}
 	monitoring.RecordLogsAccepted(len(records))
 	if perm.Data && len(result.Observations) > 0 {
 		// Into memory only: no storage write per event.

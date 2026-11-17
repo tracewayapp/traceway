@@ -242,6 +242,12 @@ func buildSessionFilterClauseSQLite(search string, filters []shared.SessionAttri
 		params["search"] = s
 	}
 	for i, f := range filters {
+		if f.Key == "__recording_trigger" {
+			key := fmt.Sprintf("reason_%d", i)
+			sb.WriteString(" AND sessions.id IN (SELECT session_id FROM session_recording_reasons WHERE project_id = :project_id AND trigger_id = :" + key + ")")
+			params[key] = f.Value
+			continue
+		}
 		if f.Key == "" {
 			continue
 		}

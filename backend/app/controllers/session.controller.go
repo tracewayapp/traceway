@@ -22,6 +22,7 @@ type SessionAttributeFilter struct {
 }
 
 type SessionSearchRequest struct {
+	TriggerId        string                   `json:"triggerId"`
 	FromDate         time.Time                `json:"fromDate"`
 	ToDate           time.Time                `json:"toDate"`
 	OrderBy          string                   `json:"orderBy"`
@@ -52,6 +53,13 @@ func (s sessionController) FindAllSessions(c *gin.Context) {
 		filters = append(filters, telemetry.SessionAttributeFilter{Key: f.Key, Value: f.Value, Exclude: f.Exclude, Contains: f.Contains})
 	}
 
+	if len(request.TriggerId) > 64 {
+		c.JSON(422, gin.H{"error": "Invalid trigger ID"})
+		return
+	}
+	if request.TriggerId != "" {
+		filters = append(filters, telemetry.SessionAttributeFilter{Key: "__recording_trigger", Value: request.TriggerId})
+	}
 	spanCtx, span := traceway.StartSpan(c, "loading sessions")
 	sessions, total, err := telemetry.SessionRepository.FindAll(spanCtx, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, filters)
 	span.End()
@@ -60,6 +68,10 @@ func (s sessionController) FindAllSessions(c *gin.Context) {
 		return
 	}
 
+	if err := telemetry.LoadSessionRecordingReasons(c, projectId, sessions); err != nil {
+		c.AbortWithError(500, err)
+		return
+	}
 	c.JSON(http.StatusOK, PaginatedResponse[models.Session]{
 		Data: sessions,
 		Pagination: Pagination{
@@ -72,3 +84,17 @@ func (s sessionController) FindAllSessions(c *gin.Context) {
 }
 
 var SessionController = sessionController{}
+
+func (s sessionController) RecordingReasons(c *gin.Context) {
+	project, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(500, err)
+		return
+	}
+	reasons, err := telemetry.ListSessionRecordingReasons(c, project)
+	if err != nil {
+		c.AbortWithError(500, err)
+		return
+	}
+	c.JSON(200, gin.H{"reasons": reasons})
+}

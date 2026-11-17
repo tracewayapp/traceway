@@ -101,6 +101,9 @@ func pruneTelemetry(ctx context.Context, days int) {
 				traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: delete from telemetry.%s failed: %w", tgt.table, err))
 			}
 		}
+		if _, err := db.TelemetryDB.ExecContext(ctx, "DELETE FROM session_recording_reasons WHERE fired_at < ?", time.Now().UTC().AddDate(0, 0, -days).UnixMilli()); err != nil {
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: recording reasons: %w", err))
+		}
 		compactHistograms(ctx)
 		reclaimTelemetryDisk(ctx)
 	}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SessionRecordingReasons from '$lib/components/issues/session-recording-reasons.svelte';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -39,6 +40,12 @@
 	} from '$lib/utils/session-timeline';
 
 	type Session = {
+		recordingReasons?: Array<{
+			triggerId: string;
+			name: string;
+			sequence: string;
+			revision: string;
+		}>;
 		id: string;
 		startedAt: string;
 		endedAt?: string | null;
@@ -266,6 +273,17 @@
 			</Card.Content>
 		</Card.Root>
 
+		{#if session.recordingReasons?.length}
+			<Card.Root
+				><Card.Header><Card.Title>Recording triggers</Card.Title></Card.Header><Card.Content
+					><SessionRecordingReasons reasons={session.recordingReasons} />
+					<p class="mt-2 text-xs text-muted-foreground">
+						Triggers that requested replay for this session. Each tag preserves the sequence at the
+						time it fired.
+					</p></Card.Content
+				></Card.Root
+			>
+		{/if}
 		{#if session.attributes && Object.keys(session.attributes).length > 0}
 			<Card.Root>
 				<Card.Header>

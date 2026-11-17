@@ -15,7 +15,7 @@ A session is the larger envelope around those moments:
 | | Exception Clip | Session |
 |---|---|---|
 | Default behaviour | On (rolling window flushed with each captured exception) | 1.x: off (opt in with `recordAllSessions: true`). 2.x: the session is reported, its full replay is uploaded only with `recordAllSessions: true` or a remote config rule |
-| Scope | Last ~10 s before an exception | Entire tab lifetime, capped at 60 min |
+| Scope | The seconds before an exception: about 10 s with 1.x, 30 s with 2.x | Entire tab lifetime, capped at 60 min |
 | Storage | One file per exception | One file per ~30 s segment, many per session |
 | When uploaded | At exception capture | Continuously, every segment rotation |
 | Where surfaced | Inline on the issue page | Sessions list + dedicated detail page; linked from issues |
@@ -45,7 +45,7 @@ It ends on the first of:
 
 | Trigger | When | Behaviour |
 |---|---|---|
-| **Inactivity timeout** | 15 minutes since the last DOM event rrweb observed | Session is closed; subsequent activity opens a new one |
+| **Inactivity timeout** | 15 minutes without user activity (1.x: the last DOM event rrweb observed; 2.x: the last pointer, key, scroll or touch event) | Session is closed; subsequent activity opens a new one |
 | **Maximum duration** | 60 minutes from session start | Hard cap regardless of activity |
 | **Page unload** | `pagehide` fires (close tab, hard refresh, navigate away) | Final segment is drained, closing payload sent via `fetch keepalive` |
 
@@ -102,7 +102,7 @@ Older SDKs that omit session attributes remain supported.
 
 Every exception captured inside an always-on session is stamped with the parent `sessionId`. From the dashboard:
 
-- The **issue detail page** keeps showing the inline 10 s clip but renders a "View full session →" button when a session id is present.
+- The **issue detail page** keeps showing the inline clip but renders a "View full session →" button when a session id is present.
 - The **session detail page** renders a table of every exception that fired during that session, each linked back to its issue.
 
 This stitching is independent of whether the exception was caught by your code or by the SDK's global handlers.

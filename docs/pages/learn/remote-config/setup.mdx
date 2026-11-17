@@ -36,7 +36,7 @@ That is all remote config needs: it is on by default (`remoteConfig: true`). The
 
 Set `version` and `environment`. They are what most rules target, and without them you cannot tell a canary from production.
 
-The React, Vue, Svelte and jQuery wrappers take the same options. The React, Vue and Svelte wrappers re-export every function used below (`setAttribute`, `refreshConfig`, `track`, `recordAction`, `getInstanceId`, ...). The jQuery wrapper (`TracewayJQuery` on the CDN) re-exports the same functions except `recordAction` (as of `2.0.0-beta.1`): use `track()` there.
+The React, Vue, Svelte and jQuery wrappers take the same options. The React, Vue and Svelte wrappers re-export every function used below (`setAttribute`, `refreshConfig`, `track`, `recordAction`, `getInstanceId`, ...). The jQuery wrapper (`TracewayJQuery` on the CDN) re-exports the same functions except `recordAction` (as of 2.1.0): use `track()` there.
 
 ### Decide what the page may never send
 
@@ -61,6 +61,7 @@ Traceway.init(connection, {
 | `captureResourceTiming` | Resource and navigation timing |
 | `captureLongTasks` | Long tasks |
 | `captureRouteTiming` | Route change timing |
+| `captureMetrics` | Aggregated performance metrics |
 | `sessions` | Session start and end events |
 
 All of them default to `true`. Use them for data your app must never collect, such as console output that could carry personal data.
@@ -189,7 +190,7 @@ The SDK reports what it did as log events that always stream. In [Logs](/learn/l
 | `traceway.trigger.fired` | A trigger fired (`traceway.trigger.id`) |
 | `traceway.capture.started` | A capture started on this device (`traceway.capture.id`; `traceway.capture.source: trigger` for a trigger's capture) |
 
-In the browser, `Traceway.getInstanceId()` returns the device id to capture or preview, and `debug: true` in `init()` prints what the SDK does to the console.
+In the browser, `Traceway.getInstanceId()` returns the device id to capture or preview, and `debug: true` in `init()` logs rejected remote-config credentials and a `beforeCapture` that throws.
 
 </Steps>
 

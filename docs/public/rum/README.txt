@@ -15,3 +15,8 @@ Dashboard and SLO detail use the demo window 21:52–22:02 UTC on 16 November.
 
 The website's matching assets live in website/public/images/rum-*.png.
 No data, chart values or UI labels have been retouched.
+
+Diagrams (architecture.png, ring-buffer.png, metrics-pipeline.png) are exported
+from diagrams/docs/rum/*.drawio; the website's dark versions
+(website/public/images/rum-architecture.png, ...) from diagrams/website/rum/.
+diagrams/render-drawio.mjs renders them without the draw.io desktop app.

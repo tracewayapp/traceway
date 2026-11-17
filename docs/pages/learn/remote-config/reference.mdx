@@ -36,7 +36,7 @@ A rule stores a **partial** document: only what it changes. The server merges th
 | `sessions.baselineSampleRate` | 0 to 1 | Stable healthy-session breadcrumb/request sample; default 0. Does not stream replay or override off signals |
 | `replay` | object | See [Replay](#replay) |
 | `metrics.enabled` | boolean | The aggregated [performance metrics](/learn/client-metrics) (SDK 2.1 and later). Independent of the signals, which govern the detailed events |
-| `metrics.sampleRate` | 0 to 1 | Share of sessions that record metrics, decided per session id; default 1. Counts are scaled back up by the rate at ingest |
+| `metrics.sampleRate` | 0, or 0.001 to 1 | Share of sessions that record metrics, decided per session id; default 1. Counts are scaled back up by the rate at ingest |
 | `metrics.flushSeconds` | 30 to 3600 | How often a long-lived page uploads its aggregates; default 300. A page also uploads when it is hidden and at session end |
 | `buffer` | object | See [Buffer](#buffer) |
 | `triggers` | array | See [Triggers](#triggers) |
@@ -69,7 +69,7 @@ A rule stores a **partial** document: only what it changes. The server merges th
 | `replayMaxBytes` | 8 MiB | 1 B to 64 MiB | Size of the buffered replay segments |
 | `persist` | `true` | | Keep telemetry in IndexedDB, with a sessionStorage navigation checkpoint; does not persist rrweb replay |
 
-Persistence is best effort when browser storage is unavailable or full. Restored and new telemetry share `maxBytes` and `maxAgeSeconds`; the byte budget accounts for complete serialized records. The SDK checkpoints after activity, on hidden/pagehide, and on `flush()`. IndexedDB writes alone may not finish during unload, so the current tab also keeps a synchronous sessionStorage checkpoint. Replay stays in memory and does not survive a full page navigation.
+Persistence is best effort when browser storage is unavailable or full. Restored and new telemetry share `maxBytes` and `maxAgeSeconds`; the byte budget accounts for complete serialized records. The SDK writes the buffer once when the page is hidden or unloads, and on `flush()`, never on a timer: serializing the whole buffer is a long task on a phone. IndexedDB writes alone may not finish during unload, so the current tab also keeps a synchronous sessionStorage checkpoint. Replay stays in memory and does not survive a full page navigation.
 
 Failed OTLP batches retry in the current page with increasing delays, on `online`, on visibility changes, and after startup. The outbox prunes batches after 8 attempts or 24 hours and keeps the newest 200 on a drain. `buffer.persist: false` stops durable retries and removes stored telemetry and navigation checkpoints for this project token. It does not disable collection or the configuration cache.
 
@@ -83,18 +83,18 @@ What the 2.x SDK does with no rules.
 |---|---|---|
 | `errors`, `messages` | stream | stream |
 | `network`, `console`, `navigation`, `userActions`, `custom` | buffer | stream |
-| `webVitals` | stream | stream |
+| `webVitals` | buffer | buffer |
 | `resourceTiming`, `longTasks`, `routeTiming` | off | off |
 | replay | buffer | stream |
 | sessions | on | on |
 
 The performance signals that are off are still measured on the page, so a rule can switch one on for a cohort, a trigger can match it while it is off, and a trigger or capture that names it streams it for a while. See [Performance signals](#performance-signals).
 
-Production defaults keep session lifecycle metadata and web vitals on, with healthy breadcrumbs and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
+Production defaults send session lifecycle metadata and the aggregated [performance metrics](/learn/client-metrics), and keep healthy breadcrumbs, web vital events and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
 
 Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. Configure `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` to tune these limits; they reset when the SDK is recreated.
 
-For an optional stable sample of healthy-session breadcrumbs and request spans, use `baselineSampleRate: 0.01` (1%). The default is 0. Selection uses the session ID and persists across page reloads within that session. It does not enable replay or override explicitly disabled signals, signal filters, or exporter limits. Web vitals remain enabled independently, so performance diagnosis is not restricted to sessions with errors.
+For an optional stable sample of healthy-session breadcrumbs and request spans, use `baselineSampleRate: 0.01` (1%). The default is 0. Selection uses the session ID and persists across page reloads within that session. It does not enable replay or override explicitly disabled signals, signal filters, or exporter limits. Performance metrics are uploaded independently of it, so performance diagnosis is not restricted to sessions with errors.
 
 Set `sessions.baselineSampleRate: 0.01` in a rule (or use **Use 1% baseline** in the rule editor) to enable that sample remotely. Targeted captures remain separate: duration is limited to 24 hours, lookback to 24 hours of locally retained data, and each project can have at most 20 active captures. Local buffers default to 2 MiB of telemetry and 8 MiB of replay; collection also respects developer ceilings and plan limits. These bounds are not a total upload-byte budget.
 

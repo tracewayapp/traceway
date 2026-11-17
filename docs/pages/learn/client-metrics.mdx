@@ -61,12 +61,13 @@ Every dimension is bounded. There is never a session, user or device id, and nev
 | `network.type` | 8 |
 | `url.path` (web), `screen` (mobile) | 200 |
 | `host` (request metrics) | 50 |
+| `server_name` (the app's `service.name`) | 20 |
 | `country` | set by the server, never by the client; see below |
 | `target` (attribution), `script` (script time) | 200, 100 |
 | `custom.<key>` | 2 keys per project, 50 values each |
 | `rating`, `navigation_type`, `outcome`, `type`, `start_type` | fixed, per metric |
 
-A value past its cap, longer than 64 bytes, or outside a fixed set becomes `other`. A metric also has a budget of 5,000 series per project per day; past it `target`, `script` and then `url.path` are folded to `other`. The caps hold for the whole deployment and across restarts: what one instance admits is shared with the others within a flush interval.
+A value past its cap, longer than 64 bytes, or outside a fixed set becomes `other`. A metric also has a budget of 5,000 series per project per day; past it `target`, `script`, `url.path`, `screen` and then `host` are folded to `other`. The caps hold for the whole deployment and across restarts: what one instance admits is shared with the others within a flush interval.
 
 `country` is the ISO code of the request's origin. It needs a source, which the operator configures: a header set by a CDN (`GEOIP_COUNTRY_HEADER`) or a MaxMind-format country database (`GEOIP_DB_PATH`). Without one there is no country, and the dashboard shows no country filter. The address itself is not stored.
 

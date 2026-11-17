@@ -243,9 +243,14 @@ func buildSessionFilterClauseSQLite(search string, filters []shared.SessionAttri
 	}
 	for i, f := range filters {
 		if f.Key == "__recording_trigger" {
-			key := fmt.Sprintf("reason_%d", i)
-			sb.WriteString(" AND sessions.id IN (SELECT session_id FROM session_recording_reasons WHERE project_id = :project_id AND trigger_id = :" + key + ")")
-			params[key] = f.Value
+			// One trigger id, or the ids of a rule's triggers separated by commas (an id cannot contain one).
+			names := make([]string, 0, 1)
+			for n, id := range strings.Split(f.Value, ",") {
+				key := fmt.Sprintf("reason_%d_%d", i, n)
+				names = append(names, ":"+key)
+				params[key] = id
+			}
+			sb.WriteString(" AND sessions.id IN (SELECT session_id FROM session_recording_reasons WHERE project_id = :project_id AND trigger_id IN (" + strings.Join(names, ", ") + "))")
 			continue
 		}
 		if f.Key == "" {

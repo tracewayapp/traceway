@@ -46,16 +46,25 @@ func (r *metricHistogramRepository) InsertCells(ctx context.Context, cells []sha
 	})
 }
 
-// histogramTable picks the rollup by range, inside each table's TTL: minutes are
-// kept 7 days, hours 90 days, days 2 years.
-func histogramTable(rangeDuration time.Duration) string {
+const (
+	histogramMinuteTTL = 7 * 24 * time.Hour
+	histogramHourTTL   = 90 * 24 * time.Hour
+)
+
+// histogramTable picks the rollup, and says its grain in seconds. A long range reads a
+// coarser table to stay fast, and so does a range that starts before a finer table's
+// TTL (minutes are kept 7 days, hours 90 days, days 2 years): a 24 hour chunk of an
+// SLO backfill three weeks back would find the minute table empty and count the day
+// as having no events.
+func histogramTable(from, to time.Time) (string, int) {
+	span, age := to.Sub(from), time.Since(from)
 	switch {
-	case rangeDuration <= 72*time.Hour:
-		return "metric_histograms"
-	case rangeDuration <= 60*24*time.Hour:
-		return "metric_histograms_1h"
+	case span <= 72*time.Hour && age < histogramMinuteTTL:
+		return "metric_histograms", 60
+	case span <= 60*24*time.Hour && age < histogramHourTTL:
+		return "metric_histograms_1h", 3600
 	default:
-		return "metric_histograms_1d"
+		return "metric_histograms_1d", 86400
 	}
 }
 
@@ -80,21 +89,32 @@ func (r *metricHistogramRepository) Query(ctx context.Context, projectId uuid.UU
 	if intervalMinutes < 1 {
 		intervalMinutes = 1
 	}
-	var args []any
+	var groupArgs []any
 	groupExpr := "''"
 	if len(groupBy) > 0 {
 		parts := make([]string, len(groupBy))
 		for i, key := range groupBy {
-			parts[i] = histogramDimExpr(key, &args)
+			parts[i] = histogramDimExpr(key, &groupArgs)
 		}
 		groupExpr = strings.Join(parts, " || '"+shared.GroupKeySeparator+"' || ")
 	}
+	table, grain := histogramTable(from, to)
+	whereArgs := []any{projectId, name, from.UTC(), to.UTC()}
+	where := " WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?" + histogramFilters(tagFilters, &whereArgs)
+
 	query := "SELECT " + epochBucket("recorded_at", intervalMinutes*60) + " AS bucket, " + groupExpr + " AS group_key, " +
 		"sum(cnt), sum(total), min(min_val), max(max_val), sum(zero_cnt), (sumMap(buckets.1, buckets.2) AS merged).1, merged.2, sum(if(weight_squares > 0, weight_squares, cnt * 1000)) " +
-		"FROM " + histogramTable(to.Sub(from)) + " WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?"
-	args = append(args, projectId, name, from.UTC(), to.UTC())
-	query += histogramFilters(tagFilters, &args) + " GROUP BY bucket, group_key ORDER BY group_key ASC, bucket ASC"
-	if len(groupBy) > 0 && maxGroups > 0 {
+		"FROM " + table + where
+	args := append(append([]any{}, groupArgs...), whereArgs...)
+	limited := len(groupBy) > 0 && maxGroups > 0
+	if limited {
+		// The groups with the most observations, one more than asked for so the caller learns there were more.
+		query += " AND (" + groupExpr + ") IN (SELECT " + groupExpr + " AS top_key FROM " + table + where +
+			fmt.Sprintf(" GROUP BY top_key ORDER BY sum(cnt) DESC, top_key ASC LIMIT %d)", maxGroups+1)
+		args = append(append(append(args, groupArgs...), groupArgs...), whereArgs...)
+	}
+	query += " GROUP BY bucket, group_key ORDER BY group_key ASC, bucket ASC"
+	if limited {
 		query += fmt.Sprintf(" LIMIT %d", shared.TimeSeriesRowLimit(maxGroups))
 	}
 
@@ -125,12 +145,13 @@ func (r *metricHistogramRepository) Query(ctx context.Context, projectId uuid.UU
 		case groupKey == "":
 			groupKey = "(empty)"
 		}
-		series.AddKeyed(time.Unix(bucket, 0).UTC(), groupKey, h)
+		series.AddGrain(time.Unix(bucket, 0).UTC(), groupKey, h, grain)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, false, err
 	}
-	return series.Result(), series.Truncated, nil
+	result := series.Result()
+	return result, series.Truncated, nil
 }
 
 func (r *metricHistogramRepository) Discover(ctx context.Context, projectId uuid.UUID, from, to time.Time) ([]models.DiscoveredMetric, error) {

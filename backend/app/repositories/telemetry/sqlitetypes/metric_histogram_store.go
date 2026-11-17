@@ -31,9 +31,7 @@ type HistogramStore struct {
 const (
 	histogramGrainMinute = 60
 	histogramGrainHour   = 3600
-	// compactBatchRows bounds the memory of one compaction step.
-	compactBatchRows = 20000
-	maxExemplarRows  = 50
+	maxExemplarRows      = 50
 )
 
 const histogramInsert = "INSERT INTO metric_histograms (project_id, name, recorded_at, grain_seconds, dims, cnt, total, min_val, max_val, zero_cnt, buckets, weight_squares) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -129,7 +127,7 @@ func (s *HistogramStore) Query(ctx context.Context, projectId uuid.UUID, name st
 	filter, filterArgs := s.filterClause(tagFilters)
 	args := append([]any{projectId.String(), name, s.TimeArg(from), s.TimeArg(to)}, filterArgs...)
 	rows, err := db.TelemetryDB.QueryContext(ctx,
-		"SELECT "+histogramColumns+" FROM metric_histograms WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?"+filter, args...)
+		"SELECT grain_seconds, "+histogramColumns+" FROM metric_histograms WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?"+filter, args...)
 	if err != nil {
 		return nil, false, err
 	}
@@ -139,19 +137,21 @@ func (s *HistogramStore) Query(ctx context.Context, projectId uuid.UUID, name st
 	for rows.Next() {
 		var recordedAt SQLiteTime
 		var dims, buckets string
+		var grain int
 		h := &shared.Histogram{}
-		if err := rows.Scan(scanHistogram(&recordedAt, &dims, h, &buckets)...); err != nil {
+		if err := rows.Scan(append([]any{&grain}, scanHistogram(&recordedAt, &dims, h, &buckets)...)...); err != nil {
 			return nil, false, err
 		}
 		if h.Buckets, err = shared.DecodeBuckets(buckets); err != nil {
 			return nil, false, fmt.Errorf("metric_histograms buckets: %w", err)
 		}
-		series.Add(recordedAt.Time, decodeDims(dims), h)
+		series.AddGrain(recordedAt.Time, shared.HistogramGroupKey(decodeDims(dims), groupBy), h, grain)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, false, err
 	}
-	return series.Result(), series.Truncated, nil
+	result := series.Result()
+	return result, series.Truncated, nil
 }
 
 // Discover lists the histogram metrics of a project with the dimension keys they carry.
@@ -258,8 +258,10 @@ func (s *HistogramStore) FindExemplars(ctx context.Context, projectId uuid.UUID,
 // series budget counts what is stored, not what one process has seen.
 func (s *HistogramStore) HotSeries(ctx context.Context, from time.Time, minSeries, limit int) ([]shared.MetricSeriesSet, error) {
 	rows, err := db.TelemetryDB.QueryContext(ctx,
-		"SELECT project_id, name FROM metric_histograms WHERE recorded_at >= ? GROUP BY project_id, name HAVING COUNT(DISTINCT dims) >= ? LIMIT ?",
-		s.TimeArg(from), minSeries, shared.MaxHotSeriesMetrics)
+		// The grain predicate changes nothing in the result; it lets SQLite use the (grain_seconds, recorded_at)
+		// index for a query that runs every minute, instead of scanning the table.
+		"SELECT project_id, name FROM metric_histograms WHERE grain_seconds IN (?, ?) AND recorded_at >= ? GROUP BY project_id, name HAVING COUNT(DISTINCT dims) >= ? LIMIT ?",
+		histogramGrainMinute, histogramGrainHour, s.TimeArg(from), minSeries, shared.MaxHotSeriesMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -302,14 +304,14 @@ func (s *HistogramStore) HotSeries(ctx context.Context, from time.Time, minSerie
 	return sets, nil
 }
 
-type compactKey struct {
-	projectId, name, dims string
-	hour                  int64
-}
+// compactSlice is how much of an hour one DELETE ... RETURNING takes: the engine holds
+// the returned rows in memory until the statement ends.
+const compactSlice = 5 * time.Minute
 
 // Compact folds minute rows older than cutoff into one row per cell per hour, so a
 // read over weeks merges thousands of rows and not millions. It works through whole
-// hours, oldest first, and returns the number of minute rows it replaced.
+// hours, oldest first, one metric of one project at a time, and returns the number
+// of minute rows it replaced.
 func (s *HistogramStore) Compact(ctx context.Context, cutoff time.Time) (int, error) {
 	cutoff = cutoff.UTC().Truncate(time.Hour)
 	replaced := 0
@@ -326,6 +328,11 @@ func (s *HistogramStore) Compact(ctx context.Context, cutoff time.Time) (int, er
 	return replaced, ctx.Err()
 }
 
+type compactUnit struct {
+	projectId, name string
+}
+
+// compactStep compacts the oldest hour that still has minute rows.
 func (s *HistogramStore) compactStep(ctx context.Context, cutoff time.Time) (int, error) {
 	var oldest SQLiteTime
 	err := db.TelemetryDB.QueryRowContext(ctx,
@@ -337,64 +344,98 @@ func (s *HistogramStore) compactStep(ctx context.Context, cutoff time.Time) (int
 	to := from.Add(time.Hour)
 
 	rows, err := db.TelemetryDB.QueryContext(ctx,
-		"SELECT project_id, name, "+histogramColumns+" FROM metric_histograms WHERE grain_seconds = ? AND recorded_at >= ? AND recorded_at < ? LIMIT ?",
-		histogramGrainMinute, s.TimeArg(from), s.TimeArg(to), compactBatchRows)
+		"SELECT DISTINCT project_id, name FROM metric_histograms WHERE grain_seconds = ? AND recorded_at >= ? AND recorded_at < ?",
+		histogramGrainMinute, s.TimeArg(from), s.TimeArg(to))
 	if err != nil {
 		return 0, err
 	}
-	merged := make(map[compactKey]*shared.Histogram)
-	count := 0
+	var units []compactUnit
 	for rows.Next() {
-		var projectId, name, dims, buckets string
-		var recordedAt SQLiteTime
-		h := &shared.Histogram{}
-		if err := rows.Scan(append([]any{&projectId, &name}, scanHistogram(&recordedAt, &dims, h, &buckets)...)...); err != nil {
+		var unit compactUnit
+		if err := rows.Scan(&unit.projectId, &unit.name); err != nil {
 			rows.Close()
 			return 0, err
 		}
-		if h.Buckets, err = shared.DecodeBuckets(buckets); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		key := compactKey{projectId, name, dims, from.Unix()}
-		if merged[key] == nil {
-			merged[key] = shared.NewHistogram()
-		}
-		merged[key].Merge(h)
-		count++
+		units = append(units, unit)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
-	// A partial hour would be merged twice on the next step.
-	if count >= compactBatchRows {
-		return 0, fmt.Errorf("metric_histograms: hour %s holds more than %d minute rows, not compacted", from.Format(time.RFC3339), compactBatchRows)
-	}
 
-	keys := make([]compactKey, 0, len(merged))
-	for key := range merged {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].projectId+keys[i].name+keys[i].dims < keys[j].projectId+keys[j].name+keys[j].dims
-	})
-	cells := make([]shared.MetricHistogramCell, 0, len(keys))
-	for _, key := range keys {
-		projectId, err := uuid.Parse(key.projectId)
-		if err != nil {
-			continue
+	replaced := 0
+	for _, unit := range units {
+		if ctx.Err() != nil {
+			return replaced, ctx.Err()
 		}
-		cells = append(cells, shared.MetricHistogramCell{ProjectId: projectId, Name: key.name, RecordedAt: from, Dims: decodeDims(key.dims), Hist: merged[key]})
+		n, err := s.compactUnit(ctx, unit, from, to)
+		if err != nil {
+			return replaced, fmt.Errorf("metric_histograms: compacting %s of project %s at %s: %w", unit.name, unit.projectId, from.Format(time.RFC3339), err)
+		}
+		replaced += n
 	}
+	return replaced, nil
+}
 
+// compactUnit replaces the minute rows of one metric in one hour with hour rows, in
+// one transaction. The rows it merges are the rows it deleted, so a row that arrives
+// late, while this runs, is neither lost nor counted twice: it stays a minute row
+// for the next pass.
+func (s *HistogramStore) compactUnit(ctx context.Context, unit compactUnit, from, to time.Time) (int, error) {
+	projectId, err := uuid.Parse(unit.projectId)
+	if err != nil {
+		return 0, nil
+	}
 	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, "DELETE FROM metric_histograms WHERE grain_seconds = ? AND recorded_at >= ? AND recorded_at < ?", histogramGrainMinute, s.TimeArg(from), s.TimeArg(to)); err != nil {
-		return 0, err
+
+	merged := make(map[string]*shared.Histogram)
+	count := 0
+	for start := from; start.Before(to); start = start.Add(compactSlice) {
+		rows, err := tx.QueryContext(ctx,
+			"DELETE FROM metric_histograms WHERE project_id = ? AND name = ? AND grain_seconds = ? AND recorded_at >= ? AND recorded_at < ? RETURNING "+histogramColumns,
+			unit.projectId, unit.name, histogramGrainMinute, s.TimeArg(start), s.TimeArg(start.Add(compactSlice)))
+		if err != nil {
+			return 0, err
+		}
+		for rows.Next() {
+			var dims, buckets string
+			var recordedAt SQLiteTime
+			h := &shared.Histogram{}
+			if err := rows.Scan(scanHistogram(&recordedAt, &dims, h, &buckets)...); err != nil {
+				rows.Close()
+				return 0, err
+			}
+			if h.Buckets, err = shared.DecodeBuckets(buckets); err != nil {
+				rows.Close()
+				return 0, err
+			}
+			if merged[dims] == nil {
+				merged[dims] = shared.NewHistogram()
+			}
+			merged[dims].Merge(h)
+			count++
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return 0, err
+		}
+	}
+	if count == 0 {
+		return 0, nil
+	}
+
+	keys := make([]string, 0, len(merged))
+	for key := range merged {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	cells := make([]shared.MetricHistogramCell, 0, len(keys))
+	for _, key := range keys {
+		cells = append(cells, shared.MetricHistogramCell{ProjectId: projectId, Name: unit.name, RecordedAt: from, Dims: decodeDims(key), Hist: merged[key]})
 	}
 	if err := s.insertCells(ctx, tx, cells, histogramGrainHour); err != nil {
 		return 0, err

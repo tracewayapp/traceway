@@ -6,7 +6,8 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import { ArrowDown, ArrowUp, Eye, Pencil, Plus, Trash2, X } from '@lucide/svelte';
+	import { ArrowDown, ArrowUp, Eye, Pencil, Plus, Trash2, Video, X } from '@lucide/svelte';
+	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
@@ -17,6 +18,7 @@
 	import {
 		summarizeConditions,
 		summarizeSettings,
+		triggerIdsOfRules,
 		type SdkCapture,
 		type SdkConfigRule
 	} from './sdk-config';
@@ -196,6 +198,19 @@
 									{summarizeConditions(rule.conditions)} → {summarizeSettings(rule.settings)}
 								</div>
 							</div>
+							{#if (rule.settings?.triggers?.length ?? 0) > 0}
+								<Button
+									variant="outline"
+									size="sm"
+									class="shrink-0"
+									href={resolve(
+										`/sessions?projectId=${encodeURIComponent(projectsState.currentProjectId ?? '')}&ruleId=${rule.id}&preset=7d`
+									)}
+								>
+									<Video class="mr-2 h-4 w-4" />
+									Sessions
+								</Button>
+							{/if}
 							{#if canWrite}
 								<div class="flex shrink-0 items-center">
 									<Button
@@ -291,7 +306,12 @@
 	{/if}
 </div>
 
-<SdkConfigRuleDialog bind:open={ruleDialogOpen} rule={editingRule} onSaved={load} />
+<SdkConfigRuleDialog
+	bind:open={ruleDialogOpen}
+	rule={editingRule}
+	otherTriggerIds={triggerIdsOfRules(rules, editingRule?.id)}
+	onSaved={load}
+/>
 <SdkConfigPreviewDialog bind:open={previewOpen} />
 <SdkCaptureDialog bind:open={captureOpen} onCreated={load} />
 

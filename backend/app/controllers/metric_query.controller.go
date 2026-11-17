@@ -118,6 +118,9 @@ func queryHistogramSeries(ctx context.Context, projectId uuid.UUID, q MetricQuer
 			}
 			points = []shared.HistogramSeriesPoint{{Timestamp: from.UTC(), Hist: merged}}
 		}
+		if !wholeRange {
+			points = shared.SpreadHistogramPoints(points, intervalMinutes, from, to)
+		}
 		out := make([]models.TimeSeriesPoint, 0, len(points))
 		for _, point := range points {
 			value := point.Hist.Aggregate(agg, threshold)

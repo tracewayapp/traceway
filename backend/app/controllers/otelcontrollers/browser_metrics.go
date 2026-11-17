@@ -93,7 +93,9 @@ func browserObservations(eventName string, record models.LogRecord) []clientObse
 	return observations
 }
 
-// urlPath keeps the path of a page URL: the query and fragment would make every visit its own series.
+// urlPath keeps the path of a page URL: the query and fragment would make every visit its own series. The path
+// stays percent-encoded, as the browser reports location.pathname and as the SDKs that aggregate on the device
+// send it, so both name the same series.
 func urlPath(raw string) string {
 	if raw == "" {
 		return ""
@@ -102,5 +104,5 @@ func urlPath(raw string) string {
 	if err != nil {
 		return ""
 	}
-	return parsed.Path
+	return parsed.EscapedPath()
 }

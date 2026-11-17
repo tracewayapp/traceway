@@ -15,6 +15,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 type EvalResult struct {
@@ -271,7 +272,7 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 
 	var series []metricSeries
 	switch cfg.Aggregation {
-	case "last", "p95", "p99":
+	case "last", "p50", "p75", "p90", "p95", "p99":
 		order := "recorded_at DESC"
 		if cfg.Aggregation != "last" {
 			order = "value ASC"
@@ -328,10 +329,7 @@ func scanMetricSeriesValues(ctx context.Context, aggregation string, query strin
 	}
 	defer rows.Close()
 
-	pct := 0.95
-	if aggregation == "p99" {
-		pct = 0.99
-	}
+	pct := shared.HistogramAggregations[aggregation]
 	var series []metricSeries
 	var vals []float64
 	flush := func(key string) {

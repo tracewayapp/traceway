@@ -58,6 +58,28 @@ func startSQLiteRetention(ctx context.Context, days int, source string) {
 	}
 	if days == 0 {
 		config.Logf("Telemetry retention disabled (%s=0)", source)
+		// Folding histogram minute rows into hour rows is not retention: without it every read of
+		// a long range merges minute rows for as long as the data is kept, which is forever here.
+		go func() {
+			defer traceway.Recover()
+			compact := func() {
+				traceway.RunTask(ctx, "retention.histograms", func(ctx context.Context) {
+					compactHistograms(ctx)
+					reclaimTelemetryDisk(ctx)
+				})
+			}
+			compact()
+			ticker := time.NewTicker(tickInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					compact()
+				}
+			}
+		}()
 		return
 	}
 

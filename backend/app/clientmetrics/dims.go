@@ -369,6 +369,11 @@ func (g *guard) resolve(projectId uuid.UUID, name string, metric *Metric, resour
 			}
 			continue
 		}
+		// What the server or the resource decides is not the metric's to restate: country is resolved from
+		// the request, never taken from the client.
+		if _, owned := resourceDimensions[key]; owned || key == DimensionCountry || strings.HasPrefix(key, globalDimensionPrefix) {
+			continue
+		}
 		if !contains(customKeys, key) {
 			if len(customKeys) >= MaxCustomDimensions || len(key) > MaxDimensionLength {
 				continue

@@ -114,6 +114,8 @@ type NotificationRuleState struct {
 	Firing    bool       `json:"firing" lit:"firing"`
 	Since     *time.Time `json:"since" lit:"since"`
 	UpdatedAt time.Time  `json:"updatedAt" lit:"updated_at"`
+	// Detail is what a rule that notifies once per something (a release and segment) has already notified.
+	Detail string `json:"-" lit:"detail"`
 }
 
 type EndpointSLIConfig struct {

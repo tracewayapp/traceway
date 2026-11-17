@@ -3,6 +3,7 @@ package notifications
 import (
 	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -11,9 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
 )
 
@@ -66,6 +69,12 @@ func histogramRuleValue(h *shared.Histogram, cfg metricThresholdConfig) (float64
 	switch cfg.Aggregation {
 	case "count", "sum":
 		return h.Aggregate(cfg.Aggregation, 0), true
+	case "max", "min":
+		// An extreme was observed, it is not an estimate: one frozen page is a frozen page. A minimum
+		// number of observations applies only when the rule asks for one.
+		if cfg.MinCount <= 0 {
+			return h.Aggregate(cfg.Aggregation, 0), true
+		}
 	}
 	minCount := cfg.MinCount
 	if minCount <= 0 {
@@ -102,9 +111,10 @@ func histogramMetricSeries(ctx context.Context, cfg metricThresholdConfig, proje
 		return nil, false, err
 	}
 	// No rows: a distribution with no traffic, or a point metric. Only the first is
-	// ours, and it has nothing to evaluate.
+	// ours, and it has nothing to evaluate. A percentile of a point metric is computed
+	// from its points; good_ratio exists for distributions only.
 	if len(histograms) == 0 {
-		return nil, shared.IsHistogramOnlyAggregation(cfg.Aggregation) && cfg.Aggregation != "p95" && cfg.Aggregation != "p99" || isDistributionRuleMetric(cfg.MetricName), nil
+		return nil, cfg.Aggregation == shared.AggregationGoodRatio || isDistributionRuleMetric(cfg.MetricName), nil
 	}
 	keys := make([]string, 0, len(histograms))
 	for key := range histograms {
@@ -358,16 +368,9 @@ func evaluateMetricReleaseRegression(ctx context.Context, rule *models.Notificat
 			}
 		}
 	}
-	// Once per release and segment: the next evaluation finds the same two releases.
-	cooldown := time.Duration(rule.CooldownMinutes) * time.Minute
-	fresh := findings[:0]
-	for _, finding := range findings {
-		key := metricSeriesDedupKey(rule.Id, "release:"+comparison.newest+":"+finding.segment)
-		if dedup.isDuplicate(key, cooldown) {
-			continue
-		}
-		dedup.record(key)
-		fresh = append(fresh, finding)
+	fresh, err := unnotifiedReleaseFindings(ctx, rule.Id, comparison.newest, findings)
+	if err != nil {
+		return nil, err
 	}
 	if len(fresh) == 0 {
 		return &EvalResult{Fired: false}, nil
@@ -388,6 +391,68 @@ func evaluateMetricReleaseRegression(ctx context.Context, rule *models.Notificat
 		messages = append(messages, buildReleaseRegressionMessage(cfg, comparison.newest, comparison.previous, label, finding.current, finding.baseline, adjusted, projectName))
 	}
 	return &EvalResult{Fired: true, Messages: messages}, nil
+}
+
+// releaseNotified is what a release regression rule keeps in its state row: the
+// release it last reported and the segments reported for it.
+type releaseNotified struct {
+	Release  string   `json:"release"`
+	Segments []string `json:"segments"`
+}
+
+const maxReleaseSegmentsRemembered = 1000
+
+// unnotifiedReleaseFindings keeps the findings not yet reported for this release and
+// records them as reported. The next evaluation finds the same two releases, so the
+// record is what makes the rule notify once per release and segment; it is stored
+// with the rule, so a restart does not repeat a notification and, of several
+// instances evaluating the rule, the one whose write applies is the one that notifies.
+func unnotifiedReleaseFindings(ctx context.Context, ruleId int, release string, findings []releaseFinding) ([]releaseFinding, error) {
+	if len(findings) == 0 {
+		return nil, nil
+	}
+	state, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.NotificationRuleState, error) {
+		return transactional.NotificationRuleStateRepository.Find(tx, ruleId)
+	})
+	if err != nil {
+		return nil, err
+	}
+	previous := ""
+	var notified releaseNotified
+	if state != nil {
+		previous = state.Detail
+		if json.Unmarshal([]byte(previous), &notified) != nil || notified.Release != release {
+			notified = releaseNotified{}
+		}
+	}
+	var fresh []releaseFinding
+	for _, finding := range findings {
+		if !slices.Contains(notified.Segments, finding.segment) {
+			fresh = append(fresh, finding)
+		}
+	}
+	if len(fresh) == 0 {
+		return nil, nil
+	}
+	next := releaseNotified{Release: release, Segments: notified.Segments}
+	for _, finding := range fresh {
+		next.Segments = append(next.Segments, finding.segment)
+	}
+	slices.Sort(next.Segments)
+	if len(next.Segments) > maxReleaseSegmentsRemembered {
+		next.Segments = next.Segments[:maxReleaseSegmentsRemembered]
+	}
+	encoded, err := json.Marshal(next)
+	if err != nil {
+		return nil, err
+	}
+	swapped, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (bool, error) {
+		return transactional.NotificationRuleStateRepository.SwapDetail(tx, ruleId, previous, string(encoded), time.Now().UTC())
+	})
+	if err != nil || !swapped {
+		return nil, err
+	}
+	return fresh, nil
 }
 
 func buildReleaseRegressionMessage(cfg releaseRegressionConfig, newest, previous, segment string, current, baseline float64, adjusted bool, projectName string) Message {

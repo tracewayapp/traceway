@@ -24,7 +24,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import { CalendarDate } from '@internationalized/date';
 	import { browser } from '$app/environment';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, SDK_CONFIG_FRAMEWORKS } from '$lib/state/projects.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
@@ -57,6 +57,33 @@
 
 	type Reason = { triggerId: string; name: string; sequence: string; revision: string };
 	let reasonOptions = $state<Reason[]>([]);
+	type RuleOption = { id: number; name: string; triggers: number };
+	let ruleOptions = $state<RuleOption[]>([]);
+	let rulesProjectId: string | null = null;
+	const hasRules = $derived(
+		!!projectsState.currentProject &&
+			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)
+	);
+
+	// The rules of Data Collection, to filter by. A failure only hides the filter's names, never the list.
+	async function loadRuleOptions() {
+		const projectId = projectsState.currentProjectId;
+		if (!projectId || !hasRules || rulesProjectId === projectId) return;
+		rulesProjectId = projectId;
+		try {
+			const response = await api.get('/sdk-config/rules', { projectId });
+			ruleOptions = (response.data ?? []).map(
+				(rule: { id: number; name: string; settings?: { triggers?: unknown[] } }) => ({
+					id: rule.id,
+					name: rule.name,
+					triggers: rule.settings?.triggers?.length ?? 0
+				})
+			);
+		} catch {
+			ruleOptions = [];
+			rulesProjectId = null;
+		}
+	}
 	type Session = {
 		recordingReasons?: Reason[];
 		id: string;
@@ -97,6 +124,7 @@
 				...timeParams,
 				search: '',
 				triggerId: '',
+				ruleId: '',
 				attributeFilters: [] as AttributeFilter[]
 			};
 		const params = new URLSearchParams(window.location.search);
@@ -109,12 +137,14 @@
 			...timeParams,
 			search: params.get('search') ?? '',
 			triggerId: params.get('triggerId') ?? '',
+			ruleId: /^\d+$/.test(params.get('ruleId') ?? '') ? params.get('ruleId')! : '',
 			attributeFilters: attrs
 		};
 	}
 
 	const initialUrlParams = parseSessionsUrlParams();
 	let triggerId = $state(initialUrlParams.triggerId);
+	let ruleId = $state(initialUrlParams.ruleId);
 	const initialRange = getResolvedTimeRange(initialUrlParams, initialTimezone);
 
 	let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -208,6 +238,7 @@
 				to: selectedPreset ? null : getToDateTimeUTC(),
 				search: searchQuery.trim() || null,
 				triggerId: triggerId || null,
+				ruleId: ruleId || null,
 				attr: attributeFilters.map((f) => `${f.key}${filterOperator(f)}${f.value}`)
 			},
 			{ pushToHistory }
@@ -217,6 +248,7 @@
 	function handlePopState() {
 		const urlParams = parseSessionsUrlParams();
 		triggerId = urlParams.triggerId;
+		ruleId = urlParams.ruleId;
 		const range = getResolvedTimeRange(urlParams, timezone);
 		selectedPreset = urlParams.preset;
 		fromDate = dateToCalendarDate(range.from, timezone);
@@ -300,6 +332,7 @@
 				pagination: { page, pageSize }
 			};
 
+			void loadRuleOptions();
 			const reasonsResponse = await api.get('/sessions/recording-reasons', {
 				projectId: projectsState.currentProjectId!
 			});
@@ -310,7 +343,7 @@
 			];
 			const response = await api.post(
 				'/sessions',
-				{ ...requestBody, triggerId },
+				{ ...requestBody, triggerId, ruleId: ruleId ? Number(ruleId) : undefined },
 				{
 					projectId: projectsState.currentProjectId ?? undefined
 				}
@@ -389,25 +422,54 @@
 		{/snippet}
 	</PageHeader>
 
-	<div class="space-y-1">
-		<label for="recording-trigger-filter" class="text-sm font-medium">Recording trigger</label>
-		<select
-			id="recording-trigger-filter"
-			class="h-9 max-w-full rounded-md border bg-background px-3 text-sm"
-			bind:value={triggerId}
-			onchange={() => {
-				page = 1;
-				loadData();
-			}}
-		>
-			<option value="">All recording triggers</option>
-			{#if triggerId && !reasonOptions.some((r) => r.triggerId === triggerId)}<option
-					value={triggerId}>{triggerId}</option
-				>{/if}
-			{#each reasonOptions as reason (reason.triggerId)}<option value={reason.triggerId}
-					>{reason.name}</option
-				>{/each}
-		</select>
+	<div class="flex flex-wrap items-end gap-4">
+		{#if hasRules || ruleId}
+			<div class="space-y-1">
+				<label for="recording-rule-filter" class="text-sm font-medium">Recorded by rule</label>
+				<select
+					id="recording-rule-filter"
+					class="block h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+					bind:value={ruleId}
+					onchange={() => {
+						page = 1;
+						loadData();
+					}}
+				>
+					<option value="">All rules</option>
+					{#if ruleId && !ruleOptions.some((r) => String(r.id) === ruleId)}<option value={ruleId}
+							>Rule {ruleId}</option
+						>{/if}
+					{#each ruleOptions as rule (rule.id)}<option value={String(rule.id)}
+							>{rule.name}{rule.triggers === 0 ? ' (no triggers)' : ''}</option
+						>{/each}
+				</select>
+			</div>
+		{/if}
+		<div class="space-y-1">
+			<label for="recording-trigger-filter" class="text-sm font-medium">Recording trigger</label>
+			<select
+				id="recording-trigger-filter"
+				class="block h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+				bind:value={triggerId}
+				onchange={() => {
+					page = 1;
+					loadData();
+				}}
+			>
+				<option value="">All recording triggers</option>
+				{#if triggerId && !reasonOptions.some((r) => r.triggerId === triggerId)}<option
+						value={triggerId}>{triggerId}</option
+					>{/if}
+				{#each reasonOptions as reason (reason.triggerId)}<option value={reason.triggerId}
+						>{reason.name}</option
+					>{/each}
+			</select>
+		</div>
+		{#if ruleId}
+			<p class="pb-2 text-xs text-muted-foreground">
+				Sessions in which a trigger of this rule asked for a recording.
+			</p>
+		{/if}
 	</div>
 	<SearchBar
 		placeholder="Search session ID, user, or attribute value..."

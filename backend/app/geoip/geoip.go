@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/oschwald/maxminddb-golang/v2"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const reloadCheck = time.Hour
@@ -106,7 +107,13 @@ func (r *Resolver) Country(headerValue func(string) string, ip string) string {
 	}
 	if now := r.now().Unix(); now-r.checked.Load() >= int64(reloadCheck/time.Second) {
 		r.checked.Store(now)
-		go func() { _ = r.load() }()
+		go func() {
+			defer traceway.Recover()
+			// The reader in use stays; a failed reload only means the newer file is not read yet.
+			if err := r.load(); err != nil {
+				traceway.CaptureException(fmt.Errorf("geoip: reloading the country database: %w", err))
+			}
+		}()
 	}
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {

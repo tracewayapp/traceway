@@ -325,3 +325,46 @@ func TestAddressCapIsDividedByInstances(t *testing.T) {
 		t.Errorf("four instances let %d through here, want 25", got)
 	}
 }
+
+// An app's own metric may not restate what the server or the resource decides.
+func TestCustomMetricCannotSetServerDimensions(t *testing.T) {
+	p, sink := newTestPipeline(Config{})
+	projectId := uuid.New()
+	req := sdkPayload(t, withResource(map[string]any{"service.version": "1.0.0"}),
+		dataPoint{metric: "checkout.total", count: 1, attrs: map[string]string{
+			"country": "US", "service.version": "9.9.9", "custom.plan": "pro", "plan": "free"}})
+	p.IngestOTLP(projectId, req, Client{Country: "DE"}, time.Now())
+	_ = p.Flush(context.Background())
+	if len(sink.points) == 0 {
+		t.Fatal("the counter was not stored")
+	}
+	for _, point := range sink.points {
+		if point.Name != "checkout.total" {
+			continue
+		}
+		if point.Tags[DimensionCountry] != "DE" || point.Tags["service.version"] != "1.0.0" || point.Tags["plan"] != "free" {
+			t.Errorf("tags %v", point.Tags)
+		}
+		if _, set := point.Tags["custom.plan"]; set {
+			t.Errorf("custom.plan came from a data point: %v", point.Tags)
+		}
+	}
+}
+
+// A forged upload cannot make one device many users.
+func TestPerUserCounterCountsOnePerPoint(t *testing.T) {
+	p, sink := newTestPipeline(Config{})
+	projectId := uuid.New()
+	req := sdkPayload(t, withResource(map[string]any{}), dataPoint{metric: "browser.user", count: 2_000_000})
+	p.IngestOTLP(projectId, req, Client{IP: "203.0.113.9"}, time.Now())
+	_ = p.Flush(context.Background())
+	var total float64
+	for _, point := range sink.points {
+		if point.Name == "browser.user" {
+			total += point.Value
+		}
+	}
+	if total != 1 {
+		t.Errorf("browser.user = %v, want 1", total)
+	}
+}

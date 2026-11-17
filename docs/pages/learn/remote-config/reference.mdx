@@ -112,7 +112,7 @@ A rule can change it by id, or turn it off with `{ "id": "default-exception", "e
 
 | Field | Values | Meaning |
 |---|---|---|
-| `id` | 1-64 of `A-Z a-z 0-9 . _ -` | Rules merge triggers by id: a later rule with the same id replaces fields of an earlier one |
+| `id` | 1-64 of `A-Z a-z 0-9 . _ -` | Rules merge triggers by id: a later rule with the same id replaces fields of an earlier one. A client that matches two rules therefore runs one trigger per id, so two triggers meant to run side by side need different ids. The dashboard gives a template an id no other rule of the project uses |
 | `name` | text | Shown in the dashboard and on `traceway.trigger.fired` |
 | `enabled` | boolean | `false` removes the trigger |
 | `sampleRate` | 0 to 1 | Share of completed matches that fire |
@@ -128,13 +128,13 @@ A trigger with neither steps nor actions only patches the fields it sets on a tr
 | Field | Values | Meaning |
 |---|---|---|
 | `match` | matcher | Required |
-| `withinSeconds` | 1 to 86400 | Time allowed since the previous step; a later match starts the trigger over |
+| `withinSeconds` | 1 to 86400 | Time allowed since the previous step completed; a match that comes later does not count |
 | `count` | 1 to 1000 | Matching records the step needs |
 | `periodSeconds` | 1 to 86400 | Sliding window for `count`; needs `count` |
 
 ### Matchers
 
-For UI-built browser journeys, a matcher can instead be `{ "event": { "type": "click", "value": "#open-user" } }`. Types are `click`, `hover`, `navigation` and `log`; only `log` accepts `mode` (`exact` or `contains`). Values are limited to 256 characters. This form is exclusive with condition/all/any/not forms. See [Recording trigger sequences](/learn/remote-config/trigger-sequences) for selector restrictions, route parameters, reload recovery and session tags.
+For UI-built browser journeys, a matcher can instead be `{ "event": { "type": "click", "value": "#open-user" } }`. Types are `click`, `hover`, `navigation` and `log`; `mode` (`exact` or `contains`) applies to `log` and is ignored on the other types. Values are limited to 256 characters. This form is exclusive with condition/all/any/not forms. See [Recording trigger sequences](/learn/remote-config/trigger-sequences) for selector restrictions, route parameters, reload recovery and session tags.
 
 A matcher is a condition, `{ "key": "...", "op": "...", "value": ... }` (or `"values": [...]` for `in` and `not_in`), or exactly one of `{ "all": [matchers] }`, `{ "any": [matchers] }` and `{ "not": matcher }`. A step's matcher may nest 8 levels and hold 50 conditions; values are strings, numbers or booleans, at most 256 characters, and at most 100 per condition.
 
@@ -158,7 +158,7 @@ Operators, also used by [targeting conditions](#targeting):
 
 | Operator | Matches when the value |
 |---|---|
-| `eq`, `neq` | equals, or does not equal, `value` (numbers compare as numbers) |
+| `eq`, `neq` | equals, or does not equal, `value`. In a trigger step two values that both read as numbers compare as numbers (`"0120"` equals `120`); in a targeting condition only a `value` written as a number does, and a string compares as text |
 | `in`, `not_in` | is, or is not, one of `values` |
 | `contains`, `icontains` | contains `value`, case-sensitive or not |
 | `starts_with` | starts with `value` |
@@ -167,7 +167,9 @@ Operators, also used by [targeting conditions](#targeting):
 | `gt`, `gte`, `lt`, `lte` | compares as a number; in targeting conditions `value` must be a number (a numeric string is saved as the number) |
 | `version` | satisfies a version range such as `>=2.4 <3`: comparators separated by spaces or commas, dotted numbers compared part by part, so `1.10 > 1.9` |
 
-Text operators look at the first 4 KB of a value. There is no regular expression operator; `glob` runs in linear time.
+Text operators look at the first 4 KB of a value. There is no regular expression operator; `glob` backtracks to one point only, so it takes at most the length of the text times the length of the pattern.
+
+A step's matcher is a condition with a `key`, or exactly one of `all`, `any` (each with at least one matcher) and `not`. `values` cannot contain `null`. An action's `signals: []` means no signals, which is how a replay-only clip is written; leaving `signals` out means all of them.
 
 ### Actions
 
@@ -268,14 +270,14 @@ These stream unless the kill switch is on; session events additionally respect `
 - **Auth**: `Authorization: Bearer <project token>`. The `OpAMP-Instance-UID` header must match the message's `instance_uid`.
 - **State**: none on the server. The SDK sends its full description in every poll; a poll without one is answered with `ReportFullState`.
 - **Answer**: `remote_config.config_map["traceway"]` (`application/json`) with a SHA-256 `config_hash`, only when the hash differs from `remote_config_status.last_remote_config_hash`; and `connection_settings.opamp.heartbeat_interval_seconds`.
-- **Client capabilities**: ReportsStatus, AcceptsRemoteConfig, ReportsRemoteConfig, ReportsHeartbeat, and the custom capabilities `io.traceway.sdk.buffer/v1` and `io.traceway.sdk.capture/v1`.
+- **Client capabilities**: ReportsStatus, AcceptsRemoteConfig, ReportsRemoteConfig, ReportsHeartbeat, and the custom capabilities `io.traceway.sdk.buffer/v1`, `io.traceway.sdk.capture/v1` and `io.traceway.sdk.sequence-triggers/v1`. The custom capabilities are informational: the server does not read them and sends every client the same document.
 
 | Status | When | The SDK |
 |---|---|---|
 | 200 | Normal answer | Applies the document, reports `APPLIED` (or `FAILED` and keeps the last good one) |
 | 400 | Malformed message, or the uid header does not match | Backs off |
 | 401 | Unknown project token | Stops polling |
-| 403 | The token belongs to a project that is not a browser project (React, Vue, Svelte or jQuery) | Stops polling |
+| 403 | The token belongs to a project that is not a browser (React, Vue, Svelte, jQuery) or Flutter project | Stops polling |
 | 413 | Body over 64 KB, raw or decompressed | Does not retry that message |
 | 415 | Not `application/x-protobuf` | Backs off |
 | 503 | Too many polls at once, or the rules could not load; `Retry-After` set | Waits as told, keeps its settings |
@@ -288,7 +290,7 @@ Errors back off from 30 seconds to 30 minutes. The heartbeat is never shorter th
 
 ## Dashboard API
 
-The Data Collection page uses these routes. They need dashboard authentication, or an agent credential for the rule and preview routes (see [Agent Write Access](/learn/agent-write-access)), and write access on the project for changes. The `/api/sdk-config` routes answer `403` for a project that is not a browser project.
+The Data Collection page uses these routes. They need dashboard authentication, or an agent credential for the rule and preview routes (see [Agent Write Access](/learn/agent-write-access)), and write access on the project for changes. The `/api/sdk-config` routes answer `403` for a project that is not a browser or Flutter project.
 
 | Method | Endpoint | Purpose |
 |---|---|---|

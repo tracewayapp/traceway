@@ -336,16 +336,6 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		}
 	}
 
-	if len(result.Histograms) > 0 {
-		now := time.Now()
-		for _, h := range result.Histograms {
-			services.ClientMetrics().AddSeriesHistogram(projectId, h.Name, h.At, h.Tags, h.Hist, h.Cumulative, now)
-		}
-		if len(result.Points) == 0 && len(result.Entries) > 0 {
-			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
-		}
-	}
-
 	insertMs := 0.0
 	if len(result.Points) > 0 {
 		insertStart := time.Now()
@@ -356,6 +346,18 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		insertMs = msSince(insertStart)
 
 		if len(result.Entries) > 0 {
+			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
+		}
+	}
+
+	// After the write that can answer 503: the exporter sends the request again, and histograms added to
+	// memory by the failed attempt would be counted twice.
+	if len(result.Histograms) > 0 {
+		now := time.Now()
+		for _, h := range result.Histograms {
+			services.ClientMetrics().AddSeriesHistogram(projectId, h.Name, h.At, h.Tags, h.Hist, h.Cumulative, now)
+		}
+		if len(result.Points) == 0 && len(result.Entries) > 0 {
 			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
 		}
 	}
@@ -458,24 +460,19 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	}
 
 	insertStart := time.Now()
+	// Every write that can fail runs in the order that makes a retried export harmless. The reasons are an
+	// upsert, so they go before the log records, which a second attempt would store twice.
+	if err := telemetry.StoreSessionRecordingReasons(c, records); err != nil {
+		abortIngestStorage(c, "session recording reasons", err)
+		return
+	}
 	if len(records) > 0 {
 		if err := telemetry.LogRecordRepository.InsertAsync(c, records); err != nil {
 			abortIngestStorage(c, "log records", err)
 			return
 		}
 	}
-	if err := telemetry.StoreSessionRecordingReasons(c, records); err != nil {
-		abortIngestStorage(c, "session recording reasons", err)
-		return
-	}
 	monitoring.RecordLogsAccepted(len(records))
-	if perm.Data && len(result.Observations) > 0 {
-		// Into memory only: no storage write per event.
-		now, client := time.Now(), services.ClientOf(c.GetHeader, c.ClientIP())
-		for _, observation := range result.Observations {
-			services.ClientMetrics().ObserveEvent(projectId, observation.Name, observation.Value, observation.At, observation.Resource, observation.Attrs, client, now)
-		}
-	}
 	if len(sessions) > 0 {
 		if err := telemetry.SessionRepository.Upsert(c, sessions); err != nil {
 			abortIngestStorage(c, "sessions", err)
@@ -501,6 +498,15 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		}
 	}
 	insertMs := msSince(insertStart)
+
+	if perm.Data && len(result.Observations) > 0 {
+		// Into memory only, and only once nothing above can still answer 503: a retried export would
+		// observe the same events again.
+		now, client := time.Now(), services.ClientOf(c.GetHeader, c.ClientIP())
+		for _, observation := range result.Observations {
+			services.ClientMetrics().ObserveEvent(projectId, observation.Name, observation.Value, observation.At, observation.Resource, observation.Attrs, client, now)
+		}
+	}
 
 	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
 

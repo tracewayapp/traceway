@@ -47,6 +47,11 @@ func TestParseSettingsRejectsInvalidDocuments(t *testing.T) {
 		"trigger no lookback":  `{"triggers":[{"id":"t","steps":[{"match":{"key":"x","op":"exists"}}],"actions":[{"type":"flush"}]}]}`,
 		"steps without action": `{"triggers":[{"id":"t","steps":[{"match":{"key":"x","op":"exists"}}]}]}`,
 		"duplicate trigger":    `{"triggers":[{"id":"t","enabled":false},{"id":"t","enabled":true}]}`,
+		"empty all":            `{"triggers":[{"id":"t","steps":[{"match":{"all":[]}}],"actions":[{"type":"flush","lookbackSeconds":5}]}]}`,
+		"empty any in not":     `{"triggers":[{"id":"t","steps":[{"match":{"not":{"any":[]}}}],"actions":[{"type":"flush","lookbackSeconds":5}]}]}`,
+		"condition no key":     `{"triggers":[{"id":"t","steps":[{"match":{"op":"bogus"}}],"actions":[{"type":"flush","lookbackSeconds":5}]}]}`,
+		"null in values":       `{"triggers":[{"id":"t","steps":[{"match":{"key":"x","op":"in","values":[null]}}],"actions":[{"type":"flush","lookbackSeconds":5}]}]}`,
+		"metrics rate too low": `{"metrics":{"sampleRate":0.0001}}`,
 		"bad signal":           `{"triggers":[{"id":"t","steps":[{"match":{"key":"x","op":"exists"}}],"actions":[{"type":"stream","durationSeconds":5,"signals":["everything"]}]}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -363,6 +368,8 @@ func TestBrowserSequenceMatchers(t *testing.T) {
 		`{"event":{"type":"hover","value":"#menu .item"}}`,
 		`{"event":{"type":"navigation","value":"/users/{id}"}}`,
 		`{"event":{"type":"log","value":"ready","mode":"contains"}}`,
+		`{"event":{"type":"click","value":"[data-step=\"2\"]"}}`,
+		`{"event":{"type":"click","value":"button[data-kind=primary].-wide"}}`,
 	} {
 		_, err := ParseSettings([]byte(`{"schemaVersion":1,"triggers":[{"id":"journey","steps":[{"match":` + raw + `}],"actions":[{"type":"capture","replay":true,"durationSeconds":30}]}]}`))
 		if err != nil {
@@ -372,6 +379,8 @@ func TestBrowserSequenceMatchers(t *testing.T) {
 	for _, raw := range []string{
 		`{"event":{"type":"click","value":":has(*)"}}`,
 		`{"event":{"type":"click","value":"[broken"}}`,
+		`{"event":{"type":"click","value":"[data-step=2]"}}`,
+		`{"event":{"type":"click","value":".-1"}}`,
 		`{"event":{"type":"navigation","value":"/users/{id}/?token=x"}}`,
 		`{"event":{"type":"log","value":""}}`,
 		`{"event":{"type":"hover","value":"#a"},"key":"body","op":"exists"}`,
@@ -381,4 +390,27 @@ func TestBrowserSequenceMatchers(t *testing.T) {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
+}
+
+// The SDK reads a missing signals list as every signal, so an empty one has to survive being stored.
+func TestEmptySignalSelectionSurvivesStorage(t *testing.T) {
+	settings := mustSettings(t, `{"schemaVersion":1,"triggers":[{"id":"t","steps":[{"match":{"key":"event.name","op":"eq","value":"exception"}}],"actions":[{"type":"flush","lookbackSeconds":30,"signals":[],"replay":true},{"type":"emit","eventName":"x"}]}]}`)
+	stored, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(stored), `"signals":[]`) {
+		t.Fatalf("the empty selection was dropped: %s", stored)
+	}
+	if strings.Contains(string(stored), `"signals":null`) || strings.Count(string(stored), `"signals"`) != 1 {
+		t.Fatalf("an action without a selection must not carry one: %s", stored)
+	}
+	if _, err := ParseSettings(stored); err != nil {
+		t.Fatalf("the stored document no longer parses: %v", err)
+	}
+}
+
+func TestZeroMetricsSampleRateIsAllowed(t *testing.T) {
+	mustSettings(t, `{"schemaVersion":1,"metrics":{"sampleRate":0}}`)
+	mustSettings(t, `{"schemaVersion":1,"metrics":{"sampleRate":0.001}}`)
 }

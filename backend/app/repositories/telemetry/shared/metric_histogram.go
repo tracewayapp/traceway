@@ -46,6 +46,9 @@ const MaxHotSeriesMetrics = 200
 type HistogramSeriesPoint struct {
 	Timestamp time.Time
 	Hist      *Histogram
+	// GrainSeconds is the coarsest stored row merged into the point: 60, 3600 or 86400. A point of a grain
+	// longer than the bucket holds everything of that longer period, see SpreadHistogramPoints.
+	GrainSeconds int
 }
 
 // HistogramDimensionColumns maps the dimension keys of client metrics to the
@@ -130,12 +133,21 @@ func HistogramGroupKey(dims map[string]string, groupBy []string) string {
 // HistogramSeries merges histogram rows into one histogram per group per time
 // bucket. Rows may arrive in any order and any number of times per cell: merging is
 // what the storage engines would do anyway.
+//
+// With more groups than maxGroups the ones with the most observations are kept, so a
+// breakdown shows its busiest rows. Groups are collected up to a multiple of the cap
+// first; past that, further groups are not looked at.
 type HistogramSeries struct {
 	interval  time.Duration
 	groupBy   []string
 	maxGroups int
-	groups    map[string]map[int64]*Histogram
+	groups    map[string]*histogramGroup
 	Truncated bool
+}
+
+type histogramGroup struct {
+	buckets map[int64]*HistogramSeriesPoint
+	count   float64
 }
 
 func NewHistogramSeries(intervalMinutes int, groupBy []string, maxGroups int) *HistogramSeries {
@@ -146,45 +158,136 @@ func NewHistogramSeries(intervalMinutes int, groupBy []string, maxGroups int) *H
 		interval:  time.Duration(intervalMinutes) * time.Minute,
 		groupBy:   groupBy,
 		maxGroups: maxGroups,
-		groups:    make(map[string]map[int64]*Histogram),
+		groups:    make(map[string]*histogramGroup),
 	}
 }
 
+// collectedGroups is how many groups are held while reading, before the busiest
+// maxGroups are chosen.
+func (s *HistogramSeries) collectedGroups() int {
+	return max(2*s.maxGroups, s.maxGroups+2000)
+}
+
 func (s *HistogramSeries) Add(recordedAt time.Time, dims map[string]string, hist *Histogram) {
-	s.AddKeyed(recordedAt, HistogramGroupKey(dims, s.groupBy), hist)
+	s.AddGrain(recordedAt, HistogramGroupKey(dims, s.groupBy), hist, 0)
 }
 
 func (s *HistogramSeries) AddKeyed(recordedAt time.Time, key string, hist *Histogram) {
+	s.AddGrain(recordedAt, key, hist, 0)
+}
+
+// AddGrain adds a row stored at the given grain (seconds; 0 when unknown).
+func (s *HistogramSeries) AddGrain(recordedAt time.Time, key string, hist *Histogram, grainSeconds int) {
 	group, ok := s.groups[key]
 	if !ok {
-		if s.maxGroups > 0 && len(s.groups) >= s.maxGroups {
+		if s.maxGroups > 0 && len(s.groups) >= s.collectedGroups() {
 			s.Truncated = true
 			return
 		}
-		group = make(map[int64]*Histogram)
+		group = &histogramGroup{buckets: make(map[int64]*HistogramSeriesPoint)}
 		s.groups[key] = group
 	}
 	seconds := int64(s.interval / time.Second)
 	bucket := recordedAt.Unix() / seconds * seconds
-	merged, ok := group[bucket]
+	point, ok := group.buckets[bucket]
 	if !ok {
-		merged = NewHistogram()
-		group[bucket] = merged
+		point = &HistogramSeriesPoint{Timestamp: time.Unix(bucket, 0).UTC(), Hist: NewHistogram()}
+		group.buckets[bucket] = point
 	}
-	merged.Merge(hist)
+	point.Hist.Merge(hist)
+	point.GrainSeconds = max(point.GrainSeconds, grainSeconds)
+	group.count += hist.Count
 }
 
 func (s *HistogramSeries) Result() map[string][]HistogramSeriesPoint {
-	result := make(map[string][]HistogramSeriesPoint, len(s.groups))
-	for key, buckets := range s.groups {
+	keys := make([]string, 0, len(s.groups))
+	for key := range s.groups {
+		keys = append(keys, key)
+	}
+	if s.maxGroups > 0 && len(keys) > s.maxGroups {
+		sort.Slice(keys, func(i, j int) bool {
+			if s.groups[keys[i]].count != s.groups[keys[j]].count {
+				return s.groups[keys[i]].count > s.groups[keys[j]].count
+			}
+			return keys[i] < keys[j]
+		})
+		keys = keys[:s.maxGroups]
+		s.Truncated = true
+	}
+	result := make(map[string][]HistogramSeriesPoint, len(keys))
+	for _, key := range keys {
+		buckets := s.groups[key].buckets
 		points := make([]HistogramSeriesPoint, 0, len(buckets))
-		for bucket, hist := range buckets {
-			points = append(points, HistogramSeriesPoint{Timestamp: time.Unix(bucket, 0).UTC(), Hist: hist})
+		for _, point := range buckets {
+			points = append(points, *point)
 		}
 		sort.Slice(points, func(i, j int) bool { return points[i].Timestamp.Before(points[j].Timestamp) })
 		result[key] = points
 	}
 	return result
+}
+
+// SpreadHistogramPoints makes a chart of points whose stored grain is longer than the
+// chart's bucket. An hour row lands in the :00 bucket of a 15 minute chart, which
+// would draw four times the count there and nothing in the next three buckets, so it
+// is divided evenly over the buckets its hour covers, inside [from, to]. Percentiles
+// are unchanged by the division; counts, sums and rates come out per bucket.
+//
+// It is for charts only: anything that counts events (SLOs, alert thresholds) reads
+// the points as stored.
+func SpreadHistogramPoints(points []HistogramSeriesPoint, intervalMinutes int, from, to time.Time) []HistogramSeriesPoint {
+	interval := int64(intervalMinutes) * 60
+	if interval <= 0 {
+		return points
+	}
+	coarse := false
+	for _, point := range points {
+		if int64(point.GrainSeconds) > interval {
+			coarse = true
+			break
+		}
+	}
+	if !coarse {
+		return points
+	}
+	merged := make(map[int64]*Histogram, len(points))
+	add := func(bucket int64, hist *Histogram) {
+		if existing, ok := merged[bucket]; ok {
+			existing.Merge(hist)
+			return
+		}
+		copied := NewHistogram()
+		copied.Merge(hist)
+		merged[bucket] = copied
+	}
+	first := from.Unix() / interval * interval
+	for _, point := range points {
+		start := point.Timestamp.Unix()
+		grain := int64(point.GrainSeconds)
+		if grain <= interval {
+			add(start, point.Hist)
+			continue
+		}
+		var buckets []int64
+		for bucket := start; bucket < start+grain; bucket += interval {
+			if bucket >= first && bucket <= to.Unix() {
+				buckets = append(buckets, bucket)
+			}
+		}
+		if len(buckets) == 0 {
+			buckets = []int64{start}
+		}
+		share := point.Hist.Scaled(1 / float64(len(buckets)))
+		for _, bucket := range buckets {
+			add(bucket, share)
+		}
+	}
+	out := make([]HistogramSeriesPoint, 0, len(merged))
+	for bucket, hist := range merged {
+		out = append(out, HistogramSeriesPoint{Timestamp: time.Unix(bucket, 0).UTC(), Hist: hist})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Timestamp.Before(out[j].Timestamp) })
+	return out
 }
 
 // MatchesDims reports whether a cell's dimensions satisfy every filter. A filter on

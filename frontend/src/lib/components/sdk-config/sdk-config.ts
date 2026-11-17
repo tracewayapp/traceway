@@ -116,11 +116,15 @@ export const SUGGESTED_KEYS = [
 	'service.instance.id'
 ];
 
+export const BUILT_IN_ERROR_TRIGGER = 'default-exception';
+
 export const TRIGGER_TEMPLATES: Array<{ label: string; trigger: Record<string, unknown> }> = [
 	{
-		label: 'Error clip',
+		// The SDK already runs this trigger under this id. Adding it to a rule replaces the built-in one for
+		// the clients the rule matches; under another id both would fire and every error would upload two clips.
+		label: 'Error clip (change the built-in)',
 		trigger: {
-			id: 'error-clip',
+			id: BUILT_IN_ERROR_TRIGGER,
 			name: 'Upload the last 30 seconds on an error',
 			cooldownSeconds: 5,
 			maxPerSession: 20,
@@ -272,11 +276,12 @@ function slug(text: string): string {
 
 /**
  * The trigger for "when this log line shows up (N times within M seconds), capture this device for Y minutes".
- * It matches every log record, console calls and the OpenTelemetry logs API alike, by the `console` signal.
+ * It matches every log line: console calls, the OpenTelemetry logs API and captureMessage, the same records a
+ * "Log" step of a recorded sequence matches.
  */
 export function logLineTrigger(o: LogLineTriggerOptions): Record<string, unknown> {
 	const conditions: Condition[] = [
-		{ key: 'signal', op: 'eq', value: 'console' },
+		{ key: 'signal', op: 'in', values: ['console', 'messages'] },
 		{ key: 'body', op: o.op, value: o.text }
 	];
 	if (o.minSeverity > 0) conditions.push({ key: 'severity', op: 'gte', value: o.minSeverity });
@@ -300,6 +305,48 @@ export function logLineTrigger(o: LogLineTriggerOptions): Record<string, unknown
 			}
 		]
 	};
+}
+
+/** An id for a trigger made in the dashboard. Not crypto.randomUUID, which a plain-HTTP dashboard does not have. */
+export function newTriggerId(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(8));
+	return 'journey-' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * The trigger ids other rules of the project use. A client that matches two rules gets one trigger per id, the
+ * later rule's, so a template added to a second rule needs an id of its own. The built-in error trigger is left
+ * out: replacing it is what a rule names it for.
+ */
+export function triggerIdsOfRules(rules: SdkConfigRule[], exceptRuleId?: number): string[] {
+	const ids = new Set<string>();
+	for (const rule of rules) {
+		if (rule.id === exceptRuleId) continue;
+		for (const trigger of (rule.settings?.triggers ?? []) as Array<{ id?: unknown }>) {
+			if (typeof trigger?.id === 'string' && trigger.id !== BUILT_IN_ERROR_TRIGGER)
+				ids.add(trigger.id);
+		}
+	}
+	return [...ids];
+}
+
+/** Adds a template or built trigger to a rule's triggers under an id no trigger of the project uses yet. */
+export function withTrigger(
+	triggers: Array<{ id?: unknown }>,
+	trigger: Record<string, unknown>,
+	idsInOtherRules: string[] = []
+): Array<{ id?: unknown }> {
+	const added = structuredClone(trigger);
+	if (added.id === BUILT_IN_ERROR_TRIGGER) {
+		return triggers.some((t) => t.id === BUILT_IN_ERROR_TRIGGER)
+			? triggers.map((t) => (t.id === BUILT_IN_ERROR_TRIGGER ? added : t))
+			: [...triggers, added];
+	}
+	added.id = uniqueTriggerId(String(added.id), [
+		...triggers,
+		...idsInOtherRules.map((id) => ({ id }))
+	]);
+	return [...triggers, added];
 }
 
 export function uniqueTriggerId(id: string, taken: Array<{ id?: unknown }>): string {

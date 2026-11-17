@@ -120,6 +120,8 @@ What a forged client can do with a public project token is bounded: it cannot cr
 
 `/api/health/deep` has a `clientMetrics` block (requests, observations, cells held, last flush, drops by reason), and a self-monitored instance emits it as `traceway.client_metrics.*`.
 
+A backend that exports cumulative histograms is differenced against the previous sample of the same series, which each instance keeps in memory. Behind a load balancer that spreads one exporter's requests over several instances the samples interleave and the differences overlap, so counts come out too high: set `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta` on such backends, or route an exporter to one instance. An instance follows 50,000 cumulative series; further ones are dropped and counted under the `memory` reason.
+
 With several instances the duplicate filter is per instance: a resend of an upload that did arrive is counted twice when the balancer sends it to another instance. That needs a page to die between sending and the answer, so it is rare.
 
 Late mobile data rewrites past minutes. Charts stay correct, but an alert may have already evaluated that window.

@@ -574,7 +574,17 @@ func (p *Pipeline) addCount(projectId uuid.UUID, name string, entry *Metric, rc 
 	if value > MaxObservationsPerRequest*1000 {
 		value = MaxObservationsPerRequest * 1000
 	}
-	if !p.limiter.allow(projectId, rc.client.IP, 1, now) {
+	// A catalog counter counts events, so its value is what one address may add per minute, like the count of
+	// a histogram. An app's own counter may count anything (bytes, cents) and is charged as one point.
+	cost := 1.0
+	if entry != nil {
+		if entry.PerUser && value > 1 {
+			// A device counts itself once a day.
+			value = 1
+		}
+		cost = value
+	}
+	if !p.limiter.allow(projectId, rc.client.IP, cost, now) {
 		return ReasonRateLimit
 	}
 	resolved := p.guard.resolve(projectId, name, entry, rc.dims, attrs, rc.client.Country, now)
@@ -631,7 +641,11 @@ func (p *Pipeline) ObserveEvent(projectId uuid.UUID, name string, value float64,
 // differenced first.
 func (p *Pipeline) AddSeriesHistogram(projectId uuid.UUID, name string, at time.Time, tags map[string]string, h *shared.Histogram, cumulative bool, now time.Time) {
 	if cumulative {
-		if h = p.agg.delta(projectId, name, tags, h, now); h == nil {
+		var full bool
+		if h, full = p.agg.delta(projectId, name, tags, h, now); h == nil {
+			if full {
+				p.drop(ReasonMemory, 1)
+			}
 			return
 		}
 	}

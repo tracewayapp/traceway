@@ -3,6 +3,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Plus, Trash2, ArrowUp, ArrowDown } from '@lucide/svelte';
+	import { newTriggerId } from './sdk-config';
 	type Step = {
 		match: {
 			event: {
@@ -49,7 +50,7 @@
 		triggers = [
 			...triggers,
 			{
-				id: crypto.randomUUID(),
+				id: newTriggerId(),
 				name: 'User journey',
 				steps: [{ match: { event: { type: 'click', value: '' } } }],
 				actions: [

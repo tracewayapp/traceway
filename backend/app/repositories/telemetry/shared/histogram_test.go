@@ -263,3 +263,67 @@ func TestHistogramEffectiveSampleSizeSurvivesWeighting(t *testing.T) {
 		t.Fatalf("merged sample size = %v", merged.EffectiveCount())
 	}
 }
+
+func TestHistogramSeriesKeepsTheBusiestGroups(t *testing.T) {
+	series := NewHistogramSeries(60, []string{"url.path"}, 2)
+	at := time.Unix(1_700_000_000, 0)
+	for path, observations := range map[string]int{"/a": 1, "/b": 50, "/c": 2, "/z": 40} {
+		h := NewHistogram()
+		for i := 0; i < observations; i++ {
+			h.Observe(100, 1)
+		}
+		series.Add(at, map[string]string{"url.path": path}, h)
+	}
+	result := series.Result()
+	if _, ok := result["/b"]; !ok || len(result) != 2 {
+		t.Fatalf("groups %v, want the two busiest", result)
+	}
+	if _, ok := result["/z"]; !ok || !series.Truncated {
+		t.Fatalf("groups %v truncated %v, want /b and /z and the truncation reported", result, series.Truncated)
+	}
+}
+
+func TestSpreadHistogramPointsDividesACoarseRowOverItsBuckets(t *testing.T) {
+	hour := time.Unix(1_700_000_000, 0).UTC().Truncate(time.Hour)
+	whole := NewHistogram()
+	for i := 0; i < 400; i++ {
+		whole.Observe(float64(100+i), 1)
+	}
+	minute := NewHistogram()
+	minute.Observe(100, 1)
+	points := []HistogramSeriesPoint{
+		{Timestamp: hour, Hist: whole, GrainSeconds: 3600},
+		{Timestamp: hour.Add(2 * time.Hour), Hist: minute, GrainSeconds: 60},
+	}
+	spread := SpreadHistogramPoints(points, 15, hour, hour.Add(3*time.Hour))
+	if len(spread) != 5 {
+		t.Fatalf("%d points, want the hour in four and the minute row", len(spread))
+	}
+	var count float64
+	for i, point := range spread[:4] {
+		if !point.Timestamp.Equal(hour.Add(time.Duration(i) * 15 * time.Minute)) {
+			t.Errorf("point %d at %s", i, point.Timestamp)
+		}
+		if point.Hist.Count != 100 {
+			t.Errorf("point %d holds %v observations, want 100", i, point.Hist.Count)
+		}
+		if point.Hist.Quantile(0.75) != whole.Quantile(0.75) {
+			t.Errorf("point %d changed the percentile", i)
+		}
+		count += point.Hist.Count
+	}
+	if count != 400 || whole.Count != 400 {
+		t.Errorf("spread %v of 400 observations (source now %v)", count, whole.Count)
+	}
+	if spread[4].Hist.Count != 1 {
+		t.Errorf("the minute row became %v observations", spread[4].Hist.Count)
+	}
+	// A range that starts inside the hour only draws the buckets it shows.
+	clipped := SpreadHistogramPoints(points[:1], 15, hour.Add(30*time.Minute), hour.Add(3*time.Hour))
+	if len(clipped) != 2 || clipped[0].Hist.Count != 200 {
+		t.Errorf("clipped to %d points, first %v", len(clipped), clipped[0].Hist.Count)
+	}
+	if same := SpreadHistogramPoints(points[1:], 15, hour, hour.Add(3*time.Hour)); len(same) != 1 || same[0].Hist != minute {
+		t.Error("points at or under the bucket length must come back untouched")
+	}
+}

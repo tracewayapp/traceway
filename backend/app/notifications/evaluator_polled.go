@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 type EvalResult struct {
@@ -245,10 +246,8 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 		selectExpr = "sum(value)"
 	case "count":
 		selectExpr = "toFloat64(count())"
-	case "p95":
-		selectExpr = "quantile(0.95)(value)"
-	case "p99":
-		selectExpr = "quantile(0.99)(value)"
+	case "p50", "p75", "p90", "p95", "p99":
+		selectExpr = fmt.Sprintf("quantile(%g)(value)", shared.HistogramAggregations[cfg.Aggregation])
 	case "last":
 		selectExpr = "argMax(value, recorded_at)"
 	}

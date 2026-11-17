@@ -261,3 +261,52 @@ func TestMetricHistogramRepositoryPreservesEffectiveCount(t *testing.T) {
 		}
 	}
 }
+
+// One busy hour used to stop compaction for good: it took the oldest hour across all
+// projects and gave up at 20,000 rows.
+func TestMetricHistogramRepository_CompactsABusyHourOfSeveralProjects(t *testing.T) {
+	if !telemetryBackendCompacts {
+		t.Skip("this backend rolls up by itself")
+	}
+	setupTestDB(t)
+	ctx := context.Background()
+	hour := time.Now().UTC().Add(-12 * time.Hour).Truncate(time.Hour)
+	projects := []uuid.UUID{uuid.New(), uuid.New()}
+	total := 0
+	for _, projectId := range projects {
+		var cells []MetricHistogramCell
+		for series := 0; series < 180; series++ {
+			dims := map[string]string{"url.path": fmt.Sprintf("/p/%d", series)}
+			for minute := 0; minute < 60; minute++ {
+				cells = append(cells, histogramCell(projectId, "browser.web_vital.inp", hour.Add(time.Duration(minute)*time.Minute), dims, float64(100+minute)))
+			}
+		}
+		if err := MetricHistogramRepository.InsertCells(ctx, cells); err != nil {
+			t.Fatal(err)
+		}
+		total += len(cells)
+	}
+	if total <= 20000 {
+		t.Fatalf("the test needs more than 20000 rows, has %d", total)
+	}
+	replaced, err := MetricHistogramRepository.Compact(ctx, time.Now().UTC().Add(-6*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replaced != total {
+		t.Errorf("replaced %d minute rows, want %d", replaced, total)
+	}
+	for _, projectId := range projects {
+		series, _, err := MetricHistogramRepository.Query(ctx, projectId, "browser.web_vital.inp", hour, hour.Add(time.Hour), 60, nil, []string{"url.path"}, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(series) != 180 {
+			t.Fatalf("%d series after compaction, want 180", len(series))
+		}
+		point := series["/p/7"][0]
+		if point.Hist.Count != 60 || point.GrainSeconds != 3600 {
+			t.Errorf("series /p/7: count %v grain %d, want 60 observations in one hour row", point.Hist.Count, point.GrainSeconds)
+		}
+	}
+}

@@ -187,25 +187,27 @@ func (a *aggregator) exemplar(projectId uuid.UUID, name string, at time.Time, di
 }
 
 // delta turns one sample of a cumulative series into what was added since the
-// previous sample. The first sample of a series only sets the baseline.
-func (a *aggregator) delta(projectId uuid.UUID, name string, tags map[string]string, current *shared.Histogram, now time.Time) *shared.Histogram {
+// previous sample. The first sample of a series only sets the baseline; full reports
+// that there was no room to keep one, so the series cannot be followed.
+func (a *aggregator) delta(projectId uuid.UUID, name string, tags map[string]string, current *shared.Histogram, now time.Time) (delta *shared.Histogram, full bool) {
 	key := cellKey{project: projectId, name: name, dims: canonicalDims(tags)}
 	shard := a.shard(key)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 	previous := shard.cumulative[key]
 	if previous == nil {
-		if len(shard.cumulative) < maxCumulativeState/aggregatorShards {
-			shard.cumulative[key] = &cumulativeState{hist: current, seen: now}
+		if len(shard.cumulative) >= maxCumulativeState/aggregatorShards {
+			return nil, true
 		}
-		return nil
+		shard.cumulative[key] = &cumulativeState{hist: current, seen: now}
+		return nil, false
 	}
 	delta, ok := current.Sub(previous.hist)
 	previous.hist, previous.seen = current, now
 	if !ok {
-		return current
+		return current, false
 	}
-	return delta
+	return delta, false
 }
 
 type flushed struct {

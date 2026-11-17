@@ -110,7 +110,10 @@ type BufferSettings struct {
 }
 
 // Matcher is a condition (Key, Op and Value or Values) or exactly one of All, Any and Not.
-var selectorAtom = `(?:[.#][-A-Za-z_][A-Za-z0-9_-]*|\[[-A-Za-z_][A-Za-z0-9_-]*(?:[~|^$*]?=(?:"[^"\r\n]*"|'[^'\r\n]*'|[-A-Za-z0-9_]+))?\])`
+// An unquoted attribute value must be a CSS identifier, like a class or id: element.matches throws on
+// [data-step=2], and the SDK then never matches the step.
+var selectorIdent = `(?:-?[A-Za-z_]|--)[A-Za-z0-9_-]*`
+var selectorAtom = `(?:[.#]` + selectorIdent + `|\[` + selectorIdent + `(?:[~|^$*]?=(?:"[^"\r\n]*"|'[^'\r\n]*'|` + selectorIdent + `))?\])`
 var selectorCompound = `(?:(?:[A-Za-z][A-Za-z0-9_-]*|\*)` + selectorAtom + `*|` + selectorAtom + `+)`
 var sequenceSelector = regexp.MustCompile(`^\s*` + selectorCompound + `(?:(?:\s*[>+~]\s*|\s+)` + selectorCompound + `)*\s*$`)
 var sequenceRouteParameter = regexp.MustCompile(`^\{[A-Za-z_][A-Za-z0-9_]*\}$`)
@@ -142,13 +145,15 @@ type TriggerStep struct {
 }
 
 type TriggerAction struct {
-	Type            string            `json:"type"`
-	LookbackSeconds *float64          `json:"lookbackSeconds,omitempty"`
-	DurationSeconds *float64          `json:"durationSeconds,omitempty"`
-	Signals         []string          `json:"signals,omitempty"`
-	Replay          *bool             `json:"replay,omitempty"`
-	EventName       string            `json:"eventName,omitempty"`
-	Attributes      map[string]string `json:"attributes,omitempty"`
+	Type            string   `json:"type"`
+	LookbackSeconds *float64 `json:"lookbackSeconds,omitempty"`
+	DurationSeconds *float64 `json:"durationSeconds,omitempty"`
+	// omitzero, not omitempty: an empty list means no signals (a replay-only clip), and the SDK reads a missing
+	// list as every signal.
+	Signals    []string          `json:"signals,omitzero"`
+	Replay     *bool             `json:"replay,omitempty"`
+	EventName  string            `json:"eventName,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // Trigger runs on the device. In a rule it may be a patch of a trigger an earlier rule or the SDK defines: a
@@ -170,7 +175,7 @@ type Capture struct {
 	Id              string   `json:"id"`
 	Until           string   `json:"until"`
 	LookbackSeconds *float64 `json:"lookbackSeconds,omitempty"`
-	Signals         []string `json:"signals,omitempty"`
+	Signals         []string `json:"signals,omitzero"`
 	Replay          *bool    `json:"replay,omitempty"`
 }
 
@@ -196,6 +201,9 @@ type MetricsSettings struct {
 
 const (
 	MinMetricsFlushSeconds = 30
+	// Ingest weights a sampled client's counts by 1/rate and caps the weight at 1000 (clientmetrics
+	// maxSampleWeight), so a lower rate would be undercounted.
+	MinMetricsSampleRate   = 0.001
 	MaxMetricsFlushSeconds = 3600
 )
 
@@ -288,8 +296,8 @@ func (s Settings) Validate() error {
 		}
 	}
 	if m := s.Metrics; m != nil {
-		if !validRate(m.SampleRate) {
-			return invalid("metrics.sampleRate must be between 0 and 1")
+		if !validRate(m.SampleRate) || (m.SampleRate != nil && *m.SampleRate > 0 && *m.SampleRate < MinMetricsSampleRate) {
+			return invalid("metrics.sampleRate must be 0 or between %g and 1", MinMetricsSampleRate)
 		}
 		if m.FlushSeconds != nil && (*m.FlushSeconds < MinMetricsFlushSeconds || *m.FlushSeconds > MaxMetricsFlushSeconds) {
 			return invalid("metrics.flushSeconds must be between %d and %d", MinMetricsFlushSeconds, MaxMetricsFlushSeconds)
@@ -422,6 +430,10 @@ func (m *Matcher) validate(depth int, nodes *int) error {
 	}
 	for _, set := range [][]*Matcher{m.All, m.Any} {
 		if set != nil {
+			// An empty list is dropped when the rule is stored, leaving a matcher of no form at all.
+			if len(set) == 0 {
+				return invalid("all and any need at least one matcher")
+			}
 			forms++
 		}
 	}
@@ -452,7 +464,7 @@ func (m *Matcher) validate(depth int, nodes *int) error {
 		switch e.Type {
 		case "click", "hover":
 			if strings.ContainsAny(e.Value, ":,\\") || !sequenceSelector.MatchString(e.Value) {
-				return invalid("selectors support tags, ids, classes, attributes and combinators, without pseudo-classes or selector lists")
+				return invalid("selectors support tags, ids, classes, attributes and combinators, without pseudo-classes or selector lists; quote an attribute value that is not a name, e.g. [data-step=\"2\"]")
 			}
 		case "navigation":
 			if !strings.HasPrefix(e.Value, "/") || strings.ContainsAny(e.Value, "?#*") {
@@ -472,8 +484,11 @@ func (m *Matcher) validate(depth int, nodes *int) error {
 	if m.Not != nil {
 		return m.Not.validate(depth+1, nodes)
 	}
-	if m.Key == "" {
+	if m.All != nil || m.Any != nil {
 		return nil
+	}
+	if m.Key == "" {
+		return invalid("a condition needs a key")
 	}
 	return validateCondition(m.Key, m.Op, m.Value, m.Values)
 }
@@ -487,6 +502,11 @@ func validateCondition(key, op string, value any, values []any) error {
 	}
 	if len(values) > maxConditionValues {
 		return invalid("at most %d values", maxConditionValues)
+	}
+	for _, v := range values {
+		if v == nil {
+			return invalid("values cannot contain null")
+		}
 	}
 	for _, v := range append([]any{value}, values...) {
 		switch val := v.(type) {

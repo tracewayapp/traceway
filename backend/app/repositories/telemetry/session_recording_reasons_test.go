@@ -63,7 +63,7 @@ func TestSessionRecordingReasons(t *testing.T) {
 	for _, tc := range []struct {
 		id   string
 		want int64
-	}{{"journey", 1}, {"another", 1}, {"foreign", 0}, {"missing", 0}} {
+	}{{"journey", 1}, {"another", 1}, {"foreign", 0}, {"missing", 0}, {"missing,another", 1}, {"journey,another", 1}, {"missing,foreign", 0}} {
 		rows, total, err := SessionRepository.FindAll(ctx, project, now.Add(-time.Minute), now.Add(time.Minute), 1, 10, "started_at", "asc", "", []SessionAttributeFilter{{Key: "__recording_trigger", Value: tc.id}})
 		if err != nil || total != tc.want || int64(len(rows)) != tc.want {
 			t.Fatalf("filter %s: total %d rows %d err %v", tc.id, total, len(rows), err)

@@ -69,6 +69,11 @@ func TestMetricThresholdReadsDistributions(t *testing.T) {
 		})
 	}
 
+	// An extreme is an observation, not an estimate: one frozen page on a quiet path is enough.
+	if single := evaluate(`{"metricName":"browser.web_vital.lcp","aggregation":"max","operator":"gte","thresholdValue":9000,"lookbackMinutes":15,"tags":{"url.path":"/rare"}}`); !single.Fired {
+		t.Error("max over a series with three observations did not fire")
+	}
+
 	grouped := evaluate(`{"metricName":"browser.web_vital.lcp","aggregation":"max","minCount":1,"operator":"gt","thresholdValue":4000,"lookbackMinutes":15,"groupBy":["url.path"]}`)
 	if !grouped.Fired || len(grouped.Messages) != 2 {
 		t.Fatalf("grouped by page: fired %v with %d messages", grouped.Fired, len(grouped.Messages))
@@ -109,7 +114,13 @@ func TestReleaseRegressionComparesTheNewestRelease(t *testing.T) {
 
 	again, err := evaluateMetricReleaseRegression(ctx, rule(7100, ""), projectId)
 	if err != nil || again.Fired {
-		t.Errorf("the same release fired twice inside the cooldown (err %v)", err)
+		t.Errorf("the same release fired twice (err %v)", err)
+	}
+	// Once per release, whatever the cooldown: nothing the rule remembers lives in the process.
+	noCooldown := rule(7100, "")
+	noCooldown.CooldownMinutes = 0
+	if repeated, err := evaluateMetricReleaseRegression(ctx, noCooldown, projectId); err != nil || repeated.Fired {
+		t.Errorf("the same release fired again with no cooldown (err %v)", err)
 	}
 	tolerant, err := evaluateMetricReleaseRegression(ctx, rule(7101, `,"thresholdPercent":60`), projectId)
 	if err != nil || tolerant.Fired {
@@ -118,6 +129,15 @@ func TestReleaseRegressionComparesTheNewestRelease(t *testing.T) {
 	early, err := evaluateMetricReleaseRegression(ctx, rule(7102, `,"minCount":1000`), projectId)
 	if err != nil || early.Fired {
 		t.Errorf("judged a release before it had enough observations (err %v)", err)
+	}
+
+	// The next release is a new report, and the rule then remembers that one.
+	release("4.3.0", time.Hour, 4000, 150)
+	if next, err := evaluateMetricReleaseRegression(ctx, noCooldown, projectId); err != nil || !next.Fired || !containsAll(next.Messages[0].Subject, "4.3.0") {
+		t.Errorf("a newer, slower release did not fire: %+v (err %v)", next, err)
+	}
+	if repeated, err := evaluateMetricReleaseRegression(ctx, noCooldown, projectId); err != nil || repeated.Fired {
+		t.Errorf("the newer release fired twice (err %v)", err)
 	}
 }
 

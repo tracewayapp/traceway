@@ -5,6 +5,11 @@ import {
 	conditionValue,
 	fitsForm,
 	logLineTrigger,
+	newTriggerId,
+	triggerIdsOfRules,
+	withTrigger,
+	BUILT_IN_ERROR_TRIGGER,
+	type SdkConfigRule,
 	optionalNumber,
 	summarizeConditions,
 	summarizeSettings,
@@ -72,7 +77,7 @@ describe('log-line triggers', () => {
 				{
 					match: {
 						all: [
-							{ key: 'signal', op: 'eq', value: 'console' },
+							{ key: 'signal', op: 'in', values: ['console', 'messages'] },
 							{ key: 'body', op: 'icontains', value: 'Payment failed!' },
 							{ key: 'severity', op: 'gte', value: 17 }
 						]
@@ -111,6 +116,36 @@ describe('log-line triggers', () => {
 			}>;
 			expect(actions[0].signals).toEqual(['*', 'longTasks', 'routeTiming']);
 		}
+	});
+
+	it('gives a template an id no other rule of the project uses', () => {
+		const rules = [
+			{ id: 1, settings: { triggers: [{ id: 'frozen-page' }, { id: BUILT_IN_ERROR_TRIGGER }] } },
+			{ id: 2, settings: { triggers: [{ id: 'frozen-page-2' }] } },
+			{ id: 3, settings: {} }
+		] as unknown as SdkConfigRule[];
+		expect(triggerIdsOfRules(rules, 2)).toEqual(['frozen-page']);
+		const others = triggerIdsOfRules(rules, 3);
+		expect(others.sort()).toEqual(['frozen-page', 'frozen-page-2']);
+		expect(withTrigger([], { id: 'frozen-page', steps: [] }, others).map((t) => t.id)).toEqual([
+			'frozen-page-3'
+		]);
+	});
+
+	it('replaces the built-in error trigger instead of adding a second one', () => {
+		const template = TRIGGER_TEMPLATES.find((t) => t.trigger.id === BUILT_IN_ERROR_TRIGGER)!;
+		const once = withTrigger([{ id: 'other' }], template.trigger, [BUILT_IN_ERROR_TRIGGER]);
+		expect(once.map((t) => t.id)).toEqual(['other', BUILT_IN_ERROR_TRIGGER]);
+		const twice = withTrigger(once, { ...template.trigger, cooldownSeconds: 60 });
+		expect(twice.map((t) => t.id)).toEqual(['other', BUILT_IN_ERROR_TRIGGER]);
+		expect((twice[1] as { cooldownSeconds: number }).cooldownSeconds).toBe(60);
+		expect(TRIGGER_TEMPLATES.some((t) => t.trigger.id === 'error-clip')).toBe(false);
+	});
+
+	it('makes trigger ids the server accepts, without needing a secure context', () => {
+		const id = newTriggerId();
+		expect(id).toMatch(/^[A-Za-z0-9_.-]{1,64}$/);
+		expect(newTriggerId()).not.toBe(id);
 	});
 
 	it('keeps trigger ids unique', () => {

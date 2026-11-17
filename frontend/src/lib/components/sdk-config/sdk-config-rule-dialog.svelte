@@ -12,7 +12,7 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { isBrowserFramework, projectsState } from '$lib/state/projects.svelte';
 	import LogTriggerBuilder from './log-trigger-builder.svelte';
 	import SequenceTriggerBuilder from './sequence-trigger-builder.svelte';
 	import {
@@ -21,7 +21,7 @@
 		SUGGESTED_KEYS,
 		TRIGGER_TEMPLATES,
 		fitsForm,
-		uniqueTriggerId,
+		withTrigger,
 		buildRuleConditions,
 		conditionText,
 		isNumericOp,
@@ -35,10 +35,16 @@
 	interface Props {
 		open: boolean;
 		rule: SdkConfigRule | null;
+		/** Trigger ids the project's other rules use; a trigger added here gets an id none of them has. */
+		otherTriggerIds?: string[];
 		onSaved: () => void;
 	}
 
-	let { open = $bindable(), rule, onSaved }: Props = $props();
+	let { open = $bindable(), rule, otherTriggerIds = [], onSaved }: Props = $props();
+	// Recorded sequences match page events only the browser SDKs report.
+	let recordsSequences = $derived(
+		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
+	);
 
 	type Choice = 'inherit' | Mode;
 
@@ -163,12 +169,11 @@
 			dialogError = 'The JSON does not parse; fix it before adding a trigger.';
 			return;
 		}
-		const triggers = (parsed.triggers ?? []) as Array<{ id?: unknown }>;
-		const added = {
-			...structuredClone(trigger),
-			id: uniqueTriggerId(String(trigger.id), triggers)
-		};
-		parsed.triggers = [...triggers, added];
+		parsed.triggers = withTrigger(
+			(parsed.triggers ?? []) as Array<{ id?: unknown }>,
+			trigger,
+			otherTriggerIds
+		);
 		settingsJson = JSON.stringify(parsed, null, 2);
 	}
 
@@ -396,26 +401,12 @@
 							</Button>
 						{/each}
 					</div>
-					<div class="space-y-2">
-						<Label for="sdk-rule-metrics-sample">Sessions that record metrics (%)</Label>
-						<Input
-							id="sdk-rule-metrics-sample"
-							type="number"
-							min="0"
-							max="100"
-							step="0.1"
-							bind:value={metricsSamplePercent}
-							placeholder="Inherit (100% by default)"
-						/>
-						<p class="text-xs text-muted-foreground">
-							Counts are scaled back up by the sample rate, so charts stay comparable. Lower it for
-							very high traffic.
-						</p>
-					</div>
 					<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} />
 					<CodeEditor bind:value={settingsJson} minHeight="260px" />
 				{:else}
-					<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} />
+					{#if recordsSequences}
+						<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} />
+					{/if}
 					<p class="text-xs text-muted-foreground">
 						<strong>Buffer</strong> keeps telemetry on the device until a trigger or capture uploads
 						it; <strong>Stream</strong> sends it straight away; <strong>Inherit</strong> leaves it to
@@ -520,6 +511,22 @@
 						<p class="text-xs text-muted-foreground">
 							Try 1% for a stable sample of session breadcrumbs and request spans. Errors and web
 							vitals stay on; replay stays error-triggered unless configured separately.
+						</p>
+					</div>
+					<div class="space-y-2">
+						<Label for="sdk-rule-metrics-sample">Sessions that record metrics (%)</Label>
+						<Input
+							id="sdk-rule-metrics-sample"
+							type="number"
+							min="0"
+							max="100"
+							step="0.1"
+							bind:value={metricsSamplePercent}
+							placeholder="Inherit (100% by default)"
+						/>
+						<p class="text-xs text-muted-foreground">
+							Counts are scaled back up by the sample rate, so charts stay comparable. Lower it for
+							very high traffic. Use 0 for none, or at least 0.1.
 						</p>
 					</div>
 					<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} />

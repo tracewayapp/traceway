@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SessionRecordingReasons from '$lib/components/issues/session-recording-reasons.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
@@ -23,7 +24,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import { CalendarDate } from '@internationalized/date';
 	import { browser } from '$app/environment';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, SDK_CONFIG_FRAMEWORKS } from '$lib/state/projects.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
@@ -58,7 +59,37 @@
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
 
+	type Reason = { triggerId: string; name: string; sequence: string; revision: string };
+	let reasonOptions = $state<Reason[]>([]);
+	type RuleOption = { id: number; name: string; triggers: number };
+	let ruleOptions = $state<RuleOption[]>([]);
+	let rulesProjectId: string | null = null;
+	const hasRules = $derived(
+		!!projectsState.currentProject &&
+			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)
+	);
+
+	// The rules of Data Collection, to filter by. A failure only hides the filter's names, never the list.
+	async function loadRuleOptions() {
+		const projectId = projectsState.currentProjectId;
+		if (!projectId || !hasRules || rulesProjectId === projectId) return;
+		rulesProjectId = projectId;
+		try {
+			const response = await api.get('/sdk-config/rules', { projectId });
+			ruleOptions = (response.data ?? []).map(
+				(rule: { id: number; name: string; settings?: { triggers?: unknown[] } }) => ({
+					id: rule.id,
+					name: rule.name,
+					triggers: rule.settings?.triggers?.length ?? 0
+				})
+			);
+		} catch {
+			ruleOptions = [];
+			rulesProjectId = null;
+		}
+	}
 	type Session = {
+		recordingReasons?: Reason[];
 		id: string;
 		startedAt: string;
 		endedAt?: string | null;
@@ -92,7 +123,14 @@
 
 	function parseSessionsUrlParams() {
 		const timeParams = parseTimeRangeFromUrl(timezone);
-		if (!browser) return { ...timeParams, search: '', attributeFilters: [] as AttributeFilter[] };
+		if (!browser)
+			return {
+				...timeParams,
+				search: '',
+				triggerId: '',
+				ruleId: '',
+				attributeFilters: [] as AttributeFilter[]
+			};
 		const params = new URLSearchParams(window.location.search);
 		const attrs: AttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
@@ -102,11 +140,15 @@
 		return {
 			...timeParams,
 			search: params.get('search') ?? '',
+			triggerId: params.get('triggerId') ?? '',
+			ruleId: /^\d+$/.test(params.get('ruleId') ?? '') ? params.get('ruleId')! : '',
 			attributeFilters: attrs
 		};
 	}
 
 	const initialUrlParams = parseSessionsUrlParams();
+	let triggerId = $state(initialUrlParams.triggerId);
+	let ruleId = $state(initialUrlParams.ruleId);
 	const initialRange = getResolvedTimeRange(initialUrlParams, initialTimezone);
 
 	let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -182,6 +224,8 @@
 				from: selectedPreset ? null : getFromDateTimeUTC(),
 				to: selectedPreset ? null : getToDateTimeUTC(),
 				search: searchQuery.trim() || null,
+				triggerId: triggerId || null,
+				ruleId: ruleId || null,
 				attr: attributeFilters.map(formatAttributeFilter)
 			},
 			{ pushToHistory }
@@ -190,6 +234,8 @@
 
 	function handlePopState() {
 		const urlParams = parseSessionsUrlParams();
+		triggerId = urlParams.triggerId;
+		ruleId = urlParams.ruleId;
 		const range = getResolvedTimeRange(urlParams, timezone);
 		selectedPreset = urlParams.preset;
 		fromDate = dateToCalendarDate(range.from, timezone);
@@ -273,9 +319,22 @@
 				pagination: { page, pageSize }
 			};
 
-			const response = await api.post('/sessions', requestBody, {
-				projectId: projectsState.currentProjectId ?? undefined
+			void loadRuleOptions();
+			const reasonsResponse = await api.get('/sessions/recording-reasons', {
+				projectId: projectsState.currentProjectId!
 			});
+			reasonOptions = [
+				...new Map<string, Reason>(
+					[...(reasonsResponse.reasons ?? [])].reverse().map((r: Reason) => [r.triggerId, r])
+				).values()
+			];
+			const response = await api.post(
+				'/sessions',
+				{ ...requestBody, triggerId, ruleId: ruleId ? Number(ruleId) : undefined },
+				{
+					projectId: projectsState.currentProjectId ?? undefined
+				}
+			);
 
 			sessions = response.data || [];
 			total = response.pagination.total;
@@ -331,8 +390,9 @@
 				</Tooltip.Trigger>
 				<Tooltip.Content side="right" class="max-w-xs">
 					<p class="text-xs">
-						Sessions are full recordings of user interactions and are only recorded when manually
-						enabled (<code class="font-mono">recordAllSessions: true</code> in the SDK init options).
+						Sessions group a visit. Replay is uploaded when collection settings or a recording
+						trigger request it. A trigger tag records the request; recording availability confirms
+						whether replay arrived.
 					</p>
 				</Tooltip.Content>
 			</Tooltip.Root>
@@ -349,6 +409,55 @@
 		{/snippet}
 	</PageHeader>
 
+	<div class="flex flex-wrap items-end gap-4">
+		{#if hasRules || ruleId}
+			<div class="space-y-1">
+				<label for="recording-rule-filter" class="text-sm font-medium">Recorded by rule</label>
+				<select
+					id="recording-rule-filter"
+					class="block h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+					bind:value={ruleId}
+					onchange={() => {
+						page = 1;
+						loadData();
+					}}
+				>
+					<option value="">All rules</option>
+					{#if ruleId && !ruleOptions.some((r) => String(r.id) === ruleId)}<option value={ruleId}
+							>Rule {ruleId}</option
+						>{/if}
+					{#each ruleOptions as rule (rule.id)}<option value={String(rule.id)}
+							>{rule.name}{rule.triggers === 0 ? ' (no triggers)' : ''}</option
+						>{/each}
+				</select>
+			</div>
+		{/if}
+		<div class="space-y-1">
+			<label for="recording-trigger-filter" class="text-sm font-medium">Recording trigger</label>
+			<select
+				id="recording-trigger-filter"
+				class="block h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+				bind:value={triggerId}
+				onchange={() => {
+					page = 1;
+					loadData();
+				}}
+			>
+				<option value="">All recording triggers</option>
+				{#if triggerId && !reasonOptions.some((r) => r.triggerId === triggerId)}<option
+						value={triggerId}>{triggerId}</option
+					>{/if}
+				{#each reasonOptions as reason (reason.triggerId)}<option value={reason.triggerId}
+						>{reason.name}</option
+					>{/each}
+			</select>
+		</div>
+		{#if ruleId}
+			<p class="pb-2 text-xs text-muted-foreground">
+				Sessions in which a trigger of this rule asked for a recording.
+			</p>
+		{/if}
+	</div>
 	<SearchBar
 		placeholder="Search session ID, user, or attribute value..."
 		bind:value={searchQuery}
@@ -470,10 +579,14 @@
 			{:else if sessions.length === 0}
 				<Table.Body>
 					<TableEmptyState
-						colspan={5}
+						colspan={6}
 						message={searchQuery.trim() || attributeFilters.length
 							? 'No sessions match your search and filters.'
-							: 'No sessions recorded in this time range. Enable recordAllSessions in the SDK to start capturing them.'}
+							: ruleId
+								? ruleOptions.find((r) => String(r.id) === ruleId)?.triggers === 0
+									? 'This rule has no triggers, so it records no sessions. Add a recording trigger to it in Data Collection.'
+									: 'No session was recorded by a trigger of this rule in this time range.'
+								: 'No sessions reported in this time range. Check the SDK session collection settings.'}
 					/>
 				</Table.Body>
 			{:else}
@@ -486,6 +599,11 @@
 						<TracewayTableHeader
 							label="Attributes"
 							tooltip="User and session context. Click an attribute to filter sessions."
+						/>
+						<TracewayTableHeader
+							label="Recorded by"
+							tooltip="The triggers that asked for a recording of this session. Hover a chip for its steps; click it to show the sessions that trigger recorded."
+							class="w-[260px]"
 						/>
 						<TracewayTableHeader
 							label="Started"
@@ -559,6 +677,13 @@
 										>
 									{/if}
 								</div>
+							</Table.Cell>
+							<Table.Cell class="w-[260px]">
+								{#if session.recordingReasons?.length}
+									<SessionRecordingReasons reasons={session.recordingReasons} />
+								{:else}
+									<span class="text-muted-foreground">—</span>
+								{/if}
 							</Table.Cell>
 							<Table.Cell class="text-sm"
 								>{formatRelativeTimeAgo(session.startedAt, timezone)}</Table.Cell

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
 )
 
 // statePath returns the path to the state file, resolving XDG_STATE_HOME

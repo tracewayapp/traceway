@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/joho/godotenv"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
 )
 
 func TestAllInOneStartupPreservesEnvironment(t *testing.T) {

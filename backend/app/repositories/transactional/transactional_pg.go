@@ -2,12 +2,13 @@
 
 package transactional
 
-import pgrepo "github.com/tracewayapp/traceway/backend/app/repositories/transactional/pg"
+import pgrepo "github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/pg"
 
 var (
 	AgentWriteEventRepository       = pgrepo.AgentWriteEventRepository
 	AuthorizationCodeRepository     = pgrepo.AuthorizationCodeRepository
 	CheckIncidentRepository         = pgrepo.CheckIncidentRepository
+	ClientMetricGuardRepository     = pgrepo.ClientMetricGuardRepository
 	CheckRunRepository              = pgrepo.CheckRunRepository
 	DashboardRepository             = pgrepo.DashboardRepository
 	DashboardTemplateRepository     = pgrepo.DashboardTemplateRepository
@@ -36,6 +37,7 @@ var (
 	SetupTokenRepository            = pgrepo.SetupTokenRepository
 	SLORepository                   = pgrepo.SLORepository
 	StatusPageRepository            = pgrepo.StatusPageRepository
+	SdkConfigRepository             = pgrepo.SdkConfigRepository
 	SyntheticCheckRepository        = pgrepo.SyntheticCheckRepository
 	SyntheticRunnerRepository       = pgrepo.SyntheticRunnerRepository
 	TeamRepository                  = pgrepo.TeamRepository

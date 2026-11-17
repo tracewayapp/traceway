@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type cooldownTracker struct {

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/contentflag"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -58,7 +58,8 @@ type convertedTraces struct {
 }
 
 func convertTraces(ctx context.Context, existingProject *models.Project, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (result convertedTraces) {
-	suppressEntities := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
+	clientSide := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
+	suppressEntities := clientSide
 
 	// nil languages falls back to the default pack; a project that disabled
 	// every pack carries an empty (non-nil) slice and scans custom terms only.
@@ -129,7 +130,9 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 				},
 			})
 			kind := entityNone
-			if !suppressEntities {
+			if !suppressEntities &&
+				getStringAttribute(resourceAttrs, "traceway.sdk.name") != "@tracewayapp/frontend" &&
+				getStringAttribute(span.Attributes, "traceway.collection.source") != "diagnostic" {
 				kind = classifySpan(span, parentInBatch)
 			}
 			if kind == entityNone && !spanCarriesException(span) {
@@ -143,6 +146,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 			// present), so the raw blob is never duplicated onto the
 			// endpoint/task/span rows or the exception's attribute map.
 			delete(allAttrs, "exception.stacktrace")
+			shared.NormalizeStoredAttributes(allAttrs)
 			recordedStart, _, _ := shared.OtelStorageTimes(span.StartTimeUnixNano, ingestedAt)
 			id := otelOccurrenceID(projectId, span)
 
@@ -187,7 +191,8 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 			appendException := func(attrs []*commonpb.KeyValue, timeUnixNano uint64) {
 				exc := buildException(
 					ctx, existingProject, projectId, attrs, timeUnixNano,
-					allAttrs, serverName, appVersion, language, proguardUuid, scopeName,
+					exceptionContext{resource: resourceAttrs, span: spanAttrs, spanAttrs: allAttrs, clientSide: clientSide},
+					serverName, appVersion, language, proguardUuid, scopeName,
 				)
 				// The kind is stored only when this span says it. An exception further down the request finds its entity at read time.
 				exc.TraceId, exc.SpanId, exc.TraceType = traceId, spanId, kind.traceType()
@@ -420,13 +425,22 @@ func buildTask(
 	}
 }
 
+// exceptionContext is what surrounds an exception's own attributes: the span it was recorded on and that span's
+// resource. clientSide marks a browser or mobile project, whose resource describes the end user's client.
+type exceptionContext struct {
+	resource   []*commonpb.KeyValue
+	span       []*commonpb.KeyValue
+	spanAttrs  map[string]string
+	clientSide bool
+}
+
 func buildException(
 	ctx context.Context,
 	existingProject *models.Project,
 	projectId uuid.UUID,
 	excAttrs []*commonpb.KeyValue,
 	timeUnixNano uint64,
-	spanAttrs map[string]string,
+	excCtx exceptionContext,
 	serverName, appVersion, language, proguardUuid, scopeName string,
 ) models.ExceptionStackTrace {
 	excType := getStringAttribute(excAttrs, "exception.type")
@@ -443,20 +457,30 @@ func buildException(
 		stackTrace = formatExceptionStackTrace(excType, excMessage, excStacktrace)
 	}
 
-	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName)
+	debugIds := debugIdsFrom(excAttrs, excCtx.span, excCtx.resource)
+	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName, debugIds)
 	stackTrace = otelSymbolicateAndroid(existingProject, projectId, ctx, stackTrace, language, proguardUuid)
+	stackTrace = otelSymbolicateDart(existingProject, projectId, ctx, stackTrace, language)
 
-	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
+	// traceway.is_message is how the backend's own CaptureMessage marks a
+	// message: hashed as written, like the native protocol's isMessage.
+	isMessage, _ := getBoolAttribute(excAttrs, "traceway.is_message")
+	hash := clientcontrollers.ComputeExceptionHash(stackTrace, isMessage)
 	recordedAt, _, _ := shared.OtelStorageTimes(timeUnixNano, time.Now())
 
-	attrs := spanAttrs
+	attrs := excCtx.spanAttrs
+	if excCtx.clientSide {
+		attrs = exceptionAttributes(excCtx.resource, excCtx.spanAttrs)
+	}
 	if isJsLanguage(language) || isAndroidLanguage(language) {
-		attrs = cloneStringMap(spanAttrs)
+		if !excCtx.clientSide {
+			attrs = cloneStringMap(excCtx.spanAttrs)
+		}
 		attrs["telemetry.sdk.language"] = language
 	}
 
 	return models.ExceptionStackTrace{
-		Id:            uuid.New(),
+		Id:            exceptionIdFrom(excAttrs, uuid.New),
 		ProjectId:     projectId,
 		ExceptionHash: hash,
 		StackTrace:    stackTrace,
@@ -464,6 +488,8 @@ func buildException(
 		Attributes:    attrs,
 		AppVersion:    appVersion,
 		ServerName:    serverName,
+		SessionId:     sessionIdFrom(excAttrs, excCtx.span, excCtx.resource),
+		IsMessage:     isMessage,
 	}
 }
 
@@ -496,6 +522,10 @@ func isJsLanguage(lang string) bool {
 		return true
 	}
 	return false
+}
+
+func isDartLanguage(lang string) bool {
+	return strings.EqualFold(strings.TrimSpace(lang), "dart")
 }
 
 func isAndroidLanguage(lang string) bool {

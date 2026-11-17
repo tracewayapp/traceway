@@ -5,15 +5,15 @@ package sqlite
 import (
 	"context"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type sessionRow struct {
@@ -114,6 +114,8 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 	if len(sessions) == 0 {
 		return nil
 	}
+	// The id is client-chosen and the ingest token is public in browser projects, so a session only ever takes an
+	// update from its own project; another project naming the same id writes nothing.
 	const stmt = `INSERT INTO sessions
 		(id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -123,7 +125,8 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 			attributes = excluded.attributes,
 			app_version = excluded.app_version,
 			server_name = excluded.server_name,
-			trace_id = excluded.trace_id`
+			trace_id = excluded.trace_id
+		WHERE sessions.project_id = excluded.project_id`
 
 	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
 	if err != nil {
@@ -160,7 +163,7 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 }
 
 func (r *sessionRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT count(*) as count FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end",
 		lit.P{"project_id": projectId, "start": sqlitetypes.NewSQLiteTime(start), "end": sqlitetypes.NewSQLiteTime(end)})
 	if err != nil {
@@ -184,7 +187,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	for k, v := range extraParams {
 		countParams[k] = v
 	}
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, countParams)
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB), countQuery, countParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -219,7 +222,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	for k, v := range extraParams {
 		queryParams[k] = v
 	}
-	rows, err := lit.SelectNamed[sessionRow](db.TelemetryDB, query, queryParams)
+	rows, err := lit.SelectNamed[sessionRow](shared.Traced(ctx, db.TelemetryDB), query, queryParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -239,6 +242,17 @@ func buildSessionFilterClauseSQLite(search string, filters []shared.SessionAttri
 		params["search"] = s
 	}
 	for i, f := range filters {
+		if f.Key == "__recording_trigger" {
+			// One trigger id, or the ids of a rule's triggers separated by commas (an id cannot contain one).
+			names := make([]string, 0, 1)
+			for n, id := range strings.Split(f.Value, ",") {
+				key := fmt.Sprintf("reason_%d_%d", i, n)
+				names = append(names, ":"+key)
+				params[key] = id
+			}
+			sb.WriteString(" AND sessions.id IN (SELECT session_id FROM session_recording_reasons WHERE project_id = :project_id AND trigger_id IN (" + strings.Join(names, ", ") + "))")
+			continue
+		}
 		if f.Key == "" {
 			continue
 		}
@@ -271,7 +285,7 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	}
 	query += " LIMIT 1"
 
-	row, err := lit.SelectSingleNamed[sessionRow](db.TelemetryDB, query, params)
+	row, err := lit.SelectSingleNamed[sessionRow](shared.Traced(ctx, db.TelemetryDB), query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +294,7 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	}
 
 	from, to := shared.TraceWindowBounds(row.StartedAt.Time)
-	activity, err := lit.SelectSingleNamed[sqlitetypes.SessionActivityResult](db.TelemetryDB,
+	activity, err := lit.SelectSingleNamed[sqlitetypes.SessionActivityResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT MAX(COALESCE(ended_at, recorded_at)) AS last_activity, MAX(CASE WHEN julianday(COALESCE(ended_at, recorded_at)) <= julianday(:span_end) THEN COALESCE(ended_at, recorded_at) END) AS span_activity, MAX(recorded_at) AS last_received FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to",
 		lit.P{"project_id": projectId, "session_id": sessionId, "from": sqlitetypes.NewSQLiteTime(from), "to": sqlitetypes.NewSQLiteTime(to), "span_end": sqlitetypes.NewSQLiteTime(row.StartedAt.Time.Add(shared.SessionMaxSpan))})
 	if err != nil {

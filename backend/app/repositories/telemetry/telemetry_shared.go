@@ -1,7 +1,7 @@
 package telemetry
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 // Aliases and re-exports so consumers keep using the telemetry package
@@ -14,6 +14,10 @@ type (
 	LogSearchParams        = shared.LogSearchParams
 	SpanLookup             = shared.SpanLookup
 	SLOBucket              = shared.SLOBucket
+	Histogram              = shared.Histogram
+	MetricHistogramCell    = shared.MetricHistogramCell
+	MetricExemplar         = shared.MetricExemplar
+	HistogramSeriesPoint   = shared.HistogramSeriesPoint
 	SLOBucketPoint         = shared.SLOBucketPoint
 	EndpointSLISpec        = shared.EndpointSLISpec
 	TaskSLISpec            = shared.TaskSLISpec

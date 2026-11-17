@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	client "github.com/tracewayapp/traceway/cli/pkg/client"
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver"
+	client "github.com/tracewayapp/traceway/cli/v2/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver"
 )
 
 // TestEveryMCPToolMaps lists the write server's tools in memory: each must

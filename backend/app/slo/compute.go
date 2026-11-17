@@ -3,13 +3,14 @@ package slo
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 func ComputeBuckets(ctx context.Context, slo *models.SLO, from, to time.Time) ([]shared.SLOBucketPoint, error) {
@@ -90,7 +91,39 @@ func monitorBuckets(ctx context.Context, slo *models.SLO, cfg *models.MonitorSLI
 	return result, nil
 }
 
+// distributionBuckets reads good and total from the buckets of a distribution metric.
+// A time slice with no observations has no events, so it neither helps nor hurts.
+func distributionBuckets(ctx context.Context, slo *models.SLO, cfg *models.MetricSLIConfig, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
+	series, _, err := telemetry.MetricHistogramRepository.Query(ctx, slo.ProjectId, cfg.MetricName, from, to, bucketMinutes, cfg.Tags, nil, 1)
+	if err != nil {
+		return nil, err
+	}
+	var result []shared.SLOBucketPoint
+	for _, points := range series {
+		for _, point := range points {
+			if point.Timestamp.Before(from) || !point.Timestamp.Before(to) {
+				continue
+			}
+			total := point.Hist.Count
+			threshold := cfg.Threshold
+			if cfg.Operator == "lt" || cfg.Operator == "gte" {
+				threshold = math.Nextafter(threshold, math.Inf(-1))
+			}
+			good := point.Hist.CountAtOrBelow(threshold)
+			if cfg.Operator == "gt" || cfg.Operator == "gte" {
+				good = total - good
+			}
+			result = append(result, shared.SLOBucketPoint{Bucket: point.Timestamp.UTC(), Good: int64(math.Round(good)), Total: int64(math.Round(total))})
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Bucket.Before(result[j].Bucket) })
+	return result, nil
+}
+
 func metricBuckets(ctx context.Context, slo *models.SLO, cfg *models.MetricSLIConfig, from, to time.Time, bucketMinutes int) ([]shared.SLOBucketPoint, error) {
+	if cfg.Aggregation == models.SLOAggregationDistribution {
+		return distributionBuckets(ctx, slo, cfg, from, to, bucketMinutes)
+	}
 	series, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, slo.ProjectId, cfg.MetricName, from, to, bucketMinutes, cfg.Aggregation, cfg.Tags, "", 1)
 	if err != nil {
 		return nil, err

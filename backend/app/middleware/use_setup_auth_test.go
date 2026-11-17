@@ -3,6 +3,7 @@
 package middleware
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -12,8 +13,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	_ "modernc.org/sqlite"
 )
 
@@ -148,7 +149,7 @@ func TestUseSetupAuthRejects(t *testing.T) {
 func TestSetupTokenNeverPassesAppAuth(t *testing.T) {
 	setupSetupAuthDB(t)
 
-	identity, err := AuthenticateBearer("tws_" + "some-opaque-setup-token")
+	identity, err := AuthenticateBearer(context.Background(), "tws_"+"some-opaque-setup-token")
 	if !errors.Is(err, ErrInvalidBearer) {
 		t.Fatalf("AuthenticateBearer(tws_...) = (%v, %v), want ErrInvalidBearer", identity, err)
 	}

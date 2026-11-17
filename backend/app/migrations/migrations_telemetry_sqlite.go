@@ -6,7 +6,7 @@ import (
 	"embed"
 	"fmt"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 )
 
 //go:embed sqlite_telemetry/*.sql

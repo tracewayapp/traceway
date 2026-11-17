@@ -5,10 +5,10 @@
 A metric point is a name (`system.cpu.utilization`, `orders.created`), a numeric value, a timestamp and tags (`server_name`, `state`, `direction`, ...).
 
 - **Where they come from**: OpenTelemetry meters in the application (counters, histograms, gauges), runtime instrumentation (Go, Node.js and others), and host metrics from the Traceway OTel Agent or an OpenTelemetry Collector with the hostmetrics receiver (`system.*` names: CPU, memory, disk, filesystem, network, processes).
-- **Histograms** are stored as two series, `<name>.avg` and `<name>.count`.
+- **Histograms** are stored as mergeable distributions, including OTLP exponential histograms. Explicit-bound backend histograms also retain `<name>.avg` and `<name>.count` series. Browser 2.1+ metrics aggregate on-device; see [rum.md](rum.md).
 - **Tags** come from the data point's attributes, plus an allowlist of resource attributes Traceway lifts: `host.name`, `host.id`, `os.type`, `cloud.region`, `container.name`, `k8s.cluster.name`, `k8s.pod.name`, `k8s.node.name`, `postgresql.database.name` and a few more. The `server_name` tag comes from `service.name`. The allowlist also covers `k8s.namespace.name`, `k8s.deployment.name`, `cloud.provider`, `cloud.availability_zone` and `process.*`.
 - **Resolution**: on ClickHouse it follows the range so long ranges stay fast: raw points up to 6 hours, 1-minute rollups up to 72 hours, 1-hour rollups up to 30 days, daily beyond. SQLite and DuckDB always read raw points.
-- **Stored types**: gauges, sums and histograms. Exponential histograms and summaries are dropped.
+- **Stored types**: backend gauges, sums and histograms; summaries are dropped. Client projects accept catalog/custom delta sums and delta exponential histograms, not arbitrary gauges or cumulative series. Distribution rollups differ from point metrics: ClickHouse uses minute/hour/day storage; SQLite and DuckDB fold minutes older than six hours into hours.
 
 Aggregations:
 
@@ -19,7 +19,7 @@ Aggregations:
 
 A widget source can also be **inverted** (1 minus the value). The agent reports `system.cpu.utilization` per state, and `idle` inverted is the busy share.
 
-Dashboards and agent queries have no percentile aggregation over metric points. Only the Metric Threshold alert rule can compute `p95` or `p99` of a metric. Latency percentiles come from endpoints and tasks (`endpoints-and-tasks.md`).
+Distribution queries support p50/p75/p90/p95/p99 and `good_ratio`; point metrics cannot supply percentiles. Merge buckets over the whole window before calculating a headline percentile, never average percentiles. Distribution `count` counts observations; delta-counter `sum` counts events. Query good ratios use 0..1; alert thresholds use 0..100. See [rum.md](rum.md) for current CLI/MCP limitations.
 
 ## Dashboards (`/dashboards`)
 
@@ -38,7 +38,7 @@ The active tab's menu: **Rename Dashboard** (names are unique in the organizatio
 | Traceway ClickHouse | `traceway.ch.*` from a monitored Traceway instance |
 | Traceway DuckDB | `traceway.duckdb.*` from a monitored Traceway instance |
 
-**Widgets**: Line Chart, Area Chart, Stacked Area, Bar Chart, Single Value, Gauge and Table. Each has one or more sources: a metric name, an aggregation, optional tag filters (equals), an optional group-by that draws one series per tag value, and optionally inverted. Several sources overlay on one chart. Hover for values, drag across a chart to zoom in.
+**Widgets**: Line Chart, Area Chart, Stacked Area, Bar Chart, Single Value, Gauge, Table, Rating Bar and Breakdown Table. Rating bars show rated distribution shares; breakdown tables compare groups over the whole range. Distribution headline values merge the full range first. Each has one or more sources: a metric name, an aggregation, optional tag filters (equals), an optional group-by that draws one series per tag value, and optionally inverted. Several sources overlay on one chart. Hover for values, drag across a chart to zoom in.
 
 **Instance filter**: the picker in the header narrows every widget to one `server_name` seen in the range. It lives in the URL (`?server=<name>`), is not saved to the dashboard, and is where a row on the organization's Servers page leads.
 
@@ -48,7 +48,7 @@ The active tab's menu: **Rename Dashboard** (names are unique in the organizatio
 
 **Grafana import**: paste a Grafana export. Time series and graph panels become line charts, stat becomes single value, gauge stays a gauge, and Prometheus queries become metric sources. Anything that does not convert faithfully is listed as a warning, never silently dropped.
 
-Editing dashboards and widgets needs an organization role above `readonly`. Starring, tab order and home page layout follow the effective project role. The Dashboards page is hidden for browser and mobile projects.
+Editing dashboards and widgets needs an organization role above `readonly`. Starring, tab order and home page layout follow the effective project role. Browser projects receive Web Performance on creation; mobile projects offer Mobile Performance on the empty dashboard page. Client dashboards filter by release, OS and country (when configured), rather than server instance. Slow sessions opens retained distribution exemplars, which may have element attribution and session links.
 
 ## Reading it from an agent
 
@@ -59,8 +59,10 @@ Editing dashboards and widgets needs an organization role above `readonly`. Star
 - An unknown metric name returns an empty series, so probing names is safe.
 - A grouped query keeps the first 200 groups and says `truncatedGroups: true` when it cut some.
 - The server widens buckets so no series has more than 2000 points, and returns the bucket size it used as `intervalMinutes`.
-- Agents get `avg`, `sum`, `count`, `min` and `max`. `rate`, `last` and inverted sources are dashboard only, so read a counter's increase by comparing buckets.
-- `query_metrics` refuses `p50`, `p95` and `p99`. The CLI accepts them, but the server computes `avg` instead.
-- There is no metric-name discovery tool. Try likely names (an unknown one returns an empty series), or look at a dashboard.
+- Agents can query `avg`, `sum`, `count`, `min`, `max`, `rate` and `last`. Inversion is a widget display setting.
+- Current MCP `query_metrics` refuses percentiles; CLI accepts p50/p95/p99 and the current server computes them for distributions. Neither surface currently exposes the full RUM query contract (`wholeRange`, p75, p90, `good_ratio`, threshold). Use the dashboard for those. Inspect API query errors instead of treating empty CLI results as health.
+- Use `traceway metrics discover --since 24h` for recorded names, types, units and tag keys; add `--name <metric> --key <tag>` for tag values. The MCP equivalent is `discover_metrics` with optional `name` and `key`.
 
-Creating, editing and applying dashboards stays in the dashboard.
+Use `traceway-write dashboards import --file dashboard.json` to create and apply dashboards, or `--mode upsert` to replace by organization-wide name. Read `dashboard-building.md` in the `traceway-write` skill for chart selection from instrumented code, JSON examples and verification. Read-only `dashboards list` and `dashboards export <id>` are available in both CLIs.
+
+MCP supports `list_dashboards`, `dashboard_library`, `export_dashboard` and, on the write server, `import_dashboards`. CLI `dashboards validate --file dashboard.json` validates offline with the same checks used by CLI and MCP imports.

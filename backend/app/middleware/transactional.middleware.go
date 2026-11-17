@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +14,9 @@ func Transactional(c *gin.Context) {
 		return
 	}
 
-	txHandle, err := db.DB.Begin()
+	// WithoutCancel: the transaction takes the request span from this context,
+	// but a client disconnect must not roll it back mid-handler.
+	txHandle, err := db.DB.BeginTx(context.WithoutCancel(c.Request.Context()), nil)
 
 	if err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)

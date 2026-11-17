@@ -5,7 +5,7 @@ package db
 import (
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
 )
 
 func initTelemetryDB() error {

@@ -449,3 +449,35 @@ All fired notifications are recorded and visible in the **History** tab on the A
 | Channel | Which channel delivered the notification |
 | Status | Whether delivery succeeded or failed |
 | Timestamp | When the notification was sent |
+
+
+## Configure alerting with the CLI or MCP
+
+The write CLI supports channel and rule creation, replacement and deletion. Start with `traceway-write channels list` and `traceway-write alerts list` to inspect existing configuration. Create a channel before a rule, using its returned ID:
+
+```json filename="channel.json"
+{"name":"Operations email","channelType":"email","config":{"recipients":["ops@example.com"]},"enabled":true}
+```
+
+```bash
+traceway-write channels validate create --file channel.json
+traceway-write channels create --file channel.json --yes
+```
+
+```json filename="rule.json"
+{"name":"Slow orders","channelId":12,"ruleType":"endpoint_p95_threshold","config":{"endpoint":"GET /api/orders","thresholdMs":1000,"lookbackMinutes":10},"cooldownMinutes":15,"severity":"warning"}
+```
+
+```bash
+traceway-write alerts validate create --file rule.json
+traceway-write alerts create --file rule.json --yes
+traceway-write alerts list
+```
+
+Replace example IDs and endpoint names with observed values. `validate` runs offline and checks the request envelope; server-side checks validate adapter settings, relationships and permissions. `update <id> --file F` sends the complete rule/channel configuration. Rule `severity` is empty for automatic, or `info`, `warning`, `critical`; enabled/snoozed state uses the separate alert enable/disable/snooze commands. Channel `enabled` is optional: true by default on create, preserved when omitted on update.
+
+`channels delete <id>` also deletes its attached rules. `alerts delete <id>` permanently removes one rule; snooze for temporary suppression. `channels test <id>` sends a real test notification, and an escalation channel opens a real page. Saving or validating configuration does not test delivery.
+
+The write MCP server exposes `create_notification_channel`, `update_notification_channel`, `delete_notification_channel`, `test_notification_channel`, and matching `create_notification_rule`, `update_notification_rule`, `delete_notification_rule` tools. Pass `project_id`, `id` for existing records and `data` containing the JSON object. Discovery uses `list_notification_channels` and `list_notification_rules`. `list_notification_history` reads delivery history; CLI equivalent is `notification-history list --file query.json` with `{"pagination":{"page":1,"pageSize":20}}` and optional `search`, `fromDate`, `toDate`.
+
+The write skill's **alert-configuration.md**, also served as `traceway://knowledge/alert-configuration`, lists every channel's fields and every rule type's JSON config. Channel configuration contains credentials: use a secure secret mechanism and do not commit or echo them. See [Agent Write Access](/learn/agent-write-access) for authorization.

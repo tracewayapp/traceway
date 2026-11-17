@@ -12,17 +12,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/notifications"
-	"github.com/tracewayapp/traceway/backend/app/oncall"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/slo"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/notifications"
+	"github.com/tracewayapp/traceway/backend/v2/app/oncall"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/slo"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type sloController struct{}
@@ -162,7 +163,18 @@ func validateSLIDefinition(tx *sql.Tx, projectId uuid.UUID, kind string, raw jso
 			return def, "Metric name is required.", nil
 		}
 		if !models.SLOMetricAggregations[c.Aggregation] {
-			return def, "Aggregation must be one of: avg, min, max, sum, last.", nil
+			return def, "Aggregation must be one of: avg, min, max, sum, last, distribution.", nil
+		}
+		if metric, known := clientmetrics.Lookup(c.MetricName); known {
+			if metric.Shape == clientmetrics.Distribution && c.Aggregation != models.SLOAggregationDistribution {
+				return def, "Use Every observation for a client distribution metric.", nil
+			}
+			if metric.Shape != clientmetrics.Distribution && c.Aggregation == models.SLOAggregationDistribution {
+				return def, "Every observation requires a distribution metric, not a counter.", nil
+			}
+		}
+		if c.Aggregation == models.SLOAggregationDistribution && c.MissingIsBad {
+			return def, "Missing data cannot be counted as bad observations for a distribution.", nil
 		}
 		if !models.SLOMetricOperators[c.Operator] {
 			return def, "Operator must be one of: gt, gte, lt, lte.", nil

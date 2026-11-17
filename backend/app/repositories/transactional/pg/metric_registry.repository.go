@@ -4,11 +4,11 @@ package pg
 
 import (
 	"database/sql"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/shared"
 	"sync"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -87,6 +87,17 @@ func (r *metricRegistryRepository) EnsureRegisteredWithUnits(tx *sql.Tx, project
 			return err
 		}
 		if existing != nil {
+			// A metric that starts arriving as a distribution was registered as a
+			// gauge by an earlier release that stored it point by point.
+			if entry.MetricType == models.MetricTypeHistogram && existing.MetricType != models.MetricTypeHistogram {
+				existing.MetricType = models.MetricTypeHistogram
+				if entry.Unit != "" {
+					existing.Unit = entry.Unit
+				}
+				if err := r.Update(tx, existing); err != nil {
+					return err
+				}
+			}
 			r.knownMetrics.Store(key, true)
 			continue
 		}

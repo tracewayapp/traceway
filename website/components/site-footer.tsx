@@ -17,7 +17,7 @@ const COLUMNS: Column[] = [
       { label: "Logs", href: "/product/logs" },
       { label: "Traces", href: "/product/traces" },
       { label: "Metrics", href: "/product/metrics" },
-      { label: "Session Replay", href: "/product/session-replay" },
+      { label: "Real User Monitoring", href: "/product/rum" },
       { label: "Exceptions / Stack Traces", href: "/product/stack-traces" },
       { label: "Monitors", href: "/product/monitors" },
       { label: "SLOs", href: "/product/slos" },
@@ -55,6 +55,7 @@ const COLUMNS: Column[] = [
     heading: "Hosting",
     links: [
       { label: "Cloud", href: "/cloud" },
+      { label: "Services", href: "/services" },
       {
         label: "Self-host",
         href: "https://docs.tracewayapp.com",

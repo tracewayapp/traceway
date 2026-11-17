@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const syntheticsSubdir = "synthetics"
@@ -51,7 +51,7 @@ func startSyntheticsScreenshotCleanup(ctx context.Context, days int) {
 	go func() {
 		defer traceway.Recover()
 
-		runDirAgeCleanup(screenshotsDir, days)
+		runDirCleanupTask(ctx, "synthetics_artifacts", screenshotsDir, days)
 
 		ticker := time.NewTicker(tickInterval)
 		defer ticker.Stop()
@@ -60,7 +60,7 @@ func startSyntheticsScreenshotCleanup(ctx context.Context, days int) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				runDirAgeCleanup(screenshotsDir, days)
+				runDirCleanupTask(ctx, "synthetics_artifacts", screenshotsDir, days)
 			}
 		}
 	}()

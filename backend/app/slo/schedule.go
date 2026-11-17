@@ -3,7 +3,7 @@ package slo
 import (
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func slotOffset(sloId int, interval time.Duration) time.Duration {

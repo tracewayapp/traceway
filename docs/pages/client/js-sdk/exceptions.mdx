@@ -72,17 +72,17 @@ class ValidationError extends Error {
 captureException(new ValidationError("Invalid email format"));
 ```
 
-The type shown in Traceway comes from the error's **class name**, not from `this.name`. Minifiers rename classes, so in a production build the issue above reads `r: Invalid email format` rather than `ValidationError: Invalid email format`. Put anything you need to search or group on into the message or into attributes.
+With the 2.x SDK, the type shown in Traceway is the error's `name` property, so set `this.name` as above: it is a string, and minifiers leave it alone. The 1.x SDK reads the **class name** instead, not `this.name`. Minifiers rename classes, so with 1.x a production build shows the issue above as `r: Invalid email format` rather than `ValidationError: Invalid email format`. Either way, put anything you need to search or group on into the message or into attributes.
 
 ## Non-Error Values
 
-Pass real `Error` objects. The SDK reads only the value's class name and its `message` property, so anything else loses information and arrives with no stack trace:
+Pass real `Error` objects. Anything else arrives with no useful stack trace. The 2.x SDK wraps a string as `new Error(string)` and any other value as `new Error(JSON.stringify(value))`, so the issue type is `Error`. The 1.x SDK reads only the value's class name and its `message` property, so it loses more:
 
 ```javascript
-// Message is lost. Stored as "String: undefined".
+// 2.x: "Error: Something went wrong". 1.x: the message is lost, stored as "String: undefined".
 captureException("Something went wrong");
 
-// Stored as "Object: Server error". The `code` field is dropped.
+// 2.x: "Error: {"code":500,"message":"Server error"}". 1.x: "Object: Server error", the `code` field is dropped.
 captureException({ code: 500, message: "Server error" });
 ```
 

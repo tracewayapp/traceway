@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 func setupSLODB(t *testing.T) uuid.UUID {
@@ -149,6 +149,36 @@ func TestWorkerMetricTimeslices(t *testing.T) {
 	}
 	if got := reloadSLO(t, lenient.Id); got.Status != models.SLOStatusOk {
 		t.Fatalf("2 of 3 slices good against a 50%% target is ok, got %q", got.Status)
+	}
+}
+
+func TestWorkerCountsEventsOfADistribution(t *testing.T) {
+	projectId := setupSLODB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(5 * time.Minute).Add(time.Minute)
+	lastClosed := now.Truncate(5 * time.Minute)
+	cell := func(ago time.Duration, value float64, n int) shared.MetricHistogramCell {
+		h := shared.NewHistogram()
+		for i := 0; i < n; i++ {
+			h.Observe(value, 1)
+		}
+		return shared.MetricHistogramCell{ProjectId: projectId, Name: "browser.web_vital.lcp", RecordedAt: lastClosed.Add(-ago), Dims: map[string]string{"service.version": "4.2"}, Hist: h}
+	}
+	if err := telemetry.MetricHistogramRepository.InsertCells(ctx, []shared.MetricHistogramCell{
+		cell(4*time.Minute, 1200, 60), cell(4*time.Minute, 5000, 20), cell(12*time.Minute, 1900, 15), cell(13*time.Minute, 8000, 5),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	slo := createTestSLO(t, projectId, models.SLIKindMetric, `{"metricName":"browser.web_vital.lcp","tags":{},"aggregation":"distribution","operator":"lte","threshold":2500}`, 75, 7, 5)
+
+	RunOnce(ctx, now)
+
+	good, total, err := telemetry.SLOBucketRepository.SumRange(ctx, projectId, slo.Id, lastClosed.Add(-7*24*time.Hour), lastClosed)
+	if err != nil || total != 100 || good != 75 {
+		t.Fatalf("page views under 2.5 s: %d/%d (%v), want 75/100", good, total, err)
+	}
+	if got := reloadSLO(t, slo.Id); got.Status != models.SLOStatusOk {
+		t.Fatalf("75 of 100 good against a 75%% target is ok, got %q", got.Status)
 	}
 }
 
@@ -374,4 +404,24 @@ func derefSLI(sli *float64) any {
 		return nil
 	}
 	return *sli
+}
+
+func TestDistributionSLIThresholdEquality(t *testing.T) {
+	projectId := setupSLODB(t)
+	ctx := context.Background()
+	at := time.Now().UTC().Truncate(time.Minute).Add(-time.Minute)
+	h := shared.NewHistogram()
+	h.Observe(2500, 10)
+	if err := telemetry.MetricHistogramRepository.InsertCells(ctx, []shared.MetricHistogramCell{{ProjectId: projectId, Name: "browser.web_vital.lcp", RecordedAt: at, Dims: map[string]string{}, Hist: h}}); err != nil {
+		t.Fatal(err)
+	}
+	for operator, want := range map[string]int64{"lt": 0, "lte": 10, "gt": 0, "gte": 10} {
+		points, err := distributionBuckets(ctx, &models.SLO{ProjectId: projectId, BucketMinutes: 1}, &models.MetricSLIConfig{MetricName: "browser.web_vital.lcp", Operator: operator, Threshold: 2500}, at, at.Add(time.Minute), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(points) != 1 || points[0].Good != want || points[0].Total != 10 {
+			t.Errorf("%s: %+v, want %d/10", operator, points, want)
+		}
+	}
 }

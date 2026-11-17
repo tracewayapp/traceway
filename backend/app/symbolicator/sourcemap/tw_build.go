@@ -1,7 +1,7 @@
 package sourcemap
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/scopes"
 )
 
 type StackTraceFrame struct {

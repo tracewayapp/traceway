@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
 )
+
+const telemetryBackendCompacts = true
 
 func setupTestDB(t *testing.T) {
 	t.Helper()

@@ -12,11 +12,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/services/authserver"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/authserver"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver"
 )
 
 const (
@@ -64,8 +64,8 @@ func GinHandler(engine *gin.Engine, version string, write bool) gin.HandlerFunc 
 	}
 }
 
-func verifyBearer(_ context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
-	identity, err := middleware.AuthenticateBearer(token)
+func verifyBearer(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
+	identity, err := middleware.AuthenticateBearer(ctx, token)
 	if err != nil {
 		if errors.Is(err, middleware.ErrInvalidBearer) {
 			return nil, auth.ErrInvalidToken

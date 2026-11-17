@@ -4,20 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/config"
-	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/internal/config"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
 )
 
 func TestSession_refreshesExpiredDeviceToken(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/auth/token":
 			_, _ = w.Write([]byte(`{"access_token":"fresh","refresh_token":"rt2","expires_in":900,"email":"d@e.com"}`))
@@ -74,7 +73,7 @@ func TestSession_adoptedRotationCarriesTheRefreshToken(t *testing.T) {
 	var mu sync.Mutex
 	valid := map[string]bool{"jwt2": true}
 	var presented []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		switch r.URL.Path {

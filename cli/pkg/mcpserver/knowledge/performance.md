@@ -88,7 +88,7 @@ traceway metrics query --name system.cpu.utilization --tag state=idle --aggregat
 ```
 A flat line that steps up at the same bucket the latency jumped is the saturation signal; flat metrics under a latency step point at code.
 
-**3. A specific non-top-5 endpoint: window bisection.** When the route you care about is in "Other", reconstruct its onset from `endpoints list` (the only source of true p50/p95/p99, computed from raw durations) by comparing the *same endpoint's* percentiles across adjacent windows with `--from`/`--to`. Start wide, split, keep the half where p95 is elevated, recurse until the bracket is tight:
+**3. A specific non-top-5 endpoint: window bisection.** When the route you care about is in "Other", reconstruct its onset from `endpoints list` (the source of endpoint p50/p95/p99 computed from raw durations) by comparing the *same endpoint's* percentiles across adjacent windows with `--from`/`--to`. Start wide, split, keep the half where p95 is elevated, recurse until the bracket is tight:
 ```bash
 # is the regression in the first or second half of the suspect day?
 traceway endpoints list --search "GET /api/checkout" --from 2026-06-25T00:00:00Z --to 2026-06-25T12:00:00Z \
@@ -157,6 +157,6 @@ Each row: the suspect, and how to confirm it from Traceway telemetry.
 
 ## Notes on the signals
 
-- Host metrics live under `system.*` (OpenTelemetry hostmetrics, sent by the Traceway OTel Agent) and are split by tags such as `state`; runtime metrics use the OpenTelemetry names of the language (`jvm.*`, `go.*`, `v8js.*`, `process.runtime.*`). The server has no quantile aggregation for metric points: `p50/p95/p99` on `metrics query` silently return `avg`, so never present those as percentiles. Real latency percentiles come only from `endpoints list`, computed from raw request durations.
-- OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`. A bogus metric name returns an empty `series: {}` cleanly, so probing names is safe.
+- Host metrics live under `system.*` (OpenTelemetry hostmetrics, sent by the Traceway OTel Agent) and are split by tags such as `state`; runtime metrics use the OpenTelemetry names of the language (`jvm.*`, `go.*`, `v8js.*`, `process.runtime.*`). Point metrics cannot provide quantiles. Current servers compute p50/p95/p99 for distributions through the CLI, but MCP query validation still rejects them. Use `endpoints list` for request-population percentiles; see `rum.md` for browser distributions and unsupported query options.
+- OTLP histograms are stored as distributions; explicit-bound backend histograms also retain `<name>.avg` and `<name>.count`. A bogus metric name returns an empty `series: {}` cleanly, so probing names is safe.
 - When the waterfall shows a gap with no span, that gap is the finding: it is time the request spent waiting (for a connection, a lock, the scheduler), not time spent doing work.

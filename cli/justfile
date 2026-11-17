@@ -63,6 +63,8 @@ gen-skills-check:
     trap 'rm -rf "$tmp"' EXIT
     go run ./tools/skillgen "$tmp" >/dev/null
     diff -u ../skills/traceway/SKILL.md "$tmp/skills/traceway/SKILL.md"
+    diff -u ../skills/traceway/rum.md "$tmp/skills/traceway/rum.md"
+    diff -u ../skills/traceway-setup/rum.md "$tmp/skills/traceway-setup/rum.md"
     diff -u ../skills/traceway/performance.md "$tmp/skills/traceway/performance.md"
     diff -ru ../skills/traceway-learn "$tmp/skills/traceway-learn"
     diff -ru ../plugins/tw-write/skills/traceway-write "$tmp/plugins/tw-write/skills/traceway-write"

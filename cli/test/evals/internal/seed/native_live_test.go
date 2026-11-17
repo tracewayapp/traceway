@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	client "github.com/tracewayapp/traceway/cli/pkg/client"
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/env"
 	"github.com/tracewayapp/traceway/cli/test/evals/internal/seed"
+	client "github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // TestNativeCrashWithActions sends a mobile crash with captured network

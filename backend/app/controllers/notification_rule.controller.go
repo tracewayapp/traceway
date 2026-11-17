@@ -14,40 +14,42 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/notifications"
-	"github.com/tracewayapp/traceway/backend/app/oncall"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/notifications"
+	"github.com/tracewayapp/traceway/backend/v2/app/oncall"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type notificationRuleController struct{}
 
 var validRuleTypes = map[string]bool{
-	"error_rate_threshold":    true,
-	"endpoint_p95_threshold":  true,
-	"endpoint_p99_threshold":  true,
-	"apdex_drop":              true,
-	"metric_threshold":        true,
-	"no_data":                 true,
-	"error_count_threshold":   true,
-	"task_duration_threshold": true,
-	"task_failure_rate":       true,
-	"throughput_drop":         true,
-	"endpoint_error_rate":     true,
-	"new_error":               true,
-	"error_regression":        true,
-	"impact_score_critical":   true,
-	"impact_score_high":       true,
-	"impact_score_medium":     true,
-	"ai_trace_cost":           true,
-	"ai_conversation_cost":    true,
-	"ai_flagged_content":      true,
-	"check_down":              true,
-	"slo_burn_rate":           true,
-	"slo_budget_consumed":     true,
+	"error_rate_threshold":      true,
+	"endpoint_p95_threshold":    true,
+	"endpoint_p99_threshold":    true,
+	"apdex_drop":                true,
+	"metric_threshold":          true,
+	"metric_release_regression": true,
+	"no_data":                   true,
+	"error_count_threshold":     true,
+	"task_duration_threshold":   true,
+	"task_failure_rate":         true,
+	"throughput_drop":           true,
+	"endpoint_error_rate":       true,
+	"new_error":                 true,
+	"error_regression":          true,
+	"impact_score_critical":     true,
+	"impact_score_high":         true,
+	"impact_score_medium":       true,
+	"ai_trace_cost":             true,
+	"ai_conversation_cost":      true,
+	"ai_flagged_content":        true,
+	"check_down":                true,
+	"slo_burn_rate":             true,
+	"slo_budget_consumed":       true,
 }
 
 func (ctrl *notificationRuleController) List(ctx *gin.Context) {
@@ -423,20 +425,57 @@ func (ctrl *notificationRuleController) Snooze(ctx *gin.Context) {
 
 var NotificationRuleController = notificationRuleController{}
 
+var metricRuleAggregations = map[string]bool{
+	"": true, "avg": true, "max": true, "min": true, "sum": true, "count": true, "last": true,
+	"p50": true, "p75": true, "p90": true, "p95": true, "p99": true, shared.AggregationGoodRatio: true,
+}
+
 const (
 	maxMetricRuleTagFilters = 20
 	maxMetricRuleGroupBy    = 5
+	maxReleaseRuleGroupBy   = 2
 )
 
 func validateRuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, config json.RawMessage) (string, error) {
 	switch ruleType {
-	case "metric_threshold":
+	case "metric_release_regression":
 		var cfg struct {
-			Tags    map[string]string `json:"tags"`
-			GroupBy []string          `json:"groupBy"`
+			MetricName       string   `json:"metricName"`
+			Aggregation      string   `json:"aggregation"`
+			ThresholdPercent float64  `json:"thresholdPercent"`
+			GroupBy          []string `json:"groupBy"`
 		}
 		if err := json.Unmarshal(config, &cfg); err != nil {
 			return "The rule configuration is not valid JSON.", nil
+		}
+		if strings.TrimSpace(cfg.MetricName) == "" {
+			return "Choose the metric to compare between releases.", nil
+		}
+		if _, percentile := shared.HistogramAggregations[cfg.Aggregation]; cfg.Aggregation != "" && cfg.Aggregation != "avg" && !percentile {
+			return "A release comparison uses a percentile or the average.", nil
+		}
+		if cfg.ThresholdPercent < 0 || cfg.ThresholdPercent > 1000 {
+			return "The allowed regression must be between 0 and 1000 percent.", nil
+		}
+		if len(cfg.GroupBy) > maxReleaseRuleGroupBy {
+			return fmt.Sprintf("A release comparison can be split by at most %d dimensions.", maxReleaseRuleGroupBy), nil
+		}
+		for _, key := range cfg.GroupBy {
+			if strings.TrimSpace(key) == "" || key == "service.version" {
+				return "Split a release comparison by a dimension other than the release.", nil
+			}
+		}
+	case "metric_threshold":
+		var cfg struct {
+			Aggregation string            `json:"aggregation"`
+			Tags        map[string]string `json:"tags"`
+			GroupBy     []string          `json:"groupBy"`
+		}
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return "The rule configuration is not valid JSON.", nil
+		}
+		if !metricRuleAggregations[cfg.Aggregation] {
+			return fmt.Sprintf("Unknown aggregation %q.", cfg.Aggregation), nil
 		}
 		if len(cfg.Tags) > maxMetricRuleTagFilters {
 			return fmt.Sprintf("A metric rule can filter on at most %d tags.", maxMetricRuleTagFilters), nil

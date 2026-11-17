@@ -2,7 +2,7 @@
 
 package telemetry
 
-import duckdbrepo "github.com/tracewayapp/traceway/backend/app/repositories/telemetry/duckdb"
+import duckdbrepo "github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/duckdb"
 
 var (
 	AiTraceRepository             = duckdbrepo.AiTraceRepository
@@ -12,6 +12,7 @@ var (
 	FiredNotificationRepository   = duckdbrepo.FiredNotificationRepository
 	LogRecordRepository           = duckdbrepo.LogRecordRepository
 	MetricPointRepository         = duckdbrepo.MetricPointRepository
+	MetricHistogramRepository     = duckdbrepo.MetricHistogramRepository
 	ProfileRepository             = duckdbrepo.ProfileRepository
 	SessionRecordingRepository    = duckdbrepo.SessionRecordingRepository
 	SessionRepository             = duckdbrepo.SessionRepository

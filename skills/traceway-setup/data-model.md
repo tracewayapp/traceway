@@ -177,7 +177,7 @@ Quirks:
 
 ## Metrics
 
-OTLP metrics sent to `/api/otel/v1/metrics` are stored under their **original names**. There is no renaming or namespacing. Every incoming metric is auto-registered (name, unit, type) in the metric registry, becomes discoverable in the dashboard's metric explorer, and can be charted in custom widgets or queried via `traceway metrics query --name <name>`.
+OTLP metrics sent to `/api/otel/v1/metrics` are stored under their **original names**. There is no renaming or namespacing. For backend projects, each supported incoming metric is auto-registered (name, unit, type) in the metric registry, becomes discoverable in the dashboard's metric explorer, and can be charted in custom widgets or queried via `traceway metrics query --name <name>`.
 
 Conversion rules per OTLP metric type:
 
@@ -186,13 +186,15 @@ Conversion rules per OTLP metric type:
 | Gauge | `<name>`, value as-is | `gauge` |
 | Sum (monotonic) | `<name>`, value as-is | `counter` |
 | Sum (non-monotonic) | `<name>`, value as-is | `gauge` |
-| Histogram | `<name>.count` always; `<name>.avg` (sum/count per export) only when the data point has a non-zero count and a sum | `gauge` for `.avg` (keeps the source unit) + `counter` for `.count` (unit forced to `count`) |
-| ExponentialHistogram, Summary | **silently dropped** | - |
+| Histogram | Mergeable distribution; also `<name>.count` and `<name>.avg` when count and sum allow | Distribution plus legacy count/average series |
+| ExponentialHistogram | Mergeable distribution | Distribution |
+| Summary | Dropped | - |
 
 Quirks:
 
-- **Histograms lose their buckets.** Only the average and count survive. You cannot compute true percentiles from an OTLP histogram in Traceway. An idle export interval (count 0) writes only the `.count` series, so `<name>.avg` has gaps rather than zeros.
-- **No percentile aggregations on metrics at all.** Metric queries support `avg`, `sum`, `count`, `min`, `max` and `last` only; anything else silently falls back to `avg`. `last` is special: it always reads the raw table, so it only works inside the 7-day raw retention window. Latency percentiles (P50/P95/P99) exist for Endpoints and Tasks because those are computed from raw span durations. If you need percentiles on a measurement, model it as a span, not a metric.
+- **Histogram buckets are retained.** Current servers compute p50/p75/p90/p95/p99 and good ratios from merged distributions. Point metrics cannot supply percentiles. Merge full-window buckets before calculating a headline percentile, never average per-bucket percentiles. CLI/MCP expose only part of this contract; read [rum.md](rum.md).
+- **Temporality matters.** Use delta for application metrics. Backend cumulative histograms are differenced using per-instance memory; behind a multi-instance load balancer, prefer delta or exporter affinity to avoid overlapping counts. Cumulative counter points need `rate`; delta counters need `sum` for totals. The legacy histogram `.avg`/`.count` series are not a substitute for distribution percentiles.
+- **Client projects have a separate path.** Browser SDK 2.1+ sends bounded catalog/custom delta histograms and sums, with route/release/environment/device dimensions. Arbitrary gauges and cumulative series are dropped. SDK 2.0 event-derived metrics cover only uploaded events. Mobile `app.*` metrics are accepted but not yet emitted by shipped mobile SDKs. See [rum.md](rum.md) for limits and verification.
 - **Tags come from data-point attributes plus a small resource allowlist.** Resource attributes are not copied onto metric points, with these exceptions. `service.name` becomes the `server_name` tag (and overwrites a data-point attribute of that name). The fixed allowlist retains host/platform metadata (`host.name`, `host.id`, `host.arch`, `os.type`, `os.description`, cloud provider/region/availability zone) and grouping identity for processes, containers, Kubernetes (`k8s.cluster.name`, pod, namespace, node, deployment, container), and PostgreSQL databases. Every other resource attribute (`deployment.environment`, for example) is dropped. A data-point attribute wins over the resource value when both use the same key. Any other per-series dimension must be a data-point attribute, and keep its cardinality low.
 - **Raw metric points expire after 7 days** (ClickHouse TTL). Queries over wider ranges read pre-aggregated rollups instead (1-minute rollups are kept 30 days, 1-hour rollups 1 year, 1-day rollups indefinitely), so older metrics lose granularity rather than disappearing.
 

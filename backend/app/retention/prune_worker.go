@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 // startDBPruneWorker runs prune once at startup and then every interval until
@@ -42,7 +42,14 @@ func runDBPrune(ctx context.Context, name string, prune func(tx *sql.Tx) (int64,
 	if ctx.Err() != nil || db.DB == nil {
 		return
 	}
-	if _, err := db.ExecuteTransaction(prune); err != nil {
-		traceway.CaptureException(fmt.Errorf("retention: prune %s failed: %w", name, err))
-	}
+	traceway.RunTask(ctx, "retention."+name, func(ctx context.Context) {
+		pruned, err := db.ExecuteTransactionContext(ctx, prune)
+		if err != nil {
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("retention: prune %s failed: %w", name, err))
+			return
+		}
+		if pruned == 0 {
+			traceway.SkipTask(ctx)
+		}
+	})
 }

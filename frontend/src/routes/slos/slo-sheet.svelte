@@ -75,6 +75,10 @@
 	let metricThreshold = $state('');
 	let sliceMinutes = $state('5');
 	let missingIsBad = $state(false);
+	// Creating only: one objective per value of a dimension, so every OS or form factor
+	// has its own error budget instead of an average that hides the worst one.
+	let splitBy = $state('');
+	const MAX_SPLIT_SLOS = 20;
 
 	let sessionAppVersion = $state('');
 	let includeMessages = $state(false);
@@ -130,7 +134,8 @@
 		{ value: 'min', label: 'Minimum' },
 		{ value: 'max', label: 'Maximum' },
 		{ value: 'sum', label: 'Sum' },
-		{ value: 'last', label: 'Last value' }
+		{ value: 'last', label: 'Last value' },
+		{ value: 'distribution', label: 'Every observation' }
 	];
 	const operatorOptions = [
 		{ value: 'lt', label: 'below' },
@@ -163,8 +168,9 @@
 		checkIds = [];
 		metricName = '';
 		metricTags = {};
-		metricAggregation = 'avg';
-		metricOperator = 'lt';
+		splitBy = '';
+		metricAggregation = isFrontendProject ? 'distribution' : 'avg';
+		metricOperator = isFrontendProject ? 'lte' : 'lt';
 		metricThreshold = '';
 		sliceMinutes = '5';
 		missingIsBad = false;
@@ -341,6 +347,18 @@
 	}
 
 	const metricTagKeys = $derived(metrics.find((m) => m.name === metricName)?.tagKeys ?? []);
+	const SPLIT_DIMENSIONS = [
+		'service.version',
+		'os.name',
+		'browser.name',
+		'device.form_factor',
+		'device.class',
+		'country',
+		'network.type'
+	];
+	const splitKeys = $derived(
+		SPLIT_DIMENSIONS.filter((key) => metricTagKeys.includes(key) && !(key in metricTags))
+	);
 
 	const serviceSelectOptions = $derived([
 		{ value: '', label: 'Any service' },
@@ -398,7 +416,7 @@
 					aggregation: metricAggregation,
 					operator: metricOperator,
 					threshold: String(metricThreshold ?? '').trim() === '' ? null : Number(metricThreshold),
-					missingIsBad
+					missingIsBad: metricAggregation === 'distribution' ? false : missingIsBad
 				};
 			case 'session':
 				return { appVersion: sessionAppVersion.trim(), includeMessages };
@@ -463,6 +481,28 @@
 			if (isEditing && slo) {
 				await api.put(`/slos/${slo.id}`, payload, projectQuery());
 				toast.success('Successfully updated the SLO', { position: 'top-center' });
+			} else if (sliKind === 'metric' && splitBy) {
+				const values = (await loadTagValues(splitBy)).filter((v) => v && v !== 'other');
+				if (values.length === 0) {
+					error = `No values of ${splitBy} have been reported for this metric yet.`;
+					return;
+				}
+				if (values.length > MAX_SPLIT_SLOS) {
+					error = `${splitBy} has ${values.length} values; split by a dimension with at most ${MAX_SPLIT_SLOS}, or add a tag filter per SLO.`;
+					return;
+				}
+				for (const value of values) {
+					await api.post(
+						'/slos',
+						{
+							...payload,
+							name: `${payload.name} (${value})`,
+							sliConfig: { ...payload.sliConfig, tags: { ...metricTags, [splitBy]: value } }
+						},
+						projectQuery()
+					);
+				}
+				toast.success(`Successfully created ${values.length} SLOs`, { position: 'top-center' });
 			} else {
 				await api.post('/slos', payload, projectQuery());
 				toast.success('Successfully created the SLO', { position: 'top-center' });
@@ -731,7 +771,7 @@
 							id="slo-metric"
 							list="slo-metric-options"
 							bind:value={metricName}
-							placeholder="system.cpu.utilization"
+							placeholder={isFrontendProject ? 'browser.web_vital.lcp' : 'system.cpu.utilization'}
 							disabled={loading}
 						/>
 						<datalist id="slo-metric-options">
@@ -751,9 +791,33 @@
 							/>
 						</div>
 					{/if}
+					{#if !isEditing && splitKeys.length > 0}
+						<div class="space-y-2">
+							<Label for="slo-split">One SLO per</Label>
+							<Select.Root type="single" bind:value={splitBy} disabled={loading}>
+								<Select.Trigger id="slo-split" class="w-full">
+									{splitBy || 'No split: one SLO for everything'}
+								</Select.Trigger>
+								<Select.Content>
+									<Select.Item value="">No split: one SLO for everything</Select.Item>
+									{#each splitKeys as key (key)}
+										<Select.Item value={key}>{key}</Select.Item>
+									{/each}
+								</Select.Content>
+							</Select.Root>
+							{#if splitBy}
+								<p class="text-xs text-muted-foreground">
+									Creates one SLO for each value of {splitBy} reported so far, each with its own error
+									budget. A value that appears later needs its own SLO.
+								</p>
+							{/if}
+						</div>
+					{/if}
 					<div class="grid gap-4 sm:grid-cols-3">
 						<div class="space-y-2">
-							<Label>Aggregate per slice</Label>
+							<Label
+								>{metricAggregation === 'distribution' ? 'Counts' : 'Aggregate per slice'}</Label
+							>
 							<Select.Root type="single" bind:value={metricAggregation} disabled={loading}>
 								<Select.Trigger class="w-full">
 									{labelOf(aggregationOptions, metricAggregation, 'Average')}
@@ -804,14 +868,21 @@
 								</Select.Content>
 							</Select.Root>
 						</div>
-						<label class="flex cursor-pointer items-center gap-2 pt-7 text-sm">
-							<Checkbox
-								checked={missingIsBad}
-								onCheckedChange={(checked) => (missingIsBad = checked === true)}
-								disabled={loading}
-							/>
-							Slices without data count as bad
-						</label>
+						{#if metricAggregation === 'distribution'}
+							<p class="pt-7 text-xs text-muted-foreground">
+								Each observation is an event: "75% of page views have an LCP at most 2500 ms". Needs
+								a distribution metric.
+							</p>
+						{:else}
+							<label class="flex cursor-pointer items-center gap-2 pt-7 text-sm">
+								<Checkbox
+									checked={missingIsBad}
+									onCheckedChange={(checked) => (missingIsBad = checked === true)}
+									disabled={loading}
+								/>
+								Slices without data count as bad
+							</label>
+						{/if}
 					</div>
 				{:else if sliKind === 'session'}
 					<div class="grid gap-4 sm:grid-cols-2">

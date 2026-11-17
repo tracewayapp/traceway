@@ -1,0 +1,128 @@
+# Client Metrics
+
+Client metrics are the performance numbers of browsers and mobile apps: web vitals, route changes, main-thread blocking, app start, screen display times, requests. Nobody charts one phone. The question is always about a population, such as "p75 LCP of release 4.2 on Android", so Traceway stores them as **distributions**: one mergeable histogram per metric, set of dimensions and minute. Storage grows with the number of dimension combinations, not with the number of users.
+
+Browser metrics are the measurement layer of [Real User Monitoring (RUM)](/learn/rum). **Web Performance** is assigned in the same transaction that creates a React, Vue, Svelte or jQuery project, before the first telemetry arrives. An upgrade migration adds missing defaults to existing browser projects without changing custom dashboards. Removing a default after that migration remains your choice. Mobile projects offer **Mobile Performance** from the empty dashboard page.
+
+## How the numbers travel
+
+1. **On the device.** The browser SDK (2.1 and later) keeps a histogram per metric and dimension set in memory. An observation increments a bucket. It uploads one small payload when the page is hidden, at session end, and every five minutes for long sessions. A payload that fails, or whose page went away before the answer came, is kept in the browser's storage (at most three, for a day) and sent once more on the next page load. Every payload has an id so the receiving instance can recognize retries within its duplicate-filter window; see the multi-instance limitation below.
+2. **At ingest.** The payload is merged into cells in memory and the request is answered. No storage write happens per request. Every 10 seconds the cells are written as one batch per table.
+3. **In storage.** Rows of the same cell merge. On ClickHouse, minutes roll up to hours and days (kept 7 days, 90 days and 2 years). On SQLite and DuckDB, minute rows older than six hours are folded into hour rows and follow the telemetry retention.
+
+The wire format is standard OTLP/HTTP metrics to `/api/otel/v1/metrics`: delta `ExponentialHistogram` for distributions, delta monotonic `Sum` for counters. Anything else from a client project (gauges, cumulative series, unknown names) is dropped and counted.
+
+Browser SDKs 2.0 send only performance events. The server reads the same metrics from the events they upload, one observation each, so dashboards work before an app upgrades.
+
+Histogram buckets are about 9% wide, with roughly 4.5% midpoint resolution for ordinary positive values. Percentiles and threshold counts are estimates; bucket resolution does not bound sampling error or restore missing observations.
+
+## Metrics
+
+| Metric | Kind | Notes |
+|---|---|---|
+| `browser.web_vital.lcp`, `.inp`, `.fcp`, `.ttfb` (ms), `.cls` | rated distribution | Per page load. `rating` is a dimension. Read at p75, the percentile the web vitals are defined by |
+| `browser.route_timing.duration` (ms) | distribution | Single-page-app route change, with `outcome` and `type` |
+| `browser.long_task.duration` (ms) | distribution | One observation per main-thread block of 50 ms or more |
+| `browser.long_task.blocking_time` (ms) | distribution | Total blocking time of a page view |
+| `browser.page_load.duration`, `.dom_content_loaded` (ms), `browser.page.transfer_size` | distribution | Navigation timing |
+| `browser.request.duration` (ms), `browser.request.failed` | distribution, ratio | By `host`, from the requests the SDK traces |
+| `browser.page_view`, `browser.session`, `browser.js_error`, `browser.rage_click` | counter | |
+| `browser.view.inp` (ms), `browser.view.cls` | rated distribution | Per view: the first page view and every single-page-app route change, by the route it happened on. `view_type` is `load` or `soft`. The web vitals above cover the whole page and belong to the landing route |
+| `browser.web_vital.attribution` | counter | One per LCP, INP or CLS that is not good, with the `target` element behind it, `vital` and `rating` |
+| `browser.long_task.script_time` (ms) | distribution | Main-thread time by `script`, in browsers that report long animation frames |
+| `browser.user`, `browser.user.affected` | counter | People, not page views: each browser profile counts once per UTC day, and once per day per `issue` (`js_error`, `poor_lcp`, `poor_inp`, `poor_cls`, `rage_click`, `failed_request`). The device does the deduplication, so no id is sent |
+| `app.start.duration` (ms) | distribution | Dimension `start_type`: cold, warm, hot |
+| `app.screen.ttid`, `app.screen.ttfd` (ms) | distribution | Time to initial and full display, by `screen` |
+| `app.frames.slow`, `app.frames.frozen` | ratio | Against all frames |
+| `app.hang`, `app.anr`, `app.crash`, `app.oom`, `app.session` | counter | `app.hang.duration` is a distribution |
+| `app.user`, `app.user.affected` | counter | As `browser.user`, with the issues `crash`, `anr`, `hang`, `oom`, `slow_start`, `frozen_frames`, `failed_request` |
+| `app.memory.peak`, `app.cpu.time`, `app.energy`, `app.size`, `app.disk.used` | distribution | One value per session |
+| `app.request.duration`, `.bytes`, `app.request.failed` | distribution, ratio | By `host` |
+
+A ratio is two counters, `<name>` and `<name>.total`.
+
+The `app.*` metrics are accepted from any mobile project that sends them as OTLP. The mobile SDKs do not send them yet.
+
+"Users affected" over a day is `browser.user.affected` divided by `browser.user`; error-free users is one minus the `js_error` share. Over a longer range the same division is weighted by user-days, since a person counts once each day. The counters need the browser's storage and are left out where it is unavailable.
+
+Custom metrics come from `metric(name, value, dims?)` and `count(name, n?, dims?)` in the browser SDK: 50 names per project, two dimensions each, 50 values per dimension.
+
+## Dimensions
+
+Every dimension is bounded. There is never a session, user or device id, and never a full URL.
+
+| Key | Values per project per day |
+|---|---|
+| `service.version` (the release) | 50 |
+| `deployment.environment.name` | 10 |
+| `os.name`, `os.major` | 10, 30 |
+| `browser.name`, `browser.major` | 20, 60 |
+| `device.form_factor` (phone, tablet, desktop), `device.class` (low, mid, high), `browser.mobile` | fixed |
+| `network.type` | 8 |
+| `url.path` (web), `screen` (mobile) | 200 |
+| `host` (request metrics) | 50 |
+| `server_name` (the app's `service.name`) | 20 |
+| `country` | set by the server, never by the client; see below |
+| `target` (attribution), `script` (script time) | 200, 100 |
+| `custom.<key>` | 2 keys per project, 50 values each |
+| `rating`, `navigation_type`, `outcome`, `type`, `start_type` | fixed, per metric |
+
+A value past its cap, longer than 64 bytes, or outside a fixed set becomes `other`. A metric also has a budget of 5,000 series per project per day; past it `target`, `script`, `url.path`, `screen` and then `host` are folded to `other`. The caps hold for the whole deployment and across restarts: what one instance admits is shared with the others within a flush interval.
+
+`country` is the ISO code of the request's origin. It needs a source, which the operator configures: a header set by a CDN (`GEOIP_COUNTRY_HEADER`) or a MaxMind-format country database (`GEOIP_DB_PATH`). Without one there is no country, and the dashboard shows no country filter. The address itself is not stored.
+
+`custom.<key>` dimensions are yours: `setMetricDimension("plan", "pro")` or the `metricDimensions` option of `init()` puts up to two of them on every metric the page sends. Use them for a plan, a tenant tier or an experiment arm, never for an id. They are the way to slice by something the fixed dimensions do not cover; data already stored cannot be sliced by a dimension it was not recorded with.
+
+`url.path` is the route template when the app names it (`setRoute("/orders/:id")`, or the router helpers of the React, Vue and Svelte packages). Otherwise path segments that are numbers, UUIDs, or long hex or token strings become `:id`, on the device and again at ingest.
+
+## Reading them
+
+`POST /api/metrics/query` takes the aggregations `p50`, `p75`, `p90`, `p95`, `p99` and `good_ratio` for a distribution, besides `avg`, `min`, `max`, `sum`, `count` and `rate`. `good_ratio` is the share of observations at or under `threshold`; the web vitals default to their "good" limit. `wholeRange: true` returns one value per series for the whole range. Percentile and good-ratio aggregations require a distribution; requesting them for a point metric returns 422.
+
+Two widget types exist for them: a **Rating Bar** (the good / needs improvement / poor share) and a **Breakdown Table** (the values of one dimension, busiest first, with an aggregation and a count). A breakdown of a counter (`sum`) ranks by the total. On a client project the dashboard is narrowed by release, OS and country instead of by instance.
+
+Values rated poor keep a few sessions per series per hour. **Slow sessions** on a widget lists them with the element behind the value when the browser named one, and each opens the session.
+
+Backend projects get the same storage for OTLP histograms: `http.server.request.duration` from an OpenTelemetry SDK answers percentiles. The `.avg` and `.count` series of explicit-bounds histograms are still written.
+
+## Alerts and SLOs
+
+**Metric Threshold** rules read distributions with the same aggregations, where `good_ratio` is a percentage. They evaluate data older than two minutes, since clients upload late, and skip a percentile or good-ratio series with fewer than 10 effective observations in the window (`Minimum Observations`). Choose a larger minimum for paging or tail percentiles. Volume aggregations such as count and sum do not use that sample gate.
+
+**Release Regression** compares the newest release with the busiest earlier one, once the new one has enough observations, and fires once per release. Two things keep it from crying wolf:
+
+- **Device mix.** A rollout often reaches one platform first. By default the earlier release is weighted to the new release's mix of form factors and operating systems before the two are compared. With **Compare Within** set to a dimension (form factor, OS, browser, device class, country, network type), each value is compared with the same value of the earlier release and notifies on its own, which is how "4.2 regressed on phones" is found.
+- **Chance.** A percentile must be worse by more than the allowed percentage and by more than the sample sizes explain: the 95% intervals of the two releases must not overlap. Minimum-count gates and quantile intervals use effective sample size, `(sum of weights)² / sum of squared weights`. One observed value weighted to 1,000 events still contributes an effective sample size of one. Device-mix reweighting preserves this information. Intervals remain approximate, and measurements from the same session can be correlated. Historical rows without stored weights use a conservative fallback until fresh data accumulates.
+
+A metric [SLO](/learn/slos) with **Every observation** counts good events straight from the buckets. An SLO covers one segment, the one its tag filters select. **One SLO per** in the form creates one for each value of a dimension (up to 20), so every OS or form factor has its own error budget.
+
+## Sampling and limits
+
+`metrics.sampleRate` in [Data Collection](/learn/remote-config/reference) sets the share of sessions that record metrics. The payload carries the rate and counts are multiplied by its inverse, so totals estimate the full population. Ratios and percentiles are estimates from the sampled population, not a guarantee of an unbiased result in every window.
+
+What a forged client can do with a public project token is bounded: it cannot create metric names or series, values are clamped per metric, and one address can add at most 6,000 observations per project per minute (shared between instances). That is enough for statistics, not for billing-grade counts.
+
+| Limit | Value |
+|---|---|
+| Request body | 64 KB |
+| Data points per request | 2,000 |
+| Sample age | 72 hours back, 5 minutes ahead, after correcting the device clock |
+
+## Operating it
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CLIENT_METRICS_MAX_CONCURRENT` | 64 x CPU cores, min 256 | Client metrics requests processed at once, on a gate of their own so clients and backend ingest cannot starve each other. Over it the answer is an immediate 503 and the SDK sends the payload once more on the next page load |
+| `CLIENT_METRICS_FLUSH_SECONDS` | 10 | How often the cells are written. A crash loses at most this much |
+| `CLIENT_METRICS_MAX_CELLS` | 500000 | Cells held between two flushes. This bounds memory; new cells past it are dropped and counted |
+| `CLIENT_METRICS_DEDUP_MB` | 16 | Memory of the filter that recognizes a payload sent a second time. It covers the last 24 to 48 hours |
+| `GEOIP_COUNTRY_HEADER` | unset | Header that carries the country code of every request, e.g. `CF-IPCountry`. Only safe when every request passes a proxy that overwrites it |
+| `GEOIP_DB_PATH` | unset | Country database in MaxMind DB format. Uses the client address, so `TRUSTED_PROXIES` must be correct |
+
+`/api/health/deep` has a `clientMetrics` block (requests, observations, cells held, last flush, drops by reason), and a self-monitored instance emits it as `traceway.client_metrics.*`.
+
+A backend that exports cumulative histograms is differenced against the previous sample of the same series, which each instance keeps in memory. Behind a load balancer that spreads one exporter's requests over several instances the samples interleave and the differences overlap, so counts come out too high: set `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta` on such backends, or route an exporter to one instance. An instance follows 50,000 cumulative series; further ones are dropped and counted under the `memory` reason.
+
+With several instances the duplicate filter is per instance: a resend of an upload that did arrive is counted twice when the balancer sends it to another instance. That needs a page to die between sending and the answer, so it is rare.
+
+Late mobile data rewrites past minutes. Charts stay correct, but an alert may have already evaluated that window.

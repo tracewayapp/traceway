@@ -7,9 +7,10 @@
 # --write installs traceway-write, the separate build that can change data.
 # It keeps its own login, so the read-only traceway is never upgraded in place.
 #
-# Served from cli.tracewayapp.com (Cloudflare, uploaded manually); this file
-# is the source of truth — re-upload it after changing it. New CLI releases
-# need no re-upload: the script resolves the latest release at runtime.
+# Served from cli.tracewayapp.com (Cloudflare Pages, uploaded by hand). This
+# file is the source of truth: re-upload it after every change, or the live
+# copy drifts (a stale one once made --write install the read-only CLI). New
+# CLI releases need no upload: the script resolves the latest release at runtime.
 # For Windows, download the .zip from https://github.com/tracewayapp/traceway/releases.
 #
 # Optional:

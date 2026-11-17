@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 const staleAfter = 5 * time.Minute
@@ -98,7 +98,7 @@ func HealthSnapshot(ctx context.Context) (*HealthStats, error) {
 // ReadFreshness reads every enabled SLO's last computation from the main
 // database, so it covers all instances and also catches a worker that stopped.
 func ReadFreshness(ctx context.Context, now time.Time) (*Freshness, error) {
-	rows, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.SLOFreshness, error) {
+	rows, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.SLOFreshness, error) {
 		return transactional.SLORepository.FindEnabledFreshness(tx)
 	})
 	if err != nil {

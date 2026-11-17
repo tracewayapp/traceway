@@ -37,6 +37,12 @@ export const FRONTEND_FRAMEWORKS: Framework[] = [
 	'android',
 	'ios'
 ];
+// Browser frameworks, instrumented by the OpenTelemetry SDK (@tracewayapp/frontend 2.x): it sends logs and
+// spans, and the backend turns its page performance events (web vitals, long tasks, route timing) into metrics.
+export const BROWSER_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery'];
+// Remote collection controls are exposed only for browser projects.
+export const SDK_CONFIG_FRAMEWORKS: Framework[] = [...BROWSER_FRAMEWORKS];
+
 export const JS_FRAMEWORKS: Framework[] = [
 	'react',
 	'svelte',
@@ -76,7 +82,7 @@ export const FRAMEWORK_LABELS: Record<Framework, string> = {
 	ios: 'iOS'
 };
 
-export const MOBILE_FRAMEWORKS: Framework[] = ['flutter', 'android', 'ios'];
+export const MOBILE_FRAMEWORKS: Framework[] = ['react-native', 'flutter', 'android', 'ios'];
 
 export function getFrameworkLabel(fw: Framework): string {
 	return FRAMEWORK_LABELS[fw] ?? fw;
@@ -88,6 +94,17 @@ export function isMobileFramework(fw: Framework): boolean {
 
 export function isFrontendFramework(fw: Framework): boolean {
 	return FRONTEND_FRAMEWORKS.includes(fw);
+}
+
+export function isBrowserFramework(fw: Framework): boolean {
+	return BROWSER_FRAMEWORKS.includes(fw);
+}
+
+export function isProjectViewAvailable(fw: Framework, pathname: string): boolean {
+	const view = pathname.split('/')[1];
+	if (view === 'data-collection' || view === 'sessions') return isBrowserFramework(fw);
+	if (view === 'slos' || view === 'dashboards') return !isMobileFramework(fw);
+	return true;
 }
 
 export function isBackendFramework(fw: Framework): boolean {
@@ -110,6 +127,21 @@ export function isJsLanguage(lang?: string | null): boolean {
 
 export function isOtelFramework(fw: Framework): boolean {
 	return fw === 'opentelemetry' || fw === 'hono';
+}
+
+// Projects created for the retired Traceway Go SDK. Go instruments with OpenTelemetry now, so they get
+// the same setup guide as an `opentelemetry` project.
+export const LEGACY_GO_FRAMEWORKS: Framework[] = [
+	'gin',
+	'fiber',
+	'chi',
+	'fasthttp',
+	'stdlib',
+	'custom'
+];
+
+export function usesOtelSetupGuide(fw: Framework): boolean {
+	return fw === 'opentelemetry' || LEGACY_GO_FRAMEWORKS.includes(fw);
 }
 
 export function isCloudflareFramework(fw: Framework): boolean {

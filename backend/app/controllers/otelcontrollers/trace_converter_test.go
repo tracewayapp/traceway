@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
@@ -1301,5 +1301,13 @@ func TestConvertTraces_FrontendFrameworkSuppressesEntityRows(t *testing.T) {
 	endpoints = convertTraces(context.Background(), backendProject, testProjectId, req).Endpoints
 	if len(endpoints) == 0 {
 		t.Error("expected non-frontend frameworks to keep promoting endpoint rows")
+	}
+	req.ResourceSpans[0].Resource.Attributes = append(req.ResourceSpans[0].Resource.Attributes, strKV("traceway.sdk.name", "@tracewayapp/frontend"))
+	protected := convertTraces(context.Background(), backendProject, testProjectId, req)
+	if len(protected.Endpoints) != 0 || len(protected.Tasks) != 0 || len(protected.AiTraces) != 0 {
+		t.Fatal("browser diagnostic data polluted backend performance aggregates")
+	}
+	if len(protected.Spans) == 0 || len(protected.Exceptions) != 1 {
+		t.Fatal("diagnostic evidence was discarded")
 	}
 }

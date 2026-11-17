@@ -13,10 +13,12 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
+
+const telemetryBackendCompacts = false
 
 func setupTestDB(t *testing.T) {
 	t.Helper()
@@ -103,7 +105,7 @@ func setupTestDB(t *testing.T) {
 		tables := []string{
 			"endpoints_v2", "tasks_v2", "exceptions_v2", "spans_v2", "ai_traces_v2",
 			"endpoints", "tasks", "exception_stack_traces", "spans", "ai_traces",
-			"metric_points", "session_recordings",
+			"metric_points", "metric_histograms", "metric_histograms_1h", "metric_histograms_1d", "metric_exemplars", "session_recordings",
 			"archived_exceptions", "slow_endpoints", "fired_notifications",
 		}
 		for _, table := range tables {

@@ -30,7 +30,7 @@ Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root
 ## Enrichments
 
 - **Attributes**: key-value metadata on spans and the entities derived from them. Flow from global → per-request scope. [Details →](/learn/attributes)
-- **Sessions**: user-session grouping for browser/mobile clients, separate from traces. [Details →](/learn/sessions)
+- **Real User Monitoring (RUM)**: browser performance distributions, release comparisons, frontend SLOs, sessions and replay. Start with the population, then investigate an individual experience. [Details →](/learn/rum)
 - **Metrics**: time-series measurements, ingested via OTLP metrics. Independent of the trace pipeline. [Details →](/learn/metrics)
 - **Logs**: OTLP logs ingestion, joinable to traces by trace id. [Details →](/learn/logs)
 

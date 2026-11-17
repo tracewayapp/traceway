@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/pkg/client"
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 // jqOutputs is the type each command prints with --output json. An example

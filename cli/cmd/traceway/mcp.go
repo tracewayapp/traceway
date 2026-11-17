@@ -10,10 +10,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver"
 )
 
 func newMcpCmd() *cobra.Command {

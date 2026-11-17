@@ -15,8 +15,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	_ "modernc.org/sqlite"
 )
 
@@ -188,6 +189,17 @@ func setupNotificationsTestDB(t *testing.T) {
 	db.Driver = lit.SQLite
 	models.Init(db.Driver)
 
+	if _, err := mainDB.Exec(`CREATE TABLE notification_rule_states (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER NOT NULL UNIQUE,
+		firing INTEGER NOT NULL DEFAULT 0,
+		since DATETIME,
+		updated_at DATETIME NOT NULL,
+		detail TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("failed to create notification_rule_states table: %v", err)
+	}
+
 	if _, err := telemetryDB.Exec(`CREATE TABLE tasks_v2 (
 		id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
@@ -219,6 +231,23 @@ func setupNotificationsTestDB(t *testing.T) {
 		recorded_at DATETIME NOT NULL
 	)`); err != nil {
 		t.Fatalf("failed to create metric_points table: %v", err)
+	}
+
+	if _, err := telemetryDB.Exec(`CREATE TABLE metric_histograms (
+		project_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		recorded_at DATETIME NOT NULL,
+		grain_seconds INTEGER NOT NULL DEFAULT 60,
+		dims TEXT NOT NULL DEFAULT '{}',
+		cnt REAL NOT NULL DEFAULT 0,
+		total REAL NOT NULL DEFAULT 0,
+		min_val REAL NOT NULL DEFAULT 0,
+		max_val REAL NOT NULL DEFAULT 0,
+		zero_cnt REAL NOT NULL DEFAULT 0,
+		buckets TEXT NOT NULL DEFAULT '{}',
+ weight_squares REAL NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatalf("failed to create metric_histograms table: %v", err)
 	}
 }
 
@@ -385,7 +414,7 @@ func TestMetricThresholdResultCapsNotifiedSeries(t *testing.T) {
 		series = append(series, metricSeries{Key: fmt.Sprintf("h%03d", i), Value: float64(i + 2)})
 	}
 	rule := &models.NotificationRule{Id: 9300, CooldownMinutes: 30}
-	result := metricThresholdResult(rule, cfg, series, uuid.New())
+	result := metricThresholdResult(context.Background(), rule, cfg, series, uuid.New())
 	if len(result.Messages) != maxMetricRuleSeriesNotified+1 {
 		t.Fatalf("messages = %d, want %d", len(result.Messages), maxMetricRuleSeriesNotified+1)
 	}
@@ -395,7 +424,7 @@ func TestMetricThresholdResultCapsNotifiedSeries(t *testing.T) {
 	if last := result.Messages[maxMetricRuleSeriesNotified].Subject; !strings.Contains(last, "7 more series") {
 		t.Errorf("overflow subject = %q", last)
 	}
-	if again := metricThresholdResult(rule, cfg, series, uuid.New()); again.Fired {
+	if again := metricThresholdResult(context.Background(), rule, cfg, series, uuid.New()); again.Fired {
 		t.Errorf("series summarized in the overflow notice must also wait out the cooldown, got %d messages", len(again.Messages))
 	}
 }
@@ -481,6 +510,77 @@ func TestEvaluateTaskFailureRate(t *testing.T) {
 		}
 		if !strings.Contains(result.Message.Body, "2 of 5") {
 			t.Errorf("body %q does not contain 2 of 5", result.Message.Body)
+		}
+	})
+}
+
+func TestExceptionDetails(t *testing.T) {
+	setupNotificationsTestDB(t)
+	for _, column := range []string{"exception_hash", "stack_trace", "attributes", "app_version", "server_name"} {
+		if _, err := db.TelemetryDB.Exec("ALTER TABLE exceptions_v2 ADD COLUMN " + column + " TEXT NOT NULL DEFAULT ''"); err != nil {
+			t.Fatalf("failed to add %s: %v", column, err)
+		}
+	}
+
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	t.Run("described from the event without reading storage", func(t *testing.T) {
+		older := models.ExceptionStackTrace{
+			Id:            uuid.New(),
+			ProjectId:     projectId,
+			ExceptionHash: "05d3a12f49088c31",
+			StackTrace:    "TypeError: this.i.at is not a function\n    at web-vitals.attribution.js:1:2",
+			Attributes:    map[string]string{"url.path": "/login"},
+			RecordedAt:    now.Add(-time.Second),
+		}
+		newer := older
+		newer.Id = uuid.New()
+		newer.RecordedAt = now
+		other := models.ExceptionStackTrace{Id: uuid.New(), ProjectId: projectId, ExceptionHash: "ffffffffffffffff", StackTrace: "RangeError: x", RecordedAt: now.Add(time.Second)}
+		event := hooks.ReportEvent{
+			ProjectId:       projectId,
+			ExceptionHashes: []string{older.ExceptionHash, other.ExceptionHash, newer.ExceptionHash},
+			Exceptions:      []models.ExceptionStackTrace{older, other, newer},
+		}
+
+		details := exceptionDetails(ctx, event, "05d3a12f49088c31")
+		if details.ErrorType != "TypeError" {
+			t.Errorf("ErrorType = %q, want TypeError", details.ErrorType)
+		}
+		if details.Id != newer.Id.String() || !details.RecordedAt.Equal(newer.RecordedAt) {
+			t.Errorf("described %s at %v, want the newest occurrence %s at %v", details.Id, details.RecordedAt, newer.Id, newer.RecordedAt)
+		}
+		if details.Attributes["url.path"] != "/login" {
+			t.Errorf("Attributes = %v, want url.path", details.Attributes)
+		}
+	})
+
+	t.Run("read from storage when the event carries no rows", func(t *testing.T) {
+		id := uuid.New()
+		if _, err := db.TelemetryDB.Exec(
+			"INSERT INTO exceptions_v2 (id, project_id, exception_hash, stack_trace, attributes, app_version, server_name, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			id.String(), projectId.String(), "0123456789abcdef", "RuntimeError: boom", `{"user.id":"7"}`, "1.2.3", "web-1", now.Format(time.RFC3339Nano)); err != nil {
+			t.Fatalf("failed to insert exception: %v", err)
+		}
+
+		details := exceptionDetails(ctx, hooks.ReportEvent{ProjectId: projectId, ExceptionHashes: []string{"0123456789abcdef"}}, "0123456789abcdef")
+		if details.Id != id.String() || details.ErrorType != "RuntimeError" || details.AppVersion != "1.2.3" || details.ServerName != "web-1" {
+			t.Errorf("details = %+v, want the stored row", details)
+		}
+		if !details.RecordedAt.Equal(now) {
+			t.Errorf("RecordedAt = %v, want %v", details.RecordedAt, now)
+		}
+		if details.Attributes["user.id"] != "7" {
+			t.Errorf("Attributes = %v, want user.id", details.Attributes)
+		}
+	})
+
+	t.Run("unknown when neither has it", func(t *testing.T) {
+		details := exceptionDetails(ctx, hooks.ReportEvent{ProjectId: projectId}, "aaaaaaaaaaaaaaaa")
+		if details.ErrorType != "Unknown Error" || details.Id != "" {
+			t.Errorf("details = %+v, want an unknown error", details)
 		}
 	})
 }

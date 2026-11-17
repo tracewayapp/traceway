@@ -2,7 +2,7 @@
 
 package telemetry
 
-import ch "github.com/tracewayapp/traceway/backend/app/repositories/telemetry/clickhouse"
+import ch "github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/clickhouse"
 
 var (
 	AiTraceRepository             = ch.AiTraceRepository
@@ -12,6 +12,7 @@ var (
 	FiredNotificationRepository   = ch.FiredNotificationRepository
 	LogRecordRepository           = ch.LogRecordRepository
 	MetricPointRepository         = ch.MetricPointRepository
+	MetricHistogramRepository     = ch.MetricHistogramRepository
 	ProfileRepository             = ch.ProfileRepository
 	SessionRecordingRepository    = ch.SessionRecordingRepository
 	SessionRepository             = ch.SessionRepository

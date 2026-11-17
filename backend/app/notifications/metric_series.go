@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -10,8 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 type metricThresholdConfig struct {
@@ -22,6 +23,10 @@ type metricThresholdConfig struct {
 	LookbackMinutes int               `json:"lookbackMinutes"`
 	Tags            map[string]string `json:"tags"`
 	GroupBy         []string          `json:"groupBy"`
+	// MinCount and GoodThreshold apply to distribution metrics: the observations a
+	// series needs before it is judged, and the limit good_ratio counts under.
+	MinCount      int     `json:"minCount"`
+	GoodThreshold float64 `json:"goodThreshold"`
 }
 
 const (
@@ -50,6 +55,10 @@ func parseMetricThresholdConfig(raw json.RawMessage) (metricThresholdConfig, err
 // isPerSeriesRule reports whether a rule keeps its cooldown per series instead
 // of per rule, so one breaching series cannot silence another.
 func isPerSeriesRule(ruleType string, config json.RawMessage) bool {
+	// A release comparison fires once per release and segment, and keeps that itself.
+	if ruleType == "metric_release_regression" {
+		return true
+	}
 	if ruleType != "metric_threshold" {
 		return false
 	}
@@ -112,7 +121,7 @@ func metricSeriesLabel(groupBy []string, key string) string {
 	return "{" + strings.Join(pairs, ", ") + "}"
 }
 
-func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdConfig, series []metricSeries, projectId uuid.UUID) *EvalResult {
+func metricThresholdResult(ctx context.Context, rule *models.NotificationRule, cfg metricThresholdConfig, series []metricSeries, projectId uuid.UUID) *EvalResult {
 	var breaching []metricSeries
 	for _, s := range series {
 		if metricThresholdBreached(s.Value, cfg.Operator, cfg.ThresholdValue) {
@@ -124,7 +133,7 @@ func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdCon
 	}
 
 	if len(cfg.GroupBy) == 0 {
-		projectName := getProjectName(projectId)
+		projectName := getProjectName(ctx, projectId)
 		msg := buildMetricThresholdMessage(cfg.MetricName, "", breaching[0].Value, cfg.Operator, cfg.ThresholdValue, cfg.Aggregation, cfg.LookbackMinutes, projectName)
 		return &EvalResult{Fired: true, Message: msg}
 	}
@@ -154,7 +163,7 @@ func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdCon
 		return cmp.Compare(a.Key, b.Key)
 	})
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	notified := fresh[:min(len(fresh), maxMetricRuleSeriesNotified)]
 	messages := make([]Message, 0, len(notified)+1)
 	for _, s := range notified {

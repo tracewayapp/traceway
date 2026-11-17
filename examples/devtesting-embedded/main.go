@@ -28,7 +28,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 
-	tracewaybackend "github.com/tracewayapp/traceway/backend"
+	tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
 )
 
 //go:embed index.html
@@ -47,6 +47,7 @@ const (
 	appPort            = 8080
 	backendToken       = "backend-dev-token"
 	frontendToken      = "frontend-dev-token"
+	shopToken          = "shop-dev-token"
 	monitoringToken    = "monitoring-dev-token"
 	flutterToken       = "flutter-dev-token"
 	flutterUploadToken = "flutter-upload-token"
@@ -143,13 +144,19 @@ func main() {
 	// AI chat live in .env.
 	_ = godotenv.Load()
 
+	if err := os.MkdirAll("storage", 0o755); err != nil {
+		panic(fmt.Errorf("create storage directory: %w", err))
+	}
+
 	go tracewaybackend.Run(
 		tracewaybackend.WithSQLitePath("./storage/traceway.db"),
 		tracewaybackend.WithPort(8082),
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
 		tracewaybackend.WithDefaultProject("Backend API", "opentelemetry", backendToken),
 		tracewaybackend.WithDefaultProject("jQuery Frontend", "jquery", frontendToken),
-		tracewaybackend.WithDefaultProject("Traceway Monitoring", "gin", monitoringToken),
+		// testing/shop's React storefront, when it is pointed at this instance (see README).
+		tracewaybackend.WithDefaultProject("Shoply Storefront", "react", shopToken),
+		tracewaybackend.WithDefaultProject("Traceway Monitoring", "opentelemetry", monitoringToken),
 		tracewaybackend.WithDefaultProject("Flutter App", "flutter", flutterToken),
 		tracewaybackend.WithDefaultProjectSourceMapToken("Flutter App", flutterUploadToken),
 		tracewaybackend.WithDefaultProject("iOS App", "ios", iosToken),

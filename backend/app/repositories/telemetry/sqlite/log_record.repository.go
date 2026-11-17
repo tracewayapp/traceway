@@ -5,15 +5,16 @@ package sqlite
 import (
 	"context"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type logRecord struct {
@@ -138,8 +139,10 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 		traceIdIn = " AND trace_id IN (" + strings.Join(placeholders, ", ") + ")"
 	}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countCtx, countSpan := traceway.StartSpan(ctx, "logs.count")
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(countCtx, db.TelemetryDB),
 		"SELECT COUNT(*) AS count FROM log_records WHERE "+where+traceIdIn, args)
+	countSpan.End()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -189,11 +192,15 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 			logRecordColumns, where+traceIdIn, orderBy, direction)
 	}
 
-	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB, query, args)
+	fetchCtx, fetchSpan := traceway.StartSpan(ctx, "logs.fetch")
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(fetchCtx, db.TelemetryDB), query, args)
+	fetchSpan.End()
 	if err != nil {
 		return nil, 0, err
 	}
 
+	_, convertSpan := traceway.StartSpan(ctx, "logs.decode_rows")
+	defer convertSpan.End()
 	records := make([]models.LogRecord, 0, len(rows))
 	for _, row := range rows {
 		records = append(records, row.toModel())
@@ -201,8 +208,34 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	return records, count, nil
 }
 
+// Histogram counts the logs Search would match per step-second bucket and level.
+func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSearchParams, step int64) ([]shared.LogHistogramRow, error) {
+	where, args := r.buildWhere(params)
+	query, positional, err := lit.ParseNamedQuery(db.Driver, fmt.Sprintf(`SELECT (CAST(strftime('%%s', timestamp) AS INTEGER) / %d) * %d AS bucket,
+		%s AS level, COUNT(*) AS count
+	FROM log_records WHERE %s
+	GROUP BY bucket, level`, step, step, shared.LogLevelSQL, where), args)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, positional...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []shared.LogHistogramRow
+	for rows.Next() {
+		var row shared.LogHistogramRow
+		if err := rows.Scan(&row.Bucket, &row.Level, &row.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
-	rows, err := lit.SelectNamed[logRecord](db.TelemetryDB,
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT `+logRecordColumns+` FROM log_records
 		WHERE project_id = :project_id AND trace_id = :trace_id
 		ORDER BY timestamp ASC`,
@@ -216,6 +249,30 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 		records = append(records, row.toModel())
 	}
 	return records, nil
+}
+
+// FindBySessionId returns a browser session's log records in a time window, oldest first: its console lines,
+// navigation, clicks and custom events. Without statistics the planner prefers (project_id, timestamp), which also
+// serves the ORDER BY but reads every log of the project in the window, so the session index is named.
+func (r *logRecordRepository) FindBySessionId(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]models.LogRecord, error) {
+	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB), sessionLogRecordsQuery(q.Order()),
+		lit.P{"project_id": q.ProjectId, "session_id": q.SessionId, "from": sqlitetypes.NewSQLiteTime(q.From), "to": sqlitetypes.NewSQLiteTime(q.To), "limit": q.Limit})
+	if err != nil {
+		return nil, err
+	}
+	records := make([]models.LogRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, row.toModel())
+	}
+	return shared.SessionBreadcrumbsChronological(q, records), nil
+}
+
+func sessionLogRecordsQuery(order string) string {
+	return `SELECT ` + logRecordColumns + ` FROM log_records INDEXED BY idx_log_records_session
+		WHERE project_id = :project_id AND json_extract(log_attributes, '$."session.id"') = :session_id
+			AND timestamp >= :from AND timestamp <= :to
+			AND COALESCE(json_extract(log_attributes, '$."event.name"'), '') NOT IN (` + shared.SessionTimelineSkippedEventsSQL + `)
+		ORDER BY timestamp ` + order + ` LIMIT :limit`
 }
 
 func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string, lit.P) {

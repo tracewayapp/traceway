@@ -51,7 +51,7 @@ Restrictions are **daily** (for example 18:00 to 09:00, wrapping past midnight) 
 
 **Stacking**: a later layer wins over earlier ones where they overlap. Exactly one person is on call at any moment: the highest layer covering it. If no layer covers a moment, nobody is on call and a step targeting the schedule reaches nobody.
 
-**Overrides** temporarily replace whoever the layers picked, for an appointment, a swapped weekend or a vacation. They beat every layer, and the newest override wins where two overlap. An override lasts at most 30 days. The person covering must be an organization member but does not have to be in the schedule. **Any member** can create one, not only admins. It can be deleted by its creator, the person it covers, or an admin. Overrides end on their own, so there is no need to edit the rotation and remember to put it back.
+**Overrides** temporarily replace whoever the layers picked, for an appointment, a swapped weekend or a vacation. They beat every layer, and the newest override wins where two overlap. An override lasts at most 30 days. The person covering must be an organization member but does not have to be in the schedule. **Any member** can create one, not only admins. It can be deleted by its creator, the covering replacement responder, or an admin. Overrides end on their own, so there is no need to edit the rotation and remember to put it back.
 
 The **timeline** shows a row per layer and a final **Schedule** row, which is who actually gets paged. Overrides appear in the Schedule row as dashed shifts marked Override. A red line marks now. Ranges are Day, Week, 2 Weeks and Month, up to 62 days.
 
@@ -67,7 +67,7 @@ Common shapes:
 
 A policy is the ordered list of who to wake, and how long to wait for each.
 
-- **Steps**: 1 to 10. Each holds 1 to 10 targets and a delay: "escalate after N minutes if not acknowledged" (1 to 1440, default 5).
+- **Steps**: 1 to 10. Each holds 1 to 10 targets and a delay: "escalate after N minutes if not acknowledged" (1 to 1440; the dashboard starts at 5, while API requests must supply it).
 - **Targets**: a **schedule** (whoever is on call when the step runs, overrides included), a **team** (every member), a **user**, or a **channel** (any notification channel of the organization except an escalation one, to post the page to Slack, a webhook or email alongside the people). Within one step each person is notified once.
 - **Repeat**: 0 to 5. After the last step, its delay passes and the chain starts again from step 1, that many more times. After that the escalation is **exhausted**: nothing more is sent, but the page stays open.
 - **Urgency**: **Auto** (critical becomes high, everything else low), **Always high** or **Always low**. It picks which of a responder's two notification chains runs. It is fixed when the page opens, so a low-severity re-fire never downgrades a page.
@@ -108,7 +108,7 @@ Personal settings under **Account** (tabs **Contact Methods** and **Notification
 - SMS numbers must be verified before they are paged: a 6-digit code that expires in 10 minutes, with 5 attempts and at most 3 codes per hour.
 - Every method has an enable toggle and a **Test** button ("If you received this, pages will reach you here.").
 - **Notification rules** are two ordered chains, **High urgency** and **Low urgency**. Each step is "notify <method> after N minutes" (0 to 120, up to 10 steps). A typical high chain: Slack at 0, push at 2, SMS at 5. The whole chain is scheduled when the page reaches the person, and acknowledging cancels the steps that have not fired. If the first method cannot be used, the rest move earlier so the first usable one goes out at once.
-- No chain means every enabled, verified method at once. No methods at all means the account email.
+- No chain means every enabled, verified method at once. If no enabled, verified and sendable methods remain, delivery falls back to the account email.
 
 ## Permissions
 
@@ -117,7 +117,7 @@ Personal settings under **Account** (tabs **Contact Methods** and **Notification
 | View teams, schedules, policies, who is on call | Any organization member |
 | Create or edit teams, schedules and policies | Organization owner or admin |
 | Create an override | Any organization member |
-| Delete an override | Its creator, the person it covers, or an admin |
+| Delete an override | Its creator, the covering replacement responder, or an admin |
 | View, acknowledge and resolve pages | Anyone with read access to the project |
 | Contact methods and notification rules | The person themselves |
 
@@ -130,4 +130,6 @@ Personal settings under **Account** (tabs **Contact Methods** and **Notification
 | Acknowledge (write) | `traceway-write pages ack <id>` | `acknowledge_page` |
 | Resolve, optionally archiving the issue (write) | `traceway-write pages resolve <id> [--archive-issue]` | `resolve_page` |
 
-Teams, schedules, overrides, policies and contact methods are dashboard only, both to read and to change. To answer "who is on call", send the user to **On-Call > Overview**, or to the issue page, which shows the on-call person for that project.
+The write CLI and MCP also configure teams, schedules, overrides, escalation policies, own contact methods and personal notification chains. CLI groups are `teams`, `schedules`, `escalation-policies`, `contact-methods`, `notification-chains`. Organization operations take `--organization <id>`; writes use selected-project context for Agent Access and audit. Create/update bodies use `--file`; `validate <action>` checks their envelopes offline. Teams, schedules and policies require owner/admin; override and personal permissions stay as described above. `oncall now --organization <id>` reads organization coverage and `oncall current` reads selected-project coverage; `schedules timeline <id> --organization <id> --from <RFC3339> --to <RFC3339>` renders shifts without sending pages.
+
+Read the write skill's `oncall-configuration.md` and `personal-notifications.md` for complete examples, replacement semantics and tool names. MCP exposes the same text at `traceway://knowledge/oncall-configuration` and `traceway://knowledge/personal-notifications`. Replacing personal chains replaces both urgency arrays; empty chains fall back to all usable methods, not silence. Delivery tests and verification code requests send real messages.

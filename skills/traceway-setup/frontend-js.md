@@ -1,4 +1,6 @@
-# JS Frontend SDKs Reference
+# JS Frontend SDKs Reference (v1)
+
+Use this reference when the version rules in SKILL.md select v1: npm's `latest` dist-tag is still 1.x (2.x is only under `beta`) and the user did not ask for v2 or remote SDK config, or the app already runs v1. Otherwise follow [frontend-js-v2.md](frontend-js-v2.md). Check the registry with `npm view @tracewayapp/frontend dist-tags --json` as described in SKILL.md; do not mix the APIs from the two versions.
 
 Browser-side setup for every supported framework, plus the bundler plugin and source map upload that complete each integration. The connection string everywhere is `<project-token>@https://<instance>/api/report`.
 
@@ -203,65 +205,13 @@ clearAttributes();
 
 ### Distributed tracing
 
-`init()` patches both `fetch` and `XMLHttpRequest`, so every same-origin request carries a `traceway-trace-id` header and sets the SDK's active trace id. That covers `$.ajax()` and browser Axios too, because both go through XHR. Errors the SDK captures on its own (uncaught exceptions, unhandled rejections, `captureHttpServerErrors`) pick up the active id and link to the originating backend request automatically.
+v1 does not link browser errors to backend requests, so there is nothing to set up for it. `init()` still patches `fetch` and `XMLHttpRequest` and sends a `traceway-trace-id` header on same-origin requests, but Traceway ignores that id on reported exceptions, and the backend span attribute `traceway.distributed_trace_id` no longer joins traces. Do not add any of the old wiring, which is dead code now:
 
-**Do not register `createAxiosInterceptor()` in a browser app.** Axios already goes through the instrumented `XMLHttpRequest`. The interceptor sets a *second*, different id under the same header name, XHR concatenates duplicate headers, and the backend receives `"<uuid1>, <uuid2>"`. That value fails to parse as a UUID and is dropped without any error, so adding the interceptor breaks a link that already worked.
+- no backend middleware that copies `traceway-trace-id` onto the server span or echoes it back;
+- no `getActiveDistributedTraceId()` reads and no `{ distributedTraceId }` third argument to `captureExceptionWithAttributes`;
+- no `createAxiosInterceptor()` (browser Axios already goes through the patched XHR).
 
-#### Backend side
-
-The browser id only reaches Traceway if the backend puts it on its server span. Traceway reads the span attribute `traceway.distributed_trace_id` and stores it on the row as its linked trace id, next to the row's own OTel trace id. That link is what joins the browser exception and the backend endpoint into one trace, whichever of the two ids you open it by. The value must be a bare UUID (or the same 32 hex characters without dashes); anything else is ignored silently.
-
-Only the Symfony bundle sets the attribute for you. Node, NestJS, Next.js, Hono, Cloudflare, Laravel and Django install vanilla OpenTelemetry, which has never heard of the header, so add one middleware:
-
-```javascript
-import { trace } from "@opentelemetry/api";
-
-app.use((req, res, next) => {
-  const id = req.headers["traceway-trace-id"];
-  if (id) {
-    trace.getActiveSpan()?.setAttribute("traceway.distributed_trace_id", id);
-    res.setHeader("traceway-trace-id", id);
-  }
-  next();
-});
-```
-
-The `setAttribute` line is what creates the link. The `setHeader` line is optional, and only matters for the manual-capture pattern below. When the frontend and backend are on different origins, also send `Access-Control-Expose-Headers: traceway-trace-id` or the browser cannot read the echoed value.
-
-Verify with **View distributed trace** on the backend endpoint's detail page. The browser exception should show up as a second node.
-
-#### Manual captures after `await fetch`
-
-**Manual captures in a `fetch`/API wrapper MUST pass the trace id explicitly. This is the #1 reason frontend issues show up unlinked to the backend.** The SDK holds the active distributed-trace id only *for the duration of the request* and clears it the instant the fetch settles. A `captureException` call in your `catch` or `if (!res.ok)` branch runs *after* `await fetch`, by which point the active id is already `null`, so the exception is stored with `distributedTraceId: null` and never connects to the backend trace, even though the request header was sent correctly.
-
-Read the id off the SDK synchronously, after starting the request and before awaiting it, then pass it as the third argument. This needs nothing from the backend:
-
-```javascript
-import {
-  captureExceptionWithAttributes,
-  getActiveDistributedTraceId,
-} from "@tracewayapp/frontend";
-
-async function request(path, options) {
-  const pending = fetch(path, options);
-  const distributedTraceId = getActiveDistributedTraceId() || undefined;
-  const res = await pending;
-  if (!res.ok) {
-    const err = new Error(`Request to ${path} failed (${res.status})`);
-    captureExceptionWithAttributes(
-      err,
-      { path, method: options?.method || "GET", status: String(res.status) },
-      distributedTraceId ? { distributedTraceId } : undefined
-    );
-    throw err;
-  }
-  return res.json();
-}
-```
-
-No other code can run between the `fetch` call and the `getActiveDistributedTraceId` call, so the id always belongs to this request. If the backend echoes the header (the `res.setHeader` line above), `res.headers.get("traceway-trace-id")` gives you the same value after the await.
-
-The same applies to the React `useTraceway().captureExceptionWithAttributes`, the Vue/Svelte equivalents, and any other place you capture by hand after awaiting a request. Every framework package re-exports `getActiveDistributedTraceId` and `captureExceptionWithAttributes`, so import them from the package you installed.
+When an existing integration has that wiring, leave it unless the user asks for cleanup, and do not report a missing frontend-to-backend link as a setup failure. v1 exceptions still carry their session replay clip. Linking a browser request to the backend work it caused needs browser SDK v2, which sends W3C `traceparent` (see [frontend-js-v2.md](frontend-js-v2.md)); only move to it under the version rules in SKILL.md.
 
 ## Bundler Plugin (debug IDs)
 

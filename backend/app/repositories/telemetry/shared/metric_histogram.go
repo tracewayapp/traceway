@@ -199,6 +199,11 @@ func (s *HistogramSeries) AddGrain(recordedAt time.Time, key string, hist *Histo
 	group.count += hist.Count
 }
 
+// GroupCount is how many groups were read so far, before Result keeps the busiest.
+func (s *HistogramSeries) GroupCount() int {
+	return len(s.groups)
+}
+
 func (s *HistogramSeries) Result() map[string][]HistogramSeriesPoint {
 	keys := make([]string, 0, len(s.groups))
 	for key := range s.groups {

@@ -98,6 +98,16 @@ func TestMetricHistogramRepository_GroupsFiltersAndBuckets(t *testing.T) {
 	if len(capped) != 2 || !truncated {
 		t.Errorf("group cap: %d groups, truncated %v", len(capped), truncated)
 	}
+	// The cap keeps the groups with the most observations, whatever their keys sort like.
+	busiest := 0.0
+	for _, points := range capped {
+		for _, point := range points {
+			busiest = max(busiest, point.Hist.Count)
+		}
+	}
+	if busiest != 3 {
+		t.Errorf("the busiest group (3 observations) was cut; kept %+v", capped)
+	}
 }
 
 func TestMetricHistogramRepository_Discover(t *testing.T) {

@@ -89,6 +89,23 @@ func (r *metricHistogramRepository) Query(ctx context.Context, projectId uuid.UU
 	if intervalMinutes < 1 {
 		intervalMinutes = 1
 	}
+	// Nearly every read has fewer groups than the cap, so the plain query runs first. Only when it comes back
+	// with more is the read repeated for the groups with the most observations: cut off as it is, by key, a
+	// breakdown would show the first pages of the alphabet instead of the busiest ones.
+	series, err := r.querySeries(ctx, projectId, name, from, to, intervalMinutes, tagFilters, groupBy, maxGroups, false)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(groupBy) > 0 && maxGroups > 0 && series.GroupCount() > maxGroups {
+		if series, err = r.querySeries(ctx, projectId, name, from, to, intervalMinutes, tagFilters, groupBy, maxGroups, true); err != nil {
+			return nil, false, err
+		}
+	}
+	result := series.Result()
+	return result, series.Truncated, nil
+}
+
+func (r *metricHistogramRepository) querySeries(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, intervalMinutes int, tagFilters map[string]string, groupBy []string, maxGroups int, busiest bool) (*shared.HistogramSeries, error) {
 	var groupArgs []any
 	groupExpr := "''"
 	if len(groupBy) > 0 {
@@ -106,21 +123,20 @@ func (r *metricHistogramRepository) Query(ctx context.Context, projectId uuid.UU
 		"sum(cnt), sum(total), min(min_val), max(max_val), sum(zero_cnt), (sumMap(buckets.1, buckets.2) AS merged).1, merged.2, sum(if(weight_squares > 0, weight_squares, cnt * 1000)) " +
 		"FROM " + table + where
 	args := append(append([]any{}, groupArgs...), whereArgs...)
-	limited := len(groupBy) > 0 && maxGroups > 0
-	if limited {
-		// The groups with the most observations, one more than asked for so the caller learns there were more.
+	if busiest {
+		// One more than asked for, so the caller learns there were more.
 		query += " AND (" + groupExpr + ") IN (SELECT " + groupExpr + " AS top_key FROM " + table + where +
 			fmt.Sprintf(" GROUP BY top_key ORDER BY sum(cnt) DESC, top_key ASC LIMIT %d)", maxGroups+1)
 		args = append(append(append(args, groupArgs...), groupArgs...), whereArgs...)
 	}
 	query += " GROUP BY bucket, group_key ORDER BY group_key ASC, bucket ASC"
-	if limited {
+	if len(groupBy) > 0 && maxGroups > 0 {
 		query += fmt.Sprintf(" LIMIT %d", shared.TimeSeriesRowLimit(maxGroups))
 	}
 
 	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -132,7 +148,7 @@ func (r *metricHistogramRepository) Query(ctx context.Context, projectId uuid.UU
 		var counts []float64
 		h := shared.NewHistogram()
 		if err := rows.Scan(&bucket, &groupKey, &h.Count, &h.Sum, &h.Min, &h.Max, &h.Zero, &indexes, &counts, &h.WeightSquares); err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		for i, index := range indexes {
 			if i < len(counts) {
@@ -148,10 +164,9 @@ func (r *metricHistogramRepository) Query(ctx context.Context, projectId uuid.UU
 		series.AddGrain(time.Unix(bucket, 0).UTC(), groupKey, h, grain)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	result := series.Result()
-	return result, series.Truncated, nil
+	return series, nil
 }
 
 func (r *metricHistogramRepository) Discover(ctx context.Context, projectId uuid.UUID, from, to time.Time) ([]models.DiscoveredMetric, error) {

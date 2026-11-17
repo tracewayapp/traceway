@@ -276,7 +276,7 @@
 		{#if session.recordingReasons?.length}
 			<Card.Root
 				><Card.Header><Card.Title>Recording triggers</Card.Title></Card.Header><Card.Content
-					><SessionRecordingReasons reasons={session.recordingReasons} />
+					><SessionRecordingReasons reasons={session.recordingReasons} detailed />
 					<p class="mt-2 text-xs text-muted-foreground">
 						Triggers that requested replay for this session. Each tag preserves the sequence at the
 						time it fired.

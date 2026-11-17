@@ -592,10 +592,14 @@
 			{:else if sessions.length === 0}
 				<Table.Body>
 					<TableEmptyState
-						colspan={5}
+						colspan={6}
 						message={searchQuery.trim() || attributeFilters.length
 							? 'No sessions match your search and filters.'
-							: 'No sessions reported in this time range. Check the SDK session collection settings.'}
+							: ruleId
+								? ruleOptions.find((r) => String(r.id) === ruleId)?.triggers === 0
+									? 'This rule has no triggers, so it records no sessions. Add a recording trigger to it in Data Collection.'
+									: 'No session was recorded by a trigger of this rule in this time range.'
+								: 'No sessions reported in this time range. Check the SDK session collection settings.'}
 					/>
 				</Table.Body>
 			{:else}
@@ -606,8 +610,13 @@
 							tooltip="Session UUID. Open to play back the recording."
 						/>
 						<TracewayTableHeader
-							label="Attributes & recording triggers"
+							label="Attributes"
 							tooltip="User and session context. Click an attribute to filter sessions."
+						/>
+						<TracewayTableHeader
+							label="Recorded by"
+							tooltip="The triggers that asked for a recording of this session. Hover a chip for its steps; click it to show the sessions that trigger recorded."
+							class="w-[260px]"
 						/>
 						<TracewayTableHeader
 							label="Started"
@@ -681,7 +690,13 @@
 										>
 									{/if}
 								</div>
-								<SessionRecordingReasons reasons={session.recordingReasons} />
+							</Table.Cell>
+							<Table.Cell class="w-[260px]">
+								{#if session.recordingReasons?.length}
+									<SessionRecordingReasons reasons={session.recordingReasons} />
+								{:else}
+									<span class="text-muted-foreground">—</span>
+								{/if}
 							</Table.Cell>
 							<Table.Cell class="text-sm"
 								>{formatRelativeTimeAgo(session.startedAt, timezone)}</Table.Cell

@@ -79,7 +79,7 @@
 		<h3 class="font-medium">Recording triggers</h3>
 		<p class="text-xs text-muted-foreground">
 			Match events in order on the same tab, then send buffered replay and continue recording.
-			Unrelated events are ignored. A new first step restarts the sequence.
+			Unrelated events are ignored, and the first step happening again does not undo progress.
 		</p>
 	</div>
 	{#each triggers as item, index (item)}

@@ -57,11 +57,15 @@
 		type SortDirection
 	} from '$lib/utils/sort-storage';
 	import {
+		attributeFiltersEqual,
+		formatAttributeFilter,
 		parseAttributeFilter,
 		filterOperator,
+		operatorFlags,
+		operatorOptions,
 		type AttributeFilter,
 		type FilterOperator
-	} from '$lib/utils/session-filters';
+	} from '$lib/utils/attribute-filters';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -158,13 +162,6 @@
 	let dialogError = $state('');
 	let dialogOperator = $state<FilterOperator>('=');
 	let dialogEditIndex = $state<number | null>(null);
-	const operatorOptions: { value: FilterOperator; label: string }[] = [
-		{ value: '=', label: 'Equals' },
-		{ value: '!=', label: 'Not equals' },
-		{ value: '~=', label: 'Contains' },
-		{ value: '!~=', label: 'Not contains' }
-	];
-
 	function openAddFilterDialog() {
 		dialogKey = '';
 		dialogValue = '';
@@ -190,20 +187,9 @@
 			dialogError = 'Attribute key is required';
 			return;
 		}
-		const filter: AttributeFilter = {
-			key,
-			value: dialogValue,
-			exclude: dialogOperator.startsWith('!'),
-			contains: dialogOperator.includes('~')
-		};
+		const filter: AttributeFilter = { key, value: dialogValue, ...operatorFlags(dialogOperator) };
 		const others = attributeFilters.filter((_, i) => i !== dialogEditIndex);
-		const duplicate = others.some(
-			(f) =>
-				f.key === filter.key &&
-				f.value === filter.value &&
-				f.exclude === filter.exclude &&
-				f.contains === filter.contains
-		);
+		const duplicate = others.some((f) => attributeFiltersEqual(f, filter));
 		attributeFilters = duplicate
 			? others
 			: dialogEditIndex === null
@@ -239,7 +225,7 @@
 				from: selectedPreset ? null : getFromDateTimeUTC(),
 				to: selectedPreset ? null : getToDateTimeUTC(),
 				search: searchQuery.trim() || null,
-				attr: attributeFilters.map((f) => `${f.key}${filterOperator(f)}${f.value}`)
+				attr: attributeFilters.map(formatAttributeFilter)
 			},
 			{ pushToHistory }
 		);

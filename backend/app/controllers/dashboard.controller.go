@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -72,6 +74,12 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 var (
 	hasDataTimeout   = 10 * time.Second
 	countProjectData = countEndpointsAndExceptions
+
+	// Only a counted yes is remembered, for the life of the process: the
+	// answer turns back into no only when retention removes a project's last
+	// row, and showing that project an empty dashboard until the next restart
+	// costs less than repeating the count on every visit.
+	projectsWithData sync.Map
 )
 
 // A false answer swaps the dashboard for the setup guide, so a count that
@@ -80,6 +88,9 @@ var (
 // the deadline is kept here: a count past it finishes in the background and
 // its answer is dropped.
 func projectHasData(ctx context.Context, projectId uuid.UUID, now time.Time) bool {
+	if _, known := projectsWithData.Load(projectId); known {
+		return true
+	}
 	ctx, cancel := context.WithTimeout(ctx, hasDataTimeout)
 	defer cancel()
 
@@ -93,6 +104,9 @@ func projectHasData(ctx context.Context, projectId uuid.UUID, now time.Time) boo
 		defer func() { result <- a }()
 		defer traceway.Recover()
 		a.hasData, a.err = countProjectData(ctx, projectId, now)
+		if a.err == nil && a.hasData {
+			projectsWithData.Store(projectId, struct{}{})
+		}
 	}()
 
 	select {
@@ -108,30 +122,66 @@ func projectHasData(ctx context.Context, projectId uuid.UUID, now time.Time) boo
 	}
 }
 
+// Newest first, and never before the project existed: the count over all time
+// is the one read of this page with no time bound, and on ClickHouse it has to
+// open every daily partition of the table even for a project with no rows in
+// it (10s and a timeout on a project with zero endpoints, while the same table
+// answered a 24h read in the same request). A project that is quiet today
+// almost always has rows in the last 30 days, and a new project has nothing
+// older than itself, so the unbounded read is left to old projects that have
+// been silent for a month.
+func hasDataWindows(projectId uuid.UUID, now time.Time) []hasDataWindow {
+	var oldest time.Time
+	if project := cache.ProjectCache.GetById(projectId); project != nil {
+		oldest = project.CreatedAt.Add(-hasDataClockSlack)
+	}
+	recentStart := now.Add(-hasDataRecentWindow)
+	if !oldest.Before(recentStart) {
+		return []hasDataWindow{{"recent", oldest, now}}
+	}
+	return []hasDataWindow{{"recent", recentStart, now}, {"older", oldest, recentStart}}
+}
+
+type hasDataWindow struct {
+	name       string
+	start, end time.Time
+}
+
+const (
+	hasDataRecentWindow = 30 * 24 * time.Hour
+	hasDataClockSlack   = 24 * time.Hour
+)
+
 func countEndpointsAndExceptions(ctx context.Context, projectId uuid.UUID, now time.Time) (bool, error) {
-	var epoch time.Time
-	countCtx, countSpan := traceway.StartSpan(ctx, "dashboard.count_endpoints")
-	endpointCount, err := telemetry.EndpointRepository.CountBetween(countCtx, projectId, epoch, now)
-	if err == nil {
-		traceway.SetAttribute(countCtx, "dashboard.record_count", fmt.Sprint(endpointCount))
+	for _, window := range hasDataWindows(projectId, now) {
+		countCtx, countSpan := traceway.StartSpan(ctx, "dashboard.count_endpoints")
+		traceway.SetAttribute(countCtx, "dashboard.window", window.name)
+		endpointCount, err := telemetry.EndpointRepository.CountBetween(countCtx, projectId, window.start, window.end)
+		if err == nil {
+			traceway.SetAttribute(countCtx, "dashboard.record_count", fmt.Sprint(endpointCount))
+		}
+		countSpan.End()
+		if err != nil {
+			return true, fmt.Errorf("counting endpoints (%s): %w", window.name, err)
+		}
+		if endpointCount > 0 {
+			return true, nil
+		}
+		countCtx, countSpan = traceway.StartSpan(ctx, "dashboard.count_exceptions")
+		traceway.SetAttribute(countCtx, "dashboard.window", window.name)
+		exceptionCount, err := telemetry.ExceptionStackTraceRepository.CountBetween(countCtx, projectId, window.start, window.end)
+		if err == nil {
+			traceway.SetAttribute(countCtx, "dashboard.record_count", fmt.Sprint(exceptionCount))
+		}
+		countSpan.End()
+		if err != nil {
+			return true, fmt.Errorf("counting exceptions (%s): %w", window.name, err)
+		}
+		if exceptionCount > 0 {
+			return true, nil
+		}
 	}
-	countSpan.End()
-	if err != nil {
-		return true, fmt.Errorf("counting endpoints: %w", err)
-	}
-	if endpointCount > 0 {
-		return true, nil
-	}
-	countCtx, countSpan = traceway.StartSpan(ctx, "dashboard.count_exceptions")
-	exceptionCount, err := telemetry.ExceptionStackTraceRepository.CountBetween(countCtx, projectId, epoch, now)
-	if err == nil {
-		traceway.SetAttribute(countCtx, "dashboard.record_count", fmt.Sprint(exceptionCount))
-	}
-	countSpan.End()
-	if err != nil {
-		return true, fmt.Errorf("counting exceptions: %w", err)
-	}
-	return exceptionCount > 0, nil
+	return false, nil
 }
 
 func (d dashboardController) GetDashboard(c *gin.Context) {

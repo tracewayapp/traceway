@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func stubProjectDataCount(t *testing.T, timeout time.Duration, count func(ctx context.Context, projectId uuid.UUID, now time.Time) (bool, error)) {
@@ -67,5 +69,56 @@ func TestProjectHasDataAnswersFromTheCount(t *testing.T) {
 	started := time.Now()
 	if !projectHasData(context.Background(), uuid.New(), time.Now()) || time.Since(started) > 500*time.Millisecond {
 		t.Fatal("a panicking count must answer at once, without hiding the dashboard")
+	}
+}
+
+func TestHasDataWindowsStartWithTheLastMonthAndStopAtTheProjectsCreation(t *testing.T) {
+	now := time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)
+
+	old := &models.Project{Id: uuid.New(), Token: uuid.NewString(), CreatedAt: now.Add(-400 * 24 * time.Hour)}
+	fresh := &models.Project{Id: uuid.New(), Token: uuid.NewString(), CreatedAt: now.Add(-2 * time.Hour)}
+	for _, p := range []*models.Project{old, fresh} {
+		cache.ProjectCache.AddProject(p)
+		t.Cleanup(func() { cache.ProjectCache.RemoveProject(p.Id) })
+	}
+
+	windows := hasDataWindows(old.Id, now)
+	if len(windows) != 2 {
+		t.Fatalf("an old project gets %d windows, want the last month and then the rest", len(windows))
+	}
+	if windows[0].name != "recent" || !windows[0].start.Equal(now.Add(-hasDataRecentWindow)) || !windows[0].end.Equal(now) {
+		t.Fatalf("first window %+v is not the last month", windows[0])
+	}
+	if !windows[1].end.Equal(windows[0].start) || !windows[1].start.Equal(old.CreatedAt.Add(-hasDataClockSlack)) {
+		t.Fatalf("second window %+v does not run from the project's creation up to the first", windows[1])
+	}
+
+	windows = hasDataWindows(fresh.Id, now)
+	if len(windows) != 1 || !windows[0].start.Equal(fresh.CreatedAt.Add(-hasDataClockSlack)) || !windows[0].end.Equal(now) {
+		t.Fatalf("a new project must be counted from its creation only, got %+v", windows)
+	}
+}
+
+func TestProjectHasDataRemembersAYesButNotANo(t *testing.T) {
+	calls := 0
+	answer := false
+	stubProjectDataCount(t, time.Second, func(context.Context, uuid.UUID, time.Time) (bool, error) {
+		calls++
+		return answer, nil
+	})
+	projectId := uuid.New()
+	t.Cleanup(func() { projectsWithData.Delete(projectId) })
+
+	if projectHasData(context.Background(), projectId, time.Now()) {
+		t.Fatal("an empty project was reported as having data")
+	}
+	answer = true
+	for range 3 {
+		if !projectHasData(context.Background(), projectId, time.Now()) {
+			t.Fatal("a project with data was reported empty")
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("counted %d times, want 2: the no is asked again, the yes is remembered", calls)
 	}
 }

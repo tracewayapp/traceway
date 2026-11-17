@@ -46,6 +46,14 @@ func Merge(dst *Settings, src Settings) {
 		mergePtr(&dst.Replay.SessionSampleRate, src.Replay.SessionSampleRate)
 		mergePtr(&dst.Replay.MaskAllInputs, src.Replay.MaskAllInputs)
 	}
+	if src.Metrics != nil {
+		if dst.Metrics == nil {
+			dst.Metrics = &MetricsSettings{}
+		}
+		mergePtr(&dst.Metrics.Enabled, src.Metrics.Enabled)
+		mergePtr(&dst.Metrics.SampleRate, src.Metrics.SampleRate)
+		mergePtr(&dst.Metrics.FlushSeconds, src.Metrics.FlushSeconds)
+	}
 	if src.Buffer != nil {
 		if dst.Buffer == nil {
 			dst.Buffer = &BufferSettings{}
@@ -105,6 +113,17 @@ func ApplyPermission(s *Settings, exceptions, data, replay bool) {
 		}
 		s.Replay.Mode = &off
 		limit("replay")
+	}
+	if !data {
+		disabled := false
+		if s.Metrics == nil {
+			s.Metrics = &MetricsSettings{}
+		}
+		s.Metrics.Enabled = &disabled
+		if s.Limits == nil {
+			s.Limits = &Limits{}
+		}
+		s.Limits.Metrics = &off
 	}
 	if exceptions && data {
 		return

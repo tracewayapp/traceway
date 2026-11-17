@@ -30,7 +30,7 @@ func post(r *gin.Engine) int {
 
 func TestAdmissionGateAdmitsUpToCapacity(t *testing.T) {
 	release := make(chan struct{})
-	r := admissionRouter(newAdmissionGate(2, 10*time.Millisecond, "busy", nil, "2"), release)
+	r := admissionRouter(newAdmissionGate("test", 2, 10*time.Millisecond, "busy", nil, "2"), release)
 
 	var wg sync.WaitGroup
 	codes := make([]int, 3)
@@ -62,7 +62,7 @@ func TestAdmissionGateAdmitsUpToCapacity(t *testing.T) {
 func TestAdmissionGateBoundsWaiters(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
-	r := admissionRouter(newAdmissionGate(1, time.Second, "busy", nil, "2"), release)
+	r := admissionRouter(newAdmissionGate("test", 1, time.Second, "busy", nil, "2"), release)
 
 	codes := make(chan int, 32)
 	for i := 0; i < 1+16+3; i++ {

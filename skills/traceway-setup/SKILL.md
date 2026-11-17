@@ -72,7 +72,7 @@ Explain these default boundaries:
 
 | Application boundary | Traceway project | What belongs in it |
 |---|---|---|
-| **Backend system** | One project with framework **OpenTelemetry** | API endpoints, child spans, issues, background tasks, AI traces, logs, application/runtime metrics, and host metrics. APIs, workers, schedulers, and the host agent share the project token; distinguish them with stable `service.name` values. |
+| **Backend system** | One project with framework **OpenTelemetry** | API endpoints, child spans, issues, background tasks, AI traces, logs, host metrics, and the app's own custom metrics when it has some (Step 4, "Metrics"). APIs, workers, schedulers, and the host agent share the project token; distinguish them with stable `service.name` values. |
 | **Browser frontend** | One separate project per deployed browser application, using **React**, **Svelte**, **Vue.js**, or **jQuery** | Browser errors, web vitals, session replay, distributed-trace linkage, source maps, and browser release metadata. |
 | **Mobile app** | One separate project per independently released application, using **Flutter**, **React Native**, **Android**, or **iOS** | Mobile errors/crashes, replay where supported, and build symbols or mappings. A single Flutter product targeting Android and iOS normally uses one project; separate native apps use separate projects. |
 | **Full-stack JS app** | Two projects when its server runs in production | Server-side work goes to the OpenTelemetry backend project; browser-side work goes to the browser project. |
@@ -305,7 +305,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=https://<instance>/api/otel
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf        # required, several SDKs default to gRPC
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <project-token>"
 OTEL_TRACES_EXPORTER=otlp
-OTEL_METRICS_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=none                       # off by default, read "Metrics" below before enabling
 OTEL_LOGS_EXPORTER=otlp
 ```
 
@@ -324,8 +324,7 @@ Constraints: OTLP/HTTP only (protobuf or JSON). OTLP/gRPC is not supported, ther
 
 ```bash
 npm install @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node \
-  @opentelemetry/instrumentation @opentelemetry/api @opentelemetry/sdk-metrics \
-  @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-metrics-otlp-http
+  @opentelemetry/instrumentation @opentelemetry/api @opentelemetry/exporter-trace-otlp-http
 ```
 
 Declare `@opentelemetry/api` yourself even though it also arrives transitively. Relying on hoisting breaks under pnpm's strict `node_modules` and under Yarn PnP.
@@ -338,8 +337,6 @@ register("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
 
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
-import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 
 const url = process.env.TRACEWAY_URL;
@@ -348,12 +345,6 @@ const headers = { Authorization: `Bearer ${process.env.TRACEWAY_BACKEND_TOKEN}` 
 const sdk = new NodeSDK({
   serviceName: process.env.OTEL_SERVICE_NAME ?? "my-service",
   traceExporter: new OTLPTraceExporter({ url: `${url}/api/otel/v1/traces`, headers }),
-  metricReaders: [
-    new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter({ url: `${url}/api/otel/v1/metrics`, headers }),
-      exportIntervalMillis: 30_000,
-    }),
-  ],
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
@@ -364,7 +355,7 @@ Three parts of that snippet are load-bearing:
 
 - **The two `register` lines install the ESM loader hook.** Without them an ESM app (`"type": "module"`, `import express from "express"`) still gets HTTP spans but no `http.route`, so every URL becomes its own endpoint row. A CommonJS app (`require("express")`) is patched without the hook, and the lines are harmless there, so keep them either way.
 - **`serviceName`** becomes the Server Name in Traceway. Leave it out and every span reports `unknown_service:node`. For release comparison also set `OTEL_RESOURCE_ATTRIBUTES=service.version=1.2.3`.
-- **`metricReaders` is a list.** The older singular `metricReader` option is deprecated.
+- **There is no metric reader on purpose.** The HTTP instrumentation records per-route histograms that duplicate the endpoint data and cost far more than the traces (see "Metrics" below). Keep `OTEL_METRICS_EXPORTER=none` from the env block so NodeSDK does not add a metric reader from the environment either. If the app has its own metrics to send, follow "Metrics": pass `metricReaders` (a list; the singular `metricReader` is deprecated) and drop the HTTP histograms with `views`.
 
 Auto-instrumentation covers Express routes (sets `http.route`), status codes, errors, and database clients (`pg`, `mysql2`, `mongodb`, `ioredis`). SQLite and custom business logic need manual `tracer.startActiveSpan()` child spans.
 
@@ -387,11 +378,9 @@ Keep every Node-only import and the SDK startup in the sibling module:
 ```typescript
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
-import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 
 (Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace = undefined;
@@ -406,12 +395,6 @@ new NodeSDK({
     "service.version": process.env.APP_VERSION ?? "development",
   }),
   traceExporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers }),
-  metricReaders: [
-    new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter({ url: `${base}/v1/metrics`, headers }),
-      exportIntervalMillis: 30_000,
-    }),
-  ],
   logRecordProcessors: [
     new BatchLogRecordProcessor({
       exporter: new OTLPLogExporter({ url: `${base}/v1/logs`, headers }),
@@ -421,7 +404,7 @@ new NodeSDK({
 }).start();
 ```
 
-Install the log exporter and SDK packages in addition to the generic Node dependencies: `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/sdk-logs`, `@opentelemetry/api-logs`, and `@opentelemetry/resources`. Next.js versions before 15 also need `experimental.instrumentationHook: true`. Full setup and verification: https://docs.tracewayapp.com/client/otel/nextjs
+Install the log exporter and SDK packages in addition to the generic Node dependencies: `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/sdk-logs`, `@opentelemetry/api-logs`, and `@opentelemetry/resources`. As in the generic example there is no metric reader; keep `OTEL_METRICS_EXPORTER=none` and see "Metrics" before adding one. Next.js versions before 15 also need `experimental.instrumentationHook: true`. Full setup and verification: https://docs.tracewayapp.com/client/otel/nextjs
 
 Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply source maps instead of leaving server Issues pointed at minified Next chunks. Production must also start with `NODE_OPTIONS=--enable-source-maps`, and the build must emit `.next/server/**/*.js.map`; verify both rather than assuming readable server stacks. If the webpack build omits them, add `experimental: { serverSourceMaps: true }` to `next.config`. Also list `@opentelemetry/auto-instrumentations-node` in `serverExternalPackages` so Next does not bundle the instrumentation registry or warn about its optional transports.
 
@@ -471,7 +454,7 @@ Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply
     ```
 
     `OTEL_PYTHON_LOG_LEVEL` on its own does nothing. Do **not** set `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true`; on current versions the bridge is already on and that variable switches it to the SDK's deprecated handler.
-  - **Metrics take a minute.** The SDK default for `OTEL_METRIC_EXPORT_INTERVAL` is 60000 ms, so a correct pipeline looks empty while you are checking it. Set `OTEL_METRIC_EXPORT_INTERVAL=10000` during verification.
+  - **Metrics take a minute** (only when the app exports its own, see "Metrics"). The SDK default for `OTEL_METRIC_EXPORT_INTERVAL` is 60000 ms, so a correct pipeline looks empty while you are checking it. Set `OTEL_METRIC_EXPORT_INTERVAL=10000` during verification only, and put it back afterwards.
   - **Django needs two extra things**: export `DJANGO_SETTINGS_MODULE` or `opentelemetry-instrument` fails to start Django at all, and add the route middleware from the Django guide, because `opentelemetry-instrumentation-django` reports `http.route` as Django's own pattern (`api/users/<int:user_id>/`), which has no leading `/` and is therefore discarded.
 
   Guides: https://docs.tracewayapp.com/client/otel/python and https://docs.tracewayapp.com/client/otel/django
@@ -497,7 +480,7 @@ Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply
 
      `HTTPException` and validation errors keep their own handlers, so a 404 or 422 is not recorded as an Issue.
 
-  What it covers: SERVER spans with `http.route` in FastAPI syntax (`GET /users/{user_id}`), status codes, `fastapi.dependencies` / `fastapi.endpoint` / `fastapi.serialization` child spans, `traceparent` propagation, HTTP server metrics, and FastAPI's own exception and validation logs. It does **not** cover database queries, outgoing HTTP calls, or the app's own `logging` calls. If the user wants those, and most apps with a database will, use the generic Python path (`opentelemetry-instrument`) and turn off FastAPI's export: `FastAPI(telemetry={"auto_configure": False})`. Leave `auto_configure` on under `opentelemetry-instrument` and FastAPI adds a second exporter to the agent's provider, so every span is sent twice. (FastAPI does notice the contrib middleware and stops creating its own spans, so you never get two request spans, only duplicate exports.) State that trade-off in the setup plan rather than choosing silently.
+  What it covers: SERVER spans with `http.route` in FastAPI syntax (`GET /users/{user_id}`), status codes, `fastapi.dependencies` / `fastapi.endpoint` / `fastapi.serialization` child spans, `traceparent` propagation, HTTP server metrics (unwanted, see "Metrics": keep `OTEL_METRICS_EXPORTER=none` and confirm in the metric explorer that no `http.server.*` metric arrives after startup), and FastAPI's own exception and validation logs. It does **not** cover database queries, outgoing HTTP calls, or the app's own `logging` calls. If the user wants those, and most apps with a database will, use the generic Python path (`opentelemetry-instrument`) and turn off FastAPI's export: `FastAPI(telemetry={"auto_configure": False})`. Leave `auto_configure` on under `opentelemetry-instrument` and FastAPI adds a second exporter to the agent's provider, so every span is sent twice. (FastAPI does notice the contrib middleware and stops creating its own spans, so you never get two request spans, only duplicate exports.) State that trade-off in the setup plan rather than choosing silently.
 - **PHP**: Laravel via `composer require keepsuit/laravel-opentelemetry open-telemetry/exporter-otlp php-http/guzzle7-adapter`; Symfony via `composer require traceway/opentelemetry-symfony open-telemetry/exporter-otlp php-http/guzzle7-adapter` (the stock Symfony auto-instrumentation sets `http.route` to the route NAME, which Traceway discards; see `data-model.md`). PHP does not take `OTEL_PHP_AUTOLOAD_ENABLED` as a plain env var next to the block above. Laravel needs nothing extra, the keepsuit service provider starts the SDK. Symfony starts the SDK through `open_telemetry.sdk.autoload_enabled: true` in `config/packages/open_telemetry.yaml`, or through a real process environment variable set in php-fpm, the Dockerfile, or Apache. Never put `OTEL_PHP_AUTOLOAD_ENABLED` in `.env`: Dotenv reads it after Composer autoload, the bundle then skips starting the SDK, and every signal silently becomes a no-op. PHP also prefers `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`, though `http/protobuf` works too and is only slower without `ext-protobuf`.
   - **Symfony workers: never instrument `messenger:consume`.** The bundle already excludes it. `traces.console.excluded_commands` defaults to `['messenger:consume', 'messenger:consume-messages']`, and that key is a prototyped array node, so setting it in `config/packages/open_telemetry.yaml` REPLACES the default instead of adding to it. If you override it for any reason you MUST re-list both entries. A consumer runs in an endless loop, so its command span never ends, never exports, and swallows every child span for the life of the worker. Excluding the command does not silence the work inside it: the Messenger middleware still emits one CONSUMER span per message, and those are what become Tasks in Traceway. Check what actually resolved with `bin/console debug:config open_telemetry traces.console`.
 - **Java / .NET / anything else**: the standard OTel agent or SDK with the env vars above works as-is.
@@ -565,9 +548,61 @@ router.Use(otelRecovery())
 
 Emit from the **request** context (`c.Request.Context()` in Gin, `r.Context()` in net/http, the active context in Node). A line emitted from a background context carries no trace id and cannot be opened from the endpoint it belongs to. Traceway reads `severity_text` (or derives it from `severity_number`), the body, `service.name`, and the trace and span ids.
 
+### Metrics
+
+**Backends export no OTel metrics by default.** Keep `OTEL_METRICS_EXPORTER=none` from the env block and, when the SDK is configured in code, create no metric reader or meter provider. Nothing in the Traceway UI needs them:
+
+- Endpoint throughput, status codes and P50/P95/P99 latency are computed from spans.
+- Host CPU, memory, disk and network come from the Traceway OTel Agent or the Kubernetes collectors (Step 8).
+- An OTel project's runtime metrics (`go.*`, `jvm.*`, `process.runtime.*`) do not fill the built-in CPU and memory charts (`data-model.md`, "Built-in metric names").
+
+Leaving the SDK defaults on is expensive. Web framework instrumentation (`otelgin`, `otelhttp`, `otelchi`, `otelfiber`, Node's HTTP instrumentation, FastAPI's built-in telemetry, the Java agent) records `http.server.request.duration`, `http.server.request.body.size` and `http.server.response.body.size` (or the older `http.server.duration`) as one histogram series per route, method and status code. Three things compound:
+
+1. **The SDK default temporality is cumulative.** Every series the process has seen since it started is re-sent on every export with its running total, whether or not a request arrived. An idle server costs as much as a busy one.
+2. **Each series is about 550 bytes** of attributes, bucket counts and bucket boundaries. Usage is billed on the request body after decompression, so gzip does not reduce it.
+3. **HTTP metrics overlap endpoint analytics.** Current Traceway retains histogram distributions (and legacy average/count series), but endpoints already provide request latency and throughput. Enable HTTP histograms when a metric-based objective or integration needs them, rather than collecting duplicate signals by default. This backend policy does not apply to browser RUM metrics: keep those enabled for population coverage.
+
+Measured on a production Gin API serving about 1,400 requests a day, exporting every 30 seconds: about 117 histogram series per export, about 187 MB a day, 91% of the project's ingest. That uses up a 1 GB allowance in five days. Without the HTTP histograms the same project sends about 18 MB a day.
+
+Turn metrics on only when the user wants the application's own metrics (business counters, queue depth, cache hit rate), and then do all three of these:
+
+1. **Use delta temporality:** `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta`, which the Go, Python, Node, Java and .NET exporters read. Traceway stores each data point as it arrives, so with cumulative temporality a counter charts its running total and a histogram's `.avg` is the average since the process started. With delta, idle series send nothing. Traceway's own backend exports this way.
+2. **Drop the framework's HTTP histograms** with a view on `http.server.*` and the Drop aggregation. Zero-code agents (`opentelemetry-instrument`, the Java agent) have no environment variable for views: build the meter provider in code, or rely on delta temporality alone, which sends HTTP series only for intervals that had traffic.
+3. **Keep the SDK's 60-second export interval** in production. Every export repeats each active series, so a 5- or 10-second interval multiplies the volume by 12 or 6.
+
+Go:
+
+```go
+// imports: go.opentelemetry.io/otel,
+//          go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp,
+//          sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+exp, err := otlpmetrichttp.New(ctx,
+    otlpmetrichttp.WithEndpointURL(base+"/v1/metrics"),
+    otlpmetrichttp.WithHeaders(headers),
+    otlpmetrichttp.WithTemporalitySelector(sdkmetric.DeltaTemporalitySelector),
+)
+if err != nil {
+    return err
+}
+mp := sdkmetric.NewMeterProvider(
+    sdkmetric.WithResource(res),
+    sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp)), // 60 s default interval
+    sdkmetric.WithView(sdkmetric.NewView(
+        sdkmetric.Instrument{Name: "http.server.*"},
+        sdkmetric.Stream{Aggregation: sdkmetric.AggregationDrop{}},
+    )),
+)
+otel.SetMeterProvider(mp)
+defer mp.Shutdown(ctx)
+```
+
+Go's framework middleware reads the global meter provider, so an app that never calls `otel.SetMeterProvider` sends no HTTP metrics at all, and that is the default to keep. The view above covers `otelgin`, `otelhttp`, `otelchi` and `otelfiber` alike. To silence only Gin's middleware, pass `otelgin.WithMeterProvider(noop.NewMeterProvider())` (package `go.opentelemetry.io/otel/metric/noop`).
+
+Node: add `views: [{ instrumentName: "http.server.*", aggregation: { type: AggregationType.DROP } }]` to `NodeSDK` (`AggregationType` comes from `@opentelemetry/sdk-metrics`). Python, with the meter provider built in code: `MeterProvider(metric_readers=[...], views=[View(instrument_name="http.server.*", aggregation=DropAggregation())])` (`View` and `DropAggregation` come from `opentelemetry.sdk.metrics.view`).
+
 ### Go uses OpenTelemetry
 
-There is no separate Traceway Go SDK. It was retired, and Go instruments with `opentelemetry-go` exactly like every other backend: `go get go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp`, then the same env vars as the block above. Host CPU and memory come from the Traceway OTel Agent (see "Deployment and Server Metrics"), not from the app.
+There is no separate Traceway Go SDK. It was retired, and Go instruments with `opentelemetry-go` exactly like every other backend: `go get go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp`, then the same env vars as the block above. Set up traces and logs only; do not create a meter provider unless the app has its own metrics (see "Metrics"). Host CPU and memory come from the Traceway OTel Agent (see "Deployment and Server Metrics"), not from the app.
 
 ## Step 5: Background Tasks (Boundaries and Labeling)
 
@@ -653,11 +688,13 @@ Zero-code path for OpenRouter users: in OpenRouter Settings -> Observability, ad
 
 ## Step 7: Frontend and Mobile
 
+For browser RUM setup, read [rum.md](rum.md): version capabilities, release/environment/route dimensions, production collection policy and verification. Full device-aggregated RUM needs a compatible server and SDK 2.1+; a published 2.0 beta does not satisfy that requirement. If the registry has no compatible release, report the limitation and integrate only available features.
+
 Browser and mobile integrations use the Traceway SDKs. Choose the browser SDK generation from the live npm registry, not from SDK versions seen in a source checkout or an assumption that `latest` has moved:
 
 - **Read the dist-tags first**: `npm view @tracewayapp/frontend dist-tags --json`, and the same for the selected wrapper (`@tracewayapp/react`, `vue`, `svelte` or `jquery`). It lists every dist-tag, for example `{"latest": "1.2.2", "beta": "2.0.0-beta.1"}`. Do not query `@tracewayapp/frontend@2`: while 2.x exists only as `2.0.0-beta.N` that range matches nothing and npm exits `E404`, which says nothing about the registry being down.
 - **`latest` is 2.x on every package you need**: stable v2 is published. Install it (`npm install @tracewayapp/react@2`, or the plain package name) and read [frontend-js-v2.md](frontend-js-v2.md).
-- **`latest` is 1.x** (2.x only under `beta`, as today): a new integration installs the stable v1 SDK (`npm install @tracewayapp/react@1`, or the plain package name) and follows [frontend-js.md](frontend-js.md). Use the beta instead only when the user asked for v2 or for remote SDK config (Data Collection, OpAMP), or when the repository already depends on `@tracewayapp/*` `2.x`: then install the version in the `beta` tag (`npm install @tracewayapp/react@beta`) and read [frontend-js-v2.md](frontend-js-v2.md). Never mix v1 and v2 packages, never substitute a local checkout, and never add v2-only options to v1.
+- **`latest` is 1.x** (2.x only under `beta`, as today): a new integration installs the stable v1 SDK (`npm install @tracewayapp/react@1`, or the plain package name) and follows [frontend-js.md](frontend-js.md). Use the beta instead only when the user asked for RUM features requiring v2, v2 itself, or remote SDK config (Data Collection, OpAMP), or when the repository already depends on `@tracewayapp/*` `2.x`: then install the version in the `beta` tag (`npm install @tracewayapp/react@beta`) and read [frontend-js-v2.md](frontend-js-v2.md). Never mix v1 and v2 packages, never substitute a local checkout, and never add v2-only options to v1.
 - **An existing integration keeps its major**: a v2 app stays on v2 (`@beta` while 2.x is in beta), and a v1 app is not silently moved to the beta.
 - **The command itself fails** (network, proxy or authentication error, not an answer from the registry): retry once. If it still fails, say that the SDK version could not be verified, keep an existing integration on its current major, and for a new integration ask the user before choosing.
 - v2 exports logs/spans through OTLP, replay through `/api/recordings`, and receives browser-only remote configuration through OpAMP. Keep production defaults; do not turn on `recordAllSessions` merely to prove setup works.
@@ -694,7 +731,7 @@ Use the deployment and host-metrics choice confirmed in "Propose and Confirm the
 | Deployment | Wants host metrics | What to do |
 |---|---|---|
 | Docker on a VM, or directly on a VM/host | Yes | Install the **Traceway OTel Agent** on the host (below). For Docker deploys this is the default; the agent goes on the host, not in a container. |
-| Kubernetes | Any | Not the agent, which is a host service. Deploy the two collector workloads in `kubernetes.md` in this skill directory: a DaemonSet for node metrics, pod metrics and container logs, and a one-replica Deployment for cluster state and events. In-process app metrics still flow via the OTLP metrics exporter from "Backend OTel Setup". |
+| Kubernetes | Any | Not the agent, which is a host service. Deploy the two collector workloads in `kubernetes.md` in this skill directory: a DaemonSet for node metrics, pod metrics and container logs, and a one-replica Deployment for cluster state and events. In-process app metrics, when the app has its own, flow via the OTLP metrics exporter from "Backend OTel Setup" (see "Metrics" there). |
 | Serverless / PaaS | Any | No host to install on; skip. |
 | Anything | No | Skip. |
 
@@ -731,9 +768,11 @@ When the CLI applied the plan, the local env files hold real values, so run loca
    - Run each background job once, then open `/tasks`. One row per job, under a stable name with no ids or timestamps in it.
    - If logs were wired, emit one INFO and one ERROR line inside a request, then open `/logs`. Both carry the same trace id as that endpoint.
    - If "AI Traces" applied, make one model call, then open `/ai-traces`. The call is listed with model, tokens, and cost where available.
-   - Open `/dashboards` and confirm application/runtime metrics arrive. If the OTel Agent was installed, host metrics reach this same backend project within about 60 seconds, each host under its own `server_name` tag.
+   - If the OTel Agent was installed, host metrics reach this same backend project within about 60 seconds, each host under its own `server_name` tag.
+   - Run `traceway metrics discover --since 15m`. With metrics off (the default) only the agent's `system.*` names appear. If the app exports its own metrics, they appear too, and no `http.server.*` name is among them; if one is, the view from "Metrics" is missing.
    - If host or Kubernetes metrics were set up, open `/organization`. Every host and node appears as its own instance row with CPU, memory and disk. Kubernetes nodes are grouped by cluster. One row where you expected several means `service.name` is not distinct per machine; empty rings mean the `*.utilization` metrics are not enabled.
 2. **Browser project**
+   - Verify the installed SDK actually supports the requested RUM features. Set release/environment metadata and normalized route names; generate interactions and a SPA navigation, hide the page to flush metrics, allow the server flush interval, then inspect Web Performance and recorded metric names. Missing INP without an interaction is expected. Metrics and diagnostic replay are separate checks; do not enable full-session recording to make charts populate.
    - Trigger a test browser error and confirm it appears in this project, not the backend project.
    - Confirm the stack resolves to original source files and lines after the matching source maps and bundles are uploaded.
    - If distributed tracing was configured, confirm a browser issue or request links to its backend trace.

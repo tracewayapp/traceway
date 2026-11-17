@@ -110,3 +110,39 @@ func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
 		t.Fatalf("peak concurrent warm-ups %d exceeded the %d worker bound", peak, twWorkers)
 	}
 }
+
+func TestTWWarmupQueueFitsACodeSplitUpload(t *testing.T) {
+	gate := make(chan struct{})
+	prev := twRun
+	twRun = func(twJob) { <-gate }
+	t.Cleanup(func() { twRun = prev })
+	defer func() {
+		close(gate)
+		awaitTWWarmups(t)
+	}()
+	droppedBefore := twDropped.Load()
+
+	// 274 uploaded files with debug ids: one job per bundle and one per alias.
+	const jobs = 548
+	project := uuid.New()
+	for i := range jobs {
+		enqueueTWWarmup(twJob{projectId: project, base: fmt.Sprintf("chunk-%d.js", i)})
+	}
+	if dropped := twDropped.Load() - droppedBefore; dropped != 0 {
+		t.Fatalf("%d of %d warm-ups of one upload were dropped", dropped, jobs)
+	}
+	if backlog := SourceMapWarmupBacklog(); backlog != jobs {
+		t.Fatalf("backlog %d, want %d", backlog, jobs)
+	}
+}
+
+func TestTWWarmupDropReportGroupsAcrossFiles(t *testing.T) {
+	project := uuid.New()
+	messages := map[string]bool{}
+	for _, base := range []string{"CmCdXAve.js", "by-debug-id/ad1df046-8d80-407c-84aa-d130d84e8da8.js"} {
+		messages[twDropMessage(twJob{projectId: project, base: base})] = true
+	}
+	if len(messages) != 1 {
+		t.Fatalf("drop reports differ per file and would open an issue each: %v", messages)
+	}
+}

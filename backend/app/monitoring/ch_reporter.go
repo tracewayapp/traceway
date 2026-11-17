@@ -22,6 +22,7 @@ var telemetryTables = []string{
 	"traces",
 	"log_records",
 	"metric_points",
+	"metric_histograms",
 	"spans_v2",
 	"exceptions_v2",
 	"endpoints_v2",

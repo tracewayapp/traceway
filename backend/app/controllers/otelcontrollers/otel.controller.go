@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientlogs"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
 	"net/http"
 	"slices"
 	"strings"
@@ -48,6 +50,18 @@ func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID
 		return stackTrace
 	}
 	return services.ResolveAndroidStackTrace(ctx, projectId, stackTrace, proguardUuid)
+}
+
+// otelSymbolicateDart resolves an obfuscated Flutter build's trace against the project's uploaded symbols, the
+// same as the native report protocol does. A readable trace passes through untouched.
+func otelSymbolicateDart(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language string) string {
+	if !isDartLanguage(language) {
+		return stackTrace
+	}
+	if existingProject == nil || existingProject.SourceMapToken == nil {
+		return stackTrace
+	}
+	return services.ResolveDartStackTrace(ctx, projectId, stackTrace)
 }
 
 type otelController struct{}
@@ -263,6 +277,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		if perm.Exceptions {
 			ev.ErrorCount = len(exceptions)
 			ev.ExceptionHashes = exceptionHashes
+			ev.Exceptions = exceptions
 		}
 		hooks.BroadcastReport(ev)
 	}
@@ -282,11 +297,15 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 
 	orgId := 0
 	hasOrg := false
+	var clientProject *models.Project
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
-			orgId = *p.OrganizationId
-			hasOrg = true
-			traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
+		if p, ok := project.(*models.Project); ok {
+			clientProject = p
+			if p.OrganizationId != nil {
+				orgId = *p.OrganizationId
+				hasOrg = true
+				traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
+			}
 		}
 	}
 	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
@@ -294,7 +313,12 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		perm = hooks.IngestPermissionFor(orgId)
 	}
 
-	req, bodyBytes, err := decodeMetricsRequest(c)
+	if clientlogs.IsClient(clientProject) {
+		o.exportClientMetrics(c, projectId, orgId, hasOrg, perm)
+		return
+	}
+
+	req, bodyBytes, err := decodeMetricsRequest(c, maxBodySize)
 	if err != nil {
 		writeDecodeError(c, err)
 		return
@@ -307,6 +331,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	if !perm.Data {
 		result.Points = nil
 		result.Entries = nil
+		result.Histograms = nil
 		if hasOrg {
 			monitoring.RecordRateLimited(orgId)
 		}
@@ -322,7 +347,19 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		insertMs = msSince(insertStart)
 
 		if len(result.Entries) > 0 {
-			go services.AutoRegisterMetricsWithUnits(c.Request.Context(), projectId, result.Entries)
+			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
+		}
+	}
+
+	// After the write that can answer 503: the exporter sends the request again, and histograms added to
+	// memory by the failed attempt would be counted twice.
+	if len(result.Histograms) > 0 {
+		now := time.Now()
+		for _, h := range result.Histograms {
+			services.ClientMetrics().AddSeriesHistogram(projectId, h.Name, h.At, h.Tags, h.Hist, h.Cumulative, now)
+		}
+		if len(result.Points) == 0 && len(result.Entries) > 0 {
+			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
 		}
 	}
 
@@ -336,6 +373,38 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		})
 	}
 
+	writeMetricsResponse(c)
+}
+
+// exportClientMetrics takes the metrics of a browser or mobile project. Nothing is
+// written here: the samples are merged into the in-memory cells and the request
+// ends, so the cost of a request does not depend on storage and storage does not
+// see one write per client.
+func (o otelController) exportClientMetrics(c *gin.Context, projectId uuid.UUID, orgId int, hasOrg bool, perm hooks.IngestPermission) {
+	req, bodyBytes, err := decodeMetricsRequest(c, clientmetrics.MaxBodyBytes)
+	if err != nil {
+		writeDecodeError(c, err)
+		return
+	}
+	if !perm.Data {
+		if hasOrg {
+			monitoring.RecordRateLimited(orgId)
+		}
+		writeMetricsResponse(c)
+		return
+	}
+
+	start := time.Now()
+	result := services.ClientMetrics().IngestOTLP(projectId, req, services.ClientOf(c.GetHeader, c.ClientIP()), start)
+	monitoring.RecordIngestBatch(monitoring.SignalMetrics, "metric_histograms", msSince(start), 0, result.Accepted, bodyBytes)
+
+	if hasOrg {
+		hooks.BroadcastReport(hooks.ReportEvent{
+			OrganizationId: orgId,
+			ProjectId:      projectId,
+			TelemetryBytes: bodyBytes,
+		})
+	}
 	writeMetricsResponse(c)
 }
 
@@ -392,6 +461,12 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	}
 
 	insertStart := time.Now()
+	// Every write that can fail runs in the order that makes a retried export harmless. The reasons are an
+	// upsert, so they go before the log records, which a second attempt would store twice.
+	if err := telemetry.StoreSessionRecordingReasons(c, records); err != nil {
+		abortIngestStorage(c, "session recording reasons", err)
+		return
+	}
 	if len(records) > 0 {
 		if err := telemetry.LogRecordRepository.InsertAsync(c, records); err != nil {
 			abortIngestStorage(c, "log records", err)
@@ -425,6 +500,15 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	}
 	insertMs := msSince(insertStart)
 
+	if perm.Data && len(result.Observations) > 0 {
+		// Into memory only, and only once nothing above can still answer 503: a retried export would
+		// observe the same events again.
+		now, client := time.Now(), services.ClientOf(c.GetHeader, c.ClientIP())
+		for _, observation := range result.Observations {
+			services.ClientMetrics().ObserveEvent(projectId, observation.Name, observation.Value, observation.At, observation.Resource, observation.Attrs, client, now)
+		}
+	}
+
 	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
 
 	if hasOrg && (perm.Data || len(exceptions) > 0) {
@@ -437,6 +521,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		}
 		if perm.Exceptions {
 			ev.ErrorCount = len(exceptions)
+			ev.Exceptions = exceptions
 			for _, ex := range exceptions {
 				ev.ExceptionHashes = append(ev.ExceptionHashes, ex.ExceptionHash)
 			}

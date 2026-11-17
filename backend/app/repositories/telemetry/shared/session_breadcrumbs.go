@@ -17,6 +17,7 @@ var SessionTimelineSkippedEvents = []string{
 	"session.start", "session.end", "traceway.session.update",
 	"traceway.trigger.fired", "traceway.capture.started", "traceway.config.applied",
 	"browser.web_vital", "browser.resource_timing", "browser.navigation_timing",
+	"browser.long_task", "browser.route_timing",
 }
 
 // SessionTimelineSkippedEventsSQL is SessionTimelineSkippedEvents as a list of SQL string literals, for NOT IN.

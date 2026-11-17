@@ -12,6 +12,7 @@ var (
 	FiredNotificationRepository   = sqliterepo.FiredNotificationRepository
 	LogRecordRepository           = sqliterepo.LogRecordRepository
 	MetricPointRepository         = sqliterepo.MetricPointRepository
+	MetricHistogramRepository     = sqliterepo.MetricHistogramRepository
 	ProfileRepository             = sqliterepo.ProfileRepository
 	SessionRecordingRepository    = sqliterepo.SessionRecordingRepository
 	SessionRepository             = sqliterepo.SessionRepository

@@ -23,6 +23,10 @@ type metricThresholdConfig struct {
 	LookbackMinutes int               `json:"lookbackMinutes"`
 	Tags            map[string]string `json:"tags"`
 	GroupBy         []string          `json:"groupBy"`
+	// MinCount and GoodThreshold apply to distribution metrics: the observations a
+	// series needs before it is judged, and the limit good_ratio counts under.
+	MinCount      int     `json:"minCount"`
+	GoodThreshold float64 `json:"goodThreshold"`
 }
 
 const (
@@ -51,6 +55,10 @@ func parseMetricThresholdConfig(raw json.RawMessage) (metricThresholdConfig, err
 // isPerSeriesRule reports whether a rule keeps its cooldown per series instead
 // of per rule, so one breaching series cannot silence another.
 func isPerSeriesRule(ruleType string, config json.RawMessage) bool {
+	// A release comparison fires once per release and segment, and keeps that itself.
+	if ruleType == "metric_release_regression" {
+		return true
+	}
 	if ruleType != "metric_threshold" {
 		return false
 	}

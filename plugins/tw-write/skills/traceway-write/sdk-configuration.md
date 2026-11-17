@@ -10,6 +10,10 @@ Use this for an **existing browser frontend project** (React, Svelte, Vue or jQu
 4. Verify with `opamp rules list`, then `opamp preview --file client.json` (`preview_sdk_config`). A preview file is `{"attributes":{"service.version":"2.0.0"},"instanceUid":"<browser-instance-UUID>"}`; omit instanceUid when rollout identity is irrelevant. Preview evaluates **saved** rules and applies plan limits. It returns settings, matchedRules, matchedCaptures, configHash and heartbeatIntervalSeconds. It is not a dry-run of an unsaved rule and does not prove any browser has applied it or uploaded data.
 5. Report the saved rule id, effective settings and remaining verification. Browsers pick up changes at their next poll (normally 5 minutes) or SDK refresh. Developer ceilings and plan limits still apply. Do not promise every byte or session arrived merely because the rule saved.
 
+For RUM requests, read [rum.md](rum.md). Aggregated metrics (SDK 2.1+) are independent of diagnostic signal modes. Do not enable full-session replay just to obtain Web Vitals. Check the installed SDK and published package capability; SDK 2.0 ignores the new metrics settings.
+
+A metrics-only policy overlay is `"settings":{"schemaVersion":1,"metrics":{"enabled":true,"sampleRate":1,"flushSeconds":300}}`. `sampleRate` accepts 0 or 0.001..1; `flushSeconds` accepts 30..3600. Counts are inverse-weighted estimates when sampled. Preserve existing signal/replay/buffer/trigger settings on replacement. Developer `captureMetrics: false` cannot be raised remotely. Verify an actual metrics upload and dashboard result after preview.
+
 For a request to stream every session, breadcrumb and replay, retain masking and use:
 
 ```json
@@ -29,6 +33,8 @@ For a request to stream every session, breadcrumb and replay, retain masking and
       "userActions": { "mode": "stream", "sampleRate": 1 },
       "webVitals": { "mode": "stream", "sampleRate": 1 },
       "resourceTiming": { "mode": "stream", "sampleRate": 1 },
+      "longTasks": { "mode": "stream", "sampleRate": 1 },
+      "routeTiming": { "mode": "stream", "sampleRate": 1 },
       "custom": { "mode": "stream", "sampleRate": 1 }
     },
     "sessions": { "enabled": true, "baselineSampleRate": 1 },

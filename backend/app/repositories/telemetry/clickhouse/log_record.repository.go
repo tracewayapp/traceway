@@ -23,52 +23,47 @@ func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.
 		return nil
 	}
 
-	batch, err := chdb.Conn.PrepareBatch(
-		chdb.BatchCtx(ctx),
-		"INSERT INTO log_records (id, project_id, timestamp, trace_id, span_id, trace_flags, severity_text, severity_number, service_name, body, resource_schema_url, resource_attributes, scope_schema_url, scope_name, scope_version, scope_attributes, log_attributes)",
-	)
-	if err != nil {
-		return err
-	}
+	// SendBatch retries a dead pooled connection; a bare PrepareBatch turned
+	// each one into a 503 for the exporter and an issue in self-monitoring.
+	return chdb.SendBatch(ctx, "INSERT INTO log_records (id, project_id, timestamp, trace_id, span_id, trace_flags, severity_text, severity_number, service_name, body, resource_schema_url, resource_attributes, scope_schema_url, scope_name, scope_version, scope_attributes, log_attributes)", func(batch driver.Batch) error {
+		for _, lr := range records {
+			resAttrs := lr.ResourceAttributes
+			if resAttrs == nil {
+				resAttrs = map[string]string{}
+			}
+			scopeAttrs := lr.ScopeAttributes
+			if scopeAttrs == nil {
+				scopeAttrs = map[string]string{}
+			}
+			logAttrs := lr.LogAttributes
+			if logAttrs == nil {
+				logAttrs = map[string]string{}
+			}
 
-	for _, lr := range records {
-		resAttrs := lr.ResourceAttributes
-		if resAttrs == nil {
-			resAttrs = map[string]string{}
+			if err := batch.Append(
+				lr.Id,
+				lr.ProjectId,
+				lr.Timestamp,
+				lr.TraceId,
+				lr.SpanId,
+				lr.TraceFlags,
+				lr.SeverityText,
+				lr.SeverityNumber,
+				lr.ServiceName,
+				lr.Body,
+				lr.ResourceSchemaUrl,
+				resAttrs,
+				lr.ScopeSchemaUrl,
+				lr.ScopeName,
+				lr.ScopeVersion,
+				scopeAttrs,
+				logAttrs,
+			); err != nil {
+				return err
+			}
 		}
-		scopeAttrs := lr.ScopeAttributes
-		if scopeAttrs == nil {
-			scopeAttrs = map[string]string{}
-		}
-		logAttrs := lr.LogAttributes
-		if logAttrs == nil {
-			logAttrs = map[string]string{}
-		}
-
-		if err := batch.Append(
-			lr.Id,
-			lr.ProjectId,
-			lr.Timestamp,
-			lr.TraceId,
-			lr.SpanId,
-			lr.TraceFlags,
-			lr.SeverityText,
-			lr.SeverityNumber,
-			lr.ServiceName,
-			lr.Body,
-			lr.ResourceSchemaUrl,
-			resAttrs,
-			lr.ScopeSchemaUrl,
-			lr.ScopeName,
-			lr.ScopeVersion,
-			scopeAttrs,
-			logAttrs,
-		); err != nil {
-			return err
-		}
-	}
-
-	return batch.Send()
+		return nil
+	})
 }
 
 func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearchParams) ([]models.LogRecord, int64, error) {
@@ -146,6 +141,31 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	}
 
 	return records, int64(count), nil
+}
+
+// Histogram counts the logs Search would match per step-second bucket and level.
+func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSearchParams, step int64) ([]shared.LogHistogramRow, error) {
+	where, args := r.buildWhere(params)
+	query := `SELECT ` + epochBucket("timestamp", int(step)) + ` AS bucket,
+		toUInt8(` + shared.LogLevelSQL + `) AS level, count() AS count
+	FROM log_records WHERE ` + where + `
+	GROUP BY bucket, level`
+	rows, err := chdb.Conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []shared.LogHistogramRow
+	for rows.Next() {
+		var bucket int64
+		var level uint8
+		var count uint64
+		if err := rows.Scan(&bucket, &level, &count); err != nil {
+			return nil, err
+		}
+		out = append(out, shared.LogHistogramRow{Bucket: bucket, Level: int(level), Count: int64(count)})
+	}
+	return out, rows.Err()
 }
 
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {

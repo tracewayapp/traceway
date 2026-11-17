@@ -7,9 +7,11 @@ import (
 	"compress/gzip"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -379,9 +381,35 @@ func waitForConfig(t *testing.T, configs <-chan *protobufs.AgentRemoteConfig) *p
 	}
 }
 
-func TestOpampRejectsNonBrowserProjects(t *testing.T) {
+// The Flutter SDK writes OpAMP messages with its own encoder; these are the bytes its tests pin (the same vector
+// the browser SDK uses), so this exercises the real wire format end to end.
+const flutterAgentToServerHex = "0a100195f2a000007000800000000000000110031a6f0a1a0a0c736572766963652e6e616d65120a0a0873686f702d776562121a0a0f736572766963652e76657273696f6e12070a05322e332e3112140a0e62726f777365722e6d6f62696c6512021001120b0a0573656174731202180c12120a05726174696f120921000000000000d03f2083603a060a02abcd100162370a19696f2e74726163657761792e73646b2e6275666665722f76310a1a696f2e74726163657761792e73646b2e636170747572652f7631"
+
+func TestOpampServesFlutterProjects(t *testing.T) {
 	f := newOpampFixture(t)
-	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "flutter", "ios", "android", ""} {
+	f.project.Framework = "flutter"
+	f.rule("stream app events", `{}`, `{"signals":{"custom":{"mode":"stream"}}}`)
+	body, err := hex.DecodeString(flutterAgentToServerHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := f.post(body, map[string]string{instanceUidHeader: "0195f2a0-0000-7000-8000-000000000001"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", response.Code, response.Body.String())
+	}
+	var resp protobufs.ServerToAgent
+	if err := proto.Unmarshal(response.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	doc := resp.GetRemoteConfig().GetConfig().GetConfigMap()["traceway"]
+	if doc == nil || !strings.Contains(string(doc.GetBody()), `"custom":{"mode":"stream"`) {
+		t.Fatalf("a Flutter project must receive its remote settings, got %s", doc.GetBody())
+	}
+}
+
+func TestOpampRejectsUnsupportedProjects(t *testing.T) {
+	f := newOpampFixture(t)
+	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "ios", "android", ""} {
 		t.Run(framework, func(t *testing.T) {
 			f.project.Framework = framework
 			response := f.post(nil, nil)

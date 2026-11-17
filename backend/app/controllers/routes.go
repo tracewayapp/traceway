@@ -74,7 +74,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	otelGroup.OPTIONS("/v1/logs", middleware.CORSReport)
 	otelGroup.OPTIONS("/v1development/profiles", middleware.CORSReport)
 	otelGroup.POST("/v1/traces", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportTraces)
-	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportMetrics)
+	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, middleware.MetricsAdmission, otelcontrollers.OtelController.ExportMetrics)
 	otelGroup.POST("/v1/logs", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportLogs)
 	otelGroup.POST("/v1development/profiles", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportProfiles)
 	otelGroup.OPTIONS("/v1/opamp", middleware.OpampCors)
@@ -102,6 +102,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/metrics/server", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricsController.GetServerMetrics)
 
 	router.POST("/metrics/query", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Query)
+	router.POST("/metrics/exemplars", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Exemplars)
 	router.GET("/metrics/discover", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Discover)
 	router.GET("/metrics/discover/instances", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverInstances)
 	router.GET("/metrics/discover/tags", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverTags)
@@ -150,6 +151,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/tasks/task", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskController.FindByTaskName)
 	router.POST("/tasks/:taskId", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskDetailController.GetTaskDetail)
 
+	router.GET("/sessions/recording-reasons", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionController.RecordingReasons)
 	router.POST("/sessions", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionController.FindAllSessions)
 	router.POST("/sessions/:sessionId", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionDetail)
 	router.GET("/sessions/:sessionId/recording", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionRecording)
@@ -180,6 +182,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/spans/traces/:traceId/spans/:spanId/attributes", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.GetSpanAttributes)
 
 	router.POST("/logs", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.List)
+	router.POST("/logs/histogram", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.Histogram)
 
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
 	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ExceptionStackTraceController.ArchiveExceptions)

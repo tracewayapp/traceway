@@ -19,11 +19,29 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import ExpandedLogRow from '$lib/components/trace-logs/expanded-log-row.svelte';
 	import LogMessage from '$lib/components/trace-logs/log-message.svelte';
+	import LogVolumeChart, {
+		type LogVolumeBucket
+	} from '$lib/components/trace-logs/log-volume-chart.svelte';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
 	import FormField from '$lib/components/traceway/form-field.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
 	import { Check, Play, Plus, X } from '@lucide/svelte';
+	import {
+		filterOperator,
+		operatorFlags,
+		operatorOptions,
+		type FilterOperator
+	} from '$lib/utils/attribute-filters';
+	import {
+		displayKeyToFilter,
+		filtersEqual,
+		formatLogAttributeFilter,
+		parseLogAttributeFilter,
+		sameFilterTarget,
+		type LogAttributeFilter
+	} from '$lib/utils/log-filters';
 	import { CalendarDate } from '@internationalized/date';
 	import {
 		parseTimeRangeFromUrl,
@@ -73,6 +91,7 @@
 	let loading = $state(true);
 	let error = $state('');
 	let expandedId = $state<string | null>(null);
+	let showAllAttributes = $state(false);
 
 	const pageSize = 50;
 	// total counts the fixed history window (lastFromISO..lastToISO) as reported
@@ -118,6 +137,12 @@
 	let lastToISO = '';
 	let lastFilterBody: ReturnType<typeof currentFilterBody> | null = null;
 	let requestGen = 0;
+
+	type HistogramResponse = { intervalSeconds: number; total: number; buckets: LogVolumeBucket[] };
+	let volume = $state<HistogramResponse | null>(null);
+	let volumeLoading = $state(false);
+	let volumeEl = $state<HTMLDivElement | null>(null);
+	let volumeGen = 0;
 
 	// Windowed rendering: only rows near the viewport are mounted, spacer rows
 	// keep the scrollbar honest. Row height is measured from the first rendered
@@ -167,59 +192,21 @@
 		void metaFilterChips.length;
 		void attributeFilters.length;
 		void loading;
+		void volume;
 		updateMaxHeight();
 	});
 
 	$effect(() => {
 		void logs.length;
-		void expandedId;
 		if (!scrollEl) return;
 		const first = scrollEl.querySelector('tr[data-log-id]') as HTMLElement | null;
 		if (first && first.offsetHeight > 0) rowH = first.offsetHeight;
-		if (expandedId) {
-			const main = scrollEl.querySelector(`tr[data-log-id="${CSS.escape(expandedId)}"]`);
-			const expanded = main?.nextElementSibling as HTMLElement | null;
-			if (expanded) expandedHeight = expanded.offsetHeight;
-		} else {
-			expandedHeight = 0;
-		}
 	});
 
-	type AttributeFilter = {
-		scope: 'resource' | 'scope' | 'log';
-		key: string;
-		value: string;
-		exclude: boolean;
-		contains: boolean;
-	};
-
-	type FilterOperator = '=' | '!=' | '~=' | '!~=';
-
-	function filterOperator(f: AttributeFilter): FilterOperator {
-		if (f.contains) return f.exclude ? '!~=' : '~=';
-		return f.exclude ? '!=' : '=';
-	}
-
-	// Parse `resource.service.name=backend-service` or `log.method!=Enter`
-	// (scope.*/log.* likewise; `~=` / `!~=` for substring match) into a
-	// structured filter. Returns null if the input doesn't match the shape.
-	function parseAttributeFilter(input: string): AttributeFilter | null {
-		const trimmed = input.trim();
-		const m = trimmed.match(/^(resource|scope|log)\.(.+?)(!~=|~=|!=|=)(.*)$/);
-		if (!m) return null;
-		const key = m[2].trim();
-		if (!key) return null;
-		return {
-			scope: m[1] as AttributeFilter['scope'],
-			key,
-			value: m[4],
-			exclude: m[3].startsWith('!'),
-			contains: m[3].includes('~')
-		};
-	}
-
-	function formatAttributeFilter(f: AttributeFilter): string {
-		return `${f.scope}.${f.key}${filterOperator(f)}${f.value}`;
+	// Reported by the expanded row whenever it resizes. Its height is kept while
+	// the row is scrolled out of the rendered window, so the spacers stay right.
+	function setExpandedHeight(height: number) {
+		expandedHeight = height;
 	}
 
 	function parseLogsUrlParams() {
@@ -236,15 +223,15 @@
 				spanId: '',
 				scopeName: '',
 				body: '',
-				attributeFilters: [] as AttributeFilter[]
+				attributeFilters: [] as LogAttributeFilter[]
 			};
 		}
 		const params = new URLSearchParams(window.location.search);
 		const timeParams = parseTimeRangeFromUrl(timezone, '24h');
 		const minSev = Number(params.get('minSeverity') || '0');
-		const attrs: AttributeFilter[] = [];
+		const attrs: LogAttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
-			const parsed = parseAttributeFilter(raw);
+			const parsed = parseLogAttributeFilter(raw);
 			if (parsed) attrs.push(parsed);
 		}
 		return {
@@ -278,7 +265,7 @@
 	let spanIdFilter = $state(initialUrlParams.spanId);
 	let scopeNameFilter = $state(initialUrlParams.scopeName);
 	let bodyFilter = $state(initialUrlParams.body);
-	let attributeFilters = $state<AttributeFilter[]>(initialUrlParams.attributeFilters);
+	let attributeFilters = $state<LogAttributeFilter[]>(initialUrlParams.attributeFilters);
 
 	// Add-filter dialog
 	let addFilterOpen = $state(false);
@@ -289,12 +276,6 @@
 	// Index into attributeFilters when editing an existing pill, null when adding.
 	let dialogEditIndex = $state<number | null>(null);
 
-	const operatorOptions: { value: FilterOperator; symbol: string; label: string }[] = [
-		{ value: '=', symbol: '=', label: 'Equals' },
-		{ value: '!=', symbol: '≠', label: 'Not equals' },
-		{ value: '~=', symbol: '~', label: 'Contains' },
-		{ value: '!~=', symbol: '!~', label: 'Not contains' }
-	];
 	const dialogOperatorOption = $derived(
 		operatorOptions.find((o) => o.value === dialogOperator) ?? operatorOptions[0]
 	);
@@ -319,8 +300,13 @@
 	}
 
 	function submitDialogFilter() {
-		const composed = `${dialogKey.trim()}${dialogOperator}${dialogValue}`;
-		const parsed = parseAttributeFilter(composed);
+		// A trailing space typed or pasted into the value would silently match
+		// nothing, but a pill made from a tile may hold a value that really ends
+		// in whitespace, so a value left as it was is kept verbatim.
+		const editing = dialogEditIndex !== null ? attributeFilters[dialogEditIndex] : null;
+		const value = editing && dialogValue === editing.value ? dialogValue : dialogValue.trimEnd();
+		const composed = `${dialogKey.trim()}${dialogOperator}${value}`;
+		const parsed = parseLogAttributeFilter(composed);
 		if (!parsed) {
 			dialogError = 'Key must start with resource., scope., or log.';
 			return;
@@ -333,79 +319,60 @@
 		addFilterOpen = false;
 	}
 
-	function updateAttributeFilter(index: number, filter: AttributeFilter) {
-		const dup = attributeFilters.some(
-			(f, i) =>
-				i !== index &&
-				f.scope === filter.scope &&
-				f.key === filter.key &&
-				f.value === filter.value &&
-				f.exclude === filter.exclude &&
-				f.contains === filter.contains
-		);
+	function updateAttributeFilter(index: number, filter: LogAttributeFilter) {
+		const dup = attributeFilters.some((f, i) => i !== index && filtersEqual(f, filter));
 		attributeFilters = dup
 			? attributeFilters.filter((_, i) => i !== index)
 			: attributeFilters.map((f, i) => (i === index ? filter : f));
 		loadData(true);
 	}
 
-	function addAttributeFilter(filter: AttributeFilter) {
-		const dup = attributeFilters.some(
-			(f) =>
-				f.scope === filter.scope &&
-				f.key === filter.key &&
-				f.value === filter.value &&
-				f.exclude === filter.exclude &&
-				f.contains === filter.contains
-		);
-		if (!dup) {
+	function addAttributeFilter(filter: LogAttributeFilter) {
+		if (!attributeFilters.some((f) => filtersEqual(f, filter))) {
 			attributeFilters = [...attributeFilters, filter];
 		}
 		loadData(true);
 	}
 
-	// Displayed attribute keys are prefixed `resource.` / `scope.`; log
-	// attributes are unprefixed.
-	function displayKeyToFilter(displayKey: string): {
-		scope: AttributeFilter['scope'];
-		key: string;
-	} {
-		if (displayKey.startsWith('resource.')) {
-			return { scope: 'resource', key: displayKey.slice('resource.'.length) };
-		}
-		if (displayKey.startsWith('scope.')) {
-			return { scope: 'scope', key: displayKey.slice('scope.'.length) };
-		}
-		return { scope: 'log', key: displayKey };
+	// An attribute tile reflects the filters on its own key and value, whatever
+	// their operator. A contains filter typed with a substring does not match.
+	function tileFilterIndex(displayKey: string, value: string): number {
+		const target = { ...displayKeyToFilter(displayKey), value };
+		return attributeFilters.findIndex((f) => sameFilterTarget(f, target));
 	}
 
-	function attributeFilterState(displayKey: string, value: string): 'none' | 'include' | 'exclude' {
-		const { scope, key } = displayKeyToFilter(displayKey);
-		// Contains filters are ignored: an attribute tile reflects (and toggles)
-		// only exact-match filters for its value.
-		const f = attributeFilters.find(
-			(f) => !f.contains && f.scope === scope && f.key === key && f.value === value
-		);
-		if (!f) return 'none';
-		return f.exclude ? 'exclude' : 'include';
+	function attributeFilterOperator(displayKey: string, value: string): FilterOperator | null {
+		const index = tileFilterIndex(displayKey, value);
+		return index === -1 ? null : filterOperator(attributeFilters[index]);
 	}
 
-	// Toggle from an attribute tile in the expanded log row: on/off. An active
-	// filter of either kind (include, or exclude via a hand-edited URL) clears.
-	function toggleAttributeFilter(displayKey: string, value: string) {
-		const { scope, key } = displayKeyToFilter(displayKey);
-		const existing = attributeFilters.findIndex(
-			(f) => !f.contains && f.scope === scope && f.key === key && f.value === value
-		);
-		if (existing === -1) {
-			attributeFilters = [
-				...attributeFilters,
-				{ scope, key, value, exclude: false, contains: false }
-			];
+	// From the operator menu of an attribute tile. Picking the active operator
+	// again removes the filter, picking another one changes it in place, and
+	// null clears every filter on that key and value.
+	function setAttributeFilterOperator(
+		displayKey: string,
+		value: string,
+		operator: FilterOperator | null
+	) {
+		const target = { ...displayKeyToFilter(displayKey), value };
+		const index = tileFilterIndex(displayKey, value);
+		if (operator === null) {
+			attributeFilters = attributeFilters.filter((f) => !sameFilterTarget(f, target));
+			loadData(true);
+		} else if (index === -1) {
+			addAttributeFilter({ ...target, ...operatorFlags(operator) });
+		} else if (filterOperator(attributeFilters[index]) === operator) {
+			removeAttributeFilter(index);
 		} else {
-			attributeFilters = attributeFilters.filter((_, i) => i !== existing);
+			updateAttributeFilter(index, { ...attributeFilters[index], ...operatorFlags(operator) });
 		}
-		loadData(true);
+	}
+
+	// A pill is removed with its X, so picking its current operator changes nothing.
+	function setPillOperator(index: number, operator: FilterOperator) {
+		const f = attributeFilters[index];
+		if (filterOperator(f) === operator) return;
+		updateAttributeFilter(index, { ...f, ...operatorFlags(operator) });
 	}
 
 	// Filters for the fixed tiles of the expanded row (Body / Trace ID /
@@ -413,21 +380,21 @@
 	// attribute filters.
 	type MetaFilterField = 'body' | 'traceId' | 'spanId' | 'scopeName';
 
-	function metaFilterState(field: MetaFilterField, value: string): 'none' | 'include' {
+	function isMetaFilterActive(field: MetaFilterField, value: string): boolean {
 		switch (field) {
 			case 'body':
-				return bodyFilter === value ? 'include' : 'none';
+				return bodyFilter === value;
 			case 'traceId':
-				return traceIdFilter === value ? 'include' : 'none';
+				return traceIdFilter === value;
 			case 'spanId':
-				return spanIdFilter === value ? 'include' : 'none';
+				return spanIdFilter === value;
 			case 'scopeName':
-				return scopeNameFilter === value ? 'include' : 'none';
+				return scopeNameFilter === value;
 		}
 	}
 
 	function toggleMetaFilter(field: MetaFilterField, value: string) {
-		const active = metaFilterState(field, value) === 'include';
+		const active = isMetaFilterActive(field, value);
 		switch (field) {
 			case 'body':
 				bodyFilter = active ? '' : value;
@@ -516,7 +483,7 @@
 				spanId: spanIdFilter.trim() || null,
 				scopeName: scopeNameFilter.trim() || null,
 				body: bodyFilter || null,
-				attr: attributeFilters.map(formatAttributeFilter)
+				attr: attributeFilters.map(formatLogAttributeFilter)
 			},
 			{ pushToHistory }
 		);
@@ -571,6 +538,7 @@
 				...lastFilterBody
 			};
 
+			loadVolume(lastFromISO, lastToISO, lastFilterBody);
 			const response = (await api.post('/logs', requestBody, {
 				projectId: projectsState.currentProjectId ?? undefined
 			})) as LogsResponse;
@@ -588,6 +556,56 @@
 		} finally {
 			if (gen === requestGen) loading = false;
 		}
+	}
+
+	// The volume strip loads beside the list rather than before it: a slow count
+	// over a wide range must never hold back the rows.
+	async function loadVolume(
+		fromISO: string,
+		toISO: string,
+		filters: ReturnType<typeof currentFilterBody>
+	) {
+		const gen = ++volumeGen;
+		volumeLoading = true;
+		try {
+			const maxBuckets = Math.max(
+				20,
+				Math.min(120, Math.floor((volumeEl?.clientWidth || 960) / 12))
+			);
+			const response = (await api.post(
+				'/logs/histogram',
+				{ fromDate: fromISO, toDate: toISO, maxBuckets, ...filters },
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			)) as HistogramResponse;
+			if (gen !== volumeGen) return;
+			volume = response;
+		} catch (e) {
+			if (gen !== volumeGen) return;
+			console.error(e);
+			volume = null;
+		} finally {
+			if (gen === volumeGen) volumeLoading = false;
+		}
+	}
+
+	// Live tail slides the strip's window along with the clock every few polls,
+	// instead of recounting the whole range every 5 seconds.
+	function refreshLiveVolume() {
+		if (!selectedPreset) return;
+		const range = getTimeRangeFromPreset(selectedPreset, timezone);
+		loadVolume(
+			range.from.toISOString(),
+			range.to.toISOString(),
+			lastFilterBody ?? currentFilterBody()
+		);
+	}
+
+	function handleVolumeRangeSelect(from: Date, to: Date) {
+		handleTimeRangeChange(
+			{ date: dateToCalendarDate(from, timezone), time: dateToTimeString(from, timezone) },
+			{ date: dateToCalendarDate(to, timezone), time: dateToTimeString(to, timezone) },
+			null
+		);
 	}
 
 	async function loadMore() {
@@ -696,6 +714,7 @@
 				}
 			}
 			liveSinceMs = nowMs;
+			if (livePollCount % LIVE_CATCHUP_EVERY === 0) refreshLiveVolume();
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -791,6 +810,7 @@
 
 	function toggleExpanded(id: string) {
 		expandedId = expandedId === id ? null : id;
+		showAllAttributes = false;
 	}
 
 	onMount(() => {
@@ -909,12 +929,30 @@
 				<button
 					type="button"
 					aria-label="Edit filter"
-					class="inline-flex cursor-pointer items-center gap-1 hover:text-primary"
+					class="cursor-pointer text-muted-foreground hover:text-primary"
 					onclick={() => openEditFilterDialog(i)}
 				>
-					<span class="text-muted-foreground">{f.scope}.{f.key}</span>
-					<span class={f.exclude ? 'text-red-500' : ''}>{filterOperator(f)}</span>
-					<span>{f.value}</span>
+					{f.scope}.{f.key}
+				</button>
+				<FilterOperatorMenu
+					active={filterOperator(f)}
+					onSelect={(operator) => setPillOperator(i, operator)}
+					triggerClass="cursor-pointer decoration-dotted underline-offset-2 hover:underline {f.exclude
+						? 'text-red-500'
+						: ''}"
+					triggerTitle="Change operator"
+					triggerAriaLabel="Change operator"
+				>
+					{filterOperator(f)}
+				</FilterOperatorMenu>
+				<!-- Second way into the same dialog as the key, so it stays out of the tab order. -->
+				<button
+					type="button"
+					tabindex={-1}
+					class="cursor-pointer hover:text-primary"
+					onclick={() => openEditFilterDialog(i)}
+				>
+					{f.value}
 				</button>
 				<button
 					type="button"
@@ -994,6 +1032,28 @@
 	</AlertDialog.Root>
 
 	<TableContainer>
+		<div bind:this={volumeEl}>
+			{#if volume}
+				<LogVolumeChart
+					buckets={volume.buckets}
+					intervalSeconds={volume.intervalSeconds}
+					total={volume.total}
+					{timezone}
+					loading={volumeLoading}
+					onRangeSelect={handleVolumeRangeSelect}
+				/>
+			{:else}
+				<div
+					class="flex h-[95px] items-center justify-center border-b text-xs text-muted-foreground"
+				>
+					{#if volumeLoading}
+						<LoadingCircle size="sm" />
+					{:else}
+						Log volume is unavailable for this search.
+					{/if}
+				</div>
+			{/if}
+		</div>
 		<div
 			bind:this={scrollEl}
 			bind:clientHeight={viewportH}
@@ -1103,10 +1163,12 @@
 								<ExpandedLogRow
 									{log}
 									colspan={5}
-									filterStateFor={attributeFilterState}
-									onFilterToggle={toggleAttributeFilter}
-									metaFilterStateFor={metaFilterState}
+									filterOperatorFor={attributeFilterOperator}
+									onFilterOperator={setAttributeFilterOperator}
+									{isMetaFilterActive}
 									onMetaFilterToggle={toggleMetaFilter}
+									onHeightChange={setExpandedHeight}
+									bind:showAllAttributes
 								/>
 							{/if}
 						{/each}

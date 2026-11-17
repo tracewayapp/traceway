@@ -8,16 +8,16 @@ import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
 The browser SDK decides, on every device, what to send right away, what to keep on the device in case it is needed, and what to drop. Traceway tells it how, for each group of clients, while the app runs. From the dashboard you change what one release, one browser, one user or a tenth of your traffic sends, without shipping a build. Telemetry can wait on the device and leave only when something goes wrong, or when someone asks for it.
 
 <Callout type="info">
-  Remote config needs the OpenTelemetry-based browser SDK, `@tracewayapp/frontend` 2.x (beta, and the React, Vue, Svelte and jQuery wrappers of the same version), and a Traceway server with the **Data Collection** tab. The tab appears in the settings of React, Vue, Svelte and jQuery projects. Setup steps are on [Set up remote config](/learn/remote-config/setup); every field is in the [settings reference](/learn/remote-config/reference).
+  Remote config needs the OpenTelemetry-based browser SDK, `@tracewayapp/frontend` 2.x (beta, and the React, Vue, Svelte and jQuery wrappers of the same version), and a Traceway server with the **Data Collection** page. The page is in the sidebar of React, Vue, Svelte, jQuery and Flutter projects. Setup steps are on [Set up remote config](/learn/remote-config/setup); every field is in the [settings reference](/learn/remote-config/reference).
 </Callout>
 
-Remote configuration is available only for browser frontend projects (React, Svelte, Vue and jQuery). Backend and mobile projects have no remote-collection controls, and their OpAMP/config requests are rejected. For a full-stack app, use its separate browser project.
+Remote configuration is available for browser projects (React, Svelte, Vue and jQuery) and Flutter projects. Backend projects and the other mobile projects have no remote-collection controls, and their OpAMP/config requests are rejected. For a full-stack app, use its separate browser project.
 
-Production defaults keep session lifecycle metadata and web vitals on, with healthy breadcrumbs and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
+Production defaults send session lifecycle metadata and the aggregated [performance metrics](/learn/client-metrics), and keep healthy breadcrumbs, web vital events and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
 
 Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. Configure `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` to tune these limits; they reset when the SDK is recreated.
 
-For an optional stable sample of healthy-session breadcrumbs and request spans, use `baselineSampleRate: 0.01` (1%). The default is 0. Selection uses the session ID and persists across page reloads within that session. It does not enable replay or override explicitly disabled signals, signal filters, or exporter limits. Web vitals remain enabled independently, so performance diagnosis is not restricted to sessions with errors.
+For an optional stable sample of healthy-session breadcrumbs and request spans, use `baselineSampleRate: 0.01` (1%). The default is 0. Selection uses the session ID and persists across page reloads within that session. It does not enable replay or override explicitly disabled signals, signal filters, or exporter limits. Performance metrics are uploaded independently of it, so performance diagnosis is not restricted to sessions with errors.
 
 ## What you can do with it
 
@@ -67,6 +67,8 @@ Every signal is in exactly one mode at any moment:
 | `userActions` | Clicks |
 | `webVitals` | LCP, INP, CLS and the other web vitals |
 | `resourceTiming` | Page and asset load timings |
+| `longTasks` | Main-thread blocks of 50 ms or more, with the script that caused them where the browser tells |
+| `routeTiming` | How long single-page-app route changes take to render |
 | `custom` | `track()` and `recordAction()` events |
 
 Replay has the same three modes, plus a per-session sample rate. Session start and end events additionally respect `sessions.enabled`. Except when the kill switch is on, bookkeeping events of the SDK itself (`traceway.config.applied`, `traceway.trigger.fired`, `traceway.capture.started`, session events) always stream, so you can see in [Logs](/learn/logs) what the control plane did on each device.
@@ -75,7 +77,7 @@ Replay has the same three modes, plus a per-session sample rate. Session start a
 
 <img src="/remote-config/remote-config-precedence.png" alt="Five layers decide a signal's mode: SDK defaults, then the rules that match the client in order, then the ceilings from init() options and the plan's limits, then timed overrides from triggers and captures, then the kill switch. The result is stream, buffer or off for each signal." style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
-1. **SDK defaults.** With no rules, errors and messages stream; console, network, navigation, clicks, custom events and replay are buffered; web vitals stream; resource timing is off. A built-in trigger, `default-exception`, uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip. Replay has a 5-second cooldown and a limit of 20 clips per session; breadcrumb flushing continues during those replay limits, within the diagnostic budget. `recordAllSessions: true` in `init()` streams breadcrumbs and replay instead.
+1. **SDK defaults.** With no rules, errors and messages stream; console, network, navigation, clicks, custom events, web vital events and replay are buffered; resource timing, long tasks and route timing are off. A built-in trigger, `default-exception`, uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip. The numbers behind web vitals and the other performance signals are uploaded as [aggregated metrics](/learn/client-metrics) whatever the mode of their signal. Replay has a 5-second cooldown and a limit of 20 clips per session; breadcrumb flushing continues during those replay limits, within the diagnostic budget. `recordAllSessions: true` in `init()` streams breadcrumbs and replay instead.
 2. **Rules.** Every enabled rule whose conditions match the client contributes the fields it sets, in the order of the rules list; a later rule wins. A rule only lists what it changes, and the server sends the browser the merged result, never the defaults. A client that no rule matches gets an empty document and runs on the defaults.
 3. **Ceilings.** The `capture*`, `sessionRecording` and `sessions` options of `init()` are the most the page allows. If the app sets `sessionRecording: false`, nothing on the server can turn replay on. The organization's plan adds its own limits: what the plan does not include (replay, exceptions or other data) is switched off at the source, so browsers stop sending data that would be dropped on arrival.
 4. **Timed overrides.** A trigger's `stream` action streams the signals that are buffered for a while. A capture goes further and also brings back signals that a rule switched off. Both stay within the ceilings and the plan's limits.
@@ -95,7 +97,7 @@ A trigger is an ordered list of **steps** and a list of **actions**. Each step i
 | `emit` | Records a marker event you can search or trigger on |
 | `capture` | Starts a capture on this device: uploads the lookback, then streams for a duration that survives page loads |
 
-A trigger keeps its progress per session and can be limited with a sample rate, a cooldown and a maximum number of fires per session. The SDK checks text with `contains`, `icontains` (any case), `starts_with` and `glob` (`*` and `?`). There is no regular expression operator on purpose: a pattern sent from the server would run in the browser's backtracking regex engine, where one bad pattern can freeze the page. `glob` runs in linear time and looks at most at the first 4 KB of a value.
+A trigger keeps its progress per session and can be limited with a sample rate, a cooldown and a maximum number of fires per session. The SDK checks text with `contains`, `icontains` (any case), `starts_with` and `glob` (`*` and `?`). There is no regular expression operator on purpose: a pattern sent from the server would run in the browser's backtracking regex engine, where one bad pattern can freeze the page. `glob` backtracks to one point only, so its worst case is the length of the text times the length of the pattern, never exponential, and it looks at most at the first 4 KB of a value.
 
 ## Captures
 

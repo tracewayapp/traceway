@@ -21,7 +21,7 @@ func TestAdmissionSpanEndsBeforeHandlerAndOnRejection(t *testing.T) {
 		ctx, parent := provider.Tracer("admission-test").Start(context.Background(), "request")
 		router := gin.New()
 		handlerRan := false
-		router.POST("/upload", newAdmissionGate(capacity, 10*time.Millisecond, "busy", nil, "2"), func(c *gin.Context) {
+		router.POST("/upload", newAdmissionGate("test", capacity, 10*time.Millisecond, "busy", nil, "2"), func(c *gin.Context) {
 			handlerRan = true
 			ended := recorder.Ended()
 			if len(ended) != 1 || ended[0].Name() != "admission.wait" {

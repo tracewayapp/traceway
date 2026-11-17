@@ -55,9 +55,9 @@ const PILLARS: NavItem[] = [
     icon: BarChart3,
   },
   {
-    title: "Session Replay",
-    description: "Watch what the user did before every error.",
-    href: "/product/session-replay",
+    title: "Real User Monitoring",
+    description: "Web Vitals, frontend SLOs, errors and replay.",
+    href: "/product/rum",
     icon: Video,
   },
   {

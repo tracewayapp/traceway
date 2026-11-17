@@ -2,6 +2,8 @@
 
 Use this reference when the version rules in SKILL.md select v2: stable v2 is `latest` on npm, the app already runs v2, or the user asked for v2 or remote SDK config. Check with `npm view @tracewayapp/frontend dist-tags --json` and the same for the framework package. Today 2.x is published only under the `beta` dist-tag (`2.0.0-beta.N`, while `latest` is 1.x), so `@2` matches nothing and npm answers `E404`; install with `@beta` until `latest` moves to 2.x. When none of those cases applies, use the stable v1 setup in [frontend-js.md](frontend-js.md). Do not use a local SDK checkout.
 
+Read [rum.md](rum.md) for the complete browser measurement workflow. SDK 2.0 exports performance events; independent device-aggregated metrics need SDK 2.1+. Verify the published package contains the required APIs, not just a 2.x version. If npm only offers 2.0, report the feature gap rather than installing a nonexistent release.
+
 ## Install and initialize
 
 Install the selected v2 package with the repository's package manager: `npm install @tracewayapp/react@beta` (or `frontend`, `vue`, `svelte`, `jquery` as appropriate) while 2.x is in beta, `@2` once `latest` is 2.x. An app that already runs v2 keeps its version range; update it within 2.x only. Keep browser SDK/wrapper majors compatible. Use the published compatible bundler plugin and source-map uploader versions; verify their availability separately rather than assuming all packages publish together. Update the lockfile.
@@ -45,7 +47,7 @@ Leave the defaults in place unless the user asks for another policy:
 
 - Errors stream at sample rate 1, subject to existing ignore filters, 1-second identical-error suppression, and a rolling limit of 60 accepted errors per minute per running client. `ignoreErrors: []` removes the ignore filters, not error protection. The next accepted error includes `traceway.error.suppressed_count` when occurrences were suppressed.
 - Console (info and above), fetch/XHR, navigation, clicks, and custom events buffer locally. On error, upload up to 10 minutes of buffered breadcrumbs and a 30-second replay clip, with a 5-second clip cooldown and at most 20 clips per session. Replay segments can extend earlier than the lookback to retain a full snapshot.
-- Lightweight session metadata and web vitals remain on even for healthy sessions. Resource timing is off. Do not disable sessions to suppress healthy replay uploads.
+- Lightweight session metadata remains on for healthy visits. SDK 2.1+ sends aggregated metrics independently and buffers detailed web vital events; SDK 2.0 streams web vital events. Resource-timing diagnostic events default off. Do not disable sessions to suppress healthy replay uploads.
 - Diagnostic uploads share a per-session ceiling of 50 MiB and 10,000 events, including replay events; developers can lower it with `collectionLimits`. Error-only replay still records locally before the error. Use explicit business-event triggers for failures that do not throw.
 - Full-session replay is off by default. `recordAllSessions: true` explicitly streams replay and breadcrumbs; do not add it as setup boilerplate.
 - Optional `baselineSampleRate: 0.01` streams buffered breadcrumbs and request spans for a stable 1% sample of sessions. It does not sample errors or enable full replay. OpAMP can set the equivalent `sessions.baselineSampleRate`.
@@ -63,6 +65,7 @@ With no `telemetry` option, all requests go to Traceway:
 - Fetch/XHR: client spans to `/api/otel/v1/traces`.
 - rrweb replay: gzipped JSON to `/api/recordings`.
 - Remote settings: OpAMP polling at `/api/otel/v1/opamp`.
+- SDK 2.1+ aggregated metrics: delta OTLP histograms/counters to `/api/otel/v1/metrics`; independent of diagnostic event modes. Keep `captureMetrics` enabled for RUM. Set stable release and environment metadata and use `setRoute` or the framework router helpers. `metric`, `count` and `setMetricDimension` add bounded custom measurements; do not substitute `track()` events for metric counters.
 
 Logs and spans carry `session.id`. Requests propagate W3C `traceparent` to the same origin; opt in specific cross-origin API URLs with `propagateTraceHeaderCorsUrls`. Let the backend's standard OTel middleware extract trace context, and allow the trace headers in its CORS configuration. Do not add the v1 `traceway-trace-id` bridge or browser Axios interceptor. A click is a structured log event, not an automatic parent span for a whole interaction; do not promise automatic async exception-to-request linking. Session IDs correlate logs, request spans, and replay.
 

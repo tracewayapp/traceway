@@ -266,3 +266,58 @@ func TestConvertTraces_BrowserExceptionEventCarriesClientContext(t *testing.T) {
 		t.Errorf("backend projects keep their exception attributes unchanged")
 	}
 }
+
+func TestConvertLogs_FlutterExceptionKeepsDeviceContextAndTrace(t *testing.T) {
+	setFakeStore(t, nil)
+	project := tokenProject(testProjectId)
+	project.Framework = "flutter"
+	exceptionId := uuid.MustParse("0195f2a0-0000-7000-8000-00000000f1a7")
+	sessionId := uuid.MustParse("0195f2a0-0000-7000-8000-00000000f1a8")
+	trace := "StateError: Bad state: boom\nmain.<anonymous closure>\n    package:app/main.dart:42:7"
+
+	req := &collogspb.ExportLogsServiceRequest{
+		ResourceLogs: []*logspb.ResourceLogs{{
+			Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{
+				strKV("service.name", "shop-app"),
+				strKV("service.version", "1.4.0"),
+				strKV("telemetry.sdk.language", "dart"),
+				strKV("device.model", "Pixel 8"),
+				strKV("os.name", "android"),
+				strKV("host.name", "ignored"),
+			}},
+			ScopeLogs: []*logspb.ScopeLogs{{
+				Scope: &commonpb.InstrumentationScope{Name: "traceway-flutter"},
+				LogRecords: []*logspb.LogRecord{eventRecord(eventException, time.Now(),
+					strKV("exception.type", "StateError"),
+					strKV("exception.message", "Bad state: boom"),
+					strKV("exception.stacktrace", trace),
+					strKV(attrTracewayExceptionId, exceptionId.String()),
+					strKV(attrSessionId, sessionId.String()),
+				)},
+			}},
+		}},
+	}
+	result := convertLogs(context.Background(), project, testProjectId, "", req)
+	if len(result.Exceptions) != 1 {
+		t.Fatalf("expected one exception, got %d", len(result.Exceptions))
+	}
+	issue := result.Exceptions[0]
+	if issue.Id != exceptionId {
+		t.Errorf("the SDK's exception id must become the issue id so a replay clip can name it, got %s", issue.Id)
+	}
+	if issue.SessionId == nil || *issue.SessionId != sessionId {
+		t.Errorf("session id not linked: %v", issue.SessionId)
+	}
+	if issue.StackTrace != trace {
+		t.Errorf("a readable Dart trace must be stored as sent, got %q", issue.StackTrace)
+	}
+	if issue.Attributes["device.model"] != "Pixel 8" || issue.Attributes["os.name"] != "android" {
+		t.Errorf("device attributes of the resource belong on a Flutter issue: %v", issue.Attributes)
+	}
+	if _, ok := issue.Attributes["host.name"]; ok {
+		t.Errorf("only client resource attributes are copied")
+	}
+	if issue.AppVersion != "1.4.0" || issue.ServerName != "shop-app" {
+		t.Errorf("version/service not carried: %q %q", issue.AppVersion, issue.ServerName)
+	}
+}

@@ -99,6 +99,12 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 		})
 	}
 
+	enriched := []models.Session{*session}
+	if err := telemetry.LoadSessionRecordingReasons(c, projectId, enriched); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading session recording reasons: %w", err))
+		return
+	}
+	session.RecordingReasons = enriched[0].RecordingReasons
 	c.JSON(http.StatusOK, SessionDetailResponse{
 		Session:    session,
 		Exceptions: out,

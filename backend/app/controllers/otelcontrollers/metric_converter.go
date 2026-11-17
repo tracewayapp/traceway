@@ -1,6 +1,8 @@
 package otelcontrollers
 
 import (
+	"time"
+
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
@@ -14,6 +16,29 @@ import (
 type convertedMetrics struct {
 	Points  []models.MetricPoint
 	Entries []transactional.MetricRegistrationEntry
+	// Histograms are the distributions of the request, at the stored scale. They go
+	// through the aggregator, which merges them per minute and differences
+	// cumulative series.
+	Histograms []seriesHistogram
+}
+
+type seriesHistogram struct {
+	Name       string
+	At         time.Time
+	Tags       map[string]string
+	Hist       *shared.Histogram
+	Cumulative bool
+}
+
+func histogramTime(unixNano uint64) time.Time {
+	if unixNano == 0 {
+		return time.Now().UTC()
+	}
+	return shared.OtelNanosToTime(unixNano)
+}
+
+func histogramEntry(name, unit string) transactional.MetricRegistrationEntry {
+	return transactional.MetricRegistrationEntry{Name: name, Unit: unit, MetricType: models.MetricTypeHistogram}
 }
 
 // metricResourceAttrAllowlist names the OTel Resource attributes we lift
@@ -51,6 +76,7 @@ var metricResourceAttrAllowlist = []string{
 
 func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsServiceRequest) convertedMetrics {
 	var points []models.MetricPoint
+	var histograms []seriesHistogram
 	seenEntries := make(map[string]transactional.MetricRegistrationEntry)
 
 	for _, rm := range req.ResourceMetrics {
@@ -86,10 +112,32 @@ func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsSer
 							MetricType: mt,
 						}
 					}
+				case *metricspb.Metric_ExponentialHistogram:
+					cumulative := data.ExponentialHistogram.GetAggregationTemporality() != metricspb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA
+					for _, dp := range data.ExponentialHistogram.GetDataPoints() {
+						h := shared.HistogramFromExponential(shared.ExponentialHistogramSource{
+							Scale: dp.GetScale(), Sum: dp.GetSum(), HasSum: dp.Sum != nil,
+							Min: dp.GetMin(), Max: dp.GetMax(), HasMinMax: dp.Min != nil && dp.Max != nil,
+							ZeroCount: float64(dp.GetZeroCount()), Offset: dp.GetPositive().GetOffset(), BucketCnts: dp.GetPositive().GetBucketCounts(),
+						}, 1)
+						histograms = append(histograms, seriesHistogram{Name: name, At: histogramTime(dp.TimeUnixNano), Tags: buildTags(sn, resTags, dp.Attributes), Hist: h, Cumulative: cumulative})
+					}
+					if _, ok := seenEntries[name]; !ok {
+						seenEntries[name] = histogramEntry(name, unit)
+					}
 				case *metricspb.Metric_Histogram:
+					cumulative := data.Histogram.GetAggregationTemporality() != metricspb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA
+					if _, ok := seenEntries[name]; !ok {
+						seenEntries[name] = histogramEntry(name, unit)
+					}
 					for _, dp := range data.Histogram.GetDataPoints() {
 						ts := shared.OtelNanosToTime(dp.TimeUnixNano)
 						tags := buildTags(sn, resTags, dp.Attributes)
+						if len(dp.GetBucketCounts()) > 0 {
+							h := shared.HistogramFromExplicit(dp.GetExplicitBounds(), dp.GetBucketCounts(), dp.GetSum(), dp.Sum != nil,
+								dp.GetMin(), dp.GetMax(), dp.Min != nil && dp.Max != nil, 1)
+							histograms = append(histograms, seriesHistogram{Name: name, At: histogramTime(dp.TimeUnixNano), Tags: tags, Hist: h, Cumulative: cumulative})
+						}
 						if dp.Count > 0 && dp.Sum != nil {
 							points = append(points, models.MetricPoint{
 								ProjectId:  projectId,
@@ -133,7 +181,7 @@ func convertMetricPoints(projectId uuid.UUID, req *colmetricspb.ExportMetricsSer
 		entries = append(entries, e)
 	}
 
-	return convertedMetrics{Points: points, Entries: entries}
+	return convertedMetrics{Points: points, Entries: entries, Histograms: histograms}
 }
 
 func appendNumberDataPoints(points []models.MetricPoint, projectId uuid.UUID, name, serverName string, resTags map[string]string, dps []*metricspb.NumberDataPoint) []models.MetricPoint {

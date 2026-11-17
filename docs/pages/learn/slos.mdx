@@ -11,6 +11,20 @@ SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge
 | No data | Nothing matched the indicator in the window yet |
 | Paused | The SLO is disabled; nothing is computed, and an alert that was firing on it sends its recovery notice |
 
+## Frontend performance objectives
+
+[RUM](/learn/rum) supports objectives over the experience itself: for example, the share of observed INP values at or below 200 ms. Choose **Metric**, select `browser.web_vital.inp`, and use **Every observation**, `≤`, and `200`. Choose the target and rolling window for your product; 75% is a p75 benchmark, not an automatic reliability promise. Add tags for the environment and population you want to protect.
+
+**One SLO per** creates a separate objective for each selected release, device or other dimension value (up to 20). Each gets its own error budget. Use this to see a regression that an aggregate can hide.
+
+![Frontend SLOs comparing two releases in a controlled demo](/rum/slos-releases.png)
+
+The histogram supplies estimated good and total observations, including sampling weights. Bucket boundary interpolation makes threshold counts approximate. Missing observations contribute neither success nor failure: **Slices without data count as bad** is not supported for distributions. A page without an interaction has no INP observation; it is not a zero-latency interaction. Monitor telemetry delivery separately.
+
+![A breached frontend interaction SLO with its error budget and burn rates](/rum/slo-detail.png)
+
+Pair the objective with multi-window burn-rate alerts to distinguish sustained budget consumption from a brief spike. A fast frontend can still crash, so retain a separate session-reliability objective where session reporting is enabled.
+
 ## SLI kinds
 
 | Kind | Counts | Good when | View bad events opens |
@@ -19,16 +33,16 @@ SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge
 | Span | Spans matching the same filters the [span explorer](/learn/spans) offers: service, name, kind and exact attribute values | The span status is not error, or the span took at most a threshold | The span explorer, prefiltered |
 | Task | Background task runs, all tasks or one by name | No exception or captured message was recorded on the run's own span | The task page, or the tasks list for all tasks |
 | Monitor | Probes of the selected [monitors](/learn/monitors) | The probe came back up; missed probes do not count | The monitor page, or the monitors list for several monitors |
-| Metric | Fixed time slices of a metric (1, 5, 15 or 60 minutes), optionally filtered by tags | The slice's aggregate (average, min, max, sum or last value) satisfies the comparison | Dashboards |
+| Metric | Fixed time slices of a metric (1, 5, 15 or 60 minutes), optionally filtered by tags. With **Every observation** on a distribution metric, each observation is an event instead | The slice's aggregate (average, min, max, sum or last value) satisfies the comparison; with **Every observation**, the observation itself does ("75% of page views have an LCP at most 2500 ms") | Dashboards |
 | Session | Sessions reported by the SDK, all versions or one app version | No exception was recorded in the session; captured messages count only if you say so | The sessions page |
 
-Browser and mobile projects (React, Vue, Svelte, jQuery, React Native, Flutter, Android, iOS) get the session kind alone: the classic crash-free sessions objective, optionally per app version. Backend projects get the other five. The mobile SDKs and the 1.x browser SDK send no spans. The 2.x browser SDK (beta) sends `fetch` and XHR requests as CLIENT spans, but by default it keeps them on the device and uploads them around errors and captures, so they are [diagnostic samples](/learn/remote-config/reference#diagnostic-samples-and-averages), not a count of every request. To hold the requests a browser makes to a target, put the SLO on the backend project that serves them.
+Browser and mobile projects (React, Vue, Svelte, jQuery, React Native, Flutter, Android, iOS) get the session kind, the classic crash-free sessions objective, optionally per app version, and the metric kind for their [client metrics](/learn/client-metrics). Backend projects get the other five. The mobile SDKs and the 1.x browser SDK send no spans. The 2.x browser SDK (beta) sends `fetch` and XHR requests as CLIENT spans, but by default it keeps them on the device and uploads them around errors and captures, so they are [diagnostic samples](/learn/remote-config/reference#diagnostic-samples-and-averages), not a count of every request. To hold the requests a browser makes to a target, put the SLO on the backend project that serves them.
 
 The session kind counts the sessions an SDK reports. The 1.x browser SDK reports one per visit only when [always-on session recording](/client/js-sdk/v1/session-replay#always-on-session-recording) is on (`recordAllSessions: true`); the 2.x browser SDK (beta) reports every session unless `sessions: false` is set. A 1.x app without `recordAllSessions`, and the mobile SDKs today, report no sessions, so a session SLO stays at No data.
 
 The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Endpoints and tasks are promoted from spans, so a span SLO covers them too.
 
-The metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat. Empty slices count only from the moment the SLO was saved, or its indicator last changed. The backfill of older history never turns the time before the metric existed, or past its retention, into bad slices.
+For point metrics, the metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat. Empty slices count only from the moment the SLO was saved, or its indicator last changed. The backfill of older history never turns the time before the metric existed, or past its retention, into bad slices.
 
 Endpoint latency indicators leave streaming endpoints out, since a connection lifetime is not a response time. They also ignore the status code, so a fast 500 counts as good; pair a latency SLO with an availability one.
 

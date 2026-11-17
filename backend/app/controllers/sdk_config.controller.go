@@ -60,8 +60,18 @@ func canonicalRule(req sdkConfigRuleRequest) (conditions, settings []byte, err e
 	if conditions, err = json.Marshal(parsedConditions); err != nil {
 		return nil, nil, err
 	}
-	settings, err = json.Marshal(parsedSettings)
-	return conditions, settings, err
+	if settings, err = json.Marshal(parsedSettings); err != nil {
+		return nil, nil, err
+	}
+	// The stored bytes are what every poll parses. A document that changes meaning when re-encoded would be
+	// saved and then skipped at load, so it is refused here.
+	if _, err = sdkconfig.ParseSettings(settings); err != nil {
+		return nil, nil, err
+	}
+	if _, err = sdkconfig.ParseConditions(conditions); err != nil {
+		return nil, nil, err
+	}
+	return conditions, settings, nil
 }
 
 func answerSdkConfigError(c *gin.Context, err error, reason string) {
@@ -85,7 +95,7 @@ func sdkConfigProjectId(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	if project == nil || !sdkconfig.SupportsFramework(project.Framework) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Remote SDK configuration is only available for browser frontend projects"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Remote SDK configuration is only available for browser and Flutter projects"})
 		return uuid.Nil, false
 	}
 	return projectId, true

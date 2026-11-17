@@ -8,7 +8,7 @@ Alerts are how Traceway tells people that something happened. They live under **
 | **Rules** | When to notify. Each rule watches one condition and sends to exactly one channel. A channel can serve many rules. |
 | **History** | Every notification that was sent, with its status |
 
-Rules and channels belong to a project and only see that project's data. Channels have their own On/Off switch, and a rule only runs while its channel is on. Changing them needs write access on the project. Browser and mobile projects only offer the New Issue rule type and the two SLO rule types.
+Rules and channels belong to a project and only see that project's data. Channels have their own On/Off switch, and a rule only runs while its channel is on. Changing them needs write access on the project. Browser and mobile projects offer New Issue, Metric Threshold, Metric Release Regression and the two SLO rule types. See [rum.md](rum.md) for release/device-mix comparisons, effective sample-size gates, delayed client uploads and frontend objectives.
 
 ## Channels
 

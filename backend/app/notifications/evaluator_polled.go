@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 type EvalResult struct {
@@ -25,22 +26,23 @@ type EvalResult struct {
 type RuleEvaluator func(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error)
 
 var polledEvaluators = map[string]RuleEvaluator{
-	"error_rate_threshold":    evaluateErrorRateThreshold,
-	"endpoint_p95_threshold":  evaluateEndpointP95Threshold,
-	"endpoint_p99_threshold":  evaluateEndpointP99Threshold,
-	"apdex_drop":              evaluateApdexDrop,
-	"metric_threshold":        evaluateMetricThreshold,
-	"no_data":                 evaluateNoData,
-	"error_count_threshold":   evaluateErrorCountThreshold,
-	"task_duration_threshold": evaluateTaskDurationThreshold,
-	"task_failure_rate":       evaluateTaskFailureRate,
-	"throughput_drop":         evaluateThroughputDrop,
-	"endpoint_error_rate":     evaluateEndpointErrorRate,
-	"impact_score_critical":   evaluateImpactScoreCritical,
-	"impact_score_high":       evaluateImpactScoreHigh,
-	"impact_score_medium":     evaluateImpactScoreMedium,
-	"slo_burn_rate":           evaluateSLOBurnRate,
-	"slo_budget_consumed":     evaluateSLOBudgetConsumed,
+	"error_rate_threshold":      evaluateErrorRateThreshold,
+	"endpoint_p95_threshold":    evaluateEndpointP95Threshold,
+	"endpoint_p99_threshold":    evaluateEndpointP99Threshold,
+	"apdex_drop":                evaluateApdexDrop,
+	"metric_threshold":          evaluateMetricThreshold,
+	"metric_release_regression": evaluateMetricReleaseRegression,
+	"no_data":                   evaluateNoData,
+	"error_count_threshold":     evaluateErrorCountThreshold,
+	"task_duration_threshold":   evaluateTaskDurationThreshold,
+	"task_failure_rate":         evaluateTaskFailureRate,
+	"throughput_drop":           evaluateThroughputDrop,
+	"endpoint_error_rate":       evaluateEndpointErrorRate,
+	"impact_score_critical":     evaluateImpactScoreCritical,
+	"impact_score_high":         evaluateImpactScoreHigh,
+	"impact_score_medium":       evaluateImpactScoreMedium,
+	"slo_burn_rate":             evaluateSLOBurnRate,
+	"slo_budget_consumed":       evaluateSLOBudgetConsumed,
 }
 
 // --- Error Rate Threshold ---
@@ -119,7 +121,7 @@ func evaluateEndpointP95Threshold(ctx context.Context, rule *models.Notification
 		return nil, err
 	}
 
-	if p95 < cfg.ThresholdMs {
+	if !latencyBreached(p95, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -159,7 +161,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 		return nil, err
 	}
 
-	if p99 < cfg.ThresholdMs {
+	if !latencyBreached(p99, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -227,6 +229,11 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 	}
 
 	now := time.Now().UTC()
+	if series, isDistribution, err := histogramMetricSeries(ctx, cfg, projectId, now); err != nil {
+		return nil, err
+	} else if isDistribution {
+		return metricThresholdResult(ctx, rule, cfg, series, projectId), nil
+	}
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
 	selectExpr := "avg(value)"
@@ -237,10 +244,10 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 		selectExpr = "min(value)"
 	case "sum":
 		selectExpr = "sum(value)"
-	case "p95":
-		selectExpr = "quantile(0.95)(value)"
-	case "p99":
-		selectExpr = "quantile(0.99)(value)"
+	case "count":
+		selectExpr = "toFloat64(count())"
+	case "p50", "p75", "p90", "p95", "p99":
+		selectExpr = fmt.Sprintf("quantile(%g)(value)", shared.HistogramAggregations[cfg.Aggregation])
 	case "last":
 		selectExpr = "argMax(value, recorded_at)"
 	}
@@ -411,7 +418,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 		return nil, err
 	}
 
-	if p95 < cfg.ThresholdMs {
+	if !latencyBreached(p95, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 

@@ -492,7 +492,8 @@
 						y1={yScale(tick)}
 						x2={chartWidth}
 						y2={yScale(tick)}
-						stroke="#e5e7eb"
+						stroke="currentColor"
+						class="text-border"
 						stroke-width="1"
 						stroke-dasharray="4 4"
 					/>
@@ -505,7 +506,8 @@
 						y={yScale(tick)}
 						text-anchor="end"
 						dominant-baseline="middle"
-						fill="#6b7280"
+						fill="currentColor"
+						class="text-muted-foreground"
 						font-size="10"
 					>
 						{formatYLabel(tick)}{unitOnTopTick && __index === yTickItems().length - 1
@@ -542,7 +544,14 @@
 
 				<!-- Y axis unit label -->
 				{#if yAxisUnit() && !unitOnTopTick}
-					<text x={-8} y={-4} text-anchor="end" fill="#9ca3af" font-size="10">
+					<text
+						x={-8}
+						y={-4}
+						text-anchor="end"
+						fill="currentColor"
+						class="text-muted-foreground"
+						font-size="10"
+					>
 						{yAxisUnit()}
 					</text>
 				{/if}
@@ -553,12 +562,21 @@
 					y1={chartHeight}
 					x2={chartWidth}
 					y2={chartHeight}
-					stroke="#e5e7eb"
+					stroke="currentColor"
+					class="text-border"
 					stroke-width="1"
 				/>
 
 				<!-- Y axis line -->
-				<line x1={0} y1={0} x2={0} y2={chartHeight} stroke="#e5e7eb" stroke-width="1" />
+				<line
+					x1={0}
+					y1={0}
+					x2={0}
+					y2={chartHeight}
+					stroke="currentColor"
+					class="text-border"
+					stroke-width="1"
+				/>
 
 				<!-- Lines for each series (with gap detection) -->
 				<g clip-path="url(#{clipId})">
@@ -584,7 +602,14 @@
 							<!-- Draw line segments (only segments with 2+ points) -->
 							{#each segments as segment, __index (__index)}
 								{#if segment.length > 1}
-									<path d={generatePath(segment)} fill="none" stroke={s.color} stroke-width="1.5" />
+									<path
+										d={generatePath(segment)}
+										fill="none"
+										stroke={s.color}
+										stroke-width="2"
+										stroke-linejoin="round"
+										stroke-linecap="round"
+									/>
 								{/if}
 							{/each}
 

@@ -16,6 +16,7 @@ Use the connected write MCP server when available, otherwise `traceway-write`. E
 | Personal delivery | [personal-notifications.md](personal-notifications.md) | Own contact methods and high/low urgency notification chains |
 | Incident response | [incident-actions.md](incident-actions.md) | Archive issues, acknowledge/resolve pages, snooze rules, run monitors, write post-mortems, mark expected latency |
 | Dashboards | [dashboard-building.md](dashboard-building.md) | Discover recorded metrics and build useful charts from instrumentation |
+| RUM | [rum.md](rum.md) | Browser metrics, release alerts, frontend SLOs and dashboard-only capabilities |
 | Browser collection | [sdk-configuration.md](sdk-configuration.md) | OpAMP rules, sampling, sessions and replay |
 
 ## How the concepts interact

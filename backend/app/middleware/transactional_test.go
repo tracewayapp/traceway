@@ -248,7 +248,8 @@ func TestTransactionalReleasesResponseAfterCommit(t *testing.T) {
 			var events []string
 			r, obs := newTransactionalRouter(func(c *gin.Context) {
 				insertThing(t, c, "row")
-				OnCommit(c, func() { events = append(events, "hook") })
+				OnCommit(c, func() { events = append(events, "first hook") })
+				OnCommit(c, func() { events = append(events, "second hook") })
 				tc.render(c)
 			})
 
@@ -271,14 +272,28 @@ func TestTransactionalReleasesResponseAfterCommit(t *testing.T) {
 				t.Fatalf("%s = %q, want the outer middleware's value", outerHeader, v)
 			}
 			assertRows(t, "row", true)
-			if !slices.Equal(events, []string{"hook", "header"}) {
-				t.Fatalf("events = %v, want the hook to run before the first header write", events)
+			if !slices.Equal(events, []string{"first hook", "second hook", "header"}) {
+				t.Fatalf("events = %v, want both hooks in registration order before the first header write", events)
 			}
 			if obs.recovered != nil || len(obs.errors) != 0 {
 				t.Fatalf("recovered = %v, c.Errors = %v, want neither", obs.recovered, obs.errors)
 			}
 		})
 	}
+}
+
+func TestTransactionalDropsCommitHooksOnRollback(t *testing.T) {
+	setupTransactionalDB(t, false)
+	r, _ := newTransactionalRouter(func(c *gin.Context) {
+		insertThing(t, c, "row")
+		OnCommit(c, func() { t.Error("commit hook ran on rollback") })
+		c.AbortWithStatus(http.StatusInternalServerError)
+	})
+
+	if rec := serveTransaction(r, http.MethodPost); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	assertRows(t, "row", false)
 }
 
 func TestTransactionalPanicAfterWriteAnswers500(t *testing.T) {

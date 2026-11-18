@@ -3,6 +3,7 @@
 package controllers
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -10,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/v2/app/cache"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
@@ -18,46 +18,6 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
-// ProjectCache is a process-global that outlives the per-test in-memory
-// database, so whatever a test puts in it has to come back out even when the
-// test fails before it knows the project's id.
-func restoreProjectCacheAfterTest(t *testing.T) {
-	t.Helper()
-	before := map[uuid.UUID]bool{}
-	for _, p := range cache.ProjectCache.GetAll() {
-		before[p.Id] = true
-	}
-	t.Cleanup(func() {
-		for _, p := range cache.ProjectCache.GetAll() {
-			if !before[p.Id] {
-				cache.ProjectCache.RemoveProject(p.Id)
-			}
-		}
-	})
-}
-
-func findProjectByName(t *testing.T, name string) *models.Project {
-	t.Helper()
-	tx, err := db.DB.Begin()
-	if err != nil {
-		t.Fatalf("begin: %v", err)
-	}
-	defer tx.Rollback()
-
-	projects, err := transactional.ProjectRepository.FindAll(tx)
-	if err != nil {
-		t.Fatalf("find all projects: %v", err)
-	}
-	for _, p := range projects {
-		if p.Name == name {
-			return p
-		}
-	}
-	return nil
-}
-
-// Every field the cache serves has to agree with the row, not just the ones a
-// past bug happened to drop.
 func assertCachedProjectMatchesRow(t *testing.T, cached, stored *models.Project) {
 	t.Helper()
 
@@ -121,85 +81,76 @@ func equalStringPtr(a, b *string) bool {
 	return *a == *b
 }
 
-// The register handler used to cache a five-field copy of the project it had
-// just created, so the cached ingest settings disagreed with the row. On the
-// SQLite builds nothing ever refreshes the cache, so the wrong copy served
-// every /api/report request until the process restarted.
-func TestRegisterCachesTheProjectItCreated(t *testing.T) {
-	setupSetupControllerDB(t)
-	initRegistrationJWT(t)
-	restoreProjectCacheAfterTest(t)
+func TestRegistrationCachesProjectAfterCommit(t *testing.T) {
+	for _, tc := range []struct {
+		path    string
+		body    string
+		handler gin.HandlerFunc
+		sso     bool
+	}{
+		{
+			path:    "/register",
+			body:    `{"email":"cached@example.com","name":"A","password":"password1","organizationName":"CachedOrg","timezone":"UTC","projectName":"Mobile App","framework":"ios"}`,
+			handler: AuthController.Register,
+		},
+		{
+			path:    "/auth/finish-setup",
+			body:    `{"organizationName":"CachedOrg","timezone":"UTC","projectName":"Mobile App","framework":"ios"}`,
+			handler: OAuthController.FinishSetup,
+			sso:     true,
+		},
+	} {
+		t.Run(strings.TrimPrefix(tc.path, "/"), func(t *testing.T) {
+			setupSetupControllerDB(t)
+			initRegistrationJWT(t)
 
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.POST("/api/register", middleware.Transactional, AuthController.Register)
+			gin.SetMode(gin.TestMode)
+			router := gin.New()
+			if tc.sso {
+				user, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.User, error) {
+					return transactional.UserRepository.CreateOAuth(tx, "cached@example.com", "A", "oidc", "test-user", "")
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				router.Use(func(c *gin.Context) { c.Set(middleware.UserIdContextKey, user.Id) })
+			}
 
-	body := `{"email":"cached@example.com","name":"A","password":"password1","organizationName":"CachedOrg","timezone":"UTC","projectName":"Mobile App","framework":"ios"}`
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(body))
-	request.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(recorder, request)
+			var created *models.Project
+			router.POST(tc.path, middleware.Transactional, func(c *gin.Context) {
+				tc.handler(c)
+				if c.Writer.Status() != http.StatusCreated {
+					return
+				}
+				projects, err := transactional.ProjectRepository.FindAll(db.GetTx(c))
+				if err != nil || len(projects) != 1 {
+					t.Fatalf("expected one project in the registration transaction, got %d (err %v)", len(projects), err)
+				}
+				created = projects[0]
+				t.Cleanup(func() { cache.ProjectCache.RemoveProject(created.Id) })
+				if cache.ProjectCache.GetByToken(created.Token) != nil {
+					t.Error("project token was visible before commit")
+				}
+			})
 
-	if recorder.Code != http.StatusCreated {
-		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
-	}
-
-	stored := findProjectByName(t, "Mobile App")
-	if stored == nil {
-		t.Fatal("project was not created")
-	}
-
-	cached := cache.ProjectCache.GetByToken(stored.Token)
-	if cached == nil {
-		t.Fatal("project token is not in the cache after a committed registration")
-	}
-	assertCachedProjectMatchesRow(t, cached, stored)
-
-	// The by-source-map-token index is separate from the by-token one, and it
-	// is what a symbol upload authenticates against.
-	if stored.SourceMapToken == nil {
-		t.Fatal("an ios project should be created with a source map token")
-	}
-	if cache.ProjectCache.GetBySourceMapToken(*stored.SourceMapToken) == nil {
-		t.Error("source map token does not resolve from the cache; symbol upload would 401")
-	}
-}
-
-// The handler itself must not touch the cache; the write is queued with
-// middleware.OnCommit so a registration whose transaction rolls back leaves
-// nothing behind. Driving the handler without that middleware runs no commit
-// hooks, which is the same observation point as a rollback.
-func TestRegisterCachesOnlyViaCommitHook(t *testing.T) {
-	setupSetupControllerDB(t)
-	initRegistrationJWT(t)
-	restoreProjectCacheAfterTest(t)
-
-	tx, err := db.DB.Begin()
-	if err != nil {
-		t.Fatalf("begin: %v", err)
-	}
-	defer tx.Rollback()
-
-	body := `{"email":"uncommitted@example.com","name":"A","password":"password1","organizationName":"UncommittedOrg","timezone":"UTC","projectName":"Pending App","framework":"react"}`
-	c, recorder := newControllerTestContext(t, tx, 0, http.MethodPost, "/api/register", body)
-	AuthController.Register(c)
-	if recorder.Code != http.StatusCreated {
-		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
-	}
-	// Commit rather than roll back: the harness caps the main DB at one
-	// connection, so findProjectByName cannot open its transaction until this
-	// one closes, and it needs the row to be visible. Commit hooks still never
-	// run, because middleware.Transactional is what runs them.
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("commit: %v", err)
-	}
-
-	stored := findProjectByName(t, "Pending App")
-	if stored == nil {
-		t.Fatal("project was not created")
-	}
-
-	if cache.ProjectCache.GetByToken(stored.Token) != nil {
-		t.Error("the handler cached the project inline; a rolled back registration would leave a phantom entry")
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			request.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusCreated {
+				t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+			}
+			cached := cache.ProjectCache.GetByToken(created.Token)
+			if cached == nil {
+				t.Fatal("project token missing after commit")
+			}
+			assertCachedProjectMatchesRow(t, cached, created)
+			if created.SourceMapToken == nil {
+				t.Fatal("iOS project missing symbol upload token")
+			}
+			if p := cache.ProjectCache.GetBySourceMapToken(*created.SourceMapToken); p == nil || p.Id != created.Id {
+				t.Error("symbol upload token did not resolve to the registered project")
+			}
+		})
 	}
 }

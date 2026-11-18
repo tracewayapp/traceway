@@ -92,6 +92,11 @@ func TestAlertingConfigurationValidation(t *testing.T) {
 		{"slos", "update", `{"name":"Crash free","sliKind":"session","sliConfig":{},"targetPercent":99.5}`, false},
 		{"slos", "preview", `{"sliKind":"session","sliConfig":{},"name":"not a preview field"}`, false},
 		{"slos", "series", `{"fromDate":"2026-01-01T00:00:00Z","toDate":"2026-01-02T00:00:00Z","intervalMinutes":0}`, false},
+		{"slos", "series", `{"fromDate":"2026-01-02T00:00:00Z","toDate":"2026-01-01T00:00:00Z"}`, false},
+		{"slos", "series", `{"fromDate":"yesterday","toDate":"2026-01-01T00:00:00Z"}`, false},
+		{"slos", "create", `{"name":"Checkout","sliKind":"endpoint","sliConfig":{"endpoint":"POST /api/checkout","good":"latency","latencyThresholdMs":300},"targetPercent":99,"windowDays":7}`, true},
+		{"slos", "create", `{"name":"Checkout","sliKind":"endpoint","sliConfig":{"endpoint":"POST /api/checkout","good":"availability","tags":{"env":"prod"}},"targetPercent":99,"windowDays":7}`, false},
+		{"slos", "preview", `{"sliKind":"metric","sliConfig":{"metricName":"queue.depth","aggregation":"max","operator":"lt","threshold":100,"tag":{"queue":"mail"}},"bucketMinutes":5}`, false},
 	} {
 		req := AlertingRequest{ProjectID: "project", OrganizationID: "1", ID: 1, Body: json.RawMessage(tc.body)}
 		if err := ValidateAlertingRequest(tc.resource, tc.action, req); (err == nil) != tc.valid {

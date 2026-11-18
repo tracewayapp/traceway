@@ -128,6 +128,7 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway alerts list` | Alert rules: type, enabled, snoozed until |
 | `traceway monitors list` / `monitors show <id>` | Uptime monitors, their status and incidents |
 | `traceway slos list` / `slos show <id>` | Service level objectives: definition, `status` (`ok`, `breached`, `no_data`), `currentSli` (percent), `budgetRemaining`, `burnRate1h`/`burnRate6h`; a disabled SLO is paused; `show` adds the alert rules that read the SLO |
+| `traceway slos series <id> --file range.json` | `good` and `total` per bucket for `{"fromDate", "toDate"}` (RFC 3339, at most 91 days, optional `intervalMinutes`) |
 | `traceway slos preview --file slo.json` | What an SLO definition `{"sliKind", "sliConfig"}` would measure over the last 24h (`good`, `total`, `sli`), without saving |
 | `traceway post-mortems list` / `post-mortems show <id>` | Post-mortem documents; `--search`, `--tag` |
 | `traceway opamp rules list` | Browser projects only: the remote SDK config (OpAMP) rules in order, with conditions, settings and `updatedAt`. Later matching rules win |

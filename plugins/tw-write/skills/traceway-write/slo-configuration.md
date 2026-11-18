@@ -15,7 +15,7 @@ traceway-write slos create --file slo.json --yes
 traceway-write slos show <id>
 ```
 
-`slos list`, `show <id>`, `preview --file F` and `series <id> --file F` only read and also exist in the read-only CLI. `create --file F`, `update <id> --file F` and `delete <id>` need the write CLI. Offline `validate <action>` checks the request envelope; the server validates the indicator.
+`slos list`, `show <id>`, `preview --file F` and `series <id> --file F` only read and also exist in the read-only CLI. `create --file F`, `update <id> --file F` and `delete <id>` need the write CLI. Offline `validate <action>` checks the request envelope and rejects `sliConfig` fields the kind does not have (the server would drop them silently and save a wider SLO); the server validates the indicator's values.
 
 MCP equivalents: `list_slos`, `get_slo`, `preview_slo`, `get_slo_series`; `create_slo`, `update_slo`, `delete_slo`. Pass `project_id`, `id` for an existing SLO, and the JSON object as `data`.
 

@@ -279,6 +279,32 @@ func validateAlertingBody(resource, action string, body json.RawMessage) error {
 		if kind == "metric" && len(obj["bucketMinutes"]) == 0 {
 			return fmt.Errorf("bucketMinutes is required for a metric SLO (1, 5, 15 or 60)")
 		}
+		// The server drops sliConfig fields it does not know, so a misspelled filter would save an SLO over everything.
+		allowed := map[string]string{
+			"endpoint": "endpoint good latencyThresholdMs",
+			"span":     "serviceName name kind attributes good latencyThresholdMs",
+			"task":     "taskName",
+			"monitor":  "checkIds",
+			"metric":   "metricName aggregation operator threshold tags missingIsBad",
+			"session":  "appVersion includeMessages",
+		}[kind]
+		var config map[string]json.RawMessage
+		_ = json.Unmarshal(obj["sliConfig"], &config)
+		for k := range config {
+			if !strings.Contains(" "+allowed+" ", " "+k+" ") {
+				return fmt.Errorf("unknown %s sliConfig field %q (allowed: %s)", kind, k, strings.ReplaceAll(allowed, " ", ", "))
+			}
+		}
+	}
+	if resource == "slos" && action == "series" {
+		var from, to string
+		_ = json.Unmarshal(obj["fromDate"], &from)
+		_ = json.Unmarshal(obj["toDate"], &to)
+		a, e1 := time.Parse(time.RFC3339, from)
+		b, e2 := time.Parse(time.RFC3339, to)
+		if e1 != nil || e2 != nil || !a.Before(b) {
+			return fmt.Errorf("fromDate/toDate must be ordered RFC3339 timestamps")
+		}
 	}
 	if resource == "notification-chains" {
 		for _, k := range []string{"high", "low"} {

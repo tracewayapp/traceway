@@ -23,6 +23,7 @@
 	}
 
 	let { open = $bindable(), kind = 'instance', value = '', onCreated }: Props = $props();
+	const flutter = $derived(projectsState.currentProject?.framework === 'flutter');
 
 	const kindLabels: Record<TargetKind, string> = {
 		instance: 'Device (instance id)',
@@ -98,15 +99,23 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>New Capture</AlertDialog.Title>
 			<AlertDialog.Description>
-				Matching browsers upload the selected lookback and stream allowed signals until expiry.
-				Captures last at most 24 hours, with at most 20 active per Project. They take effect on the
-				next poll; returning to a tab polls only after the polling interval has elapsed.
+				{#if flutter}
+					Matching apps upload the selected lookback and stream allowed signals until expiry.
+					Captures last at most 24 hours, with at most 20 active per Project. They take effect on
+					the next poll; an app coming back to the foreground polls at once.
+				{:else}
+					Matching browsers upload the selected lookback and stream allowed signals until expiry.
+					Captures last at most 24 hours, with at most 20 active per Project. They take effect on
+					the next poll; returning to a tab polls only after the polling interval has elapsed.
+				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<SdkVersionWarning />
 		<p
 			class="text-xs text-muted-foreground"
-			title="Each browser session can upload up to 50 MiB and 10,000 diagnostic events, including replay events, across all captures. Developers may lower these limits. Errors, lifecycle metadata and web vitals are separate. Limits persist across page reloads when session storage is available."
+			title={flutter
+				? 'Each app session can upload up to 50 MiB and 10,000 diagnostic events, including the screen recording, across all captures. Developers may lower these limits. Errors, lifecycle metadata and performance metrics are separate.'
+				: 'Each browser session can upload up to 50 MiB and 10,000 diagnostic events, including replay events, across all captures. Developers may lower these limits. Errors, lifecycle metadata and web vitals are separate. Limits persist across page reloads when session storage is available.'}
 		>
 			Captures respect a shared per-session diagnostic budget: 50 MiB / 10,000 events maximum.
 		</p>

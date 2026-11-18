@@ -397,8 +397,13 @@
 	const canInstallDefaultDashboard = $derived(
 		isClientProject && projectsState.canWriteCurrentProject
 	);
+	const isFlutterProject = $derived(projectsState.currentProject?.framework === 'flutter');
 	const defaultDashboardName = $derived(
-		isBrowserProject ? 'Web Performance' : 'Mobile Performance'
+		isBrowserProject
+			? 'Web Performance'
+			: isFlutterProject
+				? 'Flutter Performance'
+				: 'Mobile Performance'
 	);
 	let installingDefaults = $state(false);
 
@@ -1155,7 +1160,9 @@
 		<EmptyState
 			message={isBrowserProject
 				? "No dashboards yet. Web Performance charts the web vitals, route changes and main-thread blocking this project's SDK reports, as percentiles over every page view."
-				: 'No dashboards yet. Mobile Performance charts app start, screen display times, frames, hangs and crashes, as percentiles over every session.'}
+				: isFlutterProject
+					? 'No dashboards yet. Flutter Performance charts the app start, screen display times, frames, hangs, unhandled errors, memory and requests the Flutter SDK measures, over every session.'
+					: 'No dashboards yet. Mobile Performance charts app start, screen display times, frames, hangs and crashes, as percentiles over every session.'}
 			actionLabel={installingDefaults ? 'Adding…' : `Add ${defaultDashboardName} Dashboard`}
 			onAction={() => {
 				if (!installingDefaults) void installDefaultDashboards();

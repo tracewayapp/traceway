@@ -108,6 +108,12 @@ export interface FlutterVideoEvent {
 	format: string;
 	fps: number;
 	durationSeconds: number;
+	/**
+	 * ISO times of the first and last frame. The session recording endpoint sets them from the segment the clip
+	 * was uploaded in, so the player can place a session's consecutive segments on the session's clock.
+	 */
+	startedAt?: string;
+	endedAt?: string;
 }
 
 export type SessionReplayEvent = (eventWithTime & { data?: { href?: string } }) | FlutterVideoEvent;

@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { Globe, Play, Pause, Maximize, Minimize } from '@lucide/svelte';
 	import type { FlutterVideoEvent, SessionReplayEvent } from '$lib/types/exceptions';
 	import type { eventWithTime } from '@rrweb/types';
+	import { MIN_GAP_MS, locate, placeSegments, playerTimeAt, wallTimeAt } from './video-segments';
 	// Static side-effect import - keeps the rrweb-player stylesheet attached
 	// to the page for the lifetime of the SPA, even across mount/unmount cycles.
 	// A dynamic import inside onMount would let Vite's HMR dispose the style
@@ -12,10 +13,16 @@
 
 	interface Props {
 		events: SessionReplayEvent[] | null;
+		/**
+		 * The moment the caller's time offsets count from, such as the session's start. A Flutter recording whose
+		 * segments carry their wall-clock span then seeks and reports on that clock; otherwise an offset is a time
+		 * into the recording.
+		 */
+		startedAt?: string | null;
 		onTimeUpdate?: (ms: number) => void;
 	}
 
-	let { events, onTimeUpdate }: Props = $props();
+	let { events, startedAt = null, onTimeUpdate }: Props = $props();
 	let container: HTMLElement;
 	let player: InstanceType<(typeof import('rrweb-player'))['default']> | null = null;
 	let resizeObserver: ResizeObserver | null = null;
@@ -25,7 +32,7 @@
 	export function seek(offsetMs: number) {
 		const ms = Math.max(0, offsetMs);
 		if (isFlutterVideo && videoEl) {
-			videoEl.currentTime = ms / 1000;
+			seekPlayer(playerTimeForOffset(ms));
 		} else if (player) {
 			player.goto(ms, false);
 		}
@@ -33,21 +40,75 @@
 
 	let isFlutterVideo = $derived(events && events.length > 0 && events[0]?.type === 'flutter_video');
 
-	let flutterVideoSrc = $derived.by(() => {
-		if (!isFlutterVideo || !events) return '';
-		const evt = events[0] as unknown as FlutterVideoEvent;
-		return `data:video/mp4;base64,${evt.data}`;
+	// A Flutter recording is one MP4 clip, or the consecutive segments of a streamed session. They play back to
+	// back as one recording on a player timeline; see video-segments.ts.
+	const videoEvents = $derived(
+		isFlutterVideo && events
+			? events.filter((event): event is FlutterVideoEvent => event.type === 'flutter_video')
+			: []
+	);
+	// Durations the loaded videos report, by event index, over the ones the SDK declared.
+	let measuredMs = $state<Record<number, number>>({});
+	const timeline = $derived(placeSegments(videoEvents, measuredMs));
+	const origin = $derived.by(() => {
+		const ms = startedAt ? Date.parse(startedAt) : NaN;
+		return timeline.timed && Number.isFinite(ms) ? ms : null;
 	});
+	// The segment in the video element, as a position in timeline.segments, and what to do once it has loaded.
+	let current = 0;
+	let pending: { localMs: number; play: boolean; toEnd: boolean } | null = null;
 
-	let videoEl: HTMLVideoElement;
+	let videoEl = $state<HTMLVideoElement>();
 	let videoContainerEl: HTMLElement;
 	let playing = $state(false);
+	// Seconds on the player timeline, across every segment.
 	let currentTime = $state(0);
-	let duration = $state(0);
+	let duration = $derived(timeline.totalMs / 1000);
 	let playbackSpeed = $state(1);
 	let isFullscreen = $state(false);
 	let dragging = $state(false);
 	let progressPercent = $derived(duration > 0 ? (currentTime / duration) * 100 : 0);
+
+	function offsetForPlayerTime(playerMs: number): number {
+		return origin === null ? playerMs : wallTimeAt(timeline, playerMs) - origin;
+	}
+
+	function playerTimeForOffset(offsetMs: number): number {
+		return origin === null ? offsetMs : playerTimeAt(timeline, origin + offsetMs);
+	}
+
+	function loadSegment(position: number, localMs: number, play: boolean, toEnd = false) {
+		const segment = timeline.segments[position];
+		if (!videoEl || !segment) return;
+		current = position;
+		pending = { localMs, play, toEnd };
+		videoEl.src = `data:video/mp4;base64,${videoEvents[segment.index].data}`;
+	}
+
+	/** Shows a player time, loading the segment it falls in; `play` unset keeps playing or paused as it was. */
+	function seekPlayer(playerMs: number, play?: boolean) {
+		if (!videoEl || timeline.segments.length === 0) return;
+		const { position, localMs } = locate(timeline, playerMs);
+		currentTime = (timeline.segments[position].offsetMs + localMs) / 1000;
+		const resume = play ?? (pending ? pending.play : !videoEl.paused);
+		if (position !== current) {
+			loadSegment(position, localMs, resume);
+		} else if (pending) {
+			pending = { localMs, play: resume, toEnd: false };
+		} else {
+			videoEl.currentTime = localMs / 1000;
+			if (play) void videoEl.play();
+		}
+	}
+
+	$effect(() => {
+		if (!videoEl || videoEvents.length === 0) return;
+		untrack(() => {
+			measuredMs = {};
+			// A single clip opens on its last frame, the moment of the error; a session from its start.
+			loadSegment(0, 0, false, timeline.segments.length === 1);
+		});
+	});
 
 	function formatTime(seconds: number): string {
 		const m = Math.floor(seconds / 60);
@@ -57,11 +118,15 @@
 
 	function togglePlay() {
 		if (!videoEl) return;
-		if (videoEl.paused) {
-			if (videoEl.ended || videoEl.currentTime >= videoEl.duration - 0.1) {
-				videoEl.currentTime = 0;
+		if (pending) {
+			pending = { ...pending, play: !pending.play };
+		} else if (videoEl.paused) {
+			const last = current >= timeline.segments.length - 1;
+			if (last && (videoEl.ended || videoEl.currentTime >= videoEl.duration - 0.1)) {
+				seekPlayer(0, true);
+			} else {
+				videoEl.play();
 			}
-			videoEl.play();
 		} else {
 			videoEl.pause();
 		}
@@ -69,7 +134,11 @@
 
 	function setSpeed(speed: number) {
 		playbackSpeed = speed;
-		if (videoEl) videoEl.playbackRate = speed;
+		if (videoEl) {
+			// A newly loaded segment starts at the default rate.
+			videoEl.defaultPlaybackRate = speed;
+			videoEl.playbackRate = speed;
+		}
 	}
 
 	function toggleFullscreen() {
@@ -86,7 +155,7 @@
 		const target = e.currentTarget as HTMLElement;
 		const rect = target.getBoundingClientRect();
 		const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-		videoEl.currentTime = ratio * duration;
+		seekPlayer(ratio * timeline.totalMs);
 	}
 
 	function handleProgressDragStart(e: MouseEvent) {
@@ -98,11 +167,14 @@
 			const rect = progressEl.getBoundingClientRect();
 			const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
 			currentTime = ratio * duration;
-			if (videoEl) videoEl.currentTime = currentTime;
+			// Scrubbing follows within the loaded segment; another segment loads when the handle is let go.
+			const { position, localMs } = locate(timeline, currentTime * 1000);
+			if (videoEl && position === current && !pending) videoEl.currentTime = localMs / 1000;
 		};
 
 		const onUp = () => {
 			dragging = false;
+			seekPlayer(currentTime * 1000);
 			window.removeEventListener('mousemove', onMove);
 			window.removeEventListener('mouseup', onUp);
 		};
@@ -112,37 +184,63 @@
 	}
 
 	$effect(() => {
-		if (!videoEl) return;
+		const video = videoEl;
+		if (!video) return;
 
 		const onVideoTimeUpdate = () => {
-			if (!dragging) currentTime = videoEl.currentTime;
-			onTimeUpdate?.(videoEl.currentTime * 1000);
+			if (pending) return;
+			const playerMs = (timeline.segments[current]?.offsetMs ?? 0) + video.currentTime * 1000;
+			if (!dragging) currentTime = playerMs / 1000;
+			onTimeUpdate?.(offsetForPlayerTime(playerMs));
 		};
 		const onLoadedMetadata = () => {
-			duration = videoEl.duration;
-			videoEl.currentTime = videoEl.duration;
+			const segment = timeline.segments[current];
+			if (segment && Number.isFinite(video.duration) && video.duration > 0) {
+				measuredMs = { ...measuredMs, [segment.index]: video.duration * 1000 };
+			}
+			video.playbackRate = playbackSpeed;
+			const next = pending;
+			pending = null;
+			if (!next) return;
+			if (next.toEnd) video.currentTime = video.duration;
+			else if (next.localMs > 0) video.currentTime = Math.min(next.localMs / 1000, video.duration);
+			if (next.play) void video.play();
+		};
+		// Playback runs on into the next segment.
+		const onEnded = () => {
+			if (current < timeline.segments.length - 1) loadSegment(current + 1, 0, true);
+		};
+		// A segment that does not decode is skipped.
+		const onError = () => {
+			if (pending && current < timeline.segments.length - 1)
+				loadSegment(current + 1, 0, pending.play);
 		};
 		const onPlay = () => {
 			playing = true;
 		};
 		const onPause = () => {
+			if (video.ended && current < timeline.segments.length - 1) return;
 			playing = false;
 		};
 		const onFullscreenChange = () => {
 			isFullscreen = !!document.fullscreenElement;
 		};
 
-		videoEl.addEventListener('timeupdate', onVideoTimeUpdate);
-		videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
-		videoEl.addEventListener('play', onPlay);
-		videoEl.addEventListener('pause', onPause);
+		video.addEventListener('timeupdate', onVideoTimeUpdate);
+		video.addEventListener('loadedmetadata', onLoadedMetadata);
+		video.addEventListener('ended', onEnded);
+		video.addEventListener('error', onError);
+		video.addEventListener('play', onPlay);
+		video.addEventListener('pause', onPause);
 		document.addEventListener('fullscreenchange', onFullscreenChange);
 
 		return () => {
-			videoEl.removeEventListener('timeupdate', onVideoTimeUpdate);
-			videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
-			videoEl.removeEventListener('play', onPlay);
-			videoEl.removeEventListener('pause', onPause);
+			video.removeEventListener('timeupdate', onVideoTimeUpdate);
+			video.removeEventListener('loadedmetadata', onLoadedMetadata);
+			video.removeEventListener('ended', onEnded);
+			video.removeEventListener('error', onError);
+			video.removeEventListener('play', onPlay);
+			video.removeEventListener('pause', onPause);
 			document.removeEventListener('fullscreenchange', onFullscreenChange);
 		};
 	});
@@ -227,7 +325,7 @@
 				<span class="url-bar-text">Flutter Screen Recording</span>
 			</div>
 			<div class="flutter-video-container" bind:this={videoContainerEl}>
-				<video bind:this={videoEl} src={flutterVideoSrc} playsinline onclick={togglePlay}>
+				<video bind:this={videoEl} playsinline onclick={togglePlay}>
 					<track kind="captions" />
 				</video>
 				<div class="fv-controller">
@@ -244,12 +342,20 @@
 							onclick={handleProgressClick}
 							onkeydown={(e) => {
 								if (!videoEl) return;
-								if (e.key === 'ArrowRight')
-									videoEl.currentTime = Math.min(duration, currentTime + 5);
-								if (e.key === 'ArrowLeft') videoEl.currentTime = Math.max(0, currentTime - 5);
+								if (e.key === 'ArrowRight') seekPlayer(Math.min(duration, currentTime + 5) * 1000);
+								if (e.key === 'ArrowLeft') seekPlayer(Math.max(0, currentTime - 5) * 1000);
 							}}
 						>
 							<div class="fv-progress__step" style:width="{progressPercent}%"></div>
+							{#each timeline.segments as segment (segment.index)}
+								{#if segment.gapBeforeMs >= MIN_GAP_MS && timeline.totalMs > 0}
+									<div
+										class="fv-progress__gap"
+										style:left="{(segment.offsetMs / timeline.totalMs) * 100}%"
+										title="{formatTime(segment.gapBeforeMs / 1000)} not recorded, skipped"
+									></div>
+								{/if}
+							{/each}
 							<div
 								class="fv-progress__handler"
 								style:left="{progressPercent}%"
@@ -516,6 +622,16 @@
 		top: 0;
 		background: var(--brand);
 		border-radius: 3px;
+	}
+
+	/* Where playback skips time nothing was recorded in */
+	.fv-progress__gap {
+		position: absolute;
+		top: -3px;
+		width: 2px;
+		height: 12px;
+		background: var(--muted-foreground);
+		transform: translateX(-50%);
 	}
 
 	.fv-progress__handler {

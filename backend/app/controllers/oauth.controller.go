@@ -300,6 +300,10 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: create project: %w", err))
 			return
 		}
+		if err := populateDefaultDashboards(tx, project, &user.Id); err != nil {
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: create default dashboards: %w", err))
+			return
+		}
 
 		middleware.OnCommit(c, func() { cache.ProjectCache.AddProject(project) })
 		projectWithUrl = project.ToProjectWithBackendUrl()

@@ -207,7 +207,7 @@ func TestConvertLogs_NoTokenCanonicalizesWithoutResolving(t *testing.T) {
 
 func TestSessionPreservesTracewaySDKVersion(t *testing.T) {
 	sessionID := uuid.New().String()
-	for _, scope := range []string{"@tracewayapp/frontend", "other-sdk"} {
+	for _, scope := range []string{"@tracewayapp/frontend", "traceway-flutter", "other-sdk"} {
 		t.Run(scope, func(t *testing.T) {
 			record := models.LogRecord{ScopeName: scope, ScopeVersion: "2.3.1"}
 			log := &logspb.LogRecord{
@@ -222,7 +222,7 @@ func TestSessionPreservesTracewaySDKVersion(t *testing.T) {
 				t.Fatal("session was not converted")
 			}
 			expected := ""
-			if scope == "@tracewayapp/frontend" {
+			if scope != "other-sdk" {
 				expected = "2.3.1"
 			}
 			if got := session.Attributes["traceway.sdk.version"]; got != expected {

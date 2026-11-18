@@ -130,8 +130,11 @@
 		replayRef?.seek(offsetMs);
 	}
 
+	// The browser and Flutter SDKs report whole sessions, so an occurrence links to its session page.
 	const hasFullSessions = $derived(
-		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
+		!!projectsState.currentProject &&
+			(isBrowserFramework(projectsState.currentProject.framework) ||
+				projectsState.currentProject.framework === 'flutter')
 	);
 	let captureOpen = $state(false);
 	const canCapture = $derived(

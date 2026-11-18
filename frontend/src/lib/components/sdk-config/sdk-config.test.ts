@@ -11,6 +11,8 @@ import {
 	BUILT_IN_ERROR_TRIGGER,
 	type SdkConfigRule,
 	optionalNumber,
+	signalsFor,
+	SIGNALS,
 	summarizeConditions,
 	summarizeSettings,
 	TRIGGER_TEMPLATES,
@@ -116,6 +118,24 @@ describe('log-line triggers', () => {
 			}>;
 			expect(actions[0].signals).toEqual(['*', 'longTasks', 'routeTiming']);
 		}
+	});
+
+	it('offers a Flutter project only the signals its SDK reports, in its terms', () => {
+		expect(signalsFor(false)).toBe(SIGNALS);
+		const flutter = signalsFor(true);
+		expect(flutter.map((signal) => signal.key)).toEqual([
+			'errors',
+			'messages',
+			'network',
+			'console',
+			'navigation',
+			'userActions',
+			'custom'
+		]);
+		expect(flutter.find((signal) => signal.key === 'userActions')?.hint).toBe('Taps');
+		expect(SIGNALS.find((signal) => signal.key === 'userActions')?.hint).toBe('Clicks');
+		const browserOnly = TRIGGER_TEMPLATES.filter((t) => t.browserOnly).map((t) => t.trigger.id);
+		expect(browserOnly).toEqual(['frozen-page', 'slow-route-change']);
 	});
 
 	it('gives a template an id no other rule of the project uses', () => {

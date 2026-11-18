@@ -36,6 +36,7 @@
 	let deletingRule = $state<SdkConfigRule | null>(null);
 
 	const canWrite = $derived(projectsState.canWriteCurrentProject);
+	const flutter = $derived(projectsState.currentProject?.framework === 'flutter');
 
 	async function load() {
 		const projectId = projectsState.currentProjectId;
@@ -137,10 +138,11 @@
 <div class="space-y-6">
 	<SdkVersionWarning />
 	<p class="text-sm text-muted-foreground">
-		The browser SDK asks Traceway for these settings over OpAMP. Clients pick up a change within
-		about
-		{Math.max(1, Math.round(heartbeatSeconds / 60))} min. Returning to a tab checks again once its poll
-		interval has elapsed.
+		The {flutter ? 'Flutter' : 'browser'} SDK asks Traceway for these settings over OpAMP. Clients pick
+		up a change within about
+		{Math.max(1, Math.round(heartbeatSeconds / 60))} min. {flutter
+			? 'An app coming back to the foreground checks again at once.'
+			: 'Returning to a tab checks again once its poll interval has elapsed.'}
 	</p>
 	<ErrorAlert {error} />
 
@@ -174,10 +176,17 @@
 
 			{#if rules.length === 0}
 				<p class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-					No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
-					breadcrumbs and a 30-second replay clip are uploaded on an error. Lightweight session
-					metadata and web vitals stay on; healthy-session sampling is off. Explicit SDK options can
-					override these defaults.
+					{#if flutter}
+						No rules: errors are sent as they happen. Up to 10 minutes of breadcrumbs, and the last
+						seconds of the screen recording when screen capture is on, are uploaded on an error.
+						Sessions and performance metrics stay on; healthy-session sampling is off. Explicit SDK
+						options can override these defaults.
+					{:else}
+						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
+						breadcrumbs and a 30-second replay clip are uploaded on an error. Lightweight session
+						metadata and web vitals stay on; healthy-session sampling is off. Explicit SDK options
+						can override these defaults.
+					{/if}
 				</p>
 			{:else}
 				<ul class="divide-y rounded-md border">
@@ -282,7 +291,9 @@
 							<span class="min-w-0 truncate font-mono text-xs">{capture.label}</span>
 							<span class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
 								<span
-									title="Status reflects at least one matching browser, not every device in the cohort. Collecting means tagged log data has reached Traceway; external-only telemetry cannot be confirmed here."
+									title="Status reflects at least one matching {flutter
+										? 'app'
+										: 'browser'}, not every device in the cohort. Collecting means tagged log data has reached Traceway; external-only telemetry cannot be confirmed here."
 									>{capture.status}</span
 								>
 								{#if capture.active}{remaining(capture.expiresAt)}{/if}

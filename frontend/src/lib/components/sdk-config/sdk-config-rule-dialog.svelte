@@ -17,6 +17,7 @@
 	import LogTriggerBuilder from './log-trigger-builder.svelte';
 	import SequenceTriggerBuilder from './sequence-trigger-builder.svelte';
 	import {
+		BROWSER_ONLY_SIGNALS,
 		CONDITION_OPS,
 		SIGNALS,
 		SUGGESTED_KEYS,
@@ -27,6 +28,7 @@
 		conditionText,
 		isNumericOp,
 		optionalNumber,
+		signalsFor,
 		type ConditionRow,
 		type Mode,
 		type SdkConfigRule,
@@ -42,10 +44,13 @@
 	}
 
 	let { open = $bindable(), rule, otherTriggerIds = [], onSaved }: Props = $props();
-	// Recorded sequences match page events only the browser SDKs report.
+	let flutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	// Recorded sequences match clicks, hovers and navigation, which the browser and Flutter SDKs report.
 	let recordsSequences = $derived(
-		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
+		!!projectsState.currentProject &&
+			(isBrowserFramework(projectsState.currentProject.framework) || flutter)
 	);
+	let triggerTemplates = $derived(TRIGGER_TEMPLATES.filter((t) => !flutter || !t.browserOnly));
 
 	type Choice = 'inherit' | Mode;
 
@@ -60,6 +65,7 @@
 	type RuleTab = 'applies' | 'triggers' | 'signals' | 'json';
 	let tab = $state<RuleTab>('applies');
 	let signalChoices = $state<Record<string, Choice>>({});
+	let shownSignals = $state(SIGNALS);
 	let replayChoice = $state<Choice>('inherit');
 	let sessionsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let collectionChoice = $state<'inherit' | 'on' | 'off'>('inherit');
@@ -138,6 +144,16 @@
 		for (const signal of SIGNALS)
 			next[signal.key] = settings.signals?.[signal.key]?.mode ?? 'inherit';
 		signalChoices = next;
+		// A Flutter project is not offered the browser-only signals, but a rule that already sets one keeps
+		// showing it, so the form can still change it.
+		shownSignals = flutter
+			? [
+					...signalsFor(true),
+					...SIGNALS.filter(
+						(signal) => BROWSER_ONLY_SIGNALS.has(signal.key) && next[signal.key] !== 'inherit'
+					)
+				]
+			: SIGNALS;
 		replayChoice = settings.replay?.mode ?? 'inherit';
 		sessionsChoice =
 			settings.sessions?.enabled === undefined
@@ -430,9 +446,9 @@
 				{:else if tab === 'triggers'}
 					<div class="space-y-4">
 						{#if recordsSequences}
-							<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} />
+							<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} {flutter} />
 						{/if}
-						<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} />
+						<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} {flutter} />
 					</div>
 				{:else if tab === 'signals'}
 					<div class="space-y-4">
@@ -442,7 +458,7 @@
 							it to earlier rules and the SDK defaults.
 						</p>
 						<div class="grid gap-x-6 gap-y-2 sm:grid-cols-2">
-							{#each SIGNALS as signal (signal.key)}
+							{#each shownSignals as signal (signal.key)}
 								<div class="flex items-center justify-between gap-3">
 									<div class="min-w-0">
 										<div class="text-sm">{signal.label}</div>
@@ -467,7 +483,9 @@
 							<div class="flex items-center justify-between gap-3">
 								<div>
 									<div class="text-sm">Session replay</div>
-									<div class="text-xs text-muted-foreground">rrweb recording</div>
+									<div class="text-xs text-muted-foreground">
+										{flutter ? 'Screen recording, as video' : 'rrweb recording'}
+									</div>
 								</div>
 								<Select.Root type="single" bind:value={replayChoice} disabled={saving}>
 									<Select.Trigger class="w-28">{choiceLabels[replayChoice]}</Select.Trigger>
@@ -542,8 +560,9 @@
 								placeholder="Inherit (0% by default)"
 							/>
 							<p class="text-xs text-muted-foreground">
-								Try 1% for a stable sample of session breadcrumbs and request spans. Errors and web
-								vitals stay on; replay stays error-triggered unless configured separately.
+								Try 1% for a stable sample of session breadcrumbs and request spans. Errors and {flutter
+									? 'performance metrics'
+									: 'web vitals'} stay on; replay stays error-triggered unless configured separately.
 							</p>
 						</div>
 						<div class="space-y-2">
@@ -571,7 +590,7 @@
 						</p>
 						<div class="flex flex-wrap items-center gap-2">
 							<span class="text-xs text-muted-foreground">Add a trigger:</span>
-							{#each TRIGGER_TEMPLATES as template (template.label)}
+							{#each triggerTemplates as template (template.label)}
 								<Button
 									type="button"
 									variant="outline"

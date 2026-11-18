@@ -204,6 +204,10 @@ func (a authController) Register(c *gin.Context) {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
+		if err := populateDefaultDashboards(tx, project, &user.Id); err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
 	}
 
 	token, err := services.GenerateToken(user.Id, user.Email)

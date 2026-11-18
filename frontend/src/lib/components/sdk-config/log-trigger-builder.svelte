@@ -9,10 +9,12 @@
 
 	interface Props {
 		disabled?: boolean;
+		/** A Flutter project: the capture goes on across screens, not pages. */
+		flutter?: boolean;
 		onAdd: (trigger: Record<string, unknown>) => void;
 	}
 
-	let { disabled = false, onAdd }: Props = $props();
+	let { disabled = false, flutter = false, onAdd }: Props = $props();
 
 	const opLabels: Record<LogMatchOp, string> = {
 		icontains: 'contains (any case)',
@@ -77,7 +79,7 @@
 	<p class="text-xs text-muted-foreground">
 		Matched on the device against every log record, including lines that are not collected. The
 		capture uploads what the device buffered and then streams everything, also on the following
-		pages, until it ends.
+		{flutter ? 'screens' : 'pages'}, until it ends.
 	</p>
 	<div class="grid gap-2 sm:grid-cols-[auto_1fr]">
 		<Select.Root type="single" bind:value={op} {disabled}>

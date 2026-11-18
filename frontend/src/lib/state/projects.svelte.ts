@@ -41,8 +41,8 @@ export const FRONTEND_FRAMEWORKS: Framework[] = [
 // Browser frameworks, instrumented by the OpenTelemetry SDK (@tracewayapp/frontend 2.x): it sends logs and
 // spans, and the backend turns its page performance events (web vitals, long tasks, route timing) into metrics.
 export const BROWSER_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery'];
-// Remote collection controls are exposed only for browser projects.
-export const SDK_CONFIG_FRAMEWORKS: Framework[] = [...BROWSER_FRAMEWORKS];
+// The OpenTelemetry SDKs take remote collection settings over OpAMP: the browser 2.x SDK and the Flutter 2.x SDK.
+export const SDK_CONFIG_FRAMEWORKS: Framework[] = [...BROWSER_FRAMEWORKS, 'flutter'];
 
 export const JS_FRAMEWORKS: Framework[] = [
 	'react',
@@ -101,10 +101,13 @@ export function isBrowserFramework(fw: Framework): boolean {
 	return BROWSER_FRAMEWORKS.includes(fw);
 }
 
+// The Flutter 2.x SDK reports like the browser SDK: sessions, replay, logs, spans and the app.* client metrics.
+// The other mobile SDKs do not send these yet.
 export function isProjectViewAvailable(fw: Framework, pathname: string): boolean {
 	const view = pathname.split('/')[1];
-	if (view === 'data-collection' || view === 'sessions') return isBrowserFramework(fw);
-	if (view === 'slos' || view === 'dashboards') return !isMobileFramework(fw);
+	if (view === 'data-collection' || view === 'sessions')
+		return isBrowserFramework(fw) || fw === 'flutter';
+	if (view === 'slos' || view === 'dashboards') return !isMobileFramework(fw) || fw === 'flutter';
 	return true;
 }
 

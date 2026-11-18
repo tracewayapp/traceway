@@ -59,7 +59,8 @@
 		'AI Traces',
 		'Monitors'
 	]);
-	// Native SDKs do not populate the browser log and span views.
+	// The native SDKs do not populate the log and span views; the Flutter SDK sends OTLP logs and spans
+	// like the browser SDK.
 	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans']);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
@@ -107,7 +108,10 @@
 			framework ? isProjectViewAvailable(framework, item.href) : item.href !== '/data-collection'
 		);
 		if (framework && isFrontendFramework(framework)) {
-			const hidden = isBrowserFramework(framework) ? hiddenForBrowser : hiddenForMobile;
+			const hidden =
+				isBrowserFramework(framework) || framework === 'flutter'
+					? hiddenForBrowser
+					: hiddenForMobile;
 			return items.filter((item) => !hidden.has(item.title));
 		}
 		if (framework && isCloudflareFramework(framework)) {

@@ -186,10 +186,11 @@
 			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework) &&
 			projectsState.canWriteCurrentProject
 	);
+	const isFlutter = $derived(projectsState.currentProject?.framework === 'flutter');
 	const sdkVersion = $derived(session?.attributes?.['traceway.sdk.version']);
 	const sdkLabel = $derived(
 		sdkVersion
-			? `JS SDK v${sdkVersion}`
+			? `${isFlutter ? 'Flutter' : 'JS'} SDK v${sdkVersion}`
 			: session?.attributes?.['traceway.sdk.generation'] === '1'
 				? 'V1 · legacy ingestion'
 				: 'Unknown · not reported'
@@ -242,7 +243,9 @@
 		{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
 			<p
 				class="text-sm text-muted-foreground"
-				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; web vitals are collected independently."
+				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; {isFlutter
+					? 'performance metrics'
+					: 'web vitals'} are collected independently."
 			>
 				Session requests are diagnostic samples, not overall performance statistics.
 			</p>
@@ -256,7 +259,7 @@
 				<LabelValue label="Duration" value={sessionDurationLabel(session)} />
 				<LabelValue label="App version" value={session.appVersion || '—'} />
 				{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
-					<LabelValue label="JavaScript SDK" value={sdkLabel} />
+					<LabelValue label={isFlutter ? 'Flutter SDK' : 'JavaScript SDK'} value={sdkLabel} />
 					<LabelValue
 						label="Failed replay uploads"
 						value={session.attributes?.['traceway.replay.failed_segments'] ?? 'Not reported'}
@@ -324,6 +327,7 @@
 						<SessionReplay
 							bind:this={replayRef}
 							events={recordingEvents}
+							startedAt={session.startedAt}
 							onTimeUpdate={(ms) => (currentTimeMs = ms)}
 						/>
 					{/key}

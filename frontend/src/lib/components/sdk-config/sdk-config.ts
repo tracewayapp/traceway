@@ -76,6 +76,32 @@ export const SIGNALS: Array<{ key: string; label: string; hint: string }> = [
 	{ key: 'custom', label: 'Custom events', hint: 'track() and recordAction()' }
 ];
 
+/**
+ * Signals only the browser SDK has a source for. The Flutter SDK knows their names, so a document naming them
+ * applies, but never reports them: its performance numbers are the app.* metrics.
+ */
+export const BROWSER_ONLY_SIGNALS: ReadonlySet<string> = new Set([
+	'webVitals',
+	'resourceTiming',
+	'longTasks',
+	'routeTiming'
+]);
+
+const FLUTTER_SIGNAL_HINTS: Record<string, string> = {
+	network: 'HTTP client spans',
+	console: 'print and debugPrint lines',
+	userActions: 'Taps'
+};
+
+/** The signals a project's SDK reports, described in its terms. */
+export function signalsFor(flutter: boolean): Array<{ key: string; label: string; hint: string }> {
+	if (!flutter) return SIGNALS;
+	return SIGNALS.filter((signal) => !BROWSER_ONLY_SIGNALS.has(signal.key)).map((signal) => ({
+		...signal,
+		hint: FLUTTER_SIGNAL_HINTS[signal.key] ?? signal.hint
+	}));
+}
+
 export const MODE_LABELS: Record<Mode, string> = {
 	off: 'Off',
 	buffer: 'Buffer',
@@ -118,7 +144,12 @@ export const SUGGESTED_KEYS = [
 
 export const BUILT_IN_ERROR_TRIGGER = 'default-exception';
 
-export const TRIGGER_TEMPLATES: Array<{ label: string; trigger: Record<string, unknown> }> = [
+export const TRIGGER_TEMPLATES: Array<{
+	label: string;
+	trigger: Record<string, unknown>;
+	/** Matches a signal only the browser SDK reports. */
+	browserOnly?: boolean;
+}> = [
 	{
 		// The SDK already runs this trigger under this id. Adding it to a rule replaces the built-in one for
 		// the clients the rule matches; under another id both would fire and every error would upload two clips.
@@ -186,6 +217,7 @@ export const TRIGGER_TEMPLATES: Array<{ label: string; trigger: Record<string, u
 	},
 	{
 		label: 'Frozen page → capture',
+		browserOnly: true,
 		trigger: performanceTrigger({
 			id: 'frozen-page',
 			name: 'The page froze for a second or more',
@@ -196,6 +228,7 @@ export const TRIGGER_TEMPLATES: Array<{ label: string; trigger: Record<string, u
 	},
 	{
 		label: 'Slow route change → capture',
+		browserOnly: true,
 		trigger: performanceTrigger({
 			id: 'slow-route-change',
 			name: 'A route change took 3 seconds or more',

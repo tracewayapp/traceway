@@ -39,6 +39,8 @@
 		if (monitoring || !__TRACEWAY_URL__ || !shouldMonitorUrl(url, statusDomainSlug)) return;
 		monitoring = true;
 		init(__TRACEWAY_URL__, {
+			version: __APP_VERSION__,
+			environment: import.meta.env.MODE,
 			recordAllSessions: true,
 			// Browser and extension noise with no stack frame in our code.
 			ignoreErrors: [

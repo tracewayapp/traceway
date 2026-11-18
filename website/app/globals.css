@@ -519,7 +519,7 @@
 
   /* Article reading panel */
   .blog-article {
-    max-width: 1060px;
+    max-width: 1200px;
     margin: 0 auto;
   }
   .blog-article .prose {
@@ -527,7 +527,7 @@
   }
   .blog-panel {
     border: 1px solid var(--hair-2);
-    background: var(--ink-1);
+    background: #000;
     border-radius: var(--radius-xl);
     padding: clamp(24px, 4vw, 44px);
     box-shadow: 0 30px 60px -40px rgba(0, 0, 0, 0.6);

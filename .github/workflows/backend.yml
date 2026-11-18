@@ -107,7 +107,9 @@ jobs:
       - name: Test
         env:
           CGO_ENABLED: "1"
-        run: go test -race -count=1 ./...
+        # The SQLite telemetry package can take over 10 minutes under -race
+        # on hosted runners. The whole job still has a 20-minute deadline.
+        run: go test -race -timeout=15m -count=1 ./...
 
   duckdb:
     name: Test (DuckDB telemetry)

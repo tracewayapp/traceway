@@ -29,15 +29,23 @@ func (r *notificationRuleRepository) FindByProjectWithChannel(tx *sql.Tx, projec
 }
 
 func (r *notificationRuleRepository) FindById(tx *sql.Tx, id int) (*models.NotificationRule, error) {
-	return lit.SelectSingleNamed[models.NotificationRule](
-		tx,
-		"SELECT id, project_id, channel_id, name, rule_type, config, enabled, cooldown_minutes, severity, snoozed_until, created_by, created_at, updated_at FROM notification_rules WHERE id = :id",
-		lit.P{"id": id},
-	)
+	return r.findById(tx, id, "")
 }
 
 func (r *notificationRuleRepository) FindByIdForUpdate(tx *sql.Tx, id int) (*models.NotificationRule, error) {
-	return r.FindById(tx, id)
+	lock := ""
+	if db.Driver == lit.PostgreSQL {
+		lock = " FOR UPDATE"
+	}
+	return r.findById(tx, id, lock)
+}
+
+func (r *notificationRuleRepository) findById(tx *sql.Tx, id int, lock string) (*models.NotificationRule, error) {
+	return lit.SelectSingleNamed[models.NotificationRule](
+		tx,
+		"SELECT id, project_id, channel_id, name, rule_type, config, enabled, cooldown_minutes, severity, snoozed_until, created_by, created_at, updated_at FROM notification_rules WHERE id = :id"+lock,
+		lit.P{"id": id},
+	)
 }
 
 func (r *notificationRuleRepository) FindEnabledPolledRules(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {

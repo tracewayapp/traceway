@@ -1,6 +1,6 @@
 //go:build transactional_pg
 
-package pg
+package transactional
 
 import (
 	"database/sql"

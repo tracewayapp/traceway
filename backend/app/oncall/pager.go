@@ -2,9 +2,7 @@ package oncall
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,7 +75,7 @@ func dispatchPageParams(configJSON json.RawMessage, rule *models.NotificationRul
 		Body:      msg.Body,
 		URL:       msg.URL,
 		Severity:  string(msg.Severity),
-		DedupKey:  pageDedupKey(fmt.Sprintf("%d", rule.Id), msg.DedupToken),
+		DedupKey:  models.RulePageDedupKey(rule.Id, msg.DedupToken),
 	}, nil
 }
 
@@ -102,22 +100,6 @@ func OpenTestPage(ctx context.Context, policyId int, projectId uuid.UUID, channe
 		Wake()
 	}
 	return opened, nil
-}
-
-const maxDedupKeyLength = 300
-
-// pageDedupKey builds "prefix|token". pages.dedup_key is VARCHAR(300) on
-// Postgres while the token can be unbounded client input (endpoint names,
-// metric names), so an oversized token is replaced with a deterministic
-// digest: the same long token still dedups into the same page instead of
-// failing the insert.
-func pageDedupKey(prefix string, token string) string {
-	key := prefix + "|" + token
-	if len(key) <= maxDedupKeyLength {
-		return key
-	}
-	sum := sha256.Sum256([]byte(token))
-	return prefix + "|" + hex.EncodeToString(sum[:])[:32]
 }
 
 type openPageParams struct {

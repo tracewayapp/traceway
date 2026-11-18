@@ -33,7 +33,11 @@ func (r *notificationRuleRepository) FindById(tx *sql.Tx, id int) (*models.Notif
 }
 
 func (r *notificationRuleRepository) FindByIdForUpdate(tx *sql.Tx, id int) (*models.NotificationRule, error) {
-	return r.findById(tx, id, " FOR UPDATE")
+	lock := ""
+	if db.Driver == lit.PostgreSQL {
+		lock = " FOR UPDATE"
+	}
+	return r.findById(tx, id, lock)
 }
 
 func (r *notificationRuleRepository) findById(tx *sql.Tx, id int, lock string) (*models.NotificationRule, error) {

@@ -105,6 +105,7 @@ var writeResources = []struct {
 }{
 	{uri: "traceway://knowledge/write-setup", file: "write-setup.md", name: "Write setup", description: "CLI/MCP authentication, project context, permissions and confirmation."},
 	{uri: "traceway://knowledge/alert-configuration", file: "alert-configuration.md", name: "Configure alerting", description: "Channels, alert rule types, notification history and routing to escalation policies."},
+	{uri: "traceway://knowledge/slo-configuration", file: "slo-configuration.md", name: "Configure SLOs", description: "SLO documents per indicator kind, preview, update and delete semantics, and the burn-rate rules that read an SLO."},
 	{uri: "traceway://knowledge/oncall-configuration", file: "oncall-configuration.md", name: "Configure on-call", description: "Teams, membership, schedules, rotations, overrides and escalation policy definitions."},
 	{uri: "traceway://knowledge/personal-notifications", file: "personal-notifications.md", name: "Personal notification delivery", description: "Own contact methods, SMS verification and high/low urgency notification chains."},
 	{uri: "traceway://knowledge/incident-actions", file: "incident-actions.md", name: "Incident actions", description: "Issue archiving, page acknowledgment/resolution, monitor runs, post-mortems and slow endpoints."},

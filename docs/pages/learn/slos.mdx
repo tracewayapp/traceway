@@ -52,6 +52,42 @@ The sheet has a **Preview last 24h** button that runs the indicator straight aga
 
 An SLO can watch at most 50 monitors, 20 metric tags and 10 span attribute filters.
 
+## Manage SLOs with the CLI or MCP
+
+Both CLI editions read SLOs: `traceway slos list`, `slos show <id>` (the SLO plus the alert rules that read it), `slos series <id> --file range.json` and `slos preview --file slo.json`, which runs a definition against the last 24 hours without saving it. The MCP tools are `list_slos`, `get_slo`, `get_slo_series` and `preview_slo`.
+
+Creating, changing and deleting needs `traceway-write` and [Agent Write Access](/learn/agent-write-access):
+
+```bash
+traceway-write slos preview --file slo.json
+traceway-write slos create --file slo.json
+traceway-write slos update 7 --file slo.json
+traceway-write slos delete 7
+```
+
+```json
+{
+  "name": "Checkout availability",
+  "sliKind": "endpoint",
+  "sliConfig": {"endpoint": "POST /api/checkout", "good": "availability"},
+  "targetPercent": 99.9,
+  "windowDays": 30
+}
+```
+
+`sliKind` is `endpoint`, `span`, `task`, `monitor`, `metric` or `session`. `sliConfig` holds the fields of that kind:
+
+| `sliKind` | `sliConfig` |
+|-----------|-------------|
+| `endpoint` | `endpoint` (empty for every endpoint), `good` (`availability` or `latency`), `latencyThresholdMs` |
+| `span` | `serviceName`, `name`, `kind`, `attributes` (`[{key, value}]`), `good`, `latencyThresholdMs` |
+| `task` | `taskName` (empty for every task) |
+| `monitor` | `checkIds` |
+| `metric` | `metricName`, `aggregation` (`avg`, `min`, `max`, `sum`, `last`, or `distribution` for Every observation), `operator` (`gt`, `gte`, `lt`, `lte`), `threshold`, `tags`, `missingIsBad`; the slice length is the top-level `bucketMinutes` |
+| `session` | `appVersion`, `includeMessages` |
+
+An update replaces the whole definition, so send every field. The MCP tools `create_slo`, `update_slo` and `delete_slo` take the same document as `data`.
+
 ## Windows and the error budget
 
 The window is rolling: 7, 30 or 90 days ending now. The error budget is the share of events the target allows to be bad. With a 99.9% target and 1,000,000 requests in the window, 1,000 of them may fail. 500 failures leave half the budget; 1,200 failures put the budget at minus 20% and the SLO in breach.

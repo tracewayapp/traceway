@@ -54,6 +54,13 @@ var alertingToolSpecs = map[string]alertingToolSpec{
 	"notification-history/list":   {"list_notification_history", "Read project notification delivery history. data: pagination {page,pageSize}, optional search, fromDate/toDate (RFC3339). This POST is read-only."},
 	"oncall/now":                  {"get_oncall_now", "Read who is currently on call across an organization."},
 	"oncall/current":              {"get_current_oncall", "Read the current on-call coverage for the selected project."},
+	"slos/list":                   {"list_slos", "List the project's SLOs with definition (sliKind, sliConfig, targetPercent, windowDays), status, current SLI, remaining error budget and burn rate."},
+	"slos/show":                   {"get_slo", "Get one SLO and the alert rules that reference it. Read it before update_slo."},
+	"slos/series":                 {"get_slo_series", "Read an SLO's good/total buckets over time. data: fromDate and toDate (RFC3339, at most 91 days), optional intervalMinutes. This POST is read-only."},
+	"slos/preview":                {"preview_slo", "Compute what an SLO definition would measure over the last 24 hours from raw telemetry, without saving. data: sliKind, sliConfig, bucketMinutes for metric. Returns good, total and sli (percent, null without data). This POST is read-only."},
+	"slos/create":                 {"create_slo", "Create a project SLO. data: name, sliKind (endpoint, span, task, monitor, metric, session), sliConfig, targetPercent (above 0, below 100), windowDays (7, 30, 90); bucketMinutes (1, 5, 15, 60) for metric; optional description, enabled. Browser and mobile projects use session or a metric with aggregation distribution. Read slo-configuration for sliConfig fields and run preview_slo first."},
+	"slos/update":                 {"update_slo", "Replace an SLO's name, description, sliKind, sliConfig, targetPercent, windowDays and bucketMinutes; optional enabled is preserved when omitted. Read get_slo first and resend unchanged fields. Changing sliKind, sliConfig or bucketMinutes resets history and error budget; target and window changes keep it. No concurrent-edit protection."},
+	"slos/delete":                 {"delete_slo", "Delete an SLO permanently with its history. Alert rules that reference it are deleted too and their open pages resolved; inspect get_slo first. Set enabled false with update_slo to pause instead."},
 	"organization-members/list":   {"list_organization_members", "List organization members and their user IDs for team membership, rotations and policy targets. Requires organization admin/owner."},
 }
 

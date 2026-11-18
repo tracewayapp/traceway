@@ -67,6 +67,15 @@ func TestContractAlertingConfigurationMCP(t *testing.T) {
 	ruleData["name"] = "MCP config rule updated"
 	call("update_notification_rule", rule, ruleData, "updated")
 	callTool("list_notification_rules", map[string]any{"project_id": projectID}, "MCP config rule updated")
+	sloData := map[string]any{"name": "MCP config objective", "sliKind": "endpoint", "sliConfig": map[string]any{"endpoint": "", "good": "availability"}, "targetPercent": 99.5, "windowDays": 30}
+	call("preview_slo", 0, map[string]any{"sliKind": sloData["sliKind"], "sliConfig": sloData["sliConfig"]}, "total")
+	objective := number(call("create_slo", 0, sloData, "id"))
+	sloData["name"] = "MCP config objective updated"
+	call("update_slo", objective, sloData, "updated")
+	call("list_slos", 0, nil, "MCP config objective updated")
+	call("get_slo", objective, nil, "rules")
+	call("get_slo_series", objective, map[string]any{"fromDate": "2026-11-12T00:00:00Z", "toDate": "2026-11-13T00:00:00Z"}, "buckets")
+	call("delete_slo", objective, nil, "deleted")
 	contact := number(call("create_contact_method", 0, map[string]any{"methodType": "email", "config": map[string]any{"email": "mcp-config@example.com"}}, "id"))
 	call("update_contact_method", contact, map[string]any{"enabled": true}, "enabled")
 	call("list_contact_methods", 0, nil, "mcp-config@example.com")

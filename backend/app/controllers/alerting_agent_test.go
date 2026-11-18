@@ -206,3 +206,59 @@ func TestAgentAlertingContactsAndChainsAreSelfOnly(t *testing.T) {
 		t.Fatalf("missing history pagination = %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestAgentSLOLifecycle(t *testing.T) {
+	f := setupAgentFixture(t)
+	scope := "?projectId=" + f.project.Id.String()
+	body := map[string]any{"name": "Crash-free sessions", "sliKind": "session", "sliConfig": map[string]any{}, "targetPercent": 99.5, "windowDays": 30}
+	write := f.pat(t, models.ScopeWrite)
+	read := f.pat(t, models.ScopeRead)
+	for _, token := range []string{read, write} {
+		if rec := f.do(t, token, "POST", "/api/slos"+scope, body); rec.Code != http.StatusForbidden {
+			t.Fatalf("SLO create without scope/opt-in = %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	f.setAgentWrites(t, true)
+	if rec := f.do(t, read, "POST", "/api/slos"+scope, body); rec.Code != http.StatusForbidden {
+		t.Fatalf("SLO create with a read token = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := f.do(t, read, "POST", "/api/slos/preview"+scope, map[string]any{"sliKind": "session", "sliConfig": map[string]any{}}); rec.Code != http.StatusOK {
+		t.Fatalf("SLO preview with a read token = %d %s", rec.Code, rec.Body.String())
+	}
+	call := func(method, path string, payload any, status int) map[string]any {
+		t.Helper()
+		rec := f.do(t, write, method, path+scope, payload)
+		if rec.Code != status {
+			t.Fatalf("%s %s = %d %s, want %d", method, path, rec.Code, rec.Body.String(), status)
+		}
+		var result map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	created := call("POST", "/api/slos", body, 201)
+	path := fmt.Sprintf("/api/slos/%.0f", created["id"])
+	body["targetPercent"] = 99.9
+	if updated := call("PUT", path, body, 200); updated["targetPercent"] != 99.9 {
+		t.Fatalf("SLO update did not change the target: %v", updated)
+	}
+	body["windowDays"] = 14
+	call("PUT", path, body, 422)
+	if got := call("GET", path, nil, 200); got["slo"] == nil {
+		t.Fatalf("SLO detail missing: %v", got)
+	}
+	call("DELETE", path, nil, 200)
+	if rec := f.do(t, write, "GET", path+scope, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleted SLO still readable: %d", rec.Code)
+	}
+	accepted := 0
+	for _, event := range f.auditEvents(t) {
+		if event.StatusCode < 300 {
+			accepted++
+		}
+	}
+	if accepted != 3 {
+		t.Fatalf("accepted SLO writes in the audit log = %d, want 3", accepted)
+	}
+}

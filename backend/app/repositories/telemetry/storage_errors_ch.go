@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
 )
 
 var transientClickHouseCodes = map[int32]bool{

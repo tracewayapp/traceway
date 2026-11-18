@@ -11,10 +11,9 @@ import (
 	"sync"
 	"time"
 
-	traceway "go.tracewayapp.com"
-
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const reportInterval = 60 * time.Second
@@ -23,6 +22,7 @@ var telemetryTables = []string{
 	"traces",
 	"log_records",
 	"metric_points",
+	"metric_histograms",
 	"spans_v2",
 	"exceptions_v2",
 	"endpoints_v2",

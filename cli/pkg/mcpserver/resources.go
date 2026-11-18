@@ -6,7 +6,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 // knowledgeResources maps each embedded chunk to its resource URI and a
@@ -83,6 +83,14 @@ var knowledgeResources = []struct {
 		description: "Teams, schedules (layers, rotations, restrictions, overrides), escalation policies, pages and their lifecycle, contact methods and personal notification rules.",
 	},
 	{
+		uri: "traceway://knowledge/learn/rum", file: "learn/rum.md", name: "Learn: Real User Monitoring",
+		description: "Browser metrics, Web Vitals, release comparisons, frontend SLOs, sessions, sampling and agent capability limits.",
+	},
+	{
+		uri: "traceway://knowledge/learn/data-collection", file: "learn/data-collection.md", name: "Learn: remote SDK config (Data Collection)",
+		description: "Remote SDK config for browser projects on the 2.x SDK: stream, buffer and off per signal, the defaults, ordered rules with targeting and rollout, init() and plan ceilings, triggers, captures and their status, preview, and how to verify on a device.",
+	},
+	{
 		uri: "traceway://knowledge/learn/organization", file: "learn/organization.md", name: "Learn: organization, access and settings",
 		description: "Organization views, projects and connection, roles and per-project overrides, account, personal access tokens, settings and agent access.",
 	},
@@ -95,6 +103,17 @@ var knowledgeResources = []struct {
 var writeResources = []struct {
 	uri, file, name, description string
 }{
+	{uri: "traceway://knowledge/write-setup", file: "write-setup.md", name: "Write setup", description: "CLI/MCP authentication, project context, permissions and confirmation."},
+	{uri: "traceway://knowledge/alert-configuration", file: "alert-configuration.md", name: "Configure alerting", description: "Channels, alert rule types, notification history and routing to escalation policies."},
+	{uri: "traceway://knowledge/oncall-configuration", file: "oncall-configuration.md", name: "Configure on-call", description: "Teams, membership, schedules, rotations, overrides and escalation policy definitions."},
+	{uri: "traceway://knowledge/personal-notifications", file: "personal-notifications.md", name: "Personal notification delivery", description: "Own contact methods, SMS verification and high/low urgency notification chains."},
+	{uri: "traceway://knowledge/incident-actions", file: "incident-actions.md", name: "Incident actions", description: "Issue archiving, page acknowledgment/resolution, monitor runs, post-mortems and slow endpoints."},
+	{uri: "traceway://knowledge/sdk-configuration", file: "sdk-configuration.md", name: "SDK configuration", description: "Browser collection rules, targeting, sampling, replay and configuration preview."},
+
+	{
+		uri: "traceway://knowledge/dashboard-building", file: "dashboard-building.md", name: "Build dashboards from code",
+		description: "Metric discovery, chart selection, JSON authoring and verification for instrumented codebases. Includes CLI commands and MCP tool arguments.",
+	},
 	{
 		uri: "traceway://knowledge/operations", file: "operations.md", name: "Operating with write access",
 		description: "The three opt-in levels for agent writes, what each write tool changes, the rules for every write, and playbooks for pages, flapping alerts, confirming fixes, post-mortems and slow endpoints. Read before your first write.",

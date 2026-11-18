@@ -1,0 +1,1 @@
+function r(e){return e===0?"$0":e<.001?`$${e.toFixed(6)}`:e<.01?`$${e.toFixed(4)}`:e<1?`$${e.toFixed(3)}`:`$${e.toFixed(2)}`}function i(e){return e>=1e6?`${(e/1e6).toFixed(1)}m`:e>=1e3?`${(e/1e3).toFixed(1)}k`:e.toLocaleString()}function t(e){return e>=1e6?`${(e/1e6).toFixed(1)}M`:e>=1e3?`${(e/1e3).toFixed(1)}k`:e.toLocaleString()}export{r as a,t as b,i as f};

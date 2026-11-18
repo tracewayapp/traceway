@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"cmp"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,11 +12,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 type metricThresholdConfig struct {
@@ -26,6 +27,10 @@ type metricThresholdConfig struct {
 	LookbackMinutes int               `json:"lookbackMinutes"`
 	Tags            map[string]string `json:"tags"`
 	GroupBy         []string          `json:"groupBy"`
+	// MinCount and GoodThreshold apply to distribution metrics: the observations a
+	// series needs before it is judged, and the limit good_ratio counts under.
+	MinCount      int     `json:"minCount"`
+	GoodThreshold float64 `json:"goodThreshold"`
 }
 
 const (
@@ -39,8 +44,9 @@ const (
 )
 
 type metricSeries struct {
-	Key   string
-	Value float64
+	Insufficient bool // The histogram reported, but it cannot yet be judged.
+	Key          string
+	Value        float64
 	// Name is the series as notifications show it, which is also its dedup token.
 	Name string
 }
@@ -59,6 +65,10 @@ func parseMetricThresholdConfig(raw json.RawMessage) (metricThresholdConfig, err
 // isPerSeriesRule reports whether a rule keeps its cooldown per series instead
 // of per rule, so one breaching series cannot silence another.
 func isPerSeriesRule(ruleType string, config json.RawMessage) bool {
+	// A release comparison fires once per release and segment, and keeps that itself.
+	if ruleType == "metric_release_regression" {
+		return true
+	}
 	if ruleType != "metric_threshold" {
 		return false
 	}
@@ -87,7 +97,7 @@ func metricGroupExpr(groupBy []string, tagExpr string) (string, []interface{}) {
 }
 
 func (cfg metricThresholdConfig) breaches(s metricSeries) bool {
-	return metricThresholdBreached(s.Value, cfg.Operator, cfg.ThresholdValue)
+	return !s.Insufficient && metricThresholdBreached(s.Value, cfg.Operator, cfg.ThresholdValue)
 }
 
 func metricThresholdBreached(value float64, operator string, threshold float64) bool {
@@ -129,13 +139,13 @@ func metricOverflowToken(metricName string) string {
 	return metricName + ":overflow"
 }
 
-func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdConfig, series []metricSeries, projectId uuid.UUID) (*EvalResult, error) {
+func metricThresholdResult(ctx context.Context, rule *models.NotificationRule, cfg metricThresholdConfig, series []metricSeries, projectId uuid.UUID, truncated bool) (*EvalResult, error) {
 	if len(cfg.GroupBy) == 0 {
 		i := slices.IndexFunc(series, cfg.breaches)
 		if i < 0 {
 			return &EvalResult{Fired: false}, nil
 		}
-		projectName := getProjectName(projectId)
+		projectName := getProjectName(ctx, projectId)
 		msg := buildMetricThresholdMessage(cfg.MetricName, series[i].Value, cfg.Operator, cfg.ThresholdValue, cfg.Aggregation, cfg.LookbackMinutes, projectName)
 		return &EvalResult{Fired: true, Message: msg}, nil
 	}
@@ -172,23 +182,119 @@ func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdCon
 	notified := fresh[:min(len(fresh), maxMetricRuleSeriesNotified)]
 	overflow := len(fresh) - len(notified)
 
-	t, err := db.ExecuteTransaction(func(tx *sql.Tx) (metricSeriesTransitions, error) {
-		return transitionMetricSeries(tx, rule.Id, cfg, series, notified, overflow > 0, time.Now().UTC())
+	// An edit, a failed enqueue, or a restart must never separate a page or
+	// outbox delivery from the state that will eventually close it.
+	var delivery metricSeriesDelivery
+	result, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*EvalResult, error) {
+		current, err := transactional.NotificationRuleRepository.FindByIdForUpdate(tx, rule.Id)
+		if err != nil {
+			return nil, err
+		}
+		if current == nil || !current.Enabled || !current.UpdatedAt.Equal(rule.UpdatedAt) || (current.SnoozedUntil != nil && current.SnoozedUntil.After(time.Now())) {
+			return nil, nil
+		}
+		channel, err := transactional.NotificationChannelRepository.FindById(tx, current.ChannelId)
+		if err != nil {
+			return nil, err
+		}
+		if channel == nil || !channel.Enabled {
+			return nil, nil
+		}
+		t, err := transitionMetricSeries(tx, rule.Id, cfg, series, notified, overflow > 0, truncated, time.Now().UTC())
+		if err != nil {
+			return nil, err
+		}
+		if len(t.alerted) == 0 && !t.overflowAlerted && len(t.recovered) == 0 && len(t.silenced) == 0 && !t.allClear {
+			return &EvalResult{}, nil
+		}
+		project, err := transactional.ProjectRepository.FindById(tx, projectId)
+		if err != nil {
+			return nil, err
+		}
+		if project == nil {
+			return nil, fmt.Errorf("project %s for rule %d is missing", projectId, rule.Id)
+		}
+		result := t.messages(cfg, overflow, project.Name)
+		delivery.rule = &models.NotificationRuleWithChannel{
+			Id: current.Id, ProjectId: projectId, Name: current.Name,
+			RuleType: current.RuleType, Severity: current.Severity,
+			ChannelId: channel.Id, ChannelName: channel.Name, ChannelType: channel.ChannelType,
+		}
+		for _, batch := range [][]Message{result.Messages, result.Recoveries} {
+			for i := range batch {
+				batch[i] = prepareRuleMessage(delivery.rule, batch[i])
+				if err := delivery.persist(tx, channel, batch[i]); err != nil {
+					delivery.failed = &batch[i]
+					return nil, err
+				}
+			}
+		}
+		return result, nil
 	})
 	if err != nil {
+		if delivery.failed != nil {
+			writeFiredNotification(delivery.rule, *delivery.failed, "failed", err.Error())
+		}
 		return nil, err
 	}
-	// Recorded once the transaction committed, so a failed one is retried on the
-	// next poll, and before dispatch, like check_down: a failing channel retries
-	// once per cooldown window, not on every poll.
+	if result == nil {
+		return &EvalResult{}, nil
+	}
 	for _, s := range fresh {
 		dedup.record(metricSeriesDedupKey(rule.Id, s.Key))
 	}
-	if len(t.alerted) == 0 && !t.overflowAlerted && len(t.recovered) == 0 && len(t.silenced) == 0 && !t.allClear {
-		return &EvalResult{Fired: false}, nil
-	}
+	result.seriesCommitted = true
+	delivery.afterCommit()
+	return result, nil
+}
 
-	projectName := getProjectName(projectId)
+type metricSeriesDelivery struct {
+	rule   *models.NotificationRuleWithChannel
+	pages  []metricPageOutcome
+	failed *Message
+}
+
+type metricPageOutcome struct {
+	message Message
+	status  string
+}
+
+func (d *metricSeriesDelivery) persist(tx *sql.Tx, channel *models.NotificationChannel, msg Message) error {
+	if channel.ChannelType != "escalation" {
+		_, err := enqueueRuleMessage(tx, d.rule, channel, msg)
+		return err
+	}
+	if metricSeriesPager == nil {
+		return fmt.Errorf("escalation pager not initialized for rule %d", d.rule.Id)
+	}
+	opened, err := metricSeriesPager(tx, channel.Config, d.rule, msg)
+	if err == nil && !msg.Recovered {
+		status := "deduped"
+		if opened {
+			status = "sent"
+		}
+		d.pages = append(d.pages, metricPageOutcome{msg, status})
+	}
+	return err
+}
+
+func (d *metricSeriesDelivery) afterCommit() {
+	if d.rule == nil {
+		return
+	}
+	if d.rule.ChannelType != "escalation" {
+		outbox.Wake()
+		return
+	}
+	if wakeMetricPager != nil {
+		wakeMetricPager()
+	}
+	for _, page := range d.pages {
+		writeFiredNotification(d.rule, page.message, page.status, "")
+	}
+}
+
+func (t *metricSeriesTransitions) messages(cfg metricThresholdConfig, overflow int, projectName string) *EvalResult {
 	var messages, recoveries []Message
 	for _, s := range t.alerted {
 		messages = append(messages, buildMetricThresholdMessage(s.Name, s.Value, cfg.Operator, cfg.ThresholdValue, cfg.Aggregation, cfg.LookbackMinutes, projectName))
@@ -205,7 +311,7 @@ func metricThresholdResult(rule *models.NotificationRule, cfg metricThresholdCon
 	if t.allClear {
 		recoveries = append(recoveries, buildMetricThresholdOverflowRecoveredMessage(cfg.MetricName, cfg.Operator, cfg.ThresholdValue, cfg.LookbackMinutes, projectName))
 	}
-	return &EvalResult{Fired: len(messages) > 0, Messages: messages, Recoveries: recoveries}, nil
+	return &EvalResult{Fired: len(messages) > 0, Messages: messages, Recoveries: recoveries}
 }
 
 type metricSeriesTransitions struct {
@@ -221,7 +327,7 @@ type metricSeriesTransitions struct {
 // a restart too: by a recovery once its series is back within the threshold,
 // or by a silence notice once it has reported nothing for
 // metricSeriesSilenceLimit. Callers ensure some series reported.
-func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, series, notified []metricSeries, overflow bool, now time.Time) (metricSeriesTransitions, error) {
+func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, series, notified []metricSeries, overflow, truncated bool, now time.Time) (metricSeriesTransitions, error) {
 	var t metricSeriesTransitions
 	rows, err := transactional.NotificationRuleFiringRepository.FindByRule(tx, ruleId)
 	if err != nil {
@@ -257,7 +363,8 @@ func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, s
 	}
 	// The "N more series" notice names no series, so it clears only once none
 	// breaches.
-	if firing[overflowToken] && !slices.ContainsFunc(series, cfg.breaches) {
+	unresolved := func(s metricSeries) bool { return s.Insufficient || cfg.breaches(s) }
+	if firing[overflowToken] && !truncated && !slices.ContainsFunc(series, unresolved) {
 		if t.allClear, err = transactional.NotificationRuleFiringRepository.Delete(tx, ruleId, overflowToken); err != nil {
 			return t, err
 		}
@@ -269,26 +376,24 @@ func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, s
 	// Two series can render the same name; the breaching one decides.
 	reported := make(map[string]metricSeries, len(series))
 	for _, s := range series {
-		if prev, ok := reported[s.Name]; !ok || !cfg.breaches(prev) {
+		if prev, ok := reported[s.Name]; !ok || !unresolved(prev) {
 			reported[s.Name] = s
 		}
 	}
-	// Past the scan limit a missing series may just not have been read.
-	scannedAll := len(series) < maxMetricRuleSeriesScanned
 	for _, row := range rows {
 		if row.Token == overflowToken {
 			continue
 		}
 		s, reporting := reported[row.Token]
 		switch {
-		case reporting && cfg.breaches(s):
+		case reporting && (unresolved(s) || len(t.recovered)+len(t.silenced) == maxMetricRuleSeriesNotified):
 			if row.SilentSince != nil {
 				if err := transactional.NotificationRuleFiringRepository.SetSilentSince(tx, ruleId, row.Token, nil); err != nil {
 					return t, err
 				}
 			}
 			continue
-		case !reporting && !scannedAll:
+		case !reporting && truncated:
 			continue
 		case !reporting && row.SilentSince == nil:
 			if err := transactional.NotificationRuleFiringRepository.SetSilentSince(tx, ruleId, row.Token, &now); err != nil {
@@ -312,15 +417,4 @@ func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, s
 		}
 	}
 	return t, nil
-}
-
-// reopenFiring puts back an alert whose closing notice could not be sent, so
-// the next evaluation closes it again.
-func reopenFiring(ruleId int, token string) {
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
-		return transactional.NotificationRuleFiringRepository.Insert(tx, ruleId, token, time.Now())
-	})
-	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to reopen alert %q of rule %d after a failed recovery: %w", token, ruleId, err))
-	}
 }

@@ -16,6 +16,8 @@ export type BlogPostMeta = {
   description?: string;
   author?: string;
   image?: string;
+  cover?: string;
+  readingMinutes: number;
 };
 
 export type BlogPost = BlogPostMeta & {
@@ -36,6 +38,7 @@ function readPostFile(filename: string): BlogPost | null {
     typeof data.description === "string" ? data.description : undefined;
   const author = typeof data.author === "string" ? data.author : undefined;
   const image = typeof data.image === "string" ? data.image : undefined;
+  const cover = typeof data.cover === "string" ? data.cover : undefined;
   return {
     slug,
     title,
@@ -45,8 +48,29 @@ function readPostFile(filename: string): BlogPost | null {
     description,
     author,
     image,
+    cover,
+    readingMinutes: readingMinutes(content),
     content,
   };
+}
+
+const WORDS_PER_MINUTE = 220;
+
+function readingMinutes(content: string): number {
+  const words = content.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / WORDS_PER_MINUTE));
+}
+
+export function formatPostDate(isoDate: string): string {
+  if (!isoDate) return "";
+  const d = new Date(isoDate + "T00:00:00Z");
+  if (Number.isNaN(d.getTime())) return isoDate;
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 export function getAllPosts(): BlogPostMeta[] {

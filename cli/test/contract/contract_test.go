@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	client "github.com/tracewayapp/traceway/cli/pkg/client"
+	client "github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // timeWindow brackets the seeded instant so list/query endpoints return it.

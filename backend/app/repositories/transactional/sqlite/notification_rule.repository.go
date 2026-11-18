@@ -6,8 +6,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -34,6 +34,10 @@ func (r *notificationRuleRepository) FindById(tx *sql.Tx, id int) (*models.Notif
 		"SELECT id, project_id, channel_id, name, rule_type, config, enabled, cooldown_minutes, severity, snoozed_until, created_by, created_at, updated_at FROM notification_rules WHERE id = :id",
 		lit.P{"id": id},
 	)
+}
+
+func (r *notificationRuleRepository) FindByIdForUpdate(tx *sql.Tx, id int) (*models.NotificationRule, error) {
+	return r.FindById(tx, id)
 }
 
 func (r *notificationRuleRepository) FindEnabledPolledRules(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {

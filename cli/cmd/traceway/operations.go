@@ -10,14 +10,18 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 func runRaw(cmd *cobra.Command, call func(ctx context.Context, c *client.Client, projectID string) (json.RawMessage, error), table func(w io.Writer, v any) error) error {
+	return runRawWithProject(cmd, true, call, table)
+}
+
+func runRawWithProject(cmd *cobra.Command, requireProject bool, call func(ctx context.Context, c *client.Client, projectID string) (json.RawMessage, error), table func(w io.Writer, v any) error) error {
 	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
-	sess, err := loadSession()
+	sess, err := loadSessionOpts(requireProject)
 	if err != nil {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
 	}

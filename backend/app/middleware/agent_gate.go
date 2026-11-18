@@ -4,15 +4,16 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const (
@@ -49,7 +50,7 @@ func authorizeAgentRequest(c *gin.Context, identity *BearerIdentity) {
 		enabled        bool
 		found          bool
 	}
-	p, err := db.ExecuteTransaction(func(tx *sql.Tx) (policy, error) {
+	p, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (policy, error) {
 		orgId, enabled, found, err := transactional.OrganizationRepository.AgentWritePolicyForProject(tx, projectId, identity.UserId)
 		return policy{orgId, enabled, found}, err
 	})
@@ -60,6 +61,14 @@ func authorizeAgentRequest(c *gin.Context, identity *BearerIdentity) {
 	if !p.found {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have access to this project"})
 		return
+	}
+	if organization := c.Param("organizationId"); organization != "" {
+		organizationId, err := strconv.Atoi(organization)
+		if err != nil || organizationId != p.organizationId {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "projectId must belong to the organization in the request path"})
+			recordAgentWrite(c, identity, p.organizationId, projectId)
+			return
+		}
 	}
 	if !p.enabled {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": agentWriteDisabledMessage})
@@ -85,7 +94,7 @@ func recordAgentWrite(c *gin.Context, identity *BearerIdentity, organizationId i
 		StatusCode:     c.Writer.Status(),
 		CreatedAt:      time.Now().UTC(),
 	}
-	_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+	_, err := db.ExecuteTransactionContext(c, func(tx *sql.Tx) (struct{}, error) {
 		return struct{}{}, transactional.AgentWriteEventRepository.Insert(tx, event)
 	})
 	if err != nil {

@@ -16,9 +16,9 @@ import (
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 type otelSpanRepository struct{}
@@ -119,7 +119,7 @@ func (r *otelSpanRepository) InsertWithRejections(ctx context.Context, spans []m
 		shared.RecordRejectedOtelSpan(fmt.Errorf("one request spans more than %d daily partitions", clickhouseMaxPartitionsPerInsert*clickhouseMaxPartitionedInserts))
 	}
 	for _, insert := range inserts {
-		err := chdb.SendBatch(otelInsertColumns, func(batch driver.Batch) error {
+		err := chdb.SendBatch(ctx, otelInsertColumns, func(batch driver.Batch) error {
 			for _, row := range insert {
 				if err := batch.Append(row.values...); err != nil {
 					return err
@@ -319,4 +319,37 @@ func (r *otelSpanRepository) FindOTLP(ctx context.Context, project uuid.UUID, tr
 		return nil, err
 	}
 	return shared.AssembleOtelPayload([]byte(resourcePB), []byte(scopePB), []byte(spanPB)), nil
+}
+
+// FindSessionClientSpans returns the requests a browser session made in a time window (CLIENT spans), oldest first,
+// through the materialized session_id column and its bloom filter.
+func (r *otelSpanRepository) FindSessionClientSpans(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]shared.SessionSpan, error) {
+	rows, err := chdb.Conn.Query(ctx, `SELECT trace_id, span_id, name, start_time_unix_nano, duration, status_code,
+			span_attributes['http.request.method'], span_attributes['url.full'],
+			span_attributes['http.response.status_code'], span_attributes['error.type']
+		FROM spans_v2
+		WHERE project_id = ? AND session_id = ? AND recorded_at >= ? AND recorded_at <= ? AND span_kind = 3
+		ORDER BY start_time_unix_nano `+q.Order()+` LIMIT ?`,
+		q.ProjectId, q.SessionId, clickhouseOtelCodec.Time(q.From), clickhouseOtelCodec.Time(q.To), q.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	spans := []shared.SessionSpan{}
+	for rows.Next() {
+		var span shared.SessionSpan
+		var start uint64
+		var duration int64
+		if err := rows.Scan(&span.TraceId, &span.SpanId, &span.Name, &start, &duration, &span.StatusCode,
+			&span.Method, &span.URL, &span.HTTPStatus, &span.ErrorType); err != nil {
+			return nil, err
+		}
+		span.StartTime = shared.OtelNanosToTime(start)
+		span.Duration = time.Duration(duration)
+		spans = append(spans, span)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return shared.SessionBreadcrumbsChronological(q, spans), nil
 }

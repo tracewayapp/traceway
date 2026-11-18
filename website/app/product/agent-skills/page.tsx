@@ -13,7 +13,7 @@ import { Terminal } from "@/components/terminal";
 import { SkillInstallCommand } from "@/components/skill-install-command";
 import { AgentDebugTerminal } from "@/components/agent-debug-terminal";
 import { VideoPlayer } from "@/components/video-player";
-import { GITHUB_URL } from "@/lib/links";
+import { GITHUB_URL, SKILLS_GITHUB_URL } from "@/lib/links";
 
 export const metadata: Metadata = {
   title: "Agent Skills · Traceway",
@@ -88,7 +88,7 @@ export default function AgentSkillsPage() {
             </p>
             <p className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
               <Link
-                href={GITHUB_URL}
+                href={SKILLS_GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-fg-2 hover:text-blue-bright transition-colors"
@@ -304,8 +304,8 @@ export default function AgentSkillsPage() {
             <h2>One format, every agent</h2>
             <p style={{ color: "var(--fg-1)", fontSize: 17 }}>
               Skills are plain Markdown in the open SKILL.md format. No
-              marketplace, no lock-in. They live in the same MIT-licensed repo
-              as Traceway itself.
+              marketplace, no lock-in. They live in a small MIT-licensed repo,
+              tracewayapp/skills.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
               {AGENTS.map((agent) => (
@@ -382,7 +382,7 @@ export default function AgentSkillsPage() {
               items={[
                 {
                   q: "What exactly is an agent skill?",
-                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships four: one sets up a project, one queries and debugs it, one explains how every part of Traceway works, and one makes changes once an admin allows it. All four live in the open-source repo.",
+                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships four: one sets up a project, one queries and debugs it, one explains how every part of Traceway works, and one makes changes once an admin allows it. All four live in the open-source tracewayapp/skills repo.",
                 },
                 {
                   q: "Which agents are supported?",
@@ -393,7 +393,7 @@ export default function AgentSkillsPage() {
                         Codex, OpenCode, Gemini CLI, Copilot, and more.
                       </p>
                       <p>
-                        <code>npx skills add tracewayapp/traceway --all</code>{" "}
+                        <code>npx skills add tracewayapp/skills --all</code>{" "}
                         installs the skills for every agent it finds on your
                         machine.
                       </p>

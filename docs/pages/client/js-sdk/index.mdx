@@ -1,6 +1,12 @@
 # JS SDK Overview
 
-The Traceway JavaScript SDK provides error tracking for browser-based applications. It captures exceptions, messages, and sends them to your Traceway backend.
+import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
+
+<BrowserSdkBeta stableHref="/client/js-sdk/v1" />
+
+This reference covers the 2.x browser SDK and its framework wrappers. It uses OpenTelemetry and supports [remote collection settings](/learn/remote-config). See [Initialization](/client/js-sdk/initialization) and [Distributed Tracing](/client/js-sdk/distributed-tracing) when migrating from 1.x.
+
+The Traceway JavaScript SDK is the browser side of [Real User Monitoring](/learn/rum). It captures exceptions and messages, measures web vitals, route changes and requests as [performance metrics](/learn/client-metrics), reports sessions, and keeps breadcrumbs and session replay on the device until an error, a trigger or a capture asks for them.
 
 ## Packages
 
@@ -15,16 +21,16 @@ The Traceway JavaScript SDK provides error tracking for browser-based applicatio
 ## Installation
 
 ```bash
-npm install @tracewayapp/frontend
+npm install @tracewayapp/frontend@beta
 ```
 
 Or use a framework-specific package:
 
 ```bash
-npm install @tracewayapp/react
-npm install @tracewayapp/vue
-npm install @tracewayapp/svelte
-npm install @tracewayapp/jquery
+npm install @tracewayapp/react@beta
+npm install @tracewayapp/vue@beta
+npm install @tracewayapp/svelte@beta
+npm install @tracewayapp/jquery@beta
 ```
 
 ### Via CDN
@@ -33,7 +39,7 @@ The frontend and jQuery packages are also available as standalone scripts (no bu
 
 ```html
 <!-- Framework-agnostic (exposes window.Traceway) -->
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@1/dist/traceway.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@beta/dist/traceway.iife.global.js"></script>
 <script>
   Traceway.init("your-token@https://traceway.example.com/api/report");
 </script>
@@ -42,7 +48,7 @@ The frontend and jQuery packages are also available as standalone scripts (no bu
 ```html
 <!-- jQuery (exposes window.TracewayJQuery) -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@1/dist/traceway-jquery.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@beta/dist/traceway-jquery.iife.global.js"></script>
 <script>
   TracewayJQuery.init("your-token@https://traceway.example.com/api/report");
 </script>
@@ -95,9 +101,9 @@ captureMessage("User completed checkout");
 
 ## Features
 
-- **Automatic batching**: Events are batched and sent periodically to reduce network overhead
-- **Automatic retry**: Failed uploads are retried after `retryDelayMs` (10 seconds by default)
+- **Automatic batching**: Logs and spans go out in OTLP batches, by default about a second apart (`exportDelayMs`)
+- **Automatic retry**: Batches that fail with a retryable status (such as 429 or 503) are retried with backoff; with `buffer.persist` they also survive page loads (see [Flush & Lifecycle](/client/js-sdk/flush))
 - **Stack trace capture**: Full stack traces are captured for exceptions
 - **Custom attributes**: Attach metadata to exceptions for better debugging
-- **Distributed tracing**: Automatically correlates frontend errors with backend requests by instrumenting `fetch` and `XMLHttpRequest`, which covers `$.ajax()` and browser Axios with no extra setup
+- **Distributed tracing**: Records `fetch` and `XMLHttpRequest` calls as spans and sends the W3C `traceparent` header, so a browser request and the backend work it caused share one trace. This covers `$.ajax()` and browser Axios with no extra setup (see [Distributed Tracing](/client/js-sdk/distributed-tracing))
 - **Lightweight**: Minimal bundle size impact

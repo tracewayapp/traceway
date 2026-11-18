@@ -4,6 +4,7 @@ package controllers
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -17,14 +18,14 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/services/authserver"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/authserver"
 )
 
 const agentTestSecret = "agent-access-test-secret-0123456789abcdef"
@@ -367,7 +368,7 @@ func TestDeviceLookup_reportsRequestedScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	for client, want := range map[string]string{"traceway-cli": models.ScopeRead, "traceway-cli-write": models.ScopeWrite} {
-		da, err := authserver.CreateDeviceAuth(client, "http://localhost")
+		da, err := authserver.CreateDeviceAuth(context.Background(), client, "http://localhost")
 		if err != nil {
 			t.Fatalf("create device auth for %s: %v", client, err)
 		}

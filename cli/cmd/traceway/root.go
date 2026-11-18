@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
 )
 
 // Global flag values, populated by Cobra at flag-parse time.
@@ -43,9 +43,10 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newAiTracesCmd())
 	cmd.AddCommand(newSessionsCmd())
 	cmd.AddCommand(newTracesCmd())
-	cmd.AddCommand(newMetricsCmd())
+	cmd.AddCommand(newMetricsCmd(), newDashboardsCmd())
 	cmd.AddCommand(newPagesCmd())
 	cmd.AddCommand(newAlertsCmd())
+	cmd.AddCommand(newOpampCmd())
 	cmd.AddCommand(newMonitorsCmd())
 	cmd.AddCommand(newPostMortemsCmd())
 	cmd.AddCommand(newMcpCmd())

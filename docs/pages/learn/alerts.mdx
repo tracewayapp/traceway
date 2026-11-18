@@ -288,7 +288,7 @@ Set Group By Tags to alert on each series separately, for example `site_id` for 
 
 A point without one of the tags falls into a series where that value reads `(empty)`. Tag filters still apply first, so `tags` and `groupBy` combine.
 
-The cooldown is kept per series instead of per rule. A series that keeps breaching is notified again once its cooldown has passed, and a second series that starts breaching meanwhile is notified right away. On an escalation channel each series opens its own page. One evaluation sends at most 50 series notifications, worst first. Any further breaching series are summarized in a single "N more series" notice. Series are read in tag value order and at most 5,000 are evaluated. The per-series cooldowns are held in memory, so after a backend restart a series that is still breaching is notified again.
+The cooldown is kept per series instead of per rule. A series that keeps breaching is notified again once its cooldown has passed, and a second series that starts breaching meanwhile is notified right away. On an escalation channel each series opens its own page. One evaluation sends at most 50 series notifications, worst first. Any further breaching series are summarized in a single "N more series" notice. At most 5,000 series are evaluated. Point metrics are read in tag value order. Distribution metrics keep the busiest groups when the scan is truncated. The per-series cooldowns are held in memory, so after a backend restart a series that is still breaching is notified again.
 
 Once a notified series is back within the threshold, the rule sends an Info recovery notice naming it. On an escalation channel it resolves that series' page instead:
 
@@ -296,7 +296,11 @@ Once a notified series is back within the threshold, the rule sends an Info reco
 [HS API] Metric radius.accounting_freshness_seconds{site_id=RUINS} recovered: 120.00 (threshold: gt 900.00)
 ```
 
-A recovery does not restart the series' cooldown, so a series that breaches again soon after alerts once the cooldown, counted from its last alert, has passed. A series that stops reporting stays firing for an hour. After an hour without data, while other series of the metric still report, the rule closes its alert with a "stopped reporting" notice, or on an escalation channel resolves its page. While no series of the metric reports at all, every series stays firing, and once the metric has 5,000 series a missing one is not closed this way, since it may only be past the limit. The "N more series" notice gets one recovery of its own, sent once series are reporting and none of them breaches; a series that only ever appeared in that summary gets no recovery notice of its own. One evaluation closes at most 50 series alerts, and the rest follow on the next one. The firing series are stored in the database, so a backend restart does not lose a recovery. Changing the rule's type, channel or condition, disabling it or deleting it resolves its series pages and forgets the firing series without sending recovery notices.
+A recovery leaves the series' cooldown counting from its last alert. For a distribution metric, a series that reports fewer observations than its configured minimum stays open until there is enough data to judge it.
+
+If a series is missing for an hour while others still report, the rule closes its alert with a "stopped reporting" notice or resolves its escalation page. A whole-metric outage keeps all alerts open. An incomplete scan also keeps missing series open because they may be outside the results.
+
+The "N more series" summary gets one recovery when a complete scan finds data and every reported series can be judged within the threshold. Series that appeared only in the summary receive no individual recovery. Each evaluation closes up to 50 individual alerts plus the summary. Firing state survives a backend restart. On upgrade, existing open and acknowledged pages for grouped metric rules are tracked for recovery. For chat and email, tracking starts with the first alert sent by the upgraded backend. Changing the rule's type, channel or condition, disabling it, or deleting it resolves its series pages and clears the firing state without sending recovery notices.
 
 Over the API the keys are the `groupBy` array of the rule config, for example `"groupBy": ["site_id"]`. An empty or repeated key answers 422.
 
@@ -457,3 +461,35 @@ All fired notifications are recorded and visible in the **History** tab on the A
 | Channel | Which channel delivered the notification |
 | Status | Whether delivery succeeded or failed |
 | Timestamp | When the notification was sent |
+
+
+## Configure alerting with the CLI or MCP
+
+The write CLI supports channel and rule creation, replacement and deletion. Start with `traceway-write channels list` and `traceway-write alerts list` to inspect existing configuration. Create a channel before a rule, using its returned ID:
+
+```json filename="channel.json"
+{"name":"Operations email","channelType":"email","config":{"recipients":["ops@example.com"]},"enabled":true}
+```
+
+```bash
+traceway-write channels validate create --file channel.json
+traceway-write channels create --file channel.json --yes
+```
+
+```json filename="rule.json"
+{"name":"Slow orders","channelId":12,"ruleType":"endpoint_p95_threshold","config":{"endpoint":"GET /api/orders","thresholdMs":1000,"lookbackMinutes":10},"cooldownMinutes":15,"severity":"warning"}
+```
+
+```bash
+traceway-write alerts validate create --file rule.json
+traceway-write alerts create --file rule.json --yes
+traceway-write alerts list
+```
+
+Replace example IDs and endpoint names with observed values. `validate` runs offline and checks the request envelope; server-side checks validate adapter settings, relationships and permissions. `update <id> --file F` sends the complete rule/channel configuration. Rule `severity` is empty for automatic, or `info`, `warning`, `critical`; enabled/snoozed state uses the separate alert enable/disable/snooze commands. Channel `enabled` is optional: true by default on create, preserved when omitted on update.
+
+`channels delete <id>` also deletes its attached rules. `alerts delete <id>` permanently removes one rule; snooze for temporary suppression. `channels test <id>` sends a real test notification, and an escalation channel opens a real page. Saving or validating configuration does not test delivery.
+
+The write MCP server exposes `create_notification_channel`, `update_notification_channel`, `delete_notification_channel`, `test_notification_channel`, and matching `create_notification_rule`, `update_notification_rule`, `delete_notification_rule` tools. Pass `project_id`, `id` for existing records and `data` containing the JSON object. Discovery uses `list_notification_channels` and `list_notification_rules`. `list_notification_history` reads delivery history; CLI equivalent is `notification-history list --file query.json` with `{"pagination":{"page":1,"pageSize":20}}` and optional `search`, `fromDate`, `toDate`.
+
+The write skill's **alert-configuration.md**, also served as `traceway://knowledge/alert-configuration`, lists every channel's fields and every rule type's JSON config. Channel configuration contains credentials: use a secure secret mechanism and do not commit or echo them. See [Agent Write Access](/learn/agent-write-access) for authorization.

@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/timerange"
+	"github.com/tracewayapp/traceway/cli/v2/internal/timerange"
 )
 
 // helper to build a fake command with the time-range flags wired

@@ -12,10 +12,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
-	"github.com/tracewayapp/traceway/cli/internal/errclass"
-	"github.com/tracewayapp/traceway/cli/internal/timerange"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/errclass"
+	"github.com/tracewayapp/traceway/cli/v2/internal/timerange"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // Tool errors carry the same stable snake_case codes as the CLI's error

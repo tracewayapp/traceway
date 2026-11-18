@@ -31,7 +31,7 @@ export default function SlosPage() {
           </h1>
           <p className="hero-sub">
             An SLO holds an indicator, the share of good requests, spans, task
-            runs, probes, metric slices or crash-free sessions, to a target over
+            runs, probes, measured frontend experiences or crash-free sessions, to a target over
             a rolling 7, 30 or 90 day window. What the target leaves over is the
             error budget, and the burn rate says how fast you are spending it.
             Traceway computes all of it from the spans, probes, metrics and
@@ -57,6 +57,18 @@ export default function SlosPage() {
       <div className="band-light">
         <section className="wrap">
           <FeatureRow
+            eyebrow="Real User Monitoring"
+            title={<>Speed targets <em>for your frontend</em></>}
+            description="Decide what a good interaction is, for example a page that reacts to a click within 200 ms, and what share of interactions should meet it. Every measured interaction counts toward the objective. Give each release its own objective to spot a slow release that the overall number hides. A page nobody interacted with counts as no data, not as a success."
+            bullets={["Objectives on load time, click response and other page timings", "A separate objective per release, device or country", "Burn-rate alerts for a sustained slowdown, not one bad minute"]}
+            image={{ src: "/images/rum-slo-detail.png", alt: "A frontend interaction SLO breached by the deliberately slow demo release, with its error budget and burn rates" }}
+            cta={<Link href="/product/rum" className="btn btn-ghost">Explore Real User Monitoring <ArrowRight className="h-4 w-4" /></Link>}
+          />
+          <p className="text-sm text-muted-foreground">Controlled demo with real browser telemetry; the new release is deliberately slowed.</p>
+        </section>
+
+        <section className="wrap">
+          <FeatureRow
             eyebrow="Six kinds of indicator"
             title={
               <>
@@ -64,7 +76,7 @@ export default function SlosPage() {
                 <em>or crash-free sessions</em>
               </>
             }
-            description="Pick what a good event is and Traceway counts it. An endpoint is good when it answers below 500 or faster than a threshold. A task run is good when no exception landed on its span. A monitor probe is good when it came back up. A metric is cut into slices of 1, 5, 15 or 60 minutes. Each slice is good when its average, minimum, maximum, sum or last value stays on the right side of a limit. Slices without data can count as bad, so a missing heartbeat hurts."
+            description="Pick what a good event is and Traceway counts it. An endpoint is good when it answers below 500 or faster than a threshold. A task run is good when no exception landed on its span. A monitor probe is good when it came back up. A point metric is cut into slices of 1, 5, 15 or 60 minutes. Distribution metrics can count every observed experience against a threshold. Each slice is good when its average, minimum, maximum, sum or last value stays on the right side of a limit. Slices without data can count as bad, so a missing heartbeat hurts."
             bullets={[
               "Availability or latency for endpoints and spans",
               "Task success from the exception on the run's own span",
@@ -88,7 +100,7 @@ export default function SlosPage() {
                 Crash-free sessions, <em>per release</em>
               </>
             }
-            description="Browser projects get the objective front ends live by: the share of sessions that ended without an exception. Create one per app version and each release gets its own budget, so a release that crashes more than the last one shows up as a breach rather than a hunch. Sessions come from always-on session recording in the browser SDK."
+            description="Browser projects get the objective front ends live by: the share of sessions that ended without an exception. Create one per app version and each release gets its own budget, so a release that crashes more than the last one shows up as a breach rather than a hunch. The 2.x browser SDK reports sessions unless disabled; 1.x needs always-on session recording. Replay recording and session reporting are separate concerns."
             bullets={[
               "All versions, or one app version per objective",
               "Captured messages count only if you say so",
@@ -157,7 +169,7 @@ export default function SlosPage() {
                 <em>recover on your own</em>
               </>
             }
-            description="Two alert rules read the SLO: Burn Rate fires when the budget burns faster than a threshold over both a long and a short window, so a one-minute spike never pages and a burn that already ended never pages either. Budget Consumed fires when more than a share of the window's budget is gone. Both fire once on the transition, keep their state across restarts, and send a recovery notice when the condition clears. On an escalation channel the recovery resolves the on-call page itself."
+            description="Two alert rules read the SLO: Burn Rate fires when the budget burns faster than a threshold over both a long and a short window, so sustained degradation matters more than a single threshold crossing and the short window checks whether the burn is still active. Budget Consumed fires when more than a share of the window's budget is gone. Both fire once on the transition, keep their state across restarts, and send a recovery notice when the condition clears. On an escalation channel the recovery resolves the on-call page itself."
             bullets={[
               "Google SRE presets: Fast 14.4x over 1h/5m, Slow 6x over 6h/30m, Long 1x over 3d/6h",
               "Fires on the transition, never re-pages every poll",
@@ -224,7 +236,7 @@ export default function SlosPage() {
               items={[
                 {
                   q: "How is an SLO different from an alert rule?",
-                  a: "A threshold rule looks at the last few minutes and fires when a number crosses a line. An SLO holds a share of good events to a target over weeks, keeps the history, and turns the gap into a budget. The burn-rate rules then alert on how fast that budget is going rather than on the raw rate, which is what keeps a short spike from paging and a slow leak from going unnoticed.",
+                  a: "A threshold rule looks at the last few minutes and fires when a number crosses a line. An SLO holds a share of good events to a target over weeks, keeps the history, and turns the gap into a budget. The burn-rate rules then alert on how fast that budget is going rather than on the raw rate, which helps distinguish sustained degradation from transient spikes and exposes slow budget consumption.",
                 },
                 {
                   q: "What is a burn rate?",
@@ -232,7 +244,7 @@ export default function SlosPage() {
                 },
                 {
                   q: "Which indicators can I build an SLO on?",
-                  a: "Endpoint availability or latency, any span filter (service, name, kind, exact attribute values) for availability or latency, task success, monitor uptime, and metric timeslices where each slice is good when its aggregate is over or under a limit. Endpoints and tasks are promoted from spans, so the span kind covers them too. Browser projects get crash-free sessions instead, since their SDK reports sessions and exceptions rather than spans.",
+                  a: "Endpoint availability or latency, any span filter (service, name, kind, exact attribute values) for availability or latency, task success, monitor uptime, and metric timeslices where each slice is good when its aggregate is over or under a limit. Endpoints and tasks are promoted from spans, so the span kind covers them too. Browser projects support both crash-free sessions and performance objectives over distribution metrics such as LCP or INP.",
                 },
                 {
                   q: "What happens to the history when I change an SLO?",

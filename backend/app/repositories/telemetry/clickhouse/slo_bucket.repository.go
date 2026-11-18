@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 type sloBucketRepository struct{}
@@ -17,7 +17,7 @@ func (r *sloBucketRepository) Upsert(ctx context.Context, buckets []shared.SLOBu
 	if len(buckets) == 0 {
 		return nil
 	}
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(), "INSERT INTO slo_buckets (project_id, slo_id, bucket_start, good, total, computed_at)")
+	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(ctx), "INSERT INTO slo_buckets (project_id, slo_id, bucket_start, good, total, computed_at)")
 	if err != nil {
 		return err
 	}

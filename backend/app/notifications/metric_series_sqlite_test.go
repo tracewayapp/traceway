@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 const freshnessRuleConfig = `{"metricName":"radius.freshness","aggregation":"last","operator":"gt","thresholdValue":900,"lookbackMinutes":5,"groupBy":["site"]}`
@@ -292,7 +292,7 @@ func TestMetricSeriesBeyondTheScanLimitIsNotSilenced(t *testing.T) {
 		for i := range series {
 			series[i] = metricSeries{Key: fmt.Sprintf("s%04d", i), Value: 1}
 		}
-		result, err := metricThresholdResult(f.Rule, cfg, series, f.ProjectId)
+		result, err := metricThresholdResult(t.Context(), f.Rule, cfg, series, f.ProjectId, len(series) >= maxMetricRuleSeriesScanned)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -322,7 +322,7 @@ func TestMetricSeriesRecoveriesAreCappedAndTheOverflowClearsLast(t *testing.T) {
 		for i := range series {
 			series[i] = metricSeries{Key: fmt.Sprintf("h%03d", i), Value: values[i]}
 		}
-		result, err := metricThresholdResult(f.Rule, cfg, series, f.ProjectId)
+		result, err := metricThresholdResult(t.Context(), f.Rule, cfg, series, f.ProjectId, len(series) >= maxMetricRuleSeriesScanned)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -374,19 +374,19 @@ func TestMetricSeriesRecoveriesAreCappedAndTheOverflowClearsLast(t *testing.T) {
 func TestMetricSeriesRecoveryResolvesTheSeriesPage(t *testing.T) {
 	f := setupMetricSeriesChannel(t, "escalation", `{"policyId":1}`)
 	var opened, resolved []string
-	previousOpener, previousResolver := pageOpener, pageResolver
-	pageOpener = func(_ json.RawMessage, _ *models.NotificationRuleWithChannel, msg Message) (bool, error) {
-		opened = append(opened, msg.DedupToken)
+	previous := metricSeriesPager
+	metricSeriesPager = func(_ *sql.Tx, _ json.RawMessage, rule *models.NotificationRuleWithChannel, msg Message) (bool, error) {
+		if rule.Id != f.Rule.Id {
+			t.Errorf("page rule = %d, want %d", rule.Id, f.Rule.Id)
+		}
+		if msg.Recovered {
+			resolved = append(resolved, msg.DedupToken)
+		} else {
+			opened = append(opened, msg.DedupToken)
+		}
 		return true, nil
 	}
-	pageResolver = func(ruleId int, dedupToken string) error {
-		if ruleId != f.Rule.Id {
-			t.Errorf("resolved a page of rule %d, want %d", ruleId, f.Rule.Id)
-		}
-		resolved = append(resolved, dedupToken)
-		return nil
-	}
-	t.Cleanup(func() { pageOpener, pageResolver = previousOpener, previousResolver })
+	t.Cleanup(func() { metricSeriesPager = previous })
 
 	f.report(t, "RUINS", 22166, 2*time.Minute)
 	evaluatePolledRules(context.Background())
@@ -540,7 +540,7 @@ func TestMetricThresholdResultCapsNotifiedSeries(t *testing.T) {
 		series = append(series, metricSeries{Key: fmt.Sprintf("h%03d", i), Value: float64(i + 2)})
 	}
 	rule := f.newRule(t, `{"metricName":"m","groupBy":["host"]}`)
-	result, err := metricThresholdResult(rule, cfg, series, f.ProjectId)
+	result, err := metricThresholdResult(t.Context(), rule, cfg, series, f.ProjectId, len(series) >= maxMetricRuleSeriesScanned)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +553,7 @@ func TestMetricThresholdResultCapsNotifiedSeries(t *testing.T) {
 	if last := result.Messages[maxMetricRuleSeriesNotified].Subject; !strings.Contains(last, "7 more series") {
 		t.Errorf("overflow subject = %q", last)
 	}
-	again, err := metricThresholdResult(rule, cfg, series, f.ProjectId)
+	again, err := metricThresholdResult(t.Context(), rule, cfg, series, f.ProjectId, len(series) >= maxMetricRuleSeriesScanned)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,15 +566,17 @@ func TestMetricSeriesFailedRecoveryIsRetried(t *testing.T) {
 	f := setupMetricSeriesChannel(t, "escalation", `{"policyId":1}`)
 	resolveErr := fmt.Errorf("database is locked")
 	var resolved []string
-	previousOpener, previousResolver := pageOpener, pageResolver
-	pageOpener = func(json.RawMessage, *models.NotificationRuleWithChannel, Message) (bool, error) { return true, nil }
-	pageResolver = func(_ int, dedupToken string) error {
-		resolved = append(resolved, dedupToken)
+	previous := metricSeriesPager
+	metricSeriesPager = func(_ *sql.Tx, _ json.RawMessage, _ *models.NotificationRuleWithChannel, msg Message) (bool, error) {
+		if !msg.Recovered {
+			return true, nil
+		}
+		resolved = append(resolved, msg.DedupToken)
 		err := resolveErr
 		resolveErr = nil
-		return err
+		return false, err
 	}
-	t.Cleanup(func() { pageOpener, pageResolver = previousOpener, previousResolver })
+	t.Cleanup(func() { metricSeriesPager = previous })
 
 	f.report(t, "RUINS", 22166, 2*time.Minute)
 	evaluatePolledRules(context.Background())
@@ -608,5 +610,101 @@ func TestMetricSeriesAlertIsRetriedAfterAFailedTransaction(t *testing.T) {
 
 	if alert := f.evaluate(t); len(alert.Messages) != 1 {
 		t.Fatalf("alerts = %v, want the alert the failed evaluation could not send", subjectsOf(alert.Messages))
+	}
+}
+
+func TestGroupedHistogramRecoveryNeedsEnoughObservations(t *testing.T) {
+	f := setupMetricSeries(t)
+	const metric = "browser.web_vital.lcp"
+	f.Rule = f.newRule(t, `{"metricName":"browser.web_vital.lcp","aggregation":"p95","minCount":10,"operator":"gt","thresholdValue":4000,"lookbackMinutes":15,"groupBy":["url.path"]}`)
+	at := time.Now().Add(-5 * time.Minute)
+	insert := func(path string, value float64, n int) {
+		insertObservations(t, f.ProjectId, metric, at, map[string]string{"url.path": path}, value, n)
+	}
+	insert("/checkout", 6000, 30)
+	insert("/other", 1000, 30)
+	insert("/rare", 9000, 3)
+	maxRule := f.newRule(t, `{"metricName":"browser.web_vital.lcp","aggregation":"max","minCount":1,"operator":"gt","thresholdValue":4000,"lookbackMinutes":15,"groupBy":["url.path"]}`)
+	if result, err := evaluateMetricThreshold(t.Context(), maxRule, f.ProjectId); err != nil || len(result.Messages) != 2 {
+		t.Fatalf("grouped max result=%+v err=%v", result, err)
+	}
+	if got := f.evaluate(t); len(got.Messages) != 1 {
+		t.Fatalf("alerts: %v", subjectsOf(got.Messages))
+	}
+	token := metric + "{url.path=/checkout}"
+	if _, err := db.TelemetryDB.Exec("DELETE FROM metric_histograms"); err != nil {
+		t.Fatal(err)
+	}
+	f.silentFor(t, token, 2*metricSeriesSilenceLimit)
+	insert("/other", 1000, 30)
+	insert("/checkout", 1000, 1)
+	if got := f.evaluate(t); len(got.Recoveries) != 0 {
+		t.Fatalf("too few observations: %v", subjectsOf(got.Recoveries))
+	}
+	if row := f.firing(t, token); row == nil || row.SilentSince != nil {
+		t.Fatalf("reporting series must remain open: %+v", row)
+	}
+	insert("/checkout", 1000, 20)
+	if got := f.evaluate(t); len(got.Recoveries) != 1 || got.Recoveries[0].DedupToken != token {
+		t.Fatalf("recoveries: %v", subjectsOf(got.Recoveries))
+	}
+}
+
+func TestGroupedMetricDiscardsPollAfterRuleEdit(t *testing.T) {
+	f := setupMetricSeries(t)
+	f.report(t, "RUINS", 2500, time.Minute)
+	if _, err := db.DB.Exec("UPDATE notification_rules SET config = ?, updated_at = ? WHERE id = ?", []byte(`{"metricName":"different","groupBy":["site"]}`), time.Now().UTC().Add(time.Second), f.Rule.Id); err != nil {
+		t.Fatal(err)
+	}
+	if result := f.evaluate(t); result.Fired || f.firing(t, ruinsSeries) != nil || len(outboxRows(t)) != 0 {
+		t.Fatalf("stale poll created an alert: %+v", result)
+	}
+}
+
+func TestGroupedMetricRollsBackBatchOnFailedEnqueue(t *testing.T) {
+	f := setupMetricSeries(t)
+	f.report(t, "A", 2500, time.Minute)
+	f.report(t, "B", 2000, time.Minute)
+	if _, err := db.DB.Exec(`CREATE TRIGGER fail_second BEFORE INSERT ON notification_outbox
+ WHEN (SELECT COUNT(*) FROM notification_outbox) = 1
+ BEGIN SELECT RAISE(ABORT, 'second enqueue failed'); END`); err != nil {
+		t.Fatal(err)
+	}
+	evaluatePolledRules(t.Context())
+	if len(outboxRows(t)) != 0 || f.firing(t, "radius.freshness{site=A}") != nil {
+		t.Fatal("a partial batch committed")
+	}
+	if _, err := db.DB.Exec("DROP TRIGGER fail_second"); err != nil {
+		t.Fatal(err)
+	}
+	evaluatePolledRules(t.Context())
+	if got := len(outboxRows(t)); got != 2 {
+		t.Fatalf("retried batch has %d deliveries, want 2", got)
+	}
+}
+
+func TestOverflowRecoveryWaitsForCompleteScan(t *testing.T) {
+	f := setupMetricSeries(t)
+	cfg, err := parseMetricThresholdConfig(f.Rule.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := metricOverflowToken(cfg.MetricName)
+	if _, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+		return transactional.NotificationRuleFiringRepository.Insert(tx, f.Rule.Id, token, time.Now())
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		truncated, insufficient bool
+		want                    int
+	}{{true, false, 0}, {false, true, 0}, {false, false, 1}} {
+		result, err := metricThresholdResult(t.Context(), f.Rule, cfg, []metricSeries{{Key: "A", Value: 1, Insufficient: tc.insufficient}}, f.ProjectId, tc.truncated)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Recoveries) != tc.want {
+			t.Fatalf("truncated=%v insufficient=%v: recoveries %v", tc.truncated, tc.insufficient, subjectsOf(result.Recoveries))
+		}
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -31,7 +30,7 @@ func TestWithJWT_setsJWT(t *testing.T) {
 }
 
 func TestDo_setsHeadersAndDecodes(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Content-Type"); got != "application/json" {
 			t.Errorf("Content-Type = %q", got)
 		}
@@ -65,7 +64,7 @@ func TestDo_setsHeadersAndDecodes(t *testing.T) {
 }
 
 func TestDo_omitsAuthHeaderWhenJWTEmpty(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "" {
 			t.Errorf("expected no Authorization header, got %q", got)
 		}
@@ -93,7 +92,7 @@ func TestDo_mapsStatusCodes(t *testing.T) {
 	for _, c := range cases {
 		c := c
 		t.Run(http.StatusText(c.status), func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(c.status)
 			}))
 			defer srv.Close()
@@ -109,7 +108,7 @@ func TestDo_mapsStatusCodes(t *testing.T) {
 }
 
 func TestDo_returnsAPIErrorForOtherStatus(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(500)
 		_, _ = w.Write([]byte("boom"))
 	}))

@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
-	dashboardsvc "github.com/tracewayapp/traceway/backend/app/services/dashboards"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	dashboardsvc "github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
 )
 
 type ConvertResult struct {

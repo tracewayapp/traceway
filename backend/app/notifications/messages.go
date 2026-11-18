@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 // dashboardURL makes a dashboard path absolute when APP_BASE_URL is set.
@@ -20,6 +20,12 @@ func dashboardURL(path string) string {
 		return path
 	}
 	return base + path
+}
+
+// isAbsoluteURL reports whether dashboardURL could make the link absolute;
+// a relative path is no use as a link in a Slack post or a GitHub issue.
+func isAbsoluteURL(u string) bool {
+	return strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://")
 }
 
 func alertEmail(alert models.EmailAlert) *models.NotificationEmail {

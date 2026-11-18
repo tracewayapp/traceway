@@ -6,24 +6,28 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/hooks"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/models/clientmodels"
-	"github.com/tracewayapp/traceway/backend/app/monitoring"
-	"github.com/tracewayapp/traceway/backend/app/recordings"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models/clientmodels"
+	"github.com/tracewayapp/traceway/backend/v2/app/monitoring"
+	"github.com/tracewayapp/traceway/backend/v2/app/recordings"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/jsstack"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type clientController struct{}
@@ -38,7 +42,49 @@ func isEmptyRaw(r json.RawMessage) bool {
 		bytes.Equal(trimmed, []byte("{}"))
 }
 
-func symbolicateRecordingErrorLogs(c *gin.Context, projectId uuid.UUID, raw json.RawMessage) json.RawMessage {
+// buildRecordingJob turns one uploaded segment into its storage job. exceptionId is the server-side id of the
+// exception the segment is a clip of, or uuid.Nil; a segment with neither an exception nor a session is unreachable.
+func buildRecordingJob(c *gin.Context, projectId uuid.UUID, sr *clientmodels.ClientSessionRecording, exceptionId uuid.UUID, resolveJs bool, debugIds map[string]string) (recordings.Job, bool) {
+	var sessionPtr *uuid.UUID
+	if sr.SessionId != "" {
+		if parsed, err := uuid.Parse(sr.SessionId); err == nil {
+			sessionPtr = &parsed
+		}
+	}
+	if exceptionId == uuid.Nil && sessionPtr == nil {
+		return recordings.Job{}, false
+	}
+	if isEmptyRaw(sr.Events) && isEmptyRaw(sr.Logs) && isEmptyRaw(sr.Actions) {
+		return recordings.Job{}, false
+	}
+	if resolveJs && !isEmptyRaw(sr.Logs) {
+		sr.Logs = symbolicateRecordingErrorLogs(c, projectId, sr.Logs, debugIds)
+	}
+	body, err := json.Marshal(sr)
+	if err != nil {
+		traceway.CaptureExceptionContext(c, traceway.NewStackTraceErrorf("failed to marshal session recording: %w", err))
+		return recordings.Job{}, false
+	}
+	var key string
+	if sessionPtr != nil {
+		key = fmt.Sprintf("recordings/%s/sessions/%s/%d.json", projectId, sessionPtr.String(), sr.SegmentIndex)
+	} else {
+		key = fmt.Sprintf("recordings/%s/%s.json", projectId, exceptionId)
+	}
+	return recordings.Job{
+		Id:           uuid.New(),
+		ProjectId:    projectId,
+		ExceptionId:  exceptionId,
+		SessionId:    sessionPtr,
+		SegmentIndex: sr.SegmentIndex,
+		Key:          key,
+		Body:         body,
+		RecordedAt:   time.Now().UTC(),
+		EndedAt:      sr.EndedAt,
+	}, true
+}
+
+func symbolicateRecordingErrorLogs(c *gin.Context, projectId uuid.UUID, raw json.RawMessage, debugIds map[string]string) json.RawMessage {
 	var logs []map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &logs); err != nil {
 		return raw
@@ -57,7 +103,7 @@ func symbolicateRecordingErrorLogs(c *gin.Context, projectId uuid.UUID, raw json
 		if !ok {
 			continue
 		}
-		resolved := services.ResolveStackTrace(c, projectId, canonical, nil)
+		resolved := services.ResolveStackTrace(c, projectId, canonical, debugIds)
 		if resolved == canonical {
 			continue
 		}
@@ -85,6 +131,27 @@ type ReportRequest struct {
 	ProguardUuid     string                          `json:"proguardUuid"`
 }
 
+// readReportBody is ShouldBindBodyWithJSON with the read and the decode timed
+// apart: the read is the client's upload plus decompression (split further by
+// the ingest.body.* attributes of the request), the decode is server CPU.
+func readReportBody(c *gin.Context, request *ReportRequest) error {
+	parseCtx, parseSpan := traceway.StartSpan(c, "report.parse_body")
+	defer parseSpan.End()
+
+	_, readSpan := traceway.StartSpan(parseCtx, "report.read_body")
+	body, err := io.ReadAll(c.Request.Body)
+	readSpan.End()
+	if err != nil {
+		return err
+	}
+	c.Set(gin.BodyBytesKey, body)
+
+	decodeCtx, decodeSpan := traceway.StartSpan(parseCtx, "report.decode_json")
+	defer decodeSpan.End()
+	traceway.SetAttribute(decodeCtx, "report.body_bytes", strconv.Itoa(len(body)))
+	return binding.JSON.BindBody(body, request)
+}
+
 func (e clientController) Report(c *gin.Context) {
 	monitoring.IngestStarted()
 	defer monitoring.IngestFinished()
@@ -108,14 +175,14 @@ func (e clientController) Report(c *gin.Context) {
 		orgId = *project.OrganizationId
 	}
 
-	parseSpan := traceway.StartSpan(c, "report.parse_body")
 	var request ReportRequest
-	if err := c.ShouldBindBodyWithJSON(&request); err != nil {
-		parseSpan.End()
+	if err := readReportBody(c, &request); err != nil {
+		if middleware.DiscardOversizedReport(c, err) {
+			return
+		}
 		middleware.RejectIngestBindError(c, err, err.Error())
 		return
 	}
-	parseSpan.End()
 	for _, frame := range request.CollectionFrames {
 		if err := frame.Validate(); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -123,6 +190,10 @@ func (e clientController) Report(c *gin.Context) {
 		}
 	}
 
+	droppedLogs, review := throttleMessages(project, projectId, c.ClientIP(), &request)
+	if droppedLogs > 0 {
+		c.Header("X-Traceway-Dropped-Logs", fmt.Sprint(droppedLogs))
+	}
 	bodyBytes := 0
 	if cb, ok := c.Get(gin.BodyBytesKey); ok {
 		if b, ok := cb.([]byte); ok {
@@ -143,11 +214,17 @@ func (e clientController) Report(c *gin.Context) {
 
 	recordingIdToExceptionId := map[string]uuid.UUID{}
 
-	convertSpan := traceway.StartSpan(c, "report.convert_frames")
+	_, convertSpan := traceway.StartSpan(c, "report.convert_frames")
 	for _, cf := range request.CollectionFrames {
 		for _, cs := range cf.Sessions {
 			s := cs.ToSession(request.AppVersion, request.ServerName)
 			s.ProjectId = projectId
+			if project != nil && sdkconfig.SupportsFramework(project.Framework) {
+				if s.Attributes == nil {
+					s.Attributes = map[string]string{}
+				}
+				s.Attributes["traceway.sdk.generation"] = "1"
+			}
 
 			if clientIP := c.ClientIP(); clientIP != "" {
 				if s.Attributes == nil {
@@ -188,17 +265,17 @@ func (e clientController) Report(c *gin.Context) {
 		resolveIos := project != nil && project.SourceMapToken != nil && project.Framework == "ios"
 		resolveAndroid := project != nil && project.SourceMapToken != nil && project.Framework == "android"
 
-		resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
+		resolveCtx, resolveSpan := traceway.StartSpan(c, "report.resolve_stack_traces")
 		for _, cst := range cf.StackTraces {
 			resolvedStackTrace := cst.StackTrace
 			if resolveJs {
-				resolvedStackTrace = services.ResolveStackTrace(c, projectId, cst.StackTrace, cst.DebugIds)
+				resolvedStackTrace = services.ResolveStackTrace(resolveCtx, projectId, cst.StackTrace, cst.DebugIds)
 			} else if resolveDart {
-				resolvedStackTrace = services.ResolveDartStackTrace(c, projectId, cst.StackTrace)
+				resolvedStackTrace = services.ResolveDartStackTrace(resolveCtx, projectId, cst.StackTrace)
 			} else if resolveIos {
-				resolvedStackTrace = services.ResolveIOSStackTrace(c, projectId, cst.StackTrace)
+				resolvedStackTrace = services.ResolveIOSStackTrace(resolveCtx, projectId, cst.StackTrace)
 			} else if resolveAndroid {
-				resolvedStackTrace = services.ResolveAndroidStackTrace(c, projectId, cst.StackTrace, request.ProguardUuid)
+				resolvedStackTrace = services.ResolveAndroidStackTrace(resolveCtx, projectId, cst.StackTrace, request.ProguardUuid)
 			}
 			est := cst.ToExceptionStackTrace(ComputeExceptionHash(resolvedStackTrace, cst.IsMessage), request.AppVersion, request.ServerName)
 			est.StackTrace = resolvedStackTrace
@@ -224,51 +301,22 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		for _, sr := range cf.SessionRecordings {
-
+			if sr == nil {
+				continue
+			}
 			var exceptionId uuid.UUID
 			if sr.ExceptionId != "" {
 				if id, ok := recordingIdToExceptionId[sr.ExceptionId]; ok {
 					exceptionId = id
 				}
 			}
-			var sessionPtr *uuid.UUID
-			if sr.SessionId != "" {
-				if parsed, err := uuid.Parse(sr.SessionId); err == nil {
-					sessionPtr = &parsed
-				}
+			if job, ok := buildRecordingJob(c, projectId, sr, exceptionId, resolveJs, nil); ok {
+				recordingsWork = append(recordingsWork, job)
 			}
-			if exceptionId == uuid.Nil && sessionPtr == nil {
-				continue
-			}
-			if isEmptyRaw(sr.Events) && isEmptyRaw(sr.Logs) && isEmptyRaw(sr.Actions) {
-				continue
-			}
-			if resolveJs && !isEmptyRaw(sr.Logs) {
-				sr.Logs = symbolicateRecordingErrorLogs(c, projectId, sr.Logs)
-			}
-			body, err := json.Marshal(sr)
-			if err != nil {
-				traceway.CaptureException(traceway.NewStackTraceErrorf("failed to marshal session recording: %w", err))
-				continue
-			}
-			var key string
-			if sessionPtr != nil {
-				key = fmt.Sprintf("recordings/%s/sessions/%s/%d.json", projectId, sessionPtr.String(), sr.SegmentIndex)
-			} else {
-				key = fmt.Sprintf("recordings/%s/%s.json", projectId, exceptionId)
-			}
-			recordingsWork = append(recordingsWork, recordings.Job{
-				Id:           uuid.New(),
-				ProjectId:    projectId,
-				ExceptionId:  exceptionId,
-				SessionId:    sessionPtr,
-				SegmentIndex: sr.SegmentIndex,
-				Key:          key,
-				Body:         body,
-				RecordedAt:   time.Now().UTC(),
-				EndedAt:      sr.EndedAt,
-			})
 		}
+	}
+	if review != nil {
+		exceptionStackTraceToInsert = append(exceptionStackTraceToInsert, *review)
 	}
 	convertSpan.End()
 
@@ -314,8 +362,8 @@ func (e clientController) Report(c *gin.Context) {
 	convertMs := float64(time.Since(convertStart).Microseconds()) / 1000.0
 	insertStart := time.Now()
 
-	spanInsertSpan := traceway.StartSpan(c, "report.insert.spans")
-	err = telemetry.SpanRepository.InsertAsync(c, spansToInsert)
+	insertCtx, spanInsertSpan := traceway.StartSpan(c, "report.insert.spans")
+	err = telemetry.SpanRepository.InsertAsync(insertCtx, spansToInsert)
 	spanInsertSpan.End()
 
 	if err != nil {
@@ -324,8 +372,8 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	if len(endpointsToInsert) > 0 {
-		insertSpan := traceway.StartSpan(c, "report.insert.endpoints")
-		err := telemetry.EndpointRepository.InsertAsync(c, endpointsToInsert)
+		insertCtx, insertSpan := traceway.StartSpan(c, "report.insert.endpoints")
+		err := telemetry.EndpointRepository.InsertAsync(insertCtx, endpointsToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting endpointsToInsert: %w", err))
@@ -334,8 +382,8 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	if len(tasksToInsert) > 0 {
-		insertSpan := traceway.StartSpan(c, "report.insert.tasks")
-		err := telemetry.TaskRepository.InsertAsync(c, tasksToInsert)
+		insertCtx, insertSpan := traceway.StartSpan(c, "report.insert.tasks")
+		err := telemetry.TaskRepository.InsertAsync(insertCtx, tasksToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting tasksToInsert: %w", err))
@@ -344,8 +392,8 @@ func (e clientController) Report(c *gin.Context) {
 	}
 
 	if len(sessionsToUpsert) > 0 {
-		insertSpan := traceway.StartSpan(c, "report.upsert.sessions")
-		err := telemetry.SessionRepository.Upsert(c, sessionsToUpsert)
+		insertCtx, insertSpan := traceway.StartSpan(c, "report.upsert.sessions")
+		err := telemetry.SessionRepository.Upsert(insertCtx, sessionsToUpsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error upserting sessions: %w", err))
@@ -353,8 +401,8 @@ func (e clientController) Report(c *gin.Context) {
 		}
 	}
 
-	exceptionInsertSpan := traceway.StartSpan(c, "report.insert.exceptions")
-	err = telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptionStackTraceToInsert)
+	insertCtx, exceptionInsertSpan := traceway.StartSpan(c, "report.insert.exceptions")
+	err = telemetry.ExceptionStackTraceRepository.InsertAsync(insertCtx, exceptionStackTraceToInsert)
 	exceptionInsertSpan.End()
 
 	if err != nil {
@@ -362,9 +410,17 @@ func (e clientController) Report(c *gin.Context) {
 		return
 	}
 
+	acceptedMessages := 0
+	for _, row := range exceptionStackTraceToInsert {
+		if row.IsMessage && (review == nil || row.Id != review.Id) {
+			acceptedMessages++
+		}
+	}
+	monitoring.RecordLogsAccepted(acceptedMessages)
+
 	if len(metricPointsToInsert) > 0 {
-		insertSpan := traceway.StartSpan(c, "report.insert.metric_points")
-		err := telemetry.MetricPointRepository.InsertAsync(c, metricPointsToInsert)
+		insertCtx, insertSpan := traceway.StartSpan(c, "report.insert.metric_points")
+		err := telemetry.MetricPointRepository.InsertAsync(insertCtx, metricPointsToInsert)
 		insertSpan.End()
 		if err != nil {
 			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting metricPointsToInsert: %w", err))
@@ -372,7 +428,7 @@ func (e clientController) Report(c *gin.Context) {
 		}
 
 		metricNames := services.CollectUniqueMetricNames(metricPointsToInsert)
-		go services.AutoRegisterMetrics(projectId, metricNames)
+		go services.AutoRegisterMetrics(c.Request.Context(), projectId, metricNames)
 	}
 
 	insertMs := float64(time.Since(insertStart).Microseconds()) / 1000.0
@@ -397,6 +453,7 @@ func (e clientController) Report(c *gin.Context) {
 		if perm.Exceptions {
 			ev.ErrorCount = len(exceptionStackTraceToInsert)
 			ev.ExceptionHashes = exceptionHashes
+			ev.Exceptions = exceptionStackTraceToInsert
 		}
 		if perm.Replay {
 			ev.RecordingCount = len(recordingsWork)
@@ -482,8 +539,11 @@ var frontendJsFrameworks = map[string]bool{
 	"react-native": true,
 }
 
+// IsFrontendFramework reports whether a project's telemetry comes from an end user's device. OTLP ingest then
+// keeps the resource's device and user attributes on issues and does not turn spans into endpoints. Flutter
+// counts since its SDK moved to OpenTelemetry.
 func IsFrontendFramework(framework string) bool {
-	return frontendJsFrameworks[framework]
+	return frontendJsFrameworks[framework] || framework == "flutter"
 }
 
 var ClientController = clientController{}

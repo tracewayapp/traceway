@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,7 +26,7 @@ func UseSetupAuth(c *gin.Context) {
 		return
 	}
 
-	st, err := transactional.SetupTokenRepository.FindActiveByToken(db.DB, token)
+	st, err := transactional.SetupTokenRepository.FindActiveByToken(db.BindContext(c, db.DB), token)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("setup token auth failed: %w", err))
 		return

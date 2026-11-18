@@ -5,11 +5,11 @@ package sqlite
 import (
 	"database/sql"
 	"errors"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/shared"
 	"time"
 
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 )
 
 type setupPlanRepository struct{}

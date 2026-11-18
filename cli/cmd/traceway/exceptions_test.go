@@ -3,13 +3,12 @@ package main
 import (
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/config"
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
-	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/internal/config"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
 )
 
 // seedSessionFor configures config + state for a default profile pointing at
@@ -34,7 +33,7 @@ func seedSessionFor(t *testing.T, baseURL string) {
 }
 
 func TestExceptionsList_jsonShape(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/exception-stack-traces" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -66,7 +65,7 @@ func TestExceptionsList_jsonShape(t *testing.T) {
 }
 
 func TestExceptionsList_table(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{
 			"data":[
 				{"exceptionHash":"abcdef1234567890","stackTrace":"NullPointerException at line 42","count":7,"firstSeen":"2026-05-13T00:00:00Z","lastSeen":"2026-05-13T01:00:00Z"}
@@ -109,7 +108,7 @@ func TestExceptionsList_noSession_writesEnvelope(t *testing.T) {
 }
 
 func TestExceptionsList_invalidTimeRange_writesEnvelope(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[],"pagination":{}}`))
 	}))
 	defer srv.Close()
@@ -125,7 +124,7 @@ func TestExceptionsList_invalidTimeRange_writesEnvelope(t *testing.T) {
 }
 
 func TestExceptionsList_outOfRangePageSize_writesUsageError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Error("server must not be hit when pagination is rejected locally")
 	}))
 	defer srv.Close()
@@ -145,7 +144,7 @@ func TestExceptionsList_outOfRangePageSize_writesUsageError(t *testing.T) {
 }
 
 func TestExceptionsShow_passesHashInPath(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/exception-stack-traces/abc" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -169,7 +168,7 @@ func TestExceptionsShow_passesHashInPath(t *testing.T) {
 }
 
 func TestExceptionsShow_404_writesNotFoundEnvelope(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()

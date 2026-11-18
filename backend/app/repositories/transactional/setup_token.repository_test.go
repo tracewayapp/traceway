@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/shared"
 )
 
 func setupSetupTokenTables(t *testing.T) {

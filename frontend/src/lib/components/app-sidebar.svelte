@@ -24,13 +24,16 @@
 		Server,
 		Settings,
 		BookOpen,
-		KeyRound
+		KeyRound,
+		Upload
 	} from '@lucide/svelte';
 	import { themeState } from '$lib/state/theme.svelte';
 	import {
 		projectsState,
 		isFrontendFramework,
-		isCloudflareFramework
+		isBrowserFramework,
+		isCloudflareFramework,
+		isProjectViewAvailable
 	} from '$lib/state/projects.svelte';
 	import { LayoutDashboard } from '@lucide/svelte';
 	import { page } from '$app/state';
@@ -48,17 +51,16 @@
 		exact?: boolean;
 	}
 
-	const hiddenForFrontend = new Set([
+	const hiddenForBrowser = new Set([
 		'Dashboard',
-		'Logs',
 		'Endpoints',
 		'Tasks',
-		'Spans',
 		'Profiles',
-		'Dashboards',
 		'AI Traces',
 		'Monitors'
 	]);
+	// Native SDKs do not populate the browser log and span views.
+	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans']);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
 	// the sidebar for any other framework, so a Go backend project doesn't
@@ -95,19 +97,26 @@
 		{ Icon: Goal, href: '/slos', title: 'SLOs', stickyParams: [] },
 		{ Icon: Bell, href: '/notifications', title: 'Alerts', stickyParams: ['preset', 'from', 'to'] },
 		{ Icon: PhoneCall, href: '/on-call', title: 'On-Call', stickyParams: [] },
+		{ Icon: Upload, href: '/data-collection', title: 'Data Collection', stickyParams: [] },
 		{ Icon: Link2, href: '/connection', title: 'Connection', stickyParams: [] }
 	];
 
-	const sidebarItems = $derived(
-		projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
-			? allSidebarItems.filter((item) => !hiddenForFrontend.has(item.title))
-			: projectsState.currentProject &&
-				  isCloudflareFramework(projectsState.currentProject.framework)
-				? allSidebarItems.filter(
-						(item) => !hiddenForCloudflare.has(item.title) && !frontendOnly.has(item.title)
-					)
-				: allSidebarItems.filter((item) => !frontendOnly.has(item.title))
-	);
+	const sidebarItems = $derived.by(() => {
+		const framework = projectsState.currentProject?.framework;
+		const items = allSidebarItems.filter((item) =>
+			framework ? isProjectViewAvailable(framework, item.href) : item.href !== '/data-collection'
+		);
+		if (framework && isFrontendFramework(framework)) {
+			const hidden = isBrowserFramework(framework) ? hiddenForBrowser : hiddenForMobile;
+			return items.filter((item) => !hidden.has(item.title));
+		}
+		if (framework && isCloudflareFramework(framework)) {
+			return items.filter(
+				(item) => !hiddenForCloudflare.has(item.title) && !frontendOnly.has(item.title)
+			);
+		}
+		return items.filter((item) => !frontendOnly.has(item.title));
+	});
 
 	const allOrganizationItems: SidebarItem[] = [
 		{

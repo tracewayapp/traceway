@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type taskFailureRateConfig struct {
@@ -55,7 +55,7 @@ func evaluateTaskFailureRate(ctx context.Context, rule *models.NotificationRule,
 	if taskName == "" || taskName == "*" {
 		taskName = "all tasks"
 	}
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildTaskFailureRateMessage(taskName, rate, cfg.ThresholdPercent, failed, total, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }

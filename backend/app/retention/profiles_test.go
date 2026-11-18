@@ -1,11 +1,12 @@
 package retention
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
 )
 
 func TestProfileArchiveDir(t *testing.T) {
@@ -60,7 +61,7 @@ func TestRunProfileArchiveDiskCleanup_DeletesOldKeepsFresh(t *testing.T) {
 
 	mustChtime(t, oldFile, time.Now().Add(-40*24*time.Hour))
 
-	runDirAgeCleanup(dir, 30)
+	runDirAgeCleanup(context.Background(), dir, 30)
 
 	assertNotExists(t, oldFile)
 	assertExists(t, freshFile)

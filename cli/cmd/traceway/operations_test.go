@@ -3,14 +3,13 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 func TestPagesList_sendsStatusAndPassesThroughJSON(t *testing.T) {
 	var body map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/pages" || r.URL.Query().Get("projectId") != "proj-1" {
 			t.Errorf("request = %s %s", r.Method, r.URL)
 		}
@@ -33,7 +32,7 @@ func TestPagesList_sendsStatusAndPassesThroughJSON(t *testing.T) {
 }
 
 func TestPagesList_rejectsUnknownStatus(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("an invalid status must not reach the server")
 	}))
 	defer srv.Close()
@@ -46,7 +45,7 @@ func TestPagesList_rejectsUnknownStatus(t *testing.T) {
 }
 
 func TestAlertsList_tableUsesRulesWrapper(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/notification-rules" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -66,7 +65,7 @@ func TestAlertsList_tableUsesRulesWrapper(t *testing.T) {
 }
 
 func TestPostMortemsList_forwardsSearchAndTags(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if r.URL.Path != "/api/post-mortems" || q.Get("search") != "redis" || strings.Join(q["tag"], ",") != "cache,db" {
 			t.Errorf("request = %s", r.URL)
@@ -90,7 +89,7 @@ func TestMonitorsShow_rejectsNonNumericId(t *testing.T) {
 }
 
 func TestForbiddenCarriesServerMessage(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"error":"This endpoint is not available to personal access tokens, the CLI, or MCP clients."}`))
 	}))

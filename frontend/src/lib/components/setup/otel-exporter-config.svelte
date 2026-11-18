@@ -24,10 +24,10 @@
 	</div>
 	<div>
 		<p class="mb-2 text-sm font-medium">Authorization Header</p>
-		<CopyableInline value={authHeader} />
+		<CopyableInline value={authHeader} secret />
 	</div>
 	<div>
 		<p class="mb-2 text-sm font-medium">Example: OTel Collector (optional)</p>
-		<CopyableCodeBlock code={collectorConfig} language={yaml} />
+		<CopyableCodeBlock code={collectorConfig} language={yaml} secret />
 	</div>
 </div>

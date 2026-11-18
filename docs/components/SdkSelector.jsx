@@ -41,8 +41,9 @@ export default function SdkSelector() {
   }, [])
 
   useEffect(() => {
-    if (open && searchRef.current) {
-      searchRef.current.focus()
+    // Touch devices skip the autofocus: it raises the keyboard over the list.
+    if (open && searchRef.current && window.matchMedia('(pointer: fine)').matches) {
+      searchRef.current.focus({ preventScroll: true })
     }
   }, [open])
 

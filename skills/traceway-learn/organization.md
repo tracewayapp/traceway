@@ -50,7 +50,7 @@ Servers and Monitors are hidden when every project is a browser or mobile app.
 
 The setup guide for the current project: the project token, the OTLP endpoint and the snippet for the chosen language and framework. Two tabs:
 
-- **AI**: install the skills with `npx skills add tracewayapp/traceway --all` and paste a ready-made prompt with the URL and token. The `traceway-setup` skill instruments the application.
+- **AI**: install the skills with `npx skills add tracewayapp/skills --all` and paste a ready-made prompt with the URL and token. The `traceway-setup` skill instruments the application.
 - **Manual**: step-by-step setup.
 
 Browser and mobile projects also get **Source Map Upload** (browser and Android) or **Symbol Upload** (Flutter and iOS) with an upload token for CI, hidden from read-only members. Regenerating it invalidates the old one.
@@ -70,7 +70,7 @@ Stacked sections, with an organization switcher for people who manage several:
 - **Team Members**: name, email, role, status, per-project role overrides. **Pending Invitations**. Invitations carry a role.
 - **Agent Access**: the **Allow agent writes** switch and the **Agent activity** log (when, who, credential, project, action, result). See below.
 
-Per-project settings open from the project switcher (**Edit Project**), not from Settings: **Project** (name, framework), **Healthchecks** (drop healthy healthcheck requests, extra healthcheck paths), **Profiles** (extra pprof labels), **AI** (flagged term packs and custom terms), and the **Danger Zone**.
+Per-project settings open from the project switcher (**Edit Project**), not from Settings: **Project** (name, framework), **Healthchecks** (drop healthy healthcheck requests, extra healthcheck paths), **Profiles** (extra pprof labels), **AI** (flagged term packs and custom terms), and the **Danger Zone**. Remote SDK config (rules and captures) is not here: browser projects have a **Data Collection** page in the sidebar, see `data-collection.md`.
 
 ## How agents get access
 
@@ -79,10 +79,10 @@ Per-project settings open from the project switcher (**Edit Project**), not from
   1. A write credential: a `tww_` token, a `traceway-write` login, or the `/mcp/write` server.
   2. An organization owner or admin turns on **Settings > Agent Access**.
   3. The person behind the credential has the role the change needs, as in the dashboard. A `readonly` member can still acknowledge and resolve pages, but not make the other writes.
-- Agent credentials only reach the routes the CLI and MCP use. Account, member, token and settings routes refuse them, as do creating rules, channels, monitors, schedules and status pages, and every delete.
+- Agent credentials only reach the routes the CLI and MCP use. They can configure alert channels/rules, teams, schedules, overrides, escalation policies, their own contact methods and personal notification chains. Organization member listing is available to admins for resolving responder IDs. Account identity, member mutations, tokens and organization settings still refuse them, as do creating monitors or status pages and starting SDK captures. Each permitted write retains the dashboard role checks and requires Agent Access.
 - Every agent write, accepted or refused by the switch, is in the agent activity log for 90 days.
 
-The writes agents can make are archiving and unarchiving issues, acknowledging and resolving pages, enabling, disabling and snoozing alert rules, running a monitor, creating and editing post-mortems, and marking an endpoint slow. The `traceway-write` skill covers how to make them safely.
+The writes agents can make are archiving and unarchiving issues, acknowledging and resolving pages, enabling, disabling and snoozing alert rules, running a monitor, creating and editing post-mortems, marking an endpoint slow, and creating, replacing, reordering and deleting a browser project's remote SDK config rules. Those rules can stream breadcrumbs for every visitor, turn on full-session replay and switch input masking off (`maskAllInputs: false`), within the app's `init()` ceilings and the plan, so an admin who turns on Agent Access allows that too. The `traceway-write` skill covers how to make these writes safely.
 
 | Task | CLI | MCP tool |
 |---|---|---|

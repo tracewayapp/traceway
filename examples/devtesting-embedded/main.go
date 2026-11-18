@@ -28,7 +28,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 
-	tracewaybackend "github.com/tracewayapp/traceway/backend"
+	tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
 )
 
 //go:embed index.html
@@ -47,6 +47,7 @@ const (
 	appPort            = 8080
 	backendToken       = "backend-dev-token"
 	frontendToken      = "frontend-dev-token"
+	shopToken          = "shop-dev-token"
 	monitoringToken    = "monitoring-dev-token"
 	flutterToken       = "flutter-dev-token"
 	flutterUploadToken = "flutter-upload-token"
@@ -139,9 +140,13 @@ func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, bo
 
 func main() {
 	// ORCAROUTER_API_KEY / ORCAROUTER_MODEL (or CHEAPER_INFERENCE_API_KEY /
-	// CHEAPER_INFERENCE_MODEL, or OPENROUTER_API_KEY / OPENROUTER_MODEL) for the
-	// AI chat live in .env.
+	// CHEAPER_INFERENCE_MODEL, UBERLLM_API_KEY / UBERLLM_MODEL, or
+	// OPENROUTER_API_KEY / OPENROUTER_MODEL) for the AI chat live in .env.
 	_ = godotenv.Load()
+
+	if err := os.MkdirAll("storage", 0o755); err != nil {
+		panic(fmt.Errorf("create storage directory: %w", err))
+	}
 
 	go tracewaybackend.Run(
 		tracewaybackend.WithSQLitePath("./storage/traceway.db"),
@@ -149,7 +154,9 @@ func main() {
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
 		tracewaybackend.WithDefaultProject("Backend API", "opentelemetry", backendToken),
 		tracewaybackend.WithDefaultProject("jQuery Frontend", "jquery", frontendToken),
-		tracewaybackend.WithDefaultProject("Traceway Monitoring", "gin", monitoringToken),
+		// testing/shop's React storefront, when it is pointed at this instance (see README).
+		tracewaybackend.WithDefaultProject("Shoply Storefront", "react", shopToken),
+		tracewaybackend.WithDefaultProject("Traceway Monitoring", "opentelemetry", monitoringToken),
 		tracewaybackend.WithDefaultProject("Flutter App", "flutter", flutterToken),
 		tracewaybackend.WithDefaultProjectSourceMapToken("Flutter App", flutterUploadToken),
 		tracewaybackend.WithDefaultProject("iOS App", "ios", iosToken),
@@ -397,9 +404,9 @@ func main() {
 	fmt.Printf("  AI chat:          http://localhost:%d/chat\n", appPort)
 	fmt.Println("  Dashboard:        http://localhost:8082")
 	fmt.Println("  Login:            admin@localhost.com / admin")
-	if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("CHEAPER_INFERENCE_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
+	if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("CHEAPER_INFERENCE_API_KEY") == "" && os.Getenv("UBERLLM_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
 		fmt.Println()
-		fmt.Println("  WARNING: ORCAROUTER_API_KEY / CHEAPER_INFERENCE_API_KEY / OPENROUTER_API_KEY is not set (.env) — /chat will not work")
+		fmt.Println("  WARNING: ORCAROUTER_API_KEY / CHEAPER_INFERENCE_API_KEY / UBERLLM_API_KEY / OPENROUTER_API_KEY is not set (.env) — /chat will not work")
 	}
 	fmt.Println()
 	fmt.Println("  OTel logs test endpoints (hit with curl or browser):")

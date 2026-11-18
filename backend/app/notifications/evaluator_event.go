@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/hooks"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
@@ -57,18 +57,18 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 			}
 		}
 
-		details := getExceptionDetails(ctx, event.ProjectId, hash)
+		details := exceptionDetails(ctx, event, hash)
 
 		if shouldIgnore(details.ErrorType, cfg.IgnorePatterns) {
 			continue
 		}
 
-		projectName := getProjectName(rule.ProjectId)
+		projectName := getProjectName(ctx, rule.ProjectId)
 		msg := buildNewErrorMessage(details, projectName)
 		// Record before dispatch: a persistently failing dispatch retries once
 		// per cooldown window, never on every ingest event.
 		dedup.record(dedupKey)
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
@@ -93,50 +93,25 @@ func evaluateErrorRegression(ctx context.Context, rule *models.NotificationRuleW
 			continue
 		}
 
-		details := getExceptionDetails(ctx, event.ProjectId, hash)
-		projectName := getProjectName(rule.ProjectId)
+		details := exceptionDetails(ctx, event, hash)
+		projectName := getProjectName(ctx, rule.ProjectId)
 		msg := buildErrorRegressionMessage(details, projectName)
 		// Record before dispatch: a persistently failing dispatch retries once
 		// per cooldown window, never on every ingest event.
 		dedup.record(dedupKey)
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
 func getExceptionDetails(ctx context.Context, projectId uuid.UUID, hash string) ExceptionDetails {
-	var id uuid.UUID
-	var stackTrace, traceId, spanId, traceType, appVersion, serverName, attributesJSON string
-	var recordedAt time.Time
-
+	exception := models.ExceptionStackTrace{ProjectId: projectId, ExceptionHash: hash}
+	var attributesJSON string
 	err := chdb.Conn.QueryRow(ctx,
-		"SELECT id, trace_id, span_id, trace_type, stack_trace, attributes, app_version, server_name, recorded_at FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
-		projectId, hash).Scan(&id, &traceId, &spanId, &traceType, &stackTrace, &attributesJSON, &appVersion, &serverName, &recordedAt)
-
-	details := ExceptionDetails{
-		Hash: hash,
-	}
-
+		"SELECT id, trace_id, span_id, stack_trace, attributes, app_version, server_name, recorded_at FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
+		projectId, hash).Scan(&exception.Id, &exception.TraceId, &exception.SpanId, &exception.StackTrace, &attributesJSON, &exception.AppVersion, &exception.ServerName, &exception.RecordedAt)
 	if err != nil {
-		details.ErrorType = "Unknown Error"
-		return details
+		return unknownException(hash, err)
 	}
-
-	details.Id = id.String()
-	details.StackTrace = stackTrace
-	details.AppVersion = appVersion
-	details.ServerName = serverName
-	details.RecordedAt = recordedAt
-	details.TraceType, details.TraceName = resolveExceptionOwner(ctx, models.ExceptionStackTrace{
-		Id: id, ProjectId: projectId, TraceId: traceId, SpanId: spanId, RecordedAt: recordedAt,
-	})
-
-	if attributesJSON != "" && attributesJSON != "{}" {
-		attrs := make(map[string]string)
-		if jsonErr := json.Unmarshal([]byte(attributesJSON), &attrs); jsonErr == nil {
-			details.Attributes = attrs
-		}
-	}
-
-	details.ErrorType = extractErrorType(stackTrace)
-	return details
+	exception.Attributes = parseStoredAttributes(attributesJSON)
+	return describeException(ctx, exception)
 }

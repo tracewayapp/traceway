@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 func TestLearnTopicsCoverEveryChunk(t *testing.T) {

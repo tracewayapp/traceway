@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
 )
 
 func main() {

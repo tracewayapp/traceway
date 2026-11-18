@@ -3,7 +3,7 @@ package shared
 import (
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 const SessionIdleTimeout = 15 * time.Minute

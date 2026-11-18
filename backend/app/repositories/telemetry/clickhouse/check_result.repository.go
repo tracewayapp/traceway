@@ -6,18 +6,18 @@ import (
 	"context"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type checkResultRepository struct{}
 
 func (r *checkResultRepository) Insert(ctx context.Context, result shared.CheckResult) error {
 	batch, err := chdb.Conn.PrepareBatch(
-		chdb.BatchCtx(),
+		chdb.BatchCtx(ctx),
 		"INSERT INTO check_results (project_id, check_id, run_id, check_type, recorded_at, executed_at, status, latency_ms, status_code, error_message, executed_by, screenshot_key, output_key, tls_days_remaining)",
 	)
 	if err != nil {

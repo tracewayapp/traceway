@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 )
 
 func TestRegressionTaskFailuresKeepTraceIdentity(t *testing.T) {

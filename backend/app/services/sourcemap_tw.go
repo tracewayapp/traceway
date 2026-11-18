@@ -9,15 +9,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
+// The queue holds keys, not file contents, so its depth costs nothing: what
+// bounds the work is twWorkers. It has to fit whole uploads, since one build
+// of a code-split app is a few hundred jobs (a job per bundle plus one per
+// debug id alias) and they are all enqueued at once.
 const (
 	twWorkers    = 2
-	twQueueDepth = 64
+	twQueueDepth = 2048
 )
 
 type twJob struct {
@@ -31,9 +35,34 @@ var (
 	twPendingMu   sync.Mutex
 	twPending     = map[twJob]struct{}{}
 	twRunning     atomic.Int32
-	twDroppedAt   time.Time
+	twGenerating  atomic.Int32
+	twDropped     atomic.Uint64
 	twRun         = warmTWArtifact
+
+	// Guarded by twPendingMu.
+	twDropReportedAt time.Time
 )
+
+const twDropReportInterval = time.Minute
+
+// SourceMapWarmupBacklog is the number of warm-ups not finished yet: uploads
+// still being enqueued, queued jobs and running jobs.
+func SourceMapWarmupBacklog() int {
+	twPendingMu.Lock()
+	queued := len(twPending)
+	twPendingMu.Unlock()
+	return int(twGenerating.Load()) + queued + int(twRunning.Load())
+}
+
+func GenerateTWArtifactsAsync(ctx context.Context, projectId uuid.UUID, fileNames []string) {
+	ctx = context.WithoutCancel(ctx)
+	twGenerating.Add(1)
+	go func() {
+		defer twGenerating.Add(-1)
+		defer traceway.Recover()
+		GenerateTWArtifacts(ctx, projectId, fileNames)
+	}()
+}
 
 func GenerateTWArtifacts(ctx context.Context, projectId uuid.UUID, fileNames []string) {
 	ctx = context.WithoutCancel(ctx)
@@ -67,15 +96,33 @@ func enqueueTWWarmup(job twJob) bool {
 		twPending[job] = struct{}{}
 		return true
 	default:
+		twDropped.Add(1)
 		reportTWDrop(job)
 		return false
 	}
+}
+
+func reportTWDrop(job twJob) {
+	now := time.Now()
+	if now.Sub(twDropReportedAt) < twDropReportInterval {
+		return
+	}
+	twDropReportedAt = now
+	traceway.CaptureException(errors.New(twDropMessage(job)))
+}
+
+// No file name in the message: it is hashed into the issue, and a name per
+// drop would open a new issue (and a new-error notification) every time.
+func twDropMessage(job twJob) string {
+	return fmt.Sprintf("tw generation: warm-up queue full (%d jobs), dropped warm-ups of project %s; the artifacts will be built on first lookup", twQueueDepth, job.projectId)
 }
 
 func startTWWorkers() {
 	for i := 0; i < twWorkers; i++ {
 		go func() {
 			for job := range twQueue {
+				// Counted as running before it leaves twPending, so
+				// SourceMapWarmupBacklog never reads zero in between.
 				twRunning.Add(1)
 				twPendingMu.Lock()
 				delete(twPending, job)
@@ -100,13 +147,4 @@ func warmTWArtifact(job twJob) {
 		traceway.CaptureException(fmt.Errorf("tw generation: failed to warm resolver (key=%s): %w", mapKey, err))
 	}
 	done()
-}
-
-func reportTWDrop(job twJob) {
-	now := time.Now()
-	if now.Sub(twDroppedAt) < time.Minute {
-		return
-	}
-	twDroppedAt = now
-	traceway.CaptureException(fmt.Errorf("tw generation: warm-up queue full (%d jobs), dropped %s/%s; the artifact will be built on first lookup", twQueueDepth, job.projectId, job.base))
 }

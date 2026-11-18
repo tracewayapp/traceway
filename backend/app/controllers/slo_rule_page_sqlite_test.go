@@ -3,15 +3,18 @@
 package controllers
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 // seedEscalationRule creates a rule on an escalation channel with one open page
@@ -115,4 +118,30 @@ func TestResolveRulePagesClosesTheSeriesPages(t *testing.T) {
 	if len(firing) != 0 {
 		t.Fatalf("the open alerts must be forgotten: %+v", firing)
 	}
+}
+
+func TestUpgradeRecoversExistingMetricPages(t *testing.T) {
+	const short = "latency{site=west}"
+	long := "latency{site=" + strings.Repeat("x", 320) + "}"
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(long)))[:32]
+	tokens := []string{short, digest, "latency:overflow", "latency{site=closed}"}
+	rule, pages := seedEscalationRule(t, "metric_threshold", `{"metricName":"latency","groupBy":["site"]}`, tokens, func(*sql.Tx, *models.NotificationRule) error { return nil })
+	if _, err := db.DB.Exec("UPDATE pages SET body = ?, status = 'acknowledged' WHERE id = ?", "The metric "+long+" has a max of 9.00 over the last 5 minutes which violates the threshold gt 8.00.", pages[1]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB.Exec("UPDATE pages SET status = 'resolved' WHERE id = ?", pages[3]); err != nil {
+		t.Fatal(err)
+	}
+	migration, err := os.ReadFile("../migrations/sqlite/0094_seed_grouped_metric_pages.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB.Exec(string(migration)); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.DB.QueryRow("SELECT COUNT(*) FROM notification_rule_firing WHERE rule_id = ?", rule.Id).Scan(&count); err != nil || count != 3 {
+		t.Fatalf("seeded %d open series, err=%v", count, err)
+	}
+	resolveRulePagesAndCheck(t, rule, pages[:3])
 }

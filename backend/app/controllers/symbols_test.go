@@ -11,9 +11,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

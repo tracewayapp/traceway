@@ -6,13 +6,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
+
+type EvalResult struct {
+	Fired      bool
+	Recovered  bool
+	Message    Message
+	Messages   []Message
+	Recoveries []Message
+	// Grouped metric deliveries commit with their firing state.
+	seriesCommitted bool
+}
 
 func StartEvaluator(ctx context.Context) {
 	config.Logln("Starting notification evaluator")
@@ -29,7 +39,7 @@ func pollInterval() time.Duration {
 func seedCooldowns(ctx context.Context) {
 	entries, err := telemetry.FiredNotificationRepository.FindLastFiredPerRule(ctx)
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to seed notification cooldowns: %w", err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to seed notification cooldowns: %w", err))
 	} else {
 		cooldowns.seed(entries)
 	}
@@ -37,11 +47,11 @@ func seedCooldowns(ctx context.Context) {
 	// Backstop: fired_notifications rows only exist once an outcome is
 	// terminal, so a crash between enqueue and delivery would otherwise let
 	// the rule re-fire immediately at boot while its outbox row still exists.
-	enqueued, err := db.ExecuteTransaction(func(tx *sql.Tx) (map[int]time.Time, error) {
+	enqueued, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (map[int]time.Time, error) {
 		return transactional.OutboxRepository.LastEnqueuedPerRule(tx)
 	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to seed notification cooldowns from outbox: %w", err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to seed notification cooldowns from outbox: %w", err))
 		return
 	}
 	cooldowns.seed(enqueued)
@@ -58,17 +68,21 @@ func startPolledLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			evaluatePolledRules(ctx)
+			traceway.RunTask(ctx, "notifications.evaluate", evaluatePolledRules)
 		}
 	}
 }
 
 func evaluatePolledRules(ctx context.Context) {
-	rules, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
+	rules, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
 		return transactional.NotificationRuleRepository.FindEnabledPolledRules(tx)
 	})
 	if err != nil {
-		traceway.CaptureException(fmt.Errorf("failed to load polled notification rules: %w", err))
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("failed to load polled notification rules: %w", err))
+		return
+	}
+	if len(rules) == 0 {
+		traceway.SkipTask(ctx)
 		return
 	}
 
@@ -102,29 +116,24 @@ func evaluatePolledRules(ctx context.Context) {
 		}
 		result, err := evaluator(ctx, nr, rule.ProjectId)
 		if err != nil {
-			traceway.CaptureException(fmt.Errorf("notification evaluator error (rule=%d, type=%s): %w", rule.Id, rule.RuleType, err))
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("notification evaluator error (rule=%d, type=%s): %w", rule.Id, rule.RuleType, err))
 			continue
 		}
 
-		if result == nil {
+		if result == nil || result.seriesCommitted {
 			continue
 		}
 		if result.Recovered {
-			dispatchRecovery(rule, result.Message)
+			dispatchRecovery(ctx, rule, result.Message)
 			continue
-		}
-		for _, msg := range result.Recoveries {
-			if !dispatchRecovery(rule, msg) {
-				reopenFiring(rule.Id, msg.DedupToken)
-			}
 		}
 		if result.Fired {
 			if len(result.Messages) > 0 {
 				for _, msg := range result.Messages {
-					dispatch(rule, msg)
+					dispatch(ctx, rule, msg)
 				}
-			} else if !dispatch(rule, result.Message) && statefulRuleTypes[rule.RuleType] {
-				rollBackRuleState(rule.Id)
+			} else if !dispatch(ctx, rule, result.Message) && statefulRuleTypes[rule.RuleType] {
+				rollBackRuleState(ctx, rule.Id)
 			}
 		}
 	}

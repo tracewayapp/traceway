@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/appdir"
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // metricAggregations is the canonical list of aggregations the server accepts.
@@ -21,7 +21,7 @@ func newMetricsCmd() *cobra.Command {
 		Use:   "metrics",
 		Short: "Query metric time series",
 	}
-	cmd.AddCommand(newMetricsQueryCmd())
+	cmd.AddCommand(newMetricsQueryCmd(), newMetricsDiscoverCmd())
 	return cmd
 }
 
@@ -33,7 +33,7 @@ func newMetricsQueryCmd() *cobra.Command {
 	}
 	addTimeRangeFlags(cmd)
 	cmd.Flags().String("name", "", "Metric name (required)")
-	cmd.Flags().String("aggregation", "avg", "Aggregation: avg, sum, count, min, max, p50, p95, p99")
+	cmd.Flags().String("aggregation", "avg", "Aggregation: avg, sum, count, min, max, rate, last, p50, p95, p99")
 	cmd.Flags().StringSlice("tag", nil, "Tag filter as key=value (repeatable)")
 	cmd.Flags().String("group-by", "", "Tag to group series by")
 	cmd.Flags().Int("interval-minutes", 0, "Time bucket size in minutes (0 = auto)")

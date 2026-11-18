@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func sentSlackColor(t *testing.T, msg Message) string {
@@ -57,5 +57,40 @@ func TestSlackColor(t *testing.T) {
 		if got := sentSlackColor(t, tc.msg); got != tc.want {
 			t.Errorf("%s: color = %s, want %s", tc.name, got, tc.want)
 		}
+	}
+}
+
+func sentSlackTitleLink(t *testing.T, msg Message) (string, bool) {
+	t.Helper()
+	links := make(chan map[string]interface{}, 1)
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Attachments []map[string]interface{} `json:"attachments"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		links <- payload.Attachments[0]
+	}))
+	defer receiver.Close()
+
+	if err := (&SlackAdapter{WebhookURL: receiver.URL}).Send(context.Background(), msg); err != nil {
+		t.Fatalf("send to Slack: %v", err)
+	}
+	link, ok := (<-links)["title_link"].(string)
+	return link, ok
+}
+
+// Issue #390: only the exception body carried a link, so every other alert
+// reached Slack with no way back to the dashboard.
+func TestSlackTitleLink(t *testing.T) {
+	down := buildCheckDownMessage(&models.SyntheticCheck{Id: 1, Name: "local tcp"}, "connection refused", "api")
+
+	absolute := down
+	absolute.URL = "https://traceway.example.com/monitors/1"
+	if link, _ := sentSlackTitleLink(t, absolute); link != absolute.URL {
+		t.Errorf("title_link = %q, want %q", link, absolute.URL)
+	}
+
+	if link, ok := sentSlackTitleLink(t, down); ok {
+		t.Errorf("title_link = %q for the relative %q, want it unset", link, down.URL)
 	}
 }

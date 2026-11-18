@@ -2,12 +2,13 @@
 
 package transactional
 
-import sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/transactional/sqlite"
+import sqliterepo "github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/sqlite"
 
 var (
 	AgentWriteEventRepository        = sqliterepo.AgentWriteEventRepository
 	AuthorizationCodeRepository      = sqliterepo.AuthorizationCodeRepository
 	CheckIncidentRepository          = sqliterepo.CheckIncidentRepository
+	ClientMetricGuardRepository      = sqliterepo.ClientMetricGuardRepository
 	CheckRunRepository               = sqliterepo.CheckRunRepository
 	DashboardRepository              = sqliterepo.DashboardRepository
 	DashboardTemplateRepository      = sqliterepo.DashboardTemplateRepository
@@ -37,6 +38,7 @@ var (
 	SetupTokenRepository             = sqliterepo.SetupTokenRepository
 	SLORepository                    = sqliterepo.SLORepository
 	StatusPageRepository             = sqliterepo.StatusPageRepository
+	SdkConfigRepository              = sqliterepo.SdkConfigRepository
 	SyntheticCheckRepository         = sqliterepo.SyntheticCheckRepository
 	SyntheticRunnerRepository        = sqliterepo.SyntheticRunnerRepository
 	TeamRepository                   = sqliterepo.TeamRepository

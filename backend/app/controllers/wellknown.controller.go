@@ -5,9 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/services/authserver"
-	"github.com/tracewayapp/traceway/backend/app/services/mcpmount"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/authserver"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/mcpmount"
 )
 
 type wellKnownController struct{}

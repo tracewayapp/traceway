@@ -11,8 +11,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tracewayapp/traceway/cli/pkg/client"
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 // connect stands up the MCP server over in-memory transports against the
@@ -94,6 +94,12 @@ func TestListTools_surfaceAndAnnotations(t *testing.T) {
 		"get_trace": true, "list_pages": true, "get_page": true,
 		"list_notification_rules": true, "list_checks": true, "get_check": true,
 		"list_post_mortems": true, "get_post_mortem": true,
+		"list_sdk_config_rules": true, "preview_sdk_config": true,
+		"list_dashboards": true, "dashboard_library": true, "export_dashboard": true, "discover_metrics": true,
+		"list_notification_channels": true, "list_teams": true, "list_oncall_schedules": true,
+		"get_oncall_schedule": true, "get_oncall_timeline": true, "list_escalation_policies": true,
+		"list_contact_methods": true, "get_user_notification_rules": true, "list_notification_history": true,
+		"get_oncall_now": true, "get_current_oncall": true, "list_organization_members": true,
 	}
 	assertToolSurface(t, res.Tools, wantReadOnly)
 }
@@ -112,11 +118,27 @@ func TestListTools_writeServerAddsMutatingTools(t *testing.T) {
 		"get_trace": true, "list_pages": true, "get_page": true,
 		"list_notification_rules": true, "list_checks": true, "get_check": true,
 		"list_post_mortems": true, "get_post_mortem": true,
-		"archive_exceptions": false, "unarchive_exceptions": false,
+		"list_sdk_config_rules": true, "preview_sdk_config": true,
+		"list_dashboards": true, "dashboard_library": true, "export_dashboard": true, "discover_metrics": true,
+		"list_notification_channels": true, "list_teams": true, "list_oncall_schedules": true,
+		"get_oncall_schedule": true, "get_oncall_timeline": true, "list_escalation_policies": true,
+		"list_contact_methods": true, "get_user_notification_rules": true, "list_notification_history": true,
+		"get_oncall_now": true, "get_current_oncall": true, "list_organization_members": true,
+
+		"import_dashboards":           false,
+		"create_notification_channel": false, "update_notification_channel": false, "delete_notification_channel": false, "test_notification_channel": false,
+		"create_notification_rule": false, "update_notification_rule": false, "delete_notification_rule": false,
+		"create_team": false, "update_team": false, "delete_team": false, "set_team_members": false, "set_team_projects": false,
+		"create_oncall_schedule": false, "update_oncall_schedule": false, "delete_oncall_schedule": false, "create_oncall_override": false, "delete_oncall_override": false,
+		"create_escalation_policy": false, "update_escalation_policy": false, "delete_escalation_policy": false,
+		"create_contact_method": false, "update_contact_method": false, "delete_contact_method": false, "test_contact_method": false, "verify_contact_method": false, "resend_contact_method_code": false,
+		"set_user_notification_rules": false,
+		"archive_exceptions":          false, "unarchive_exceptions": false,
 		"acknowledge_page": false, "resolve_page": false,
 		"set_notification_rule_enabled": false, "snooze_notification_rule": false,
 		"run_check": false, "create_post_mortem": false, "update_post_mortem": false,
-		"set_slow_endpoint": false,
+		"set_slow_endpoint":      false,
+		"create_sdk_config_rule": false, "update_sdk_config_rule": false, "delete_sdk_config_rule": false, "reorder_sdk_config_rules": false,
 	}
 	assertToolSurface(t, res.Tools, want)
 	if init := cs.InitializeResult(); init == nil || !strings.Contains(init.Instructions, "Write access") {

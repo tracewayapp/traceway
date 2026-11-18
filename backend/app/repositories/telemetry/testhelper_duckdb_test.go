@@ -15,14 +15,16 @@ import (
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	_ "modernc.org/sqlite"
 )
 
 // setupTestDB mirrors the SQLite test harness but pairs an in-memory SQLite main
 // DB with an in-memory DuckDB telemetry DB, so the shared telemetry test suite
 // exercises the DuckDB repository implementations.
+const telemetryBackendCompacts = true
+
 func setupTestDB(t *testing.T) {
 	t.Helper()
 

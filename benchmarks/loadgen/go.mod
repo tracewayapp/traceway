@@ -2,7 +2,7 @@ module bench-loadgen
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	go.opentelemetry.io/proto/otlp v1.5.0

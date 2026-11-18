@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 )
 
 // SLOs are split into shardCount shards by id. On Postgres every backend
@@ -20,6 +20,15 @@ var (
 	ownedShards    atomic.Int64
 	knownInstances atomic.Int64
 )
+
+// Instances is the number of live backend instances, as the shard leases see them.
+// It is 1 until the first tick and on SQLite.
+func Instances() int {
+	if n := int(knownInstances.Load()); n > 1 {
+		return n
+	}
+	return 1
+}
 
 type shardSet struct {
 	all   bool

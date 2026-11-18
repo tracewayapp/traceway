@@ -67,7 +67,7 @@ func TestSendBatchRecoversFromStalePrepareEOF(t *testing.T) {
 	Conn = fc
 
 	fills := 0
-	err := SendBatch("INSERT INTO x", func(b driver.Batch) error {
+	err := SendBatch(context.Background(), "INSERT INTO x", func(b driver.Batch) error {
 		fills++
 		return b.Append(1)
 	})
@@ -90,7 +90,7 @@ func TestSendBatchDoesNotRetrySendFailure(t *testing.T) {
 	fc := &fakeConn{prepareErrs: []error{nil}, sendErr: sendEOF}
 	Conn = fc
 
-	err := SendBatch("INSERT INTO x", func(b driver.Batch) error { return nil })
+	err := SendBatch(context.Background(), "INSERT INTO x", func(b driver.Batch) error { return nil })
 	if !errors.Is(err, sendEOF) {
 		t.Fatalf("expected the send error returned without retry, got %v", err)
 	}
@@ -107,7 +107,7 @@ func TestSendBatchDoesNotRetryServerException(t *testing.T) {
 	fc := &fakeConn{prepareErrs: []error{boom, nil}}
 	Conn = fc
 
-	err := SendBatch("INSERT INTO x", func(b driver.Batch) error { return nil })
+	err := SendBatch(context.Background(), "INSERT INTO x", func(b driver.Batch) error { return nil })
 	if !errors.Is(err, boom) {
 		t.Fatalf("a server exception must not be retried even if its message contains EOF, got %v", err)
 	}
@@ -124,7 +124,7 @@ func TestSendBatchExhaustsPrepareAttempts(t *testing.T) {
 	fc := &fakeConn{prepareErrs: []error{eof, eof, eof, nil}}
 	Conn = fc
 
-	err := SendBatch("INSERT INTO x", func(b driver.Batch) error { return nil })
+	err := SendBatch(context.Background(), "INSERT INTO x", func(b driver.Batch) error { return nil })
 	if err == nil {
 		t.Fatal("expected error after exhausting attempts")
 	}
@@ -141,7 +141,7 @@ func TestSendBatchAbortsOnFillError(t *testing.T) {
 	Conn = fc
 
 	fillErr := errors.New("bad row")
-	err := SendBatch("INSERT INTO x", func(b driver.Batch) error { return fillErr })
+	err := SendBatch(context.Background(), "INSERT INTO x", func(b driver.Batch) error { return fillErr })
 	if !errors.Is(err, fillErr) {
 		t.Fatalf("expected fill error back, got %v", err)
 	}

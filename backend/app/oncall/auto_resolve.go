@@ -3,10 +3,10 @@ package oncall
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
@@ -16,7 +16,7 @@ import (
 // synthetic check recovering), cancelling its queued deliveries. Runs in the
 // caller's transaction. Returns whether a page was resolved.
 func AutoResolveByDedupKeyTx(tx *sql.Tx, ruleId int, dedupToken string, now time.Time) (bool, error) {
-	key := pageDedupKey(fmt.Sprintf("%d", ruleId), dedupToken)
+	key := models.RulePageDedupKey(ruleId, dedupToken)
 	page, err := transactional.PageRepository.FindUnresolvedByDedupKey(tx, key)
 	if err != nil {
 		return false, err

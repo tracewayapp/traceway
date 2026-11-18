@@ -16,13 +16,6 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
-type EvalResult struct {
-	Fired     bool
-	Recovered bool
-	Message   Message
-	Messages  []Message
-}
-
 type RuleEvaluator func(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error)
 
 var polledEvaluators = map[string]RuleEvaluator{
@@ -229,10 +222,10 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 	}
 
 	now := time.Now().UTC()
-	if series, isDistribution, err := histogramMetricSeries(ctx, cfg, projectId, now); err != nil {
+	if scan, err := histogramMetricSeries(ctx, cfg, projectId, now); err != nil {
 		return nil, err
-	} else if isDistribution {
-		return metricThresholdResult(ctx, rule, cfg, series, projectId), nil
+	} else if scan != nil {
+		return metricThresholdResult(ctx, rule, cfg, scan.series, projectId, scan.truncated)
 	}
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
@@ -280,7 +273,7 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 		return nil, err
 	}
 
-	return metricThresholdResult(ctx, rule, cfg, series, projectId), nil
+	return metricThresholdResult(ctx, rule, cfg, series, projectId, len(series) >= maxMetricRuleSeriesScanned)
 }
 
 // --- No Data ---

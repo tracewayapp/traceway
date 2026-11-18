@@ -38,11 +38,11 @@ func histogramRuleWindow(now time.Time, lookbackMinutes int) (time.Time, time.Ti
 
 // mergedHistograms reads a distribution metric over a window and merges every time
 // bucket of a group into one histogram.
-func mergedHistograms(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, tags map[string]string, groupBy []string) (map[string]*shared.Histogram, error) {
+func mergedHistograms(ctx context.Context, projectId uuid.UUID, name string, from, to time.Time, tags map[string]string, groupBy []string) (map[string]*shared.Histogram, bool, error) {
 	minutes := int(to.Sub(from).Minutes()) + 1
-	series, _, err := telemetry.MetricHistogramRepository.Query(ctx, projectId, name, from, to, minutes, tags, groupBy, maxMetricRuleSeriesScanned)
+	series, truncated, err := telemetry.MetricHistogramRepository.Query(ctx, projectId, name, from, to, minutes, tags, groupBy, maxMetricRuleSeriesScanned)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	merged := make(map[string]*shared.Histogram, len(series))
 	for key, points := range series {
@@ -54,7 +54,7 @@ func mergedHistograms(ctx context.Context, projectId uuid.UUID, name string, fro
 			merged[key] = h
 		}
 	}
-	return merged, nil
+	return merged, truncated, nil
 }
 
 func isDistributionRuleMetric(name string) bool {
@@ -98,23 +98,28 @@ func histogramRuleValue(h *shared.Histogram, cfg metricThresholdConfig) (float64
 	return h.Aggregate(cfg.Aggregation, 0), true
 }
 
+type histogramRuleScan struct {
+	series    []metricSeries
+	truncated bool
+}
+
 // histogramMetricSeries evaluates a metric_threshold rule against the histogram
-// table. It reports false when the metric is not stored as a distribution, in which
+// table. It returns a nil scan when the metric is not stored as a distribution, in which
 // case the caller reads metric points as before.
-func histogramMetricSeries(ctx context.Context, cfg metricThresholdConfig, projectId uuid.UUID, now time.Time) ([]metricSeries, bool, error) {
+func histogramMetricSeries(ctx context.Context, cfg metricThresholdConfig, projectId uuid.UUID, now time.Time) (*histogramRuleScan, error) {
 	if cfg.Aggregation == "last" {
-		return nil, false, nil
+		return nil, nil
 	}
 	from, to := histogramRuleWindow(now, cfg.LookbackMinutes)
-	histograms, err := mergedHistograms(ctx, projectId, cfg.MetricName, from, to, cfg.Tags, cfg.GroupBy)
+	histograms, truncated, err := mergedHistograms(ctx, projectId, cfg.MetricName, from, to, cfg.Tags, cfg.GroupBy)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	// No rows: a distribution with no traffic, or a point metric. Only the first is
 	// ours, and it has nothing to evaluate. A percentile of a point metric is computed
 	// from its points; good_ratio exists for distributions only.
-	if len(histograms) == 0 {
-		return nil, cfg.Aggregation == shared.AggregationGoodRatio || isDistributionRuleMetric(cfg.MetricName), nil
+	if len(histograms) == 0 && cfg.Aggregation != shared.AggregationGoodRatio && !isDistributionRuleMetric(cfg.MetricName) {
+		return nil, nil
 	}
 	keys := make([]string, 0, len(histograms))
 	for key := range histograms {
@@ -124,15 +129,12 @@ func histogramMetricSeries(ctx context.Context, cfg metricThresholdConfig, proje
 	series := make([]metricSeries, 0, len(keys))
 	for _, key := range keys {
 		value, ok := histogramRuleValue(histograms[key], cfg)
-		if !ok {
-			continue
-		}
 		if len(cfg.GroupBy) == 0 {
 			key = ""
 		}
-		series = append(series, metricSeries{Key: key, Value: value})
+		series = append(series, metricSeries{Key: key, Value: value, Insufficient: !ok})
 	}
-	return series, true, nil
+	return &histogramRuleScan{series: series, truncated: truncated}, nil
 }
 
 type releaseRegressionConfig struct {

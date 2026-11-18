@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
@@ -18,4 +19,14 @@ var pageOpener PageOpener
 
 func RegisterPageOpener(opener PageOpener) {
 	pageOpener = opener
+}
+
+// Grouped metrics change their firing state and escalation page in one transaction.
+type MetricSeriesPager func(*sql.Tx, json.RawMessage, *models.NotificationRuleWithChannel, Message) (bool, error)
+
+var metricSeriesPager MetricSeriesPager
+var wakeMetricPager func()
+
+func RegisterMetricSeriesPager(pager MetricSeriesPager, wake func()) {
+	metricSeriesPager, wakeMetricPager = pager, wake
 }

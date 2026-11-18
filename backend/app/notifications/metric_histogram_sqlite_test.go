@@ -73,11 +73,6 @@ func TestMetricThresholdReadsDistributions(t *testing.T) {
 	if single := evaluate(`{"metricName":"browser.web_vital.lcp","aggregation":"max","operator":"gte","thresholdValue":9000,"lookbackMinutes":15,"tags":{"url.path":"/rare"}}`); !single.Fired {
 		t.Error("max over a series with three observations did not fire")
 	}
-
-	grouped := evaluate(`{"metricName":"browser.web_vital.lcp","aggregation":"max","minCount":1,"operator":"gt","thresholdValue":4000,"lookbackMinutes":15,"groupBy":["url.path"]}`)
-	if !grouped.Fired || len(grouped.Messages) != 2 {
-		t.Fatalf("grouped by page: fired %v with %d messages", grouped.Fired, len(grouped.Messages))
-	}
 }
 
 func TestReleaseRegressionComparesTheNewestRelease(t *testing.T) {

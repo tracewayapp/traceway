@@ -192,6 +192,7 @@ func Run(opts ...Option) {
 	outbox.RegisterSender(notifications.AdapterSend)
 	outbox.RegisterTerminalHook(notifications.OnOutboxTerminal)
 	notifications.RegisterPageOpener(oncall.OpenPageFromDispatch)
+	notifications.RegisterMetricSeriesPager(oncall.ApplyMetricSeriesPage, oncall.Wake)
 	notifications.RegisterPageResolver(oncall.AutoResolveByDedupKey)
 	synthetics.RegisterNotifier(notifications.OnCheckStateChange)
 	outbox.StartDrain(ctx)

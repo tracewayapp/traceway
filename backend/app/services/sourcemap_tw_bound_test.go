@@ -113,8 +113,12 @@ func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
 
 func TestTWWarmupQueueFitsACodeSplitUpload(t *testing.T) {
 	gate := make(chan struct{})
+	started := make(chan struct{}, twQueueDepth+twWorkers)
 	prev := twRun
-	twRun = func(twJob) { <-gate }
+	twRun = func(twJob) {
+		started <- struct{}{}
+		<-gate
+	}
 	t.Cleanup(func() { twRun = prev })
 	defer func() {
 		close(gate)
@@ -130,6 +134,14 @@ func TestTWWarmupQueueFitsACodeSplitUpload(t *testing.T) {
 	}
 	if dropped := twDropped.Load() - droppedBefore; dropped != 0 {
 		t.Fatalf("%d of %d warm-ups of one upload were dropped", dropped, jobs)
+	}
+	// Wait for the queued-to-running handoff before sampling the backlog.
+	for range twWorkers {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("workers did not start")
+		}
 	}
 	if backlog := SourceMapWarmupBacklog(); backlog != jobs {
 		t.Fatalf("backlog %d, want %d", backlog, jobs)

@@ -82,6 +82,7 @@ Cooldowns differ by kind:
 
 - **Polled rules** have one cooldown per rule. After it fires, it is not evaluated again until the cooldown ends. This cooldown survives restarts.
 - **Ingest and monitor rules** cool down per item: per exception hash, trace name, conversation or monitor. Two different new errors a minute apart both alert. The same error does not alert again within its cooldown. This memory is in process only, so a restart can let the same item alert once more.
+- **Monitor Down** clears the affected monitor's cooldown when it recovers, including during snooze. Each new outage can alert immediately; use the monitor's consecutive-failure threshold to reduce flapping alerts.
 - The cooldown cannot be 0. Empty or 0 becomes 15 minutes.
 - **Changing** a rule's type, channel or condition resets its cooldown and its per-item memory, so the new settings apply at once. Renaming it, changing its cooldown or severity, or toggling it does not.
 
@@ -91,7 +92,7 @@ Delivery goes through a durable queue. Failed sends are retried after 1, 5, 15 a
 
 - **Disable** turns a rule off until someone turns it back on. The dashboard asks for confirmation.
 - **Snooze** mutes a rule for a set time and it comes back on its own. The dashboard offers 30 minutes and 1, 4, 8 or 24 hours. Clearing the snooze turns it back on early.
-- A snoozed or disabled rule is **not evaluated at all**, so nothing is queued while it is muted and it does not catch up afterwards.
+- A disabled rule is not evaluated. Snooze mutes new notifications, but a Monitor Down rule still resolves its existing on-call page when the monitor recovers. Neither queues new alerts while muted or catches up afterwards.
 
 During a known incident or a deploy, snooze the noisy rule rather than disabling it: a snooze cannot be forgotten in the off position.
 

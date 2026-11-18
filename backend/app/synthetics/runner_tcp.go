@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/netguard"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/netguard"
 )
 
 const maxTcpReadBytes = 64 << 10

@@ -1,44 +1,55 @@
 package controllers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/notifications"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/notifications"
+	"github.com/tracewayapp/traceway/backend/v2/app/oncall"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type notificationRuleController struct{}
 
 var validRuleTypes = map[string]bool{
-	"error_rate_threshold":    true,
-	"endpoint_p95_threshold":  true,
-	"endpoint_p99_threshold":  true,
-	"apdex_drop":              true,
-	"metric_threshold":        true,
-	"no_data":                 true,
-	"error_count_threshold":   true,
-	"task_duration_threshold": true,
-	"task_failure_rate":       true,
-	"throughput_drop":         true,
-	"endpoint_error_rate":     true,
-	"new_error":               true,
-	"error_regression":        true,
-	"impact_score_critical":   true,
-	"impact_score_high":       true,
-	"impact_score_medium":     true,
-	"ai_trace_cost":           true,
-	"ai_conversation_cost":    true,
-	"ai_flagged_content":      true,
-	"check_down":              true,
+	"error_rate_threshold":      true,
+	"endpoint_p95_threshold":    true,
+	"endpoint_p99_threshold":    true,
+	"apdex_drop":                true,
+	"metric_threshold":          true,
+	"metric_release_regression": true,
+	"no_data":                   true,
+	"error_count_threshold":     true,
+	"task_duration_threshold":   true,
+	"task_failure_rate":         true,
+	"throughput_drop":           true,
+	"endpoint_error_rate":       true,
+	"new_error":                 true,
+	"error_regression":          true,
+	"impact_score_critical":     true,
+	"impact_score_high":         true,
+	"impact_score_medium":       true,
+	"ai_trace_cost":             true,
+	"ai_conversation_cost":      true,
+	"ai_flagged_content":        true,
+	"check_down":                true,
+	"slo_burn_rate":             true,
+	"slo_budget_consumed":       true,
 }
 
 func (ctrl *notificationRuleController) List(ctx *gin.Context) {
@@ -119,6 +130,15 @@ func (ctrl *notificationRuleController) Create(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel not found in this project."})
 		return
 	}
+	message, err := validateRuleConfig(tx, projectId, req.RuleType, req.Config)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate the rule: %w", err))
+		return
+	}
+	if message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+		return
+	}
 
 	userId := middleware.GetUserId(ctx)
 	var createdBy *int
@@ -195,7 +215,7 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 
 	tx := db.GetTx(ctx)
 
-	existing, err := transactional.NotificationRuleRepository.FindById(tx, id)
+	existing, err := transactional.NotificationRuleRepository.FindByIdForUpdate(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to find notification rule: %w", err))
 		return
@@ -214,10 +234,27 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Channel not found in this project."})
 		return
 	}
+	message, err := validateRuleConfig(tx, projectId, req.RuleType, req.Config)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate the rule: %w", err))
+		return
+	}
+	if message != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": message})
+		return
+	}
 
 	cooldown := req.CooldownMinutes
 	if cooldown <= 0 {
 		cooldown = 15
+	}
+
+	conditionChanged := existing.RuleType != req.RuleType || existing.ChannelId != req.ChannelId || !sameRuleConfig(existing.Config, req.Config)
+	if conditionChanged {
+		if err := resolveRulePages(tx, existing); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the pages of the edited rule: %w", err))
+			return
+		}
 	}
 
 	existing.ChannelId = req.ChannelId
@@ -232,7 +269,13 @@ func (ctrl *notificationRuleController) Update(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to update notification rule: %w", err))
 		return
 	}
-	notifications.ClearRuleState(id)
+	if conditionChanged {
+		notifications.ClearRuleState(id)
+		if err := transactional.NotificationRuleStateRepository.Delete(tx, id); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to reset notification rule state: %w", err))
+			return
+		}
+	}
 
 	ctx.JSON(http.StatusOK, existing)
 }
@@ -252,7 +295,7 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
-	existing, err := transactional.NotificationRuleRepository.FindById(tx, id)
+	existing, err := transactional.NotificationRuleRepository.FindByIdForUpdate(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete notification rule: %w", err))
 		return
@@ -262,6 +305,10 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 		return
 	}
 
+	if err := resolveRulePages(tx, existing); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the pages of the deleted rule: %w", err))
+		return
+	}
 	if err := transactional.NotificationRuleRepository.Delete(tx, id); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to delete notification rule: %w", err))
 		return
@@ -269,6 +316,10 @@ func (ctrl *notificationRuleController) Delete(ctx *gin.Context) {
 	notifications.ClearRuleState(id)
 
 	ctx.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+type toggleRequest struct {
+	Enabled *bool `json:"enabled"`
 }
 
 func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
@@ -286,7 +337,7 @@ func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
-	existing, err := transactional.NotificationRuleRepository.FindById(tx, id)
+	existing, err := transactional.NotificationRuleRepository.FindByIdForUpdate(tx, id)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to find notification rule: %w", err))
 		return
@@ -296,7 +347,23 @@ func (ctrl *notificationRuleController) Toggle(ctx *gin.Context) {
 		return
 	}
 
+	// An explicit enabled makes the call idempotent (agents set a state);
+	// the dashboard sends an empty body and flips the rule.
+	var req toggleRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		middleware.RejectBindError(ctx, err, "Invalid request body")
+		return
+	}
 	newEnabled := !existing.Enabled
+	if req.Enabled != nil {
+		newEnabled = *req.Enabled
+	}
+	if !newEnabled {
+		if err := resolveRulePages(tx, existing); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve the pages of the disabled rule: %w", err))
+			return
+		}
+	}
 	if err := transactional.NotificationRuleRepository.UpdateEnabled(tx, id, newEnabled); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to toggle notification rule: %w", err))
 		return
@@ -357,3 +424,156 @@ func (ctrl *notificationRuleController) Snooze(ctx *gin.Context) {
 }
 
 var NotificationRuleController = notificationRuleController{}
+
+var metricRuleAggregations = map[string]bool{
+	"": true, "avg": true, "max": true, "min": true, "sum": true, "count": true, "last": true,
+	"p50": true, "p75": true, "p90": true, "p95": true, "p99": true, shared.AggregationGoodRatio: true,
+}
+
+const (
+	maxMetricRuleTagFilters = 20
+	maxMetricRuleGroupBy    = 5
+	maxReleaseRuleGroupBy   = 2
+)
+
+func validateRuleConfig(tx *sql.Tx, projectId uuid.UUID, ruleType string, config json.RawMessage) (string, error) {
+	switch ruleType {
+	case "metric_release_regression":
+		var cfg struct {
+			MetricName       string   `json:"metricName"`
+			Aggregation      string   `json:"aggregation"`
+			ThresholdPercent float64  `json:"thresholdPercent"`
+			GroupBy          []string `json:"groupBy"`
+		}
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return "The rule configuration is not valid JSON.", nil
+		}
+		if strings.TrimSpace(cfg.MetricName) == "" {
+			return "Choose the metric to compare between releases.", nil
+		}
+		if _, percentile := shared.HistogramAggregations[cfg.Aggregation]; cfg.Aggregation != "" && cfg.Aggregation != "avg" && !percentile {
+			return "A release comparison uses a percentile or the average.", nil
+		}
+		if cfg.ThresholdPercent < 0 || cfg.ThresholdPercent > 1000 {
+			return "The allowed regression must be between 0 and 1000 percent.", nil
+		}
+		if len(cfg.GroupBy) > maxReleaseRuleGroupBy {
+			return fmt.Sprintf("A release comparison can be split by at most %d dimensions.", maxReleaseRuleGroupBy), nil
+		}
+		for _, key := range cfg.GroupBy {
+			if strings.TrimSpace(key) == "" || key == "service.version" {
+				return "Split a release comparison by a dimension other than the release.", nil
+			}
+		}
+	case "metric_threshold":
+		var cfg struct {
+			Aggregation string            `json:"aggregation"`
+			Tags        map[string]string `json:"tags"`
+			GroupBy     []string          `json:"groupBy"`
+		}
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return "The rule configuration is not valid JSON.", nil
+		}
+		if !metricRuleAggregations[cfg.Aggregation] {
+			return fmt.Sprintf("Unknown aggregation %q.", cfg.Aggregation), nil
+		}
+		if len(cfg.Tags) > maxMetricRuleTagFilters {
+			return fmt.Sprintf("A metric rule can filter on at most %d tags.", maxMetricRuleTagFilters), nil
+		}
+		for k, v := range cfg.Tags {
+			if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
+				return "Every tag filter needs a key and a value.", nil
+			}
+		}
+		if len(cfg.GroupBy) > maxMetricRuleGroupBy {
+			return fmt.Sprintf("A metric rule can group by at most %d tags.", maxMetricRuleGroupBy), nil
+		}
+		seen := make(map[string]bool, len(cfg.GroupBy))
+		for _, k := range cfg.GroupBy {
+			if strings.TrimSpace(k) == "" {
+				return "Group by tag keys cannot be empty.", nil
+			}
+			if seen[k] {
+				return fmt.Sprintf("The tag %q is listed twice in group by.", k), nil
+			}
+			seen[k] = true
+		}
+	case "slo_burn_rate":
+		var cfg struct {
+			SloId              int     `json:"sloId"`
+			LongWindowMinutes  int     `json:"longWindowMinutes"`
+			ShortWindowMinutes int     `json:"shortWindowMinutes"`
+			BurnRateThreshold  float64 `json:"burnRateThreshold"`
+		}
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return "The rule configuration is not valid JSON.", nil
+		}
+		if cfg.LongWindowMinutes < 5 || cfg.LongWindowMinutes > 10080 {
+			return "Long window must be between 5 minutes and 7 days.", nil
+		}
+		if cfg.ShortWindowMinutes < 1 || cfg.ShortWindowMinutes >= cfg.LongWindowMinutes {
+			return "Short window must be at least 1 minute and shorter than the long window.", nil
+		}
+		if cfg.BurnRateThreshold <= 0 {
+			return "Burn rate threshold must be above 0.", nil
+		}
+		return validateRuleSLO(tx, projectId, cfg.SloId)
+	case "slo_budget_consumed":
+		var cfg struct {
+			SloId           int     `json:"sloId"`
+			ConsumedPercent float64 `json:"consumedPercent"`
+		}
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return "The rule configuration is not valid JSON.", nil
+		}
+		if cfg.ConsumedPercent <= 0 || cfg.ConsumedPercent > 100 {
+			return "Budget consumed must be between 1 and 100 percent.", nil
+		}
+		return validateRuleSLO(tx, projectId, cfg.SloId)
+	}
+	return "", nil
+}
+
+// resolveRulePages resolves the pages a rule's firing state holds open and
+// forgets that state, for a rule that is edited, disabled or deleted.
+func resolveRulePages(tx *sql.Tx, rule *models.NotificationRule) error {
+	now := time.Now().UTC()
+	if sloId := sloRuleTarget(rule.RuleType, rule.Config); sloId != 0 {
+		if _, err := oncall.AutoResolveByDedupKeyTx(tx, rule.Id, notifications.SLODedupToken(sloId), now); err != nil {
+			return err
+		}
+		return transactional.NotificationRuleStateRepository.Delete(tx, rule.Id)
+	}
+	firing, err := transactional.NotificationRuleFiringRepository.FindByRule(tx, rule.Id)
+	if err != nil {
+		return err
+	}
+	for _, f := range firing {
+		if _, err := oncall.AutoResolveByDedupKeyTx(tx, rule.Id, f.Token, now); err != nil {
+			return err
+		}
+	}
+	return transactional.NotificationRuleFiringRepository.DeleteByRule(tx, rule.Id)
+}
+
+func sameRuleConfig(a, b json.RawMessage) bool {
+	var left, right any
+	if json.Unmarshal(a, &left) != nil || json.Unmarshal(b, &right) != nil {
+		return false
+	}
+	return reflect.DeepEqual(left, right)
+}
+
+func validateRuleSLO(tx *sql.Tx, projectId uuid.UUID, sloId int) (string, error) {
+	if sloId < 1 {
+		return "Select an SLO.", nil
+	}
+	entity, err := transactional.SLORepository.FindByIdForProject(tx, sloId, projectId)
+	if err != nil {
+		return "", err
+	}
+	if entity == nil {
+		return "SLO not found in this project.", nil
+	}
+	return "", nil
+}

@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rebuild-search-documents
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: rebuild
+          image: registry.example.com/bookings-api:6.4.1
+          command: ["node", "jobs/rebuild-search-documents.js"]
+          envFrom: [{secretRef: {name: bookings-api}}]

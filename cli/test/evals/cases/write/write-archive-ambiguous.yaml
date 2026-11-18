@@ -1,0 +1,61 @@
+id: write-archive-ambiguous
+suite: write
+title: Archive old checkout errors when one of them is still live
+tags: [issues]
+seed: write/archive-ambiguous
+arms: [cli-write+skill, mcp-write]
+invoke: natural
+distractor: Three issues mention checkout, but the duplicate-payment insert error is a separate bug that is still occurring; an unrelated refunds statement timeout from the same week is stale too and is not a checkout error.
+prompt: |
+  Can you archive the checkout errors in Traceway? They're leftovers from last week's card processor incident and they're cluttering up the issues list.
+budget: {max_turns: 25, max_tool_calls: 15, timeout: 8m}
+user:
+  - match: "(duplicate|payments_cart_id_key|still|live|recent|today|ongoing|occurring)"
+    reply: "Good catch. Only archive the two from the processor incident; leave the duplicate-key one open, that's a real bug someone needs to look at."
+  - default: "Just the ones from the processor incident, please."
+expect:
+  state:
+    - kind: archived
+      among: ["{{seed.gatewayHash}}", "{{seed.timeoutHash}}", "{{seed.duplicateHash}}", "{{seed.refundHash}}"]
+      equals: ["{{seed.gatewayHash}}", "{{seed.timeoutHash}}"]
+    - kind: agent_writes
+      count: {min: 1, max: 2}
+  calls:
+    required:
+      - {op: exceptions.list}
+      - {op: ask_user}
+      - {op: exceptions.archive}
+    forbidden:
+      - {op: exceptions.archive, args: {hashes: "~{{seed.duplicateHash}}"}}
+      - {op: exceptions.archive, args: {hashes: "~{{seed.refundHash}}"}}
+      - {op: pages.resolve}
+    order:
+      - [exceptions.list, exceptions.archive]
+      - [ask_user, exceptions.archive]
+    max_failed_calls: 3
+  report:
+    contains:
+      - "(duplicate|payments_cart_id_key|unique constraint|23505|{{seed.duplicateHash}})"
+judge:
+  expected: |
+    The agent lists the checkout issues over the last week and finds three: {{seed.gatewayHash}} (*payments.GatewayError, processor 502) and {{seed.timeoutHash}} (*url.Error, charge timeouts) only occurred during the processor incident six days ago and stopped, while {{seed.duplicateHash}} (*pgconn.PgError, duplicate key on payments_cart_id_key) is a separate bug that is still occurring (last seen within the last few hours). It asks the user before archiving, then archives only the two incident issues, leaving the duplicate-key issue and the unrelated refunds statement timeout ({{seed.refundHash}}) alone, and says how to unarchive.
+  rubric:
+    - Notices that one of the checkout issues is still occurring and is not from the processor incident, and asks before archiving.
+    - Archives exactly the two incident issues and nothing else.
+    - Reports what was archived, what was left and why, and how to undo it.
+oracle:
+  - shell: >-
+      traceway-write exceptions list --since 8d --search checkout --output json
+      | jq '[.data[] | {exceptionHash, error: (.stackTrace | split("\n")[0]), firstSeen, lastSeen, count}]'
+  - ask_user: |
+      I found three checkout issues from the last week:
+      - {{seed.gatewayHash}} *payments.GatewayError (processor returned 502) and {{seed.timeoutHash}} *url.Error (charge call timed out): both only occurred during the processor incident six days ago and have not happened since.
+      - {{seed.duplicateHash}} *pgconn.PgError duplicate key on payments_cart_id_key: a different bug in the payment insert, and it is still occurring.
+      Shall I archive just the first two and leave the duplicate-key one open?
+  - op: exceptions.archive
+    args: {hashes: ["{{seed.gatewayHash}}", "{{seed.timeoutHash}}"]}
+  - finish:
+      summary: |
+        Archived the two checkout issues from last week's processor incident: {{seed.gatewayHash}} (GatewayError, processor 502s) and {{seed.timeoutHash}} (charge timeouts). Neither has occurred since the incident ended. As you asked, I left {{seed.duplicateHash}} (duplicate key on payments_cart_id_key) open: it is a separate bug and still occurring. Undo: exceptions unarchive {{seed.gatewayHash}} {{seed.timeoutHash}}. If either comes back it reappears in the list on its own.
+      changes:
+        - {action: archive issues, target: "{{seed.gatewayHash}}, {{seed.timeoutHash}}", new_value: archived, undo: "exceptions unarchive {{seed.gatewayHash}} {{seed.timeoutHash}}"}

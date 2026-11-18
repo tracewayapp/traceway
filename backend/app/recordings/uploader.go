@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/monitoring"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/monitoring"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 const (
@@ -35,6 +35,7 @@ type Job struct {
 	Key          string
 	Body         []byte
 	RecordedAt   time.Time
+	EndedAt      *time.Time
 }
 
 type storer interface {
@@ -172,6 +173,7 @@ func (p *pool) handle(ctx context.Context, j Job) {
 		SegmentIndex: j.SegmentIndex,
 		FilePath:     j.Key,
 		RecordedAt:   j.RecordedAt,
+		EndedAt:      j.EndedAt,
 	}
 	select {
 	case p.inserts <- rec:

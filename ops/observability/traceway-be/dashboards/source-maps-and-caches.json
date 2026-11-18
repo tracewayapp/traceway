@@ -1,0 +1,352 @@
+{
+  "schemaVersion": 1,
+  "name": "Traceway BE - Source Maps and Caches",
+  "description": "Backend self-monitoring: source maps and caches. Peak gauges and delta totals, split by bounded dimensions. New log-protection metrics require the instrumentation deployment. Storage-specific metrics and unused worker paths may be empty; empty is not zero.",
+  "widgets": [
+    {
+      "id": "tw_05ff8aadfd7b",
+      "title": "cache / metric registry / entries (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.cache.metric_registry.entries",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_27421ae42eeb",
+      "title": "cache / projects / entries (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.cache.projects.entries",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_f2319b9e4890",
+      "title": "sourcemap / builds (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.builds.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_c141bc83c64b",
+      "title": "sourcemap / bytes (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.bytes",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "By"
+      }
+    },
+    {
+      "id": "tw_0d91db288b0c",
+      "title": "sourcemap / disk / bytes (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.disk.bytes",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "By"
+      }
+    },
+    {
+      "id": "tw_81a4a5d85e14",
+      "title": "sourcemap / disk / entries (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.disk.entries",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_de85f5331243",
+      "title": "sourcemap / disk / evictions (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.disk.evictions.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_d715f32c242a",
+      "title": "sourcemap / disk / hits (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.disk.hits.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_e965eabd85ea",
+      "title": "sourcemap / entries (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.entries",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_d8caf0ff8441",
+      "title": "sourcemap / evictions (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.evictions.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_74854fcba664",
+      "title": "sourcemap / hits (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.hits.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_f977ffed7b5d",
+      "title": "sourcemap / load failures (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.load_failures.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_91a37789c7ab",
+      "title": "sourcemap / misses (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.misses.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_b3c1c1e107dc",
+      "title": "sourcemap / negative entries (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.negative_entries",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_ec79749b845d",
+      "title": "sourcemap / negative hits (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.negative_hits.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_40eb57787372",
+      "title": "sourcemap / not found (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.not_found.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_7459604dece4",
+      "title": "sourcemap / parse ms (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.parse_ms",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "tw_7c35582188e6",
+      "title": "sourcemap / store hits (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.store_hits.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_a4b59d3845f5",
+      "title": "sourcemap / warmup dropped (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.sourcemap.warmup_dropped.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    }
+  ]
+}

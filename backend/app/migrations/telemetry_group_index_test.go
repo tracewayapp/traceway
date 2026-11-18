@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/retention"
+	"github.com/tracewayapp/traceway/backend/v2/app/retention"
 )
 
 // Every per-group telemetry read pairs a group column with the table's time

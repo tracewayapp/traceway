@@ -64,6 +64,8 @@ export type MetricQueryItem = {
 	aggregation: string;
 	tagFilters?: Record<string, string>;
 	groupBy?: string;
+	/** The "good" limit of `good_ratio`. Rated catalog metrics have a default. */
+	threshold?: number;
 };
 
 export type MetricQueryRequest = {
@@ -71,6 +73,8 @@ export type MetricQueryRequest = {
 	from: string;
 	to: string;
 	intervalMinutes?: number;
+	/** One value per series over the whole range instead of a time series. */
+	wholeRange?: boolean;
 };
 
 export type TimeSeriesPoint = {
@@ -100,6 +104,7 @@ export type DashboardWidgetSource = {
 	groupBy?: string;
 	label?: string;
 	complement?: boolean;
+	threshold?: number;
 };
 
 export type DashboardWidgetConfig = {
@@ -114,6 +119,8 @@ export type DashboardWidgetConfig = {
 	max?: number;
 	baseColor?: string;
 	thresholds?: Array<{ value: number; color: string }>;
+	/** Rows a breakdown table shows. */
+	limit?: number;
 	[key: string]: unknown;
 };
 

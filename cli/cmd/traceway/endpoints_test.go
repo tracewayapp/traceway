@@ -3,13 +3,12 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 func TestEndpointsList_table(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{
 			"data":[
 				{"endpoint":"GET /api/projects","count":120,"p50Duration":50000000,"p95Duration":150000000,"p99Duration":300000000,"avgDuration":80000000,"lastSeen":"2026-05-13T12:00:00Z","impact":0.42,"impactReason":"high p95"}
@@ -38,7 +37,7 @@ func TestEndpointsList_table(t *testing.T) {
 }
 
 func TestEndpointsList_jsonShape(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[{"endpoint":"GET /","count":1}],"pagination":{}}`))
 	}))
 	defer srv.Close()
@@ -64,7 +63,7 @@ const chartResponseJSON = `{
 }`
 
 func TestEndpointsChart_jsonShape(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(chartResponseJSON))
 	}))
 	defer srv.Close()
@@ -81,7 +80,7 @@ func TestEndpointsChart_jsonShape(t *testing.T) {
 }
 
 func TestEndpointsChart_table(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(chartResponseJSON))
 	}))
 	defer srv.Close()
@@ -108,7 +107,7 @@ func TestEndpointsChart_table(t *testing.T) {
 func TestEndpointsChart_sendsRequestBody(t *testing.T) {
 	var gotPath, gotMethod string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotMethod = r.Method
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
@@ -147,7 +146,7 @@ func TestEndpointsChart_sendsRequestBody(t *testing.T) {
 
 func TestEndpointsChart_metricTypeValidation(t *testing.T) {
 	// Bogus --metric-type is rejected client-side, before any request is sent.
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("server should not be called for invalid --metric-type")
 	}))
 	defer srv.Close()
@@ -163,7 +162,7 @@ func TestEndpointsChart_metricTypeValidation(t *testing.T) {
 
 	// Every documented metric type is accepted.
 	for _, mt := range endpointChartMetricTypes {
-		okSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		okSrv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(chartResponseJSON))
 		}))
 		seedSessionFor(t, okSrv.URL)
@@ -177,7 +176,7 @@ func TestEndpointsChart_metricTypeValidation(t *testing.T) {
 
 func TestEndpointsSlow_marked(t *testing.T) {
 	var gotPath, gotMethod, gotEndpoint string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotMethod = r.Method
 		gotEndpoint = r.URL.Query().Get("endpoint")
@@ -210,7 +209,7 @@ func TestEndpointsSlow_marked(t *testing.T) {
 
 func TestEndpointsSlow_unmarked(t *testing.T) {
 	// The server returns offsetMs 0 / empty reason for an endpoint never marked.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"offsetMs":0,"reason":""}`))
 	}))
 	defer srv.Close()
@@ -227,7 +226,7 @@ func TestEndpointsSlow_unmarked(t *testing.T) {
 }
 
 func TestEndpointsSlow_jsonShape(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"offsetMs":2000,"reason":"batch job"}`))
 	}))
 	defer srv.Close()
@@ -247,7 +246,7 @@ func TestEndpointsSlow_jsonShape(t *testing.T) {
 }
 
 func TestEndpointsSlow_requiresEndpointArg(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("server should not be called without an endpoint arg")
 	}))
 	defer srv.Close()

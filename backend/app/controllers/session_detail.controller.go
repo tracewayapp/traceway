@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type sessionDetailController struct{}
@@ -63,11 +65,8 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 	var request sessionDetailRequest
 	_ = c.ShouldBindJSON(&request)
 
-	span := traceway.StartSpan(c, "loading session")
-	session, err := telemetry.SessionRepository.FindById(c, projectId, sessionId, request.StartedAt)
-	if session == nil && err == nil && request.StartedAt != nil {
-		session, err = telemetry.SessionRepository.FindById(c, projectId, sessionId, nil)
-	}
+	spanCtx, span := traceway.StartSpan(c, "loading session")
+	session, err := findSession(spanCtx, projectId, sessionId, request.StartedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session: %w", err))
@@ -78,8 +77,8 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 		return
 	}
 
-	span = traceway.StartSpan(c, "loading session exceptions")
-	exceptions, err := telemetry.ExceptionStackTraceRepository.FindAllBySessionId(c, projectId, sessionId)
+	spanCtx, span = traceway.StartSpan(c, "loading session exceptions")
+	exceptions, err := telemetry.ExceptionStackTraceRepository.FindAllBySessionId(spanCtx, projectId, sessionId, session.StartedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session exceptions: %w", err))
@@ -88,6 +87,9 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 
 	out := make([]SessionExceptionInfo, 0, len(exceptions))
 	for _, e := range exceptions {
+		if e.RecordedAt.After(session.CutoffAt) {
+			continue
+		}
 		out = append(out, SessionExceptionInfo{
 			Id:            e.Id,
 			ExceptionHash: e.ExceptionHash,
@@ -97,6 +99,12 @@ func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
 		})
 	}
 
+	enriched := []models.Session{*session}
+	if err := telemetry.LoadSessionRecordingReasons(c, projectId, enriched); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error loading session recording reasons: %w", err))
+		return
+	}
+	session.RecordingReasons = enriched[0].RecordingReasons
 	c.JSON(http.StatusOK, SessionDetailResponse{
 		Session:    session,
 		Exceptions: out,
@@ -116,56 +124,46 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading session segments")
-	segments, err := telemetry.SessionRecordingRepository.FindBySessionId(c, projectId, sessionId)
+	var startedAt *time.Time
+	if t, err := time.Parse(time.RFC3339Nano, c.Query("startedAt")); err == nil {
+		startedAt = &t
+	}
+
+	spanCtx, span := traceway.StartSpan(c, "loading session")
+	session, err := findSession(spanCtx, projectId, sessionId, startedAt)
+	span.End()
+	if err != nil {
+		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session: %w", err))
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+		return
+	}
+
+	spanCtx, span = traceway.StartSpan(c, "loading session segments")
+	segments, err := telemetry.SessionRecordingRepository.FindBySessionId(spanCtx, projectId, sessionId, &session.StartedAt)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading session segments: %w", err))
 		return
 	}
+	segments = uniqueSegmentFiles(shared.SegmentsWithinSession(segments, session.CutoffAt))
+
+	_, span = traceway.StartSpan(c, "reading session segments")
+	bodies := readSegments(c.Request.Context(), segments)
+	span.End()
 
 	payload := SessionRecordingPayload{
 		Events: []json.RawMessage{},
 	}
-
-	type segmentBody struct {
-		Events    json.RawMessage `json:"events"`
-		Logs      json.RawMessage `json:"logs"`
-		Actions   json.RawMessage `json:"actions"`
-		StartedAt *time.Time      `json:"startedAt"`
-		EndedAt   *time.Time      `json:"endedAt"`
-	}
-
-	for _, seg := range segments {
-		raw, err := storage.Store.Read(context.Background(), seg.FilePath)
-		if err != nil {
-			traceway.CaptureException(traceway.NewStackTraceErrorf("failed to read session segment (key=%s): %w", seg.FilePath, err))
+	for _, body := range bodies {
+		if body == nil {
 			continue
 		}
-		var body segmentBody
-		if err := json.Unmarshal(raw, &body); err != nil {
-			traceway.CaptureException(traceway.NewStackTraceErrorf("failed to parse session segment (key=%s): %w", seg.FilePath, err))
-			continue
-		}
-
-		if len(body.Events) > 0 {
-			var events []json.RawMessage
-			if err := json.Unmarshal(body.Events, &events); err == nil {
-				payload.Events = append(payload.Events, events...)
-			}
-		}
-		if len(body.Logs) > 0 {
-			var logs []json.RawMessage
-			if err := json.Unmarshal(body.Logs, &logs); err == nil {
-				payload.Logs = append(payload.Logs, logs...)
-			}
-		}
-		if len(body.Actions) > 0 {
-			var actions []json.RawMessage
-			if err := json.Unmarshal(body.Actions, &actions); err == nil {
-				payload.Actions = append(payload.Actions, actions...)
-			}
-		}
+		payload.Events = append(payload.Events, body.events...)
+		payload.Logs = append(payload.Logs, body.logs...)
+		payload.Actions = append(payload.Actions, body.actions...)
 		if body.StartedAt != nil && (payload.StartedAt == nil || body.StartedAt.Before(*payload.StartedAt)) {
 			t := *body.StartedAt
 			payload.StartedAt = &t
@@ -177,6 +175,84 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, payload)
+}
+
+func findSession(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
+	session, err := telemetry.SessionRepository.FindById(ctx, projectId, sessionId, startedAt)
+	if session == nil && err == nil && startedAt != nil {
+		return telemetry.SessionRepository.FindById(ctx, projectId, sessionId, nil)
+	}
+	return session, err
+}
+
+const segmentReadConcurrency = 16
+
+type segmentBody struct {
+	Events    json.RawMessage `json:"events"`
+	Logs      json.RawMessage `json:"logs"`
+	Actions   json.RawMessage `json:"actions"`
+	StartedAt *time.Time      `json:"startedAt"`
+	EndedAt   *time.Time      `json:"endedAt"`
+
+	events  []json.RawMessage
+	logs    []json.RawMessage
+	actions []json.RawMessage
+}
+
+// uniqueSegmentFiles keeps one row per stored file. A retried upload, or a segment uploaded both as an exception's
+// clip and as part of the session, adds a second row for the same file, which would otherwise replay twice.
+func uniqueSegmentFiles(segments []models.SessionRecording) []models.SessionRecording {
+	seen := make(map[string]bool, len(segments))
+	kept := segments[:0]
+	for _, seg := range segments {
+		if seen[seg.FilePath] {
+			continue
+		}
+		seen[seg.FilePath] = true
+		kept = append(kept, seg)
+	}
+	return kept
+}
+
+func readSegments(ctx context.Context, segments []models.SessionRecording) []*segmentBody {
+	bodies := make([]*segmentBody, len(segments))
+	var group errgroup.Group
+	group.SetLimit(segmentReadConcurrency)
+	for i, seg := range segments {
+		group.Go(func() error {
+			raw, err := storage.Store.Read(ctx, seg.FilePath)
+			if err != nil {
+				if ctx.Err() == nil {
+					traceway.CaptureException(traceway.NewStackTraceErrorf("failed to read session segment (key=%s): %w", seg.FilePath, err))
+				}
+				return nil
+			}
+			var body segmentBody
+			if err := json.Unmarshal(raw, &body); err != nil {
+				traceway.CaptureException(traceway.NewStackTraceErrorf("failed to parse session segment (key=%s): %w", seg.FilePath, err))
+				return nil
+			}
+			body.events = decodeArray(body.Events)
+			body.logs = decodeArray(body.Logs)
+			body.actions = decodeArray(body.Actions)
+			body.Events, body.Logs, body.Actions = nil, nil, nil
+			bodies[i] = &body
+			return nil
+		})
+	}
+	_ = group.Wait()
+	return bodies
+}
+
+func decodeArray(raw json.RawMessage) []json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil
+	}
+	return items
 }
 
 var SessionDetailController = sessionDetailController{}

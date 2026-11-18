@@ -5,10 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/config"
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/config"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
 )
 
 func newProjectsCmd() *cobra.Command {
@@ -51,7 +52,7 @@ func runProjectsList(cmd *cobra.Command, _ []string) error {
 		_ = output.RenderError(cmd.ErrOrStderr(), mode, output.ErrorEnvelope{
 			Code:     "not_authenticated",
 			Message:  fmt.Sprintf("profile %q not found", profileName),
-			Hint:     "traceway login",
+			Hint:     appdir.Binary + " login",
 			ExitCode: exitcode.Auth,
 		})
 		return newCLIError(exitcode.Auth, "not_authenticated")
@@ -60,7 +61,7 @@ func runProjectsList(cmd *cobra.Command, _ []string) error {
 		_ = output.RenderError(cmd.ErrOrStderr(), mode, output.ErrorEnvelope{
 			Code:     "not_authenticated",
 			Message:  fmt.Sprintf("profile %q has no JWT; please login first", profileName),
-			Hint:     "traceway login",
+			Hint:     appdir.Binary + " login",
 			ExitCode: exitcode.Auth,
 		})
 		return newCLIError(exitcode.Auth, "not_authenticated")
@@ -79,9 +80,9 @@ func runProjectsList(cmd *cobra.Command, _ []string) error {
 		return output.RenderYAML(cmd.OutOrStdout(), projects, output.ParseFieldsFlag(flagFields))
 	default:
 		tw := output.NewTabWriter(cmd.OutOrStdout())
-		_, _ = fmt.Fprintln(tw, "ID\tNAME")
+		_, _ = fmt.Fprintln(tw, "ID\tNAME\tROLE")
 		for _, p := range projects {
-			_, _ = fmt.Fprintf(tw, "%s\t%s\n", p.ID, p.Name)
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", p.ID, p.Name, p.Role)
 		}
 		return tw.Flush()
 	}

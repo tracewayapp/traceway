@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { ChevronDown } from "lucide-react";
+import Link from "next/link";
 import { Eyebrow } from "@/components/eyebrow";
 import { getCalendlyUrl, hasCalendly } from "@/lib/calendly";
 
@@ -198,7 +199,13 @@ export default function Contact() {
                 fontFamily: "var(--font-mono)",
               }}
             >
-              We&apos;ll take you to sign-up with your email pre-filled.
+              We&apos;ll take you to sign-up with your email pre-filled. We
+              use what you enter here only to reply to you, as described in
+              our{" "}
+              <Link href="/privacy-policy" className="underline underline-offset-4">
+                Privacy Policy
+              </Link>
+              .
             </p>
           </form>
         </div>

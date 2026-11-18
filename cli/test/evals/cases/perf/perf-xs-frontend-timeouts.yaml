@@ -1,0 +1,88 @@
+id: perf-xs-frontend-timeouts
+suite: perf
+title: Web shop search times out in the browser; the API's search provider is slow
+tags: [cross-surface, browser, react, node, network]
+seed: perf/xs-frontend-timeouts
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: A frontend bug. The web app gives up after 8 seconds (AbortSignal.timeout) and the issue's stack points into its search client, so raising the timeout or retrying in the browser looks like the fix. But every timed-out search lines up with a GET /api/search on shop-api that ran past 8s, and those requests spend nearly all their time in the POST to the hosted search index (shop-prod.search-cloud.example), which got slow about ten hours ago; the API's own database work stays at a few milliseconds and CPU is flat.
+workspace: {repo: shop-web-and-api}
+prompt: |
+  Customers keep telling support that product search on the web shop spins for a while and then says it is taking too long. This is the issue Traceway shows for it: {{env.url}}/issues/{{seed.hash}}
+  What is going on, and what should we change?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I only know what support told me. Please find out from the data."
+expect:
+  answer:
+    checklist_item: slow_third_party_upstream_api
+    not: [none_found, no_timeouts_aggressive_retries, large_request_response_payloads, cpu_saturation, missing_or_unused_index]
+    locus: {endpoint: "GET /api/search", span_contains: "search-cloud.example"}
+  grounding:
+    - "signal timed out"
+    - "search-cloud.example"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    any_of:
+      - [{op: "endpoints.*", args: {project_id: "{{env.projects.shop-api.id}}"}}]
+      - [{op: "logs.query", args: {project_id: "{{env.projects.shop-api.id}}"}}]
+      - [{op: projects.use, args: {project_id: "{{env.projects.shop-api.id}}"}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: >-
+    The browser TimeoutError ("signal timed out") is the web app's own 8-second AbortSignal.timeout on the search
+    fetch; the network action on each occurrence is GET /api/search taking 8000ms with no response. On the shop-api
+    project, GET /api/search has been slow for about ten hours: p95 around 7-8s (it was a few hundred ms before), with
+    a tail well past 8 seconds, and every browser timeout lines up with an API access log for a search that started 8s
+    earlier and ran longer than that (often 10-15s, some 20-30s).
+    Those requests spend nearly all their time in the outgoing POST to the hosted search index
+    (shop-prod.search-cloud.example); the product_stock query and the merge take a few milliseconds and CPU is flat.
+    The provider is slow, not the frontend and not our code. Fix: put a timeout under 8s on the index call in the API
+    with a fallback (cached or degraded results), raise it with the provider, and do not raise the browser timeout.
+  rubric:
+    - Follows the browser issue to the backend project by the URL path and timestamps (the native SDK trace id does not join the backend trace) and quantifies GET /api/search on shop-api.
+    - Shows the backend requests' time is in the external search-index call, not in the database or CPU, and that it started degrading hours ago.
+    - Recommends a server-side timeout and fallback for the index call and escalating to the provider, rather than a longer browser timeout.
+oracle:
+  - shell: traceway exceptions show {{seed.hash}} --page-size 5 --output json
+  - shell: traceway exceptions occurrence {{calls.c01.occurrences.0.id}} --recorded-at {{calls.c01.occurrences.0.recordedAt}} --output json
+  - shell: traceway projects list --output json
+  - shell: >-
+      traceway endpoints list --project {{env.projects.shop-api.id}} --search /api/search --since 24h --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints chart --project {{env.projects.shop-api.id}} --metric-type p95 --since 24h --interval-minutes 60 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/search") | {t: .timestamp, p95_ms: (.value|round)}]'
+  - shell: >-
+      traceway logs query --project {{env.projects.shop-api.id}} --search /api/search --since 12h --page-size 50 --output json
+      | jq -r '.data[] | select((.logAttributes.duration_ms // "0" | tonumber) > 5000) | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.slowRequest.traceId}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '[.nodes[] | {project: .projectName, endpoint: .endpoint.endpoint, duration_ms: (.endpoint.duration/1e6|round),
+      spans: [.spans[] | {name, ms: (.duration/1e6|round), url: .attributes["url.full"], server: .attributes["server.address"]}]}]'
+  - shell: traceway metrics query --project {{env.projects.shop-api.id}} --name system.cpu.utilization --aggregation max --group-by state --since 12h --interval-minutes 120 --output json
+  - read_file: web/src/api/search.ts
+  - read_file: api/src/search.js
+  - submit:
+      checklist_item: slow_third_party_upstream_api
+      category: network
+      locus: {endpoint: "GET /api/search", span: "POST https://shop-prod.search-cloud.example/1/indexes/products/query", service: shop-api}
+      onset: "{{seed.degradedAt}}"
+      evidence:
+        - {call_id: c02, claim: "the browser occurrence is a TimeoutError (signal timed out): the GET /api/search network action ran 8000ms with no response before the app gave up"}
+        - {call_id: c04, claim: "on shop-api, GET /api/search has p95 in the seconds over the last day, with a tail past 8s"}
+        - {call_id: c05, claim: "the endpoint's hourly p95 went from a few hundred ms to seconds about ten hours ago"}
+        - {call_id: c06, claim: "the browser timeouts line up with API searches that started 8s earlier and took longer than that, often 10s or more"}
+        - {call_id: c07, claim: "a search that ran past 8s spent nearly all of it in the POST to shop-prod.search-cloud.example; the stock query and merge took milliseconds"}
+        - {call_id: c08, claim: "CPU on the API host is flat"}
+      ruled_out:
+        - {checklist_item: no_timeouts_aggressive_retries, call_id: c07, reason: "one provider call per request, no retries; the provider itself answers slowly"}
+        - {checklist_item: cpu_saturation, call_id: c08, reason: "CPU flat"}
+      fix: Put a client timeout below the browser's 8s on the search-index call in api/src/search.js with a fallback (cached or degraded results), escalate the latency to the search provider, and keep the browser timeout as it is.
+      confidence: high
+      report: |
+        The browser timeouts are the symptom; the slowness is the hosted search provider behind the API. The web app aborts a search after 8 seconds (AbortSignal.timeout in web/src/api/search.ts) and reports the TimeoutError ("signal timed out"); each occurrence's network action is GET /api/search taking 8000ms with no response. On shop-api, GET /api/search got slow about ten hours ago (hourly p95 from a few hundred ms to seconds, tail past 8s), and each browser timeout lines up with an access log for a search that started 8 seconds earlier and took longer than that, often 10-15s. Those requests spend nearly all their time in the POST to shop-prod.search-cloud.example; the product_stock query and the merge take milliseconds and CPU is flat. Fix it on the server: give the index call a timeout below 8s with a fallback (cached or degraded results) in api/src/search.js, and take the latency up with the provider. Raising the browser timeout would only make shoppers wait longer.

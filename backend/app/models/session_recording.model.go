@@ -14,4 +14,5 @@ type SessionRecording struct {
 	SegmentIndex int32      `json:"segmentIndex" ch:"segment_index"`
 	FilePath     string     `json:"filePath" ch:"file_path"`
 	RecordedAt   time.Time  `json:"recordedAt" ch:"recorded_at"`
+	EndedAt      *time.Time `json:"endedAt,omitempty" ch:"ended_at"`
 }

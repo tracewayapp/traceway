@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
 )
 
 func initMainDB() error {
@@ -32,5 +32,13 @@ func initMainDB() error {
 }
 
 func NotifyProjectCacheChanged(*sql.Tx, uuid.UUID) error {
+	return nil
+}
+
+func NotifySdkConfigChanged(*sql.Tx, uuid.UUID) error {
+	return nil
+}
+
+func LockSdkConfigProject(tx *sql.Tx, projectId uuid.UUID) error {
 	return nil
 }

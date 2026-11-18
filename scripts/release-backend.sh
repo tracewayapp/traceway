@@ -39,6 +39,11 @@ rm -rf "$ROOT_DIR/backend/static/frontend"
 mkdir -p "$ROOT_DIR/backend/static/frontend"
 cp -r "$ROOT_DIR/frontend/build/"* "$ROOT_DIR/backend/static/frontend/"
 
+# The backend imports the cli module, and importers of the backend ignore its
+# replace directive: pin the cli version that release-cli.yml tags from this commit.
+echo "==> Pinning the cli module to v${VERSION}..."
+(cd "$ROOT_DIR/backend" && go mod edit -require="github.com/tracewayapp/traceway/cli/v2@v${VERSION}")
+
 # 4. Stage and commit
 echo "==> Committing..."
 git add backend/static/frontend/
@@ -57,4 +62,4 @@ git push origin "$TAG"
 
 echo ""
 echo "Released $TAG"
-echo "Users can now: go get github.com/tracewayapp/traceway/backend@v${VERSION}"
+echo "Users can now: go get github.com/tracewayapp/traceway/backend/v2@v${VERSION}"

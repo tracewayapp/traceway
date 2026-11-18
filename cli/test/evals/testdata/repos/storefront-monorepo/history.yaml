@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'web: order history page with item counts'
+  age: 330h
+  author: Yuki Sato <yuki@example.com>
+head:
+  message: 'api v5.9.0: share the order summary serializer between list and detail'
+  age: 6h25m
+  author: Dev Patel <dev@example.com>

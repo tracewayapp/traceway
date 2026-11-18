@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
 	"net/http"
 	"strings"
 

@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'v2.3.2: 15s timeout on carrier calls'
+  age: 500h
+  author: Mei Lin <mei@example.com>
+head:
+  message: 'v2.4.0: one multi-parcel label per order'
+  age: 46h35m
+  author: Tomás Rivera <tomas@example.com>

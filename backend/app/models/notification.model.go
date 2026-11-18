@@ -67,3 +67,14 @@ type NotificationRuleWithChannel struct {
 	ChannelName     string          `json:"channelName" lit:"channel_name"`
 	ChannelType     string          `json:"channelType" lit:"channel_type"`
 }
+
+// NotificationRuleFiring is an alert a rule sent and has not yet closed, keyed
+// by the alert's dedup token, which also names its escalation page.
+// SilentSince is set while the alert's subject reports no data.
+type NotificationRuleFiring struct {
+	Id          int        `json:"id" lit:"id"`
+	RuleId      int        `json:"ruleId" lit:"rule_id"`
+	Token       string     `json:"token" lit:"token"`
+	Since       time.Time  `json:"since" lit:"since"`
+	SilentSince *time.Time `json:"silentSince" lit:"silent_since"`
+}

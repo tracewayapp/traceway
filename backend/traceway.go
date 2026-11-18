@@ -1,6 +1,6 @@
 package tracewaybackend
 
-import "github.com/tracewayapp/traceway/backend/cmd"
+import "github.com/tracewayapp/traceway/backend/v2/cmd"
 
 type Option = cmd.Option
 
@@ -12,6 +12,7 @@ var (
 	WithDefaultUser    = cmd.WithDefaultUser
 	WithDefaultProject = cmd.WithDefaultProject
 	WithMonitoringURL  = cmd.WithMonitoringURL
+	WithJWTSecret      = cmd.WithJWTSecret
 	DisableLogging     = cmd.DisableLogging
 
 	WithDefaultProjectSourceMapToken = cmd.WithDefaultProjectSourceMapToken

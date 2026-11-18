@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	client "github.com/tracewayapp/traceway/cli/pkg/client"
+	client "github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // timeWindow brackets the seeded instant so list/query endpoints return it.
@@ -54,10 +54,34 @@ func TestContract_endpointsGrouped(t *testing.T) {
 	goldenAssert(t, "endpoints-grouped", rt.body)
 }
 
+func TestContract_endpointRequests(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.ListEndpointRequests(context.Background(), projectID, "GET /api/contract", client.ListEndpointRequestsRequest{
+		TimeRange:  timeWindow(),
+		Pagination: client.PaginationParams{Page: 1, PageSize: 20},
+		OrderBy:    "duration",
+	})
+	if err != nil {
+		t.Fatalf("endpoint requests: %v", err)
+	}
+	if len(resp.Data) == 0 || resp.Data[0].Id != seedEndpointID || resp.Data[0].RecordedAt.IsZero() {
+		t.Fatalf("the seeded request is missing its id or recordedAt: %s", rt.body)
+	}
+	goldenAssert(t, "endpoint-requests", rt.body)
+}
+
 func TestContract_endpointDetail(t *testing.T) {
 	c, rt := capturedClient()
-	if _, err := c.GetEndpoint(context.Background(), projectID, seedEndpointID.String(), seedAt); err != nil {
+	resp, err := c.GetEndpoint(context.Background(), projectID, seedEndpointID.String(), seedAt)
+	if err != nil {
 		t.Fatalf("endpoint detail: %v", err)
+	}
+	// The waterfall is everything under the endpoint's span, the task's spans included.
+	if resp.Endpoint == nil || resp.Endpoint.TraceId != seedTraceID || resp.Endpoint.SpanId != seedEndpointSpanID || len(resp.Spans) != 4 {
+		t.Errorf("endpoint ids or waterfall wrong: %s", rt.body)
+	}
+	if resp.Exception == nil || resp.Exception.ExceptionHash != seedHash {
+		t.Errorf("the exception recorded below the endpoint's span is missing: %s", rt.body)
 	}
 	goldenAssert(t, "endpoint-detail", rt.body)
 }
@@ -106,18 +130,34 @@ func TestContract_exceptionsGrouped(t *testing.T) {
 
 func TestContract_exceptionByHash(t *testing.T) {
 	c, rt := capturedClient()
-	if _, err := c.GetException(context.Background(), projectID, seedHash, client.PaginationParams{Page: 1, PageSize: 20}); err != nil {
+	resp, err := c.GetException(context.Background(), projectID, seedHash, client.PaginationParams{Page: 1, PageSize: 20})
+	if err != nil {
 		t.Fatalf("exception by hash: %v", err)
 	}
+	assertRelatedEndpoint(t, resp.RelatedEntity, rt.body)
 	goldenAssert(t, "exception-by-hash", rt.body)
 }
 
 func TestContract_exceptionById(t *testing.T) {
 	c, rt := capturedClient()
-	if _, err := c.GetExceptionById(context.Background(), projectID, seedExceptionID.String(), seedAt); err != nil {
+	resp, err := c.GetExceptionById(context.Background(), projectID, seedExceptionID.String(), seedAt)
+	if err != nil {
 		t.Fatalf("exception by id: %v", err)
 	}
+	if resp.Exception == nil || resp.Exception.TraceId != seedTraceID || resp.Exception.SpanId != seedChildSpanID {
+		t.Errorf("occurrence lost its trace ids: %s", rt.body)
+	}
+	assertRelatedEndpoint(t, resp.RelatedEntity, rt.body)
 	goldenAssert(t, "exception-by-id", rt.body)
+}
+
+// The seeded exception sits on a span under the endpoint's, so the server has
+// to walk up the trace to name the endpoint.
+func assertRelatedEndpoint(t *testing.T, related *client.RelatedEntity, body []byte) {
+	t.Helper()
+	if related == nil || related.TraceType != "endpoint" || related.Id != seedEndpointID || related.Name != "GET /api/contract" || related.TraceId != seedTraceID {
+		t.Errorf("relatedEntity should name the seeded endpoint: %s", body)
+	}
 }
 
 func TestContract_exceptionArchiveRoundTrip(t *testing.T) {
@@ -167,8 +207,13 @@ func TestContract_metricsQuery(t *testing.T) {
 
 func TestContract_taskDetail(t *testing.T) {
 	c, rt := capturedClient()
-	if _, err := c.GetTask(context.Background(), projectID, seedTaskID.String(), seedAt); err != nil {
+	resp, err := c.GetTask(context.Background(), projectID, seedTaskID.String(), seedAt)
+	if err != nil {
 		t.Fatalf("task detail: %v", err)
+	}
+	// The exception sits above the task's span, so it is not the task's.
+	if resp.Task == nil || resp.Task.SpanId != seedTaskSpanID || resp.Task.ParentSpanId != seedChildSpanID || len(resp.Spans) != 1 || resp.Exception != nil {
+		t.Errorf("task ids, waterfall or exception wrong: %s", rt.body)
 	}
 	goldenAssert(t, "task-detail", rt.body)
 }
@@ -191,14 +236,31 @@ func TestContract_sessionDetail(t *testing.T) {
 
 func TestContract_distributedTrace(t *testing.T) {
 	c, rt := capturedClient()
-	resp, err := c.GetDistributedTrace(context.Background(), seedTraceID.String(), seedAt)
+	resp, err := c.GetDistributedTrace(context.Background(), seedTraceID, seedAt)
 	if err != nil {
 		t.Fatalf("distributed trace: %v", err)
 	}
-	if len(resp.Nodes) == 0 {
-		t.Fatal("expected seeded nodes in distributed trace")
+	wire := rt.body
+	// The exception was recorded under the endpoint, so it rides on that node.
+	parents := map[string]string{}
+	for _, node := range resp.Nodes {
+		parents[node.TraceType] = node.ParentEntitySpanId
+		if node.TraceType == "endpoint" && node.Exception == nil {
+			t.Error("the endpoint node lost the exception recorded below its span")
+		}
 	}
-	goldenAssert(t, "distributed-trace", rt.body)
+	if len(resp.Nodes) != 3 || parents["task"] != seedEndpointSpanID || parents["ai_trace"] != seedEndpointSpanID || parents["endpoint"] != "" {
+		t.Fatalf("expected the task and the AI trace nested under the endpoint: %s", wire)
+	}
+	// A different trace ID must not expand through legacy metadata.
+	linked, err := c.GetDistributedTrace(context.Background(), seedLinkedTraceID, seedAt)
+	if err != nil {
+		t.Fatalf("distributed trace by linked id: %v", err)
+	}
+	if len(linked.Nodes) != 0 {
+		t.Errorf("the linked trace id returned %d nodes, the trace id %d", len(linked.Nodes), len(resp.Nodes))
+	}
+	goldenAssert(t, "distributed-trace", wire)
 }
 
 // TestContract_cliMetricsValueRoundTrip drives the actual binary end to end and

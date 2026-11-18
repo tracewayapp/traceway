@@ -4,7 +4,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="dt-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;verticalAlign=top;align=center;spacingTop=2;fontSize=11;" value="&lt;b&gt;Distributed Trace&lt;/b&gt; &amp;nbsp;&lt;i&gt;traces from any service that share a distributedTraceId are grouped together&lt;/i&gt;" vertex="1">
+        <mxCell id="dt-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;verticalAlign=top;align=center;spacingTop=2;fontSize=11;" value="&lt;b&gt;Distributed Trace&lt;/b&gt; &amp;nbsp;&lt;i&gt;traces from any service that share a traceId are grouped together&lt;/i&gt;" vertex="1">
           <mxGeometry height="150" width="640" x="105" y="40" as="geometry" />
         </mxCell>
         <mxCell id="trace-1" parent="1" style="swimlane;whiteSpace=wrap;html=1;expand=1;collapsible=0;" value="Trace" vertex="1">

@@ -181,7 +181,7 @@ npm run build    # Production build
 ### Data Flow
 
 ```
-Application → [SDK] → POST /api/report → Backend → ClickHouse/SQLite
+Application → [OpenTelemetry] → POST /api/otel/v1/* → Backend → ClickHouse/SQLite/DuckDB
                                             ↓
 Dashboard ← [SvelteKit Frontend] ← JSON API ← Gin Controllers
 ```

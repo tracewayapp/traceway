@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
 )
 
 func newTracesCmd() *cobra.Command {
@@ -19,16 +19,16 @@ func newTracesCmd() *cobra.Command {
 
 func newTracesShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "show <distributedTraceId>",
-		Short: "Show a distributed trace: every service node that shares the trace id",
-		Long: `Show the full cross-service timeline for a distributed trace id — every
-endpoint, task, ai-trace, and exception node that shares it, across all projects
-you can see. This is the highest-value root-cause view: it stitches one logical
-request together end to end.
+		Use:   "show <traceId>",
+		Short: "Show the available service nodes for a trace id",
+		Long: `Show the available cross-service timeline for a trace id: endpoint, task,
+ai-trace, and exception nodes across the projects you can see. Time windows,
+retention and read limits can make the view incomplete. The GRAPH column reports
+partial or unavailable span graphs; exceptions on missing spans may be absent.
 
-The distributed trace id comes from an occurrence's distributedTraceId (in
-"exceptions show" / "exceptions occurrence" output) or an endpoint/task's
-distributedTraceId.
+The trace id is the traceId of an occurrence (in "exceptions show" /
+"exceptions occurrence" output) or of an endpoint, task or ai-trace: 32 hex
+characters, the OpenTelemetry trace id shared by all participating services.
 
 --recorded-at is REQUIRED. The lookup is bounded to a window around it so
 ClickHouse prunes partitions instead of scanning all of them. Use the recordedAt
@@ -48,7 +48,7 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return renderSessionError(cmd.ErrOrStderr(), mode, err)
 	}
-	if err := validateUUIDArg(cmd, mode, args[0], "distributed trace id"); err != nil {
+	if err := validateTraceIDArg(cmd, mode, args[0]); err != nil {
 		return err
 	}
 	recordedAt, err := resolveTimestamp(cmd, "recorded-at")
@@ -69,9 +69,9 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 		return output.RenderYAML(cmd.OutOrStdout(), resp, output.ParseFieldsFlag(flagFields))
 	default:
 		out := cmd.OutOrStdout()
-		_, _ = fmt.Fprintf(out, "DISTRIBUTED TRACE: %s\nNODES (%d):\n", resp.DistributedTraceId, len(resp.Nodes))
+		_, _ = fmt.Fprintf(out, "DISTRIBUTED TRACE: %s\nNODES (%d):\n", resp.TraceId, len(resp.Nodes))
 		tw := output.NewTabWriter(out)
-		_, _ = fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tERROR")
+		_, _ = fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tERROR\tGRAPH")
 		for _, n := range resp.Nodes {
 			name := "-"
 			switch {
@@ -86,7 +86,11 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 			if n.Exception != nil {
 				errCol = truncateHash(n.Exception.ExceptionHash, 12)
 			}
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", pickStr(n.ProjectName, "-"), n.TraceType, name, errCol)
+			graph := "-"
+			if n.SpanGraphStatus != nil {
+				graph = n.SpanGraphStatus.State
+			}
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", pickStr(n.ProjectName, "-"), n.TraceType, name, errCol, graph)
 		}
 		return tw.Flush()
 	}

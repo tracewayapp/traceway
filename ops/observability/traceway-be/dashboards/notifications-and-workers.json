@@ -1,0 +1,664 @@
+{
+  "schemaVersion": 1,
+  "name": "Traceway BE - Notifications and Workers",
+  "description": "Backend self-monitoring: notifications and workers. Peak gauges and delta totals, split by bounded dimensions. New log-protection metrics require the instrumentation deployment. Storage-specific metrics and unused worker paths may be empty; empty is not zero.",
+  "widgets": [
+    {
+      "id": "tw_66fb738eea9d",
+      "title": "outbox / failed rows (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.outbox.failed_rows",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_90e71f3631c6",
+      "title": "outbox / oldest pending sec (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.outbox.oldest_pending_sec",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "s"
+      }
+    },
+    {
+      "id": "tw_15dd53eac570",
+      "title": "outbox / pending (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.outbox.pending",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_ecc02a9bb80c",
+      "title": "outbox / sending (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.outbox.sending",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_b37a66fb5990",
+      "title": "outbox / sent (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.outbox.sent.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_0a16a38b21ec",
+      "title": "outbox / terminal failures (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.outbox.terminal_failures.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_c3185c0b79de",
+      "title": "recordings / dropped (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.recordings.dropped.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_a1b2ae7c4221",
+      "title": "recordings / failed (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.recordings.failed.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_91770794bd43",
+      "title": "recordings / in flight (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.recordings.in_flight",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_987ff1f924c5",
+      "title": "recordings / queue depth (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.recordings.queue_depth",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_381d0aaf8fcc",
+      "title": "recordings / uploaded (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.recordings.uploaded.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_d6fabe052215",
+      "title": "slo / backfill pending (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.backfill_pending",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_744ab3a5e687",
+      "title": "slo / computed (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.computed.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_5ccd4299cdc0",
+      "title": "slo / enabled (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.enabled",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_62582b99de5f",
+      "title": "slo / errors (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.errors.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_17d2a07b9a0f",
+      "title": "slo / instances (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.instances",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_461af593dcca",
+      "title": "slo / max staleness sec (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.max_staleness_sec",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "s"
+      }
+    },
+    {
+      "id": "tw_258697b154ec",
+      "title": "slo / shards owned (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.shards_owned",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_5f7df9f7c3ba",
+      "title": "slo / stale (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.stale",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_0f193b2b071a",
+      "title": "slo / tick / buckets (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.buckets",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_3c9a27952126",
+      "title": "slo / tick / compute ms (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.compute_ms",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "tw_dd44a6a3d3fe",
+      "title": "slo / tick / duration ms (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.duration_ms",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "tw_abafc8cfb510",
+      "title": "slo / tick / full snapshots (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.full_snapshots",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_46f4c5763cb1",
+      "title": "slo / tick / running sec (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.running_sec",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "s"
+      }
+    },
+    {
+      "id": "tw_2487d2f30855",
+      "title": "slo / tick / slos (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.slos",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_6d0bb5794a24",
+      "title": "slo / tick / slowest ms (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.slowest_ms",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "tw_ae1b3cc7cad8",
+      "title": "slo / tick / snapshot ms (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.snapshot_ms",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "tw_0cfdf10c6075",
+      "title": "slo / tick / store ms (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.tick.store_ms",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "tw_cb6329b7339b",
+      "title": "slo / timeouts (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.slo.timeouts.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_97e470c32f60",
+      "title": "synthetics / checks down (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.synthetics.checks_down",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_1a4504287ca9",
+      "title": "synthetics / claimed (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.synthetics.claimed",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_32e830a5911f",
+      "title": "synthetics / executed (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.synthetics.executed.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_b717666cb0f9",
+      "title": "synthetics / missed (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.synthetics.missed.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_872e3b6bab93",
+      "title": "synthetics / oldest queued sec (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.synthetics.oldest_queued_sec",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "s"
+      }
+    },
+    {
+      "id": "tw_6da5bc99530a",
+      "title": "synthetics / queued (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.synthetics.queued",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_34cfc5075bb0",
+      "title": "synthetics / runners online (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.synthetics.runners_online",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    }
+  ]
+}

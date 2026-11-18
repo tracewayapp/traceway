@@ -58,13 +58,13 @@
 						{step.planned.name}
 						<span class="text-muted-foreground">on {step.planned.deployment?.platform}</span>
 					</div>
-					<CopyableCodeBlock code={step.instructions} language={bash} />
+					<CopyableCodeBlock code={step.instructions} language={bash} secret />
 					{#if !step.planned.deployment?.instructions.includes('<token>')}
 						<div class="space-y-1">
 							<div class="text-xs text-muted-foreground">
 								Credential value{step.planned.envVar ? ` for ${step.planned.envVar}` : ''}:
 							</div>
-							<CopyableInline value={step.value} />
+							<CopyableInline value={step.value} secret />
 						</div>
 					{/if}
 				</div>

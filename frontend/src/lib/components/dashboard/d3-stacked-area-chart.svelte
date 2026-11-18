@@ -4,6 +4,7 @@
 	import { stack, area, stackOrderReverse } from 'd3-shape';
 	import { min, max } from 'd3-array';
 	import { formatDateTime } from '$lib/utils/formatters';
+	import { CHART_COLORS } from '$lib/utils/chart-colors';
 	import { getMetricAxisScale, formatAxisTick } from '$lib/utils/metric-format';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 
@@ -42,17 +43,17 @@
 
 	const tz = $derived(getTimezone());
 
-	// Chart colors using CSS variables
-	const chartColors = [
-		'var(--chart-1)',
-		'var(--chart-2)',
-		'var(--chart-3)',
-		'var(--chart-4)',
-		'var(--chart-5)',
-		'var(--muted-foreground)' // For "Other"
-	];
+	// The endpoint chart folds everything past its top series into "Other",
+	// which reads as the remainder rather than as one more series.
+	const OTHER_KEY = 'Other';
+	const OTHER_COLOR = 'var(--muted-foreground)';
 
-	const palette = $derived(colors && colors.length > 0 ? colors : chartColors);
+	const palette = $derived<readonly string[]>(colors && colors.length > 0 ? colors : CHART_COLORS);
+
+	function seriesColor(key: string, index: number): string {
+		if (!colors?.length && key === OTHER_KEY) return OTHER_COLOR;
+		return palette[index % palette.length];
+	}
 
 	let containerRef = $state<HTMLDivElement | null>(null);
 	let width = $state(300);
@@ -166,6 +167,13 @@
 
 	const yAxisUnit = $derived(() => axisScale?.unit ?? '');
 
+	// The unit label sits just above the plot; when the top tick is that high too, the two overlap,
+	// so the unit moves onto the top tick's label instead.
+	const unitOnTopTick = $derived.by(() => {
+		const ticks = yTicks();
+		return !!yAxisUnit() && ticks.length > 0 && yScale(ticks[ticks.length - 1]) < 12;
+	});
+
 	function formatYLabel(value: number): string {
 		if (axisScale) {
 			return formatAxisTick(value, axisScale.divisor);
@@ -193,7 +201,7 @@
 		return stackedSeries.map((s, i) => ({
 			key: s.key,
 			path: areaGen(s as unknown as [number, number][]) || '',
-			color: palette[i % palette.length]
+			color: seriesColor(s.key, i)
 		}));
 	});
 
@@ -330,8 +338,8 @@
 	// Get color for an endpoint
 	function getEndpointColor(endpoint: string): string {
 		const idx = endpoints.indexOf(endpoint);
-		if (idx === -1) return palette[palette.length - 1];
-		return palette[idx % palette.length];
+		if (idx === -1) return OTHER_COLOR;
+		return seriesColor(endpoint, idx);
 	}
 
 	// Truncate long endpoint names for legend
@@ -386,12 +394,14 @@
 							class="text-muted-foreground"
 							font-size="10"
 						>
-							{formatYLabel(tick)}
+							{formatYLabel(tick)}{unitOnTopTick && __index === yTicks().length - 1
+								? ` ${yAxisUnit()}`
+								: ''}
 						</text>
 					{/each}
 
 					<!-- Y axis unit label -->
-					{#if yAxisUnit()}
+					{#if yAxisUnit() && !unitOnTopTick}
 						<text
 							x={-8}
 							y={-4}
@@ -525,7 +535,7 @@
 				<div class="flex items-center gap-1.5">
 					<span
 						class="h-2 w-2 flex-shrink-0 rounded-full"
-						style="background-color: {palette[i % palette.length]};"
+						style="background-color: {seriesColor(endpoint, i)};"
 					></span>
 					<span class="max-w-[180px] truncate" title={endpoint}
 						>{truncateEndpoint(endpoint, 25)}</span

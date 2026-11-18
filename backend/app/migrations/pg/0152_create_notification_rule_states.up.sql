@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS notification_rule_states (
+    id SERIAL PRIMARY KEY,
+    rule_id INT NOT NULL UNIQUE REFERENCES notification_rules(id) ON DELETE CASCADE,
+    firing BOOLEAN NOT NULL DEFAULT FALSE,
+    since TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)

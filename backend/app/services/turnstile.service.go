@@ -3,7 +3,7 @@ package services
 import (
 	"encoding/json"
 	"errors"
-	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
 	"net/http"
 	"net/url"
 	"time"

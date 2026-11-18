@@ -122,8 +122,8 @@ These all **require** a timestamp flag; capture the id and its `recordedAt` toge
    OCC=$(./bin/traceway exceptions show "$HASH" --output json | jq -c '.occurrences[0]')
    OID=$(jq -r '.id'                 <<<"$OCC")
    OTS=$(jq -r '.recordedAt'         <<<"$OCC")
-   DT=$(jq -r '.distributedTraceId // empty' <<<"$OCC")
-   SID=$(jq -r '.sessionId // empty'         <<<"$OCC")
+   DT=$(jq -r '.traceId // empty'    <<<"$OCC")
+   SID=$(jq -r '.sessionId // empty' <<<"$OCC")
    ```
 2. `exceptions occurrence $OID --recorded-at $OTS` — assert exit 0 and `.exception.id == $OID`.
 3. **Required-flag enforcement** (no live data needed): `exceptions occurrence $OID` with no `--recorded-at` → exit 2 `usage_error`; `--recorded-at notadate` → exit 2 `invalid_timestamp`; `endpoints show not-a-uuid --recorded-at $OTS` → exit 2 `usage_error`.

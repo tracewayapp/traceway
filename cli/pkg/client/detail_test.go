@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -15,7 +14,7 @@ var ts = time.Date(2026, 6, 23, 14, 30, 0, 0, time.UTC)
 func TestGetExceptionById_postsRecordedAtAndProjectId(t *testing.T) {
 	var gotPath, gotProject string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %q", r.Method)
 		}
@@ -48,7 +47,7 @@ func TestGetExceptionById_postsRecordedAtAndProjectId(t *testing.T) {
 func TestGetEndpoint_postsRecordedAtAndProjectId(t *testing.T) {
 	var gotPath, gotProject string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotProject = r.URL.Query().Get("projectId")
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
@@ -81,7 +80,7 @@ func TestGetEndpoint_postsRecordedAtAndProjectId(t *testing.T) {
 func TestGetTask_postsRecordedAt(t *testing.T) {
 	var gotPath string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		_, _ = w.Write([]byte(`{"task":{"id":"00000000-0000-0000-0000-000000000003","taskName":"nightly","recordedAt":"2026-06-23T14:30:00Z"},"spans":[],"hasSpans":false,"messages":[]}`))
@@ -107,7 +106,7 @@ func TestGetTask_postsRecordedAt(t *testing.T) {
 func TestGetAiTrace_postsRecordedAt(t *testing.T) {
 	var gotPath string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		_, _ = w.Write([]byte(`{"aiTrace":{"id":"00000000-0000-0000-0000-000000000004","traceName":"chat","model":"claude","recordedAt":"2026-06-23T14:30:00Z"},"conversation":[{"role":"user"}]}`))
@@ -136,7 +135,7 @@ func TestGetAiTrace_postsRecordedAt(t *testing.T) {
 func TestGetSession_postsStartedAt(t *testing.T) {
 	var gotPath string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		_, _ = w.Write([]byte(`{"session":{"id":"00000000-0000-0000-0000-000000000005","startedAt":"2026-06-23T14:30:00Z"},"exceptions":[{"id":"00000000-0000-0000-0000-0000000000c1","exceptionHash":"h","stackTrace":"x","recordedAt":"2026-06-23T14:31:00Z","isMessage":false}]}`))
@@ -165,20 +164,20 @@ func TestGetSession_postsStartedAt(t *testing.T) {
 func TestGetDistributedTrace_noProjectIdQueryParam(t *testing.T) {
 	var gotPath, gotRawQuery string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotRawQuery = r.URL.RawQuery
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
-		_, _ = w.Write([]byte(`{"distributedTraceId":"00000000-0000-0000-0000-000000000006","nodes":[{"projectName":"api","traceType":"endpoint","endpoint":{"id":"00000000-0000-0000-0000-0000000000d1","endpoint":"GET /x"},"spans":[]}]}`))
+		_, _ = w.Write([]byte(`{"traceId":"0af7651916cd43dd8448eb211c80319c","nodes":[{"projectName":"api","traceType":"endpoint","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331","parentEntitySpanId":"53995c3f42cd8ad8","endpoint":{"id":"00000000-0000-0000-0000-0000000000d1","endpoint":"GET /x","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331"},"spans":[{"traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"00f067aa0ba902b7","parentSpanId":"b7ad6b7169203331","name":"db"}]}]}`))
 	}))
 	defer srv.Close()
 
 	c := New(srv.URL, WithJWT("tok"))
-	resp, err := c.GetDistributedTrace(context.Background(), "00000000-0000-0000-0000-000000000006", ts)
+	resp, err := c.GetDistributedTrace(context.Background(), "0af7651916cd43dd8448eb211c80319c", ts)
 	if err != nil {
 		t.Fatalf("GetDistributedTrace: %v", err)
 	}
-	if gotPath != "/api/distributed-traces/00000000-0000-0000-0000-000000000006" {
+	if gotPath != "/api/distributed-traces/0af7651916cd43dd8448eb211c80319c" {
 		t.Errorf("path = %q", gotPath)
 	}
 	if gotRawQuery != "" {
@@ -188,6 +187,16 @@ func TestGetDistributedTrace_noProjectIdQueryParam(t *testing.T) {
 		t.Errorf("recordedAt = %v", gotBody["recordedAt"])
 	}
 	if len(resp.Nodes) != 1 || resp.Nodes[0].TraceType != "endpoint" {
-		t.Errorf("nodes wrong: %+v", resp.Nodes)
+		t.Fatalf("nodes wrong: %+v", resp.Nodes)
+	}
+	node := resp.Nodes[0]
+	if resp.TraceId != "0af7651916cd43dd8448eb211c80319c" || node.SpanId != "b7ad6b7169203331" || node.ParentEntitySpanId != "53995c3f42cd8ad8" {
+		t.Errorf("trace identity wrong: %q %+v", resp.TraceId, node)
+	}
+	if node.Endpoint.TraceId != "0af7651916cd43dd8448eb211c80319c" {
+		t.Errorf("endpoint ids wrong: %+v", node.Endpoint)
+	}
+	if len(node.Spans) != 1 || node.Spans[0].ParentSpanId != "b7ad6b7169203331" {
+		t.Errorf("span ids wrong: %+v", node.Spans)
 	}
 }

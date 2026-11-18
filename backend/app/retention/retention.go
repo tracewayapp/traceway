@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 )
 
 const (
@@ -27,6 +27,11 @@ func Start(ctx context.Context) {
 	startOAuthSessionsPrune(ctx)
 	startAuthTokensPrune(ctx)
 	startOutboxPrune(ctx)
+	moveOverWindow := 0
+	if db.IsSQLite() {
+		moveOverWindow = telemetryDays
+	}
+	startMoveOver(ctx, moveOverWindow)
 }
 
 func parseRetentionDays(value string) int {

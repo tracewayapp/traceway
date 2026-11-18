@@ -1,0 +1,1 @@
+ALTER TABLE sessions ALTER COLUMN trace_id SET NOT NULL;

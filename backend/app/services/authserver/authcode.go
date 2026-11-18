@@ -1,6 +1,7 @@
 package authserver
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
@@ -17,9 +18,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 var (
@@ -174,7 +175,7 @@ func ApproveAuthorization(tx *sql.Tx, userId int, req models.AuthorizeApproveReq
 		return "", err
 	}
 	code := newOpaqueToken("twa_")
-	if err := transactional.AuthorizationCodeRepository.Create(tx, code, client.Id, userId, req.RedirectUri, req.CodeChallenge, time.Now().Add(authCodeTTL)); err != nil {
+	if err := transactional.AuthorizationCodeRepository.Create(tx, code, client.Id, userId, req.RedirectUri, req.CodeChallenge, models.ParseRequestedScope(req.Scope), time.Now().Add(authCodeTTL)); err != nil {
 		return "", err
 	}
 	return appendRedirectParams(req.RedirectUri, url.Values{"code": {code}}, req.State), nil
@@ -215,7 +216,7 @@ func appendRedirectParams(redirectUri string, params url.Values, state string) s
 	return redirectUri + sep + params.Encode()
 }
 
-func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, issuer string) (*models.TokenSetResponse, error) {
+func RedeemAuthorizationCode(ctx context.Context, clientId, code, verifier, redirectUri, resource, issuer string) (*models.TokenSetResponse, error) {
 	if err := ValidateResource(resource, issuer); err != nil {
 		return nil, err
 	}
@@ -227,7 +228,7 @@ func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, is
 		tokens   *models.TokenSetResponse
 		grantErr error
 	}
-	out, err := db.ExecuteTransaction(func(tx *sql.Tx) (redeemOutcome, error) {
+	out, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (redeemOutcome, error) {
 		ac, err := transactional.AuthorizationCodeRepository.FindByCode(tx, code)
 		if err != nil {
 			return redeemOutcome{}, err
@@ -252,7 +253,7 @@ func RedeemAuthorizationCode(clientId, code, verifier, redirectUri, resource, is
 		if user == nil {
 			return redeemOutcome{grantErr: ErrInvalidGrant}, nil
 		}
-		tokens, err := IssueTokenSet(tx, ac.UserId, user.Email, clientId)
+		tokens, err := IssueTokenSet(tx, ac.UserId, user.Email, clientId, ac.Scope)
 		if err != nil {
 			return redeemOutcome{}, err
 		}

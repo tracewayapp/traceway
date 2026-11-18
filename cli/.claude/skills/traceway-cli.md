@@ -115,7 +115,7 @@ Result shape (JSON):
 traceway exceptions show <exceptionHash> [--page 1] [--page-size 20]
 ```
 
-Returns the exception group plus an array of recent `occurrences`. Each occurrence has at least `recordedAt`, `attributes`, and optional `distributedTraceId` / `sessionId` (verify the exact shape against your build — schema is still settling). A bogus hash exits with code `5` and `not_found`.
+Returns the exception group plus an array of recent `occurrences`. Each occurrence has at least `recordedAt`, `attributes`, and optional `traceId` / `spanId` / `sessionId`. `traceId` is the OpenTelemetry trace id as 32 hex characters, the same id the request's logs carry. The response also carries `relatedEntity` (`{traceType, id, name, statusCode, duration, recordedAt, traceId}`): the endpoint, task or AI trace the newest occurrence happened in. A bogus hash exits with code `5` and `not_found`.
 
 ```
 traceway exceptions occurrence <exceptionId> --recorded-at <RFC3339>
@@ -160,7 +160,7 @@ Result shape: `{data: [...] | null, pagination: {page, pageSize, total, totalPag
 
 Recipe — pull logs around an exception:
 ```bash
-traceway exceptions show $HASH --output json | jq -r '.occurrences[0].distributedTraceId' \
+traceway exceptions show $HASH --output json | jq -r '.occurrences[0].traceId' \
   | xargs -I{} traceway logs query --trace-id {} --page 1 --output json
 ```
 
@@ -238,12 +238,12 @@ These resources currently expose only a by-id `show` (no `list` verb). The id co
 
 ```
 traceway tasks show <taskId> --recorded-at <RFC3339>          # {task, spans, hasSpans, exception?, messages}
-traceway ai-traces show <traceId> --recorded-at <RFC3339>     # {aiTrace, conversation?}  (token/cost stats + stored conversation)
+traceway ai-traces show <aiTraceId> --recorded-at <RFC3339>   # {aiTrace, spans, conversation?}  (token/cost stats + stored conversation)
 traceway sessions show <sessionId> --started-at <RFC3339>     # {session, exceptions}     (uses --started-at, not --recorded-at)
-traceway traces show <distributedTraceId> --recorded-at <RFC3339>  # {distributedTraceId, nodes:[...]}
+traceway traces show <traceId> --recorded-at <RFC3339>       # {traceId, nodes:[...]}
 ```
 
-`traces show` is the cross-service waterfall: every endpoint/task/ai-trace/exception node sharing a `distributedTraceId`, across all projects you can see (the route scopes by your JWT, so it ignores the active project). It's the highest-value RCA call — feed it an occurrence's `distributedTraceId` plus that occurrence's `recordedAt`.
+`traces show` is the cross-service waterfall: every endpoint/task/ai-trace/exception node sharing a trace id, across all projects you can see (the route scopes by your JWT, so it ignores the active project). It's the highest-value RCA call: feed it an occurrence's `traceId` (32 hex characters; a dashed UUID works too) plus that occurrence's `recordedAt`. Each node carries `traceId`, `spanId` and `parentEntitySpanId`, the `spanId` of the node it sits under.
 
 `sessions show` takes `--started-at` because the sessions table is partitioned on `started_at`. The session URL carries no `t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the ±24h window).
 
@@ -295,7 +295,7 @@ traceway logs query --since 15m --service api --min-severity 13 \
   --page 1 --output json | jq '.data[]? | {timestamp, body, traceId}'
 ```
 
-Once you have a `distributedTraceId` from an occurrence or endpoint/task, pull the cross-service waterfall directly: `traceway traces show <distributedTraceId> --recorded-at <that node's recordedAt>` (see the by-id detail section above). It stitches every endpoint/task/ai-trace/exception node sharing the id into one timeline — usually the highest-value RCA call.
+Once you have a `traceId` from an occurrence or endpoint/task, pull the cross-service waterfall directly: `traceway traces show <traceId> --recorded-at <that node's recordedAt>` (see the by-id detail section above). It stitches every endpoint/task/ai-trace/exception node sharing the id into one timeline, usually the highest-value RCA call.
 
 ### "Show me errors for service X in the last hour"
 

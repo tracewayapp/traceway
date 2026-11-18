@@ -18,6 +18,12 @@
 		color: string;
 	};
 
+	type ReferenceLine = {
+		value: number;
+		label?: string;
+		color?: string;
+	};
+
 	type ServerData = {
 		serverName: string;
 		trend: DataPoint[];
@@ -38,7 +44,9 @@
 		areaFill = false,
 		sharedHoverTime = null,
 		isSourceChart = false,
-		onHoverTimeChange
+		onHoverTimeChange,
+		referenceLines = [],
+		yDomain = null
 	} = $props<{
 		series: Series[];
 		xDomain?: [Date, Date] | null;
@@ -55,6 +63,8 @@
 		sharedHoverTime?: Date | null;
 		isSourceChart?: boolean;
 		onHoverTimeChange?: (time: Date | null) => void;
+		referenceLines?: ReferenceLine[];
+		yDomain?: [number, number] | null;
 	}>();
 
 	const tz = $derived(getTimezone());
@@ -97,12 +107,14 @@
 
 	const yMin = $derived(() => {
 		const minVal = min(allData, (d: DataPoint) => d.value);
-		return typeof minVal === 'number' ? minVal : 0;
+		const base = typeof minVal === 'number' ? minVal : 0;
+		return referenceLines.reduce((low: number, r: ReferenceLine) => Math.min(low, r.value), base);
 	});
 
 	const yMax = $derived(() => {
 		const maxVal = max(allData, (d: DataPoint) => d.value);
-		return typeof maxVal === 'number' ? maxVal : 0;
+		const base = typeof maxVal === 'number' ? maxVal : 0;
+		return referenceLines.reduce((high: number, r: ReferenceLine) => Math.max(high, r.value), base);
 	});
 
 	// Add padding to y domain
@@ -113,7 +125,11 @@
 	// Scales
 	const xScale = $derived(scaleUtc().domain([xMin, xMax]).range([0, chartWidth]));
 
-	const yScale = $derived(scaleLinear().domain([yDomainMin, yDomainMax]).range([chartHeight, 0]));
+	const yScale = $derived(
+		scaleLinear()
+			.domain(yDomain ?? [yDomainMin, yDomainMax])
+			.range([chartHeight, 0])
+	);
 
 	// Generate Y axis ticks
 	const yTicks = $derived(() => yScale.ticks(4));
@@ -126,6 +142,13 @@
 	});
 
 	const yAxisUnit = $derived(() => axisScale?.unit ?? '');
+
+	// The unit label sits just above the plot; when the top tick is that high too, the two overlap,
+	// so the unit moves onto the top tick's label instead.
+	const unitOnTopTick = $derived.by(() => {
+		const ticks = yTickItems();
+		return !!yAxisUnit() && ticks.length > 0 && yScale(ticks[ticks.length - 1]) < 12;
+	});
 
 	const yTickItems = $derived(() => {
 		const seen = new SvelteSet<string>();
@@ -469,7 +492,8 @@
 						y1={yScale(tick)}
 						x2={chartWidth}
 						y2={yScale(tick)}
-						stroke="#e5e7eb"
+						stroke="currentColor"
+						class="text-border"
 						stroke-width="1"
 						stroke-dasharray="4 4"
 					/>
@@ -482,16 +506,52 @@
 						y={yScale(tick)}
 						text-anchor="end"
 						dominant-baseline="middle"
-						fill="#6b7280"
+						fill="currentColor"
+						class="text-muted-foreground"
 						font-size="10"
 					>
-						{formatYLabel(tick)}
+						{formatYLabel(tick)}{unitOnTopTick && __index === yTickItems().length - 1
+							? ` ${yAxisUnit()}`
+							: ''}
 					</text>
 				{/each}
 
+				{#each referenceLines as reference, __index (__index)}
+					{@const referenceY = yScale(reference.value)}
+					{#if referenceY >= 0 && referenceY <= chartHeight}
+						<line
+							x1={0}
+							y1={referenceY}
+							x2={chartWidth}
+							y2={referenceY}
+							stroke={reference.color ?? 'var(--destructive)'}
+							stroke-width="1"
+							stroke-dasharray="6 3"
+						/>
+						{#if reference.label}
+							<text
+								x={chartWidth - 4}
+								y={referenceY - 4}
+								text-anchor="end"
+								fill={reference.color ?? 'var(--destructive)'}
+								font-size="10"
+							>
+								{reference.label}
+							</text>
+						{/if}
+					{/if}
+				{/each}
+
 				<!-- Y axis unit label -->
-				{#if yAxisUnit()}
-					<text x={-8} y={-4} text-anchor="end" fill="#9ca3af" font-size="10">
+				{#if yAxisUnit() && !unitOnTopTick}
+					<text
+						x={-8}
+						y={-4}
+						text-anchor="end"
+						fill="currentColor"
+						class="text-muted-foreground"
+						font-size="10"
+					>
 						{yAxisUnit()}
 					</text>
 				{/if}
@@ -502,12 +562,21 @@
 					y1={chartHeight}
 					x2={chartWidth}
 					y2={chartHeight}
-					stroke="#e5e7eb"
+					stroke="currentColor"
+					class="text-border"
 					stroke-width="1"
 				/>
 
 				<!-- Y axis line -->
-				<line x1={0} y1={0} x2={0} y2={chartHeight} stroke="#e5e7eb" stroke-width="1" />
+				<line
+					x1={0}
+					y1={0}
+					x2={0}
+					y2={chartHeight}
+					stroke="currentColor"
+					class="text-border"
+					stroke-width="1"
+				/>
 
 				<!-- Lines for each series (with gap detection) -->
 				<g clip-path="url(#{clipId})">
@@ -533,7 +602,14 @@
 							<!-- Draw line segments (only segments with 2+ points) -->
 							{#each segments as segment, __index (__index)}
 								{#if segment.length > 1}
-									<path d={generatePath(segment)} fill="none" stroke={s.color} stroke-width="1.5" />
+									<path
+										d={generatePath(segment)}
+										fill="none"
+										stroke={s.color}
+										stroke-width="2"
+										stroke-linejoin="round"
+										stroke-linecap="round"
+									/>
 								{/if}
 							{/each}
 

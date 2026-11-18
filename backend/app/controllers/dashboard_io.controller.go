@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	dashboardsvc "github.com/tracewayapp/traceway/backend/app/services/dashboards"
-	"github.com/tracewayapp/traceway/backend/app/services/grafana"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	dashboardsvc "github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/grafana"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 func exportDashboard(ctx *gin.Context, dashboard *models.Dashboard) (*models.DashboardExport, bool) {
@@ -137,6 +137,22 @@ func (c *dashboardsController) Import(ctx *gin.Context) {
 	}
 
 	tx := db.GetTx(ctx)
+
+	// Agent policy and auditing are scoped to the query project, never a body override.
+	if identity := middleware.GetBearerIdentity(ctx); identity != nil && identity.IsAgent() {
+		if req.OrganizationId != nil || req.ApplyToProjectIds != nil {
+			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Agent imports use the selected project's organization and apply only to that project; omit organizationId and applyToProjectIds."})
+			return
+		}
+		projectId, err := uuid.Parse(ctx.Query("projectId"))
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "projectId is required"})
+			return
+		}
+		if !requireProjectWrite(ctx, tx, projectId) {
+			return
+		}
+	}
 
 	organizationId, ok := resolveTargetOrganization(ctx, tx, req.OrganizationId)
 	if !ok {

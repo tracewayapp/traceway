@@ -125,7 +125,7 @@ A rule connects a condition to a channel. Every rule has:
 | Cooldown | Minimum time between notifications for the same condition (default 15 minutes) |
 | Severity | Auto (derived from the condition) or an explicit override |
 
-Rules belong to a project and only evaluate that project's data. Frontend projects only support the New Issue rule type; all other types monitor backend telemetry.
+Rules belong to a project and only evaluate that project's data. Frontend projects support the New Issue rule type and the two SLO rule types; all other types monitor backend telemetry.
 
 ## Rule Types
 
@@ -148,6 +148,8 @@ Rules belong to a project and only evaluate that project's data. Frontend projec
 | [AI Conversation Cost](#ai-conversation-cost) | A conversation's cumulative 24-hour cost exceeds a threshold | On ingest |
 | [AI Flagged Content](#ai-flagged-content) | An AI conversation matches a flagged content term | On ingest |
 | [Monitor Down](#monitor-down) | A monitor crosses its failure threshold | On state change |
+| [SLO Burn Rate](#slo-burn-rate) | An SLO burns its error budget faster than a threshold over both a long and a short window | Polled |
+| [SLO Budget Consumed](#slo-budget-consumed) | An SLO has consumed at least a share of its window's error budget | Polled |
 
 ### New Issue
 
@@ -269,8 +271,38 @@ Fires when an aggregated [metric](/learn/metrics) value violates the configured 
 | Operator | gt | One of `gt`, `gte`, `lt`, `lte`, `eq` |
 | Threshold Value | 90 | The value compared against the aggregate |
 | Lookback Minutes | 5 | Window the aggregate is computed over |
+| Tag Filters | | Optional `key=value` pairs, comma-separated. Only points whose tags match every pair count. Up to 20 |
+| Group By Tags | | Optional tag keys, comma-separated. Each combination of their values is evaluated as its own series. Up to 5 |
 
-The aggregation spans every series of the metric name, with no tag filter. For metrics tagged per host, per disk, or per table, an `avg` can hide one bad series behind healthy ones; prefer `max` (or `min` for lower-is-bad metrics) so the worst series drives the alert.
+Without tag filters the aggregation spans every series of the metric name. Use a filter to watch one slice, such as `outcome=failed` or `host.name=web-1`. For metrics tagged per host, per disk, or per table, an `avg` can hide one bad series behind healthy ones. Prefer `max` (or `min` for lower-is-bad metrics) so the worst series drives the alert.
+
+Over the API the filters are the `tags` object of the rule config, for example `"tags": {"outcome": "failed"}`. An empty key or value answers 422.
+
+#### Alerting per series
+
+Set Group By Tags to alert on each series separately, for example `site_id` for a gauge reported once per gateway. The aggregate is then computed per combination of the listed tags, and every series that breaches sends its own notification naming it:
+
+```
+[HS API] Metric radius.accounting_freshness_seconds{site_id=RUINS} is 22166.00 (threshold: gt 900.00)
+```
+
+A point without one of the tags falls into a series where that value reads `(empty)`. Tag filters still apply first, so `tags` and `groupBy` combine.
+
+The cooldown is kept per series instead of per rule. A series that keeps breaching is notified again once its cooldown has passed, and a second series that starts breaching meanwhile is notified right away. On an escalation channel each series opens its own page. One evaluation sends at most 50 series notifications, worst first. Any further breaching series are summarized in a single "N more series" notice. At most 5,000 series are evaluated. Point metrics are read in tag value order. Distribution metrics keep the busiest groups when the scan is truncated. The per-series cooldowns are held in memory, so after a backend restart a series that is still breaching is notified again.
+
+Once a notified series is back within the threshold, the rule sends an Info recovery notice naming it. On an escalation channel it resolves that series' page instead:
+
+```
+[HS API] Metric radius.accounting_freshness_seconds{site_id=RUINS} recovered: 120.00 (threshold: gt 900.00)
+```
+
+A recovery leaves the series' cooldown counting from its last alert. For a distribution metric, a series that reports fewer observations than its configured minimum stays open until there is enough data to judge it.
+
+If a series is missing for an hour while others still report, the rule closes its alert with a "stopped reporting" notice or resolves its escalation page. A whole-metric outage keeps all alerts open. An incomplete scan also keeps missing series open because they may be outside the results.
+
+The "N more series" summary gets one recovery when a complete scan finds data and every reported series can be judged within the threshold. Series that appeared only in the summary receive no individual recovery. Each evaluation closes up to 50 individual alerts plus the summary. Firing state survives a backend restart. On upgrade, existing open and acknowledged pages for grouped metric rules are tracked for recovery. For chat and email, tracking starts with the first alert sent by the upgraded backend. Changing the rule's type, channel or condition, disabling it, or deleting it resolves its series pages and clears the firing state without sending recovery notices.
+
+Over the API the keys are the `groupBy` array of the rule config, for example `"groupBy": ["site_id"]`. An empty or repeated key answers 422.
 
 ### No Data
 
@@ -312,9 +344,31 @@ Fires when an [AI conversation](/learn/ai-tracing#content-flagging) matches a fl
 
 ### Monitor Down
 
-Fires when a [monitor](/learn/monitors) transitions to down, which happens only after its configured number of consecutive failures, and sends a recovery notice when it comes back up. One rule covers every monitor in the project; the alert names the monitor and carries the last probe error.
+Fires when a [monitor](/learn/monitors) transitions to down, which happens only after its configured number of consecutive failures, and sends a recovery notice when it comes back up. One rule covers every monitor in the project; the alert names the monitor and carries the last probe error. The recovery notice is always Info, whatever severity the rule sets, and is green in Slack.
 
 There are no rule-specific options. Pointing the rule at an escalation channel opens an [on-call page](/learn/on-call) instead of sending a message: the page deduplicates per monitor, re-fires never restart its escalation clock, and recovery resolves it automatically.
+
+### SLO Burn Rate
+
+Fires when an [SLO](/learn/slos) spends its error budget faster than the threshold over both the long and the short window, and sends a recovery notice once either window drops below it. Both windows must burn: the short one keeps a burn that already ended from paging, the long one keeps a one-minute blip from paging. The short window also ends the alert soon after the burn stops, so the Long preset does not stay firing for days. The rule fires once when the condition starts and again only after it cleared, so it never re-pages every poll. The recovery notice is always Info.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| SLO | required | The SLO to watch |
+| Long Window Minutes | 60 | Lookback of the long window |
+| Short Window Minutes | 5 | Lookback of the short window; must be shorter than the long one. On a metric SLO with longer slices, both windows are rounded up to whole slices |
+| Burn Rate Threshold | 14.4 | Multiple of the rate that spends the budget exactly over the SLO window |
+
+The form offers three presets: Fast (14.4x over 1h / 5m, pages when 2% of a 30-day budget burns in an hour), Slow (6x over 6h / 30m) and Long (1x over 3d / 6h). Pointing the rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically.
+
+### SLO Budget Consumed
+
+Fires when an [SLO](/learn/slos) has consumed at least the configured share of its window's error budget, and sends a recovery notice when the budget climbs back above the line. Like SLO Burn Rate it fires on the transition only.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| SLO | required | The SLO to watch |
+| Consumed % | 80 | Share of the error budget that has to be gone |
 
 ## Evaluation Model and Cost
 
@@ -345,10 +399,12 @@ Each rule type has a different evaluation cost against the telemetry database. T
 | Throughput Drop | Two counts: lookback plus baseline window | Low |
 | Task Failure Rate | Two queries joining tasks and exceptions over the window | Moderate |
 | Impact Score | One scan of the trailing 24 hours of requests | Highest |
+| SLO Burn Rate | Two sums over the SLO's precomputed buckets, no raw telemetry | Minimal |
+| SLO Budget Consumed | One sum over the SLO's precomputed buckets | Minimal |
 
 Cost-relevant behavior:
 
-- Rules that are snoozed or still in cooldown are skipped entirely, including their queries. Longer cooldowns directly reduce evaluation load.
+- Rules that are snoozed or still in cooldown are skipped entirely, including their queries. Longer cooldowns directly reduce evaluation load. SLO rules are the exception: they are evaluated during their cooldown so a recovery notice is never delayed, which costs little since they only read precomputed buckets. Metric Threshold rules with Group By Tags are evaluated on every poll too, because their cooldown is kept per series.
 - The three Impact Score levels share one 24-hour scan per project per poll cycle through a 30-second cache, so adding all three costs the same as adding one.
 - On-ingest rules deduplicate per error hash, so a busy error stops generating lookups once it has alerted until its cooldown expires.
 - Polled query cost scales with the lookback window. The defaults keep windows short; a 24-hour lookback on a high-traffic project costs proportionally more.
@@ -358,12 +414,13 @@ Cost-relevant behavior:
 
 **Cooldown** prevents a rule from firing repeatedly for the same ongoing condition. The default is 15 minutes, configurable per rule.
 
-- For polled rules the cooldown is rule-wide: after a notification is delivered, the rule is not evaluated again until the cooldown expires.
+- For polled rules the cooldown is rule-wide: after a notification is delivered, the rule is not evaluated again until the cooldown expires. SLO rules keep being evaluated, so their recovery notice is sent at once; the cooldown only holds back a new fire, and a recovery notice does not restart it. Metric Threshold rules with Group By Tags keep their cooldown per series instead, so they are also evaluated on every poll.
 - For on-ingest rules the cooldown is per condition: per error hash for New Issue and Error Regression, per trace name for AI Trace Cost. Different errors can alert back-to-back; the same error cannot.
+- For Monitor Down the cooldown is per monitor and ends when the monitor recovers. Every new outage alerts, however soon it follows the last one; the failure threshold on the monitor is what damps a flapping check.
 
-Rule-level cooldowns are persisted with the notification history, so a server restart does not cause every rule to re-fire. Per-error cooldown state is held in memory and resets on restart, meaning an already-alerted error can alert once more after a restart. Editing a rule resets its cooldown and per-error state so the new configuration takes effect immediately.
+Rule-level cooldowns are persisted with the notification history, so a server restart does not cause every rule to re-fire. Per-error cooldown state is held in memory and resets on restart, meaning an already-alerted error can alert once more after a restart. Changing a rule's type, channel or condition resets its cooldown and per-error state so the new configuration takes effect immediately. Renaming it or changing its cooldown or severity keeps them.
 
-**Snooze** temporarily mutes a rule for a set duration from the dashboard. Snoozed rules are not evaluated at all. Use it during deployments, maintenance windows, or known incidents.
+**Snooze** temporarily mutes a rule for a set duration from the dashboard. Snoozed rules do not send notifications. Recovery cleanup still runs: an on-call page that a Monitor Down rule already opened still resolves when the monitor recovers. Use it during deployments, maintenance windows, or known incidents.
 
 ## Severity
 
@@ -385,8 +442,11 @@ Each rule has a **Severity** setting that controls the severity attached to its 
 | Impact Score Medium | Info |
 | Task Duration | Warning |
 | Task Failure Rate | Warning; Critical at twice the threshold |
-| Metric Threshold | Warning; Critical when the value deviates from the threshold by more than 20% |
+| Metric Threshold | Warning; Critical when the value deviates from the threshold by more than 20%; the recovery notice of a series is Info |
 | AI Trace Cost | Warning; Critical at three times the threshold |
+| Monitor Down | Critical; the recovery notice is Info |
+| SLO Burn Rate | Warning; Critical when the long window burns at twice the threshold; the recovery notice is Info |
+| SLO Budget Consumed | Warning; Critical once the whole budget is consumed; the recovery notice is Info |
 
 You can override the automatic severity by setting it explicitly on a rule to **Critical**, **Warning**, or **Info**. This is useful when you want a normally-warning condition to page as critical, or to downgrade noisy rules to info.
 
@@ -402,3 +462,35 @@ All fired notifications are recorded and visible in the **History** tab on the A
 | Channel | Which channel delivered the notification |
 | Status | Whether delivery succeeded or failed |
 | Timestamp | When the notification was sent |
+
+
+## Configure alerting with the CLI or MCP
+
+The write CLI supports channel and rule creation, replacement and deletion. Start with `traceway-write channels list` and `traceway-write alerts list` to inspect existing configuration. Create a channel before a rule, using its returned ID:
+
+```json filename="channel.json"
+{"name":"Operations email","channelType":"email","config":{"recipients":["ops@example.com"]},"enabled":true}
+```
+
+```bash
+traceway-write channels validate create --file channel.json
+traceway-write channels create --file channel.json --yes
+```
+
+```json filename="rule.json"
+{"name":"Slow orders","channelId":12,"ruleType":"endpoint_p95_threshold","config":{"endpoint":"GET /api/orders","thresholdMs":1000,"lookbackMinutes":10},"cooldownMinutes":15,"severity":"warning"}
+```
+
+```bash
+traceway-write alerts validate create --file rule.json
+traceway-write alerts create --file rule.json --yes
+traceway-write alerts list
+```
+
+Replace example IDs and endpoint names with observed values. `validate` runs offline and checks the request envelope; server-side checks validate adapter settings, relationships and permissions. `update <id> --file F` sends the complete rule/channel configuration. Rule `severity` is empty for automatic, or `info`, `warning`, `critical`; enabled/snoozed state uses the separate alert enable/disable/snooze commands. Channel `enabled` is optional: true by default on create, preserved when omitted on update.
+
+`channels delete <id>` also deletes its attached rules. `alerts delete <id>` permanently removes one rule; snooze for temporary suppression. `channels test <id>` sends a real test notification, and an escalation channel opens a real page. Saving or validating configuration does not test delivery.
+
+The write MCP server exposes `create_notification_channel`, `update_notification_channel`, `delete_notification_channel`, `test_notification_channel`, and matching `create_notification_rule`, `update_notification_rule`, `delete_notification_rule` tools. Pass `project_id`, `id` for existing records and `data` containing the JSON object. Discovery uses `list_notification_channels` and `list_notification_rules`. `list_notification_history` reads delivery history; CLI equivalent is `notification-history list --file query.json` with `{"pagination":{"page":1,"pageSize":20}}` and optional `search`, `fromDate`, `toDate`.
+
+The write skill's **alert-configuration.md**, also served as `traceway://knowledge/alert-configuration`, lists every channel's fields and every rule type's JSON config. Channel configuration contains credentials: use a secure secret mechanism and do not commit or echo them. See [Agent Write Access](/learn/agent-write-access) for authorization.

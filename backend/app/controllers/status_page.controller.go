@@ -1,12 +1,14 @@
 package controllers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -15,14 +17,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/storage"
-
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type statusPageController struct{}
@@ -57,7 +59,7 @@ type statusPageRequest struct {
 
 var customDomainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
 
-func validateStatusPageRequest(tx *sql.Tx, organizationId int, req *statusPageRequest) (string, error) {
+func validateStatusPageRequest(tx *sql.Tx, organizationId int, requestHost string, req *statusPageRequest) (string, error) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Slug = strings.ToLower(strings.TrimSpace(req.Slug))
 	if req.Name == "" {
@@ -82,6 +84,9 @@ func validateStatusPageRequest(tx *sql.Tx, organizationId int, req *statusPageRe
 	req.CustomDomain = strings.ToLower(strings.TrimSpace(req.CustomDomain))
 	if req.CustomDomain != "" && !customDomainPattern.MatchString(req.CustomDomain) {
 		return "Custom domain must be a bare hostname like status.example.com (no scheme or path).", nil
+	}
+	if req.CustomDomain != "" && isDashboardHost(req.CustomDomain, requestHost) {
+		return "Custom domain must not be the host Traceway itself is served on.", nil
 	}
 	for _, checkId := range req.CheckIds {
 		check, err := transactional.SyntheticCheckRepository.FindByIdInOrganization(tx, checkId, organizationId)
@@ -123,7 +128,7 @@ func (ctrl *statusPageController) Create(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
-	if message, err := validateStatusPageRequest(tx, organizationId, &req); err != nil {
+	if message, err := validateStatusPageRequest(tx, organizationId, ctx.Request.Host, &req); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate status page: %w", err))
 		return
 	} else if message != "" {
@@ -194,7 +199,7 @@ func (ctrl *statusPageController) Update(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Status page not found"})
 		return
 	}
-	if message, err := validateStatusPageRequest(tx, organizationId, &req); err != nil {
+	if message, err := validateStatusPageRequest(tx, organizationId, ctx.Request.Host, &req); err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to validate status page: %w", err))
 		return
 	} else if message != "" {
@@ -370,7 +375,7 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 		page   *models.StatusPage
 		checks []*models.SyntheticCheck
 	}
-	loaded, err := db.ExecuteTransaction(func(tx *sql.Tx) (pageWithChecks, error) {
+	loaded, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (pageWithChecks, error) {
 		page, err := transactional.StatusPageRepository.FindPublicBySlug(tx, slug)
 		if err != nil || page == nil {
 			return pageWithChecks{}, err
@@ -435,7 +440,7 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 			day.MaxLatencyMs = 0
 		}
 
-		incidents, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.CheckIncident, error) {
+		incidents, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.CheckIncident, error) {
 			return transactional.CheckIncidentRepository.FindByCheckSince(tx, check.Id, from)
 		})
 		if err != nil {
@@ -466,7 +471,7 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 		})
 	}
 
-	manualIncidents, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.CheckIncident, error) {
+	manualIncidents, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.CheckIncident, error) {
 		return transactional.CheckIncidentRepository.FindByStatusPageSince(tx, loaded.page.Id, from)
 	})
 	if err != nil {
@@ -488,7 +493,7 @@ func buildStatusPageView(ctx *gin.Context, slug string, now time.Time) (*statusP
 	for i, source := range pastIncidents {
 		incidentIds[i] = source.incident.Id
 	}
-	updates, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.IncidentUpdate, error) {
+	updates, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.IncidentUpdate, error) {
 		return transactional.IncidentUpdateRepository.FindByIncidentIds(tx, incidentIds)
 	})
 	if err != nil {
@@ -577,7 +582,7 @@ func (ctrl *statusPageController) UploadLogo(ctx *gin.Context) {
 // PublicLogo streams the logo of a public status page.
 func (ctrl *statusPageController) PublicLogo(ctx *gin.Context) {
 	slug := strings.ToLower(ctx.Param("slug"))
-	page, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.StatusPage, error) {
+	page, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.StatusPage, error) {
 		return transactional.StatusPageRepository.FindPublicBySlug(tx, slug)
 	})
 	if err != nil {
@@ -597,29 +602,30 @@ func (ctrl *statusPageController) PublicLogo(ctx *gin.Context) {
 	ctx.Data(http.StatusOK, http.DetectContentType(data), data)
 }
 
-// ResolveHost maps the request's Host header to a public status page slug,
-// so a CNAMEd vanity domain (status.example.com -> this instance) can land
-// on its status page. TLS for the vanity host terminates at the operator's
-// proxy; this endpoint only does the host-to-slug mapping.
-func (ctrl *statusPageController) ResolveHost(ctx *gin.Context) {
-	host := strings.ToLower(ctx.Request.Host)
+func normalizeHost(host string) string {
+	host = strings.ToLower(strings.TrimSpace(host))
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	if host == "" || !customDomainPattern.MatchString(host) {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
-		return
+	return host
+}
+
+func isDashboardHost(host, requestHost string) bool {
+	if host == normalizeHost(requestHost) {
+		return true
 	}
-	page, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.StatusPage, error) {
+	if base, err := url.Parse(config.Config.PublicBaseURL()); err == nil && base.Hostname() != "" {
+		return host == normalizeHost(base.Hostname())
+	}
+	return false
+}
+
+func StatusPageForHost(ctx context.Context, requestHost string) (*models.StatusPage, error) {
+	host := normalizeHost(requestHost)
+	if host == "" || !customDomainPattern.MatchString(host) || isDashboardHost(host, "") {
+		return nil, nil
+	}
+	return db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.StatusPage, error) {
 		return transactional.StatusPageRepository.FindPublicByCustomDomain(tx, host)
 	})
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve status host: %w", err))
-		return
-	}
-	if page == nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
-		return
-	}
-	ctx.JSON(http.StatusOK, gin.H{"slug": page.Slug})
 }

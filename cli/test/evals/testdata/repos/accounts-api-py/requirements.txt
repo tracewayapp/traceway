@@ -1,0 +1,12 @@
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+sqlalchemy[asyncio]==2.0.43
+asyncpg==0.30.0
+alembic==1.16.5
+redis==6.4.0
+pydantic[email]==2.11.9
+opentelemetry-distro==0.58b0
+opentelemetry-exporter-otlp==1.37.0
+opentelemetry-instrumentation-fastapi==0.58b0
+opentelemetry-instrumentation-sqlalchemy==0.58b0
+opentelemetry-instrumentation-redis==0.58b0

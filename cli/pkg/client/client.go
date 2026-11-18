@@ -153,7 +153,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	case http.StatusUnauthorized:
 		return ErrUnauthorized
 	case http.StatusForbidden:
-		return ErrForbidden
+		var body struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body)
+		return &ForbiddenError{Message: body.Error}
 	case http.StatusNotFound:
 		return ErrNotFound
 	case http.StatusTooManyRequests:

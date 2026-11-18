@@ -7,17 +7,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
 	"sort"
 	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/profiling"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/profiling"
 )
 
 type profileGroupRow struct {
@@ -147,12 +147,6 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 				continue
 			}
 
-			var distributedTraceId *string
-			if p.DistributedTraceId != nil {
-				v := p.DistributedTraceId.String()
-				distributedTraceId = &v
-			}
-
 			if err := appender.AppendRow(
 				p.Id.String(),
 				p.ProjectId.String(),
@@ -168,7 +162,6 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 				p.StorageKey,
 				p.TraceId,
 				p.SpanId,
-				nullableString(distributedTraceId),
 				p.Unit,
 				boolToInt(p.IsGauge),
 			); err != nil {
@@ -187,7 +180,7 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 		countParams["search"] = search
 	}
 
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT COUNT(*) AS count FROM (
 			SELECT 1 FROM profiles
 			WHERE project_id = :project_id AND recorded_at >= :from AND recorded_at <= :to`+searchClause+`
@@ -220,7 +213,7 @@ func (r *profileRepository) FindGroupedByService(ctx context.Context, projectId 
 	if search != "" {
 		pageParams["search"] = search
 	}
-	rows, err := lit.SelectNamed[profileGroupRow](db.TelemetryDB,
+	rows, err := lit.SelectNamed[profileGroupRow](shared.Traced(ctx, db.TelemetryDB),
 		fmt.Sprintf(`SELECT service_name, profile_type,
 			MAX(unit) AS unit,
 			MAX(is_gauge) AS is_gauge,
@@ -324,7 +317,7 @@ func (r *profileRepository) fillSparklines(ctx context.Context, projectId uuid.U
 }
 
 func (r *profileRepository) DiscoverTypes(ctx context.Context, projectId uuid.UUID, service string, from, to time.Time) ([]models.ProfileTypeInfo, error) {
-	rows, err := lit.SelectNamed[profileTypeRow](db.TelemetryDB,
+	rows, err := lit.SelectNamed[profileTypeRow](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT type, MAX(unit) AS unit, MAX(is_gauge) AS is_gauge
 		FROM profiling_samples
 		WHERE project_id = :project_id AND service_name = :service
@@ -442,7 +435,7 @@ func (r *profileRepository) GetFlameGraph(ctx context.Context, projectId uuid.UU
 }
 
 func (r *profileRepository) distinctLabelValues(ctx context.Context, projectId uuid.UUID, service, profileType, key string, from, to time.Time) ([]string, error) {
-	results, err := lit.SelectNamed[labelValueRow](db.TelemetryDB,
+	results, err := lit.SelectNamed[labelValueRow](shared.Traced(ctx, db.TelemetryDB),
 		fmt.Sprintf(`SELECT DISTINCT json_extract_string(labels, '$."' || :key || '"') AS v
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
@@ -482,7 +475,7 @@ func (r *profileRepository) GetSeriesBreakdown(ctx context.Context, projectId uu
 		return nil, fmt.Errorf("unsupported breakdown dimension: %s", dimension)
 	}
 
-	topRows, err := lit.SelectNamed[profileDimValueRow](db.TelemetryDB,
+	topRows, err := lit.SelectNamed[profileDimValueRow](shared.Traced(ctx, db.TelemetryDB),
 		fmt.Sprintf(`SELECT %s AS k, CAST(%s(value) AS DOUBLE) AS tv
 		FROM profiling_samples
 		WHERE project_id = :project_id AND type = :type AND service_name = :service
@@ -540,7 +533,7 @@ func (r *profileRepository) DiscoverDimensions(ctx context.Context, projectId uu
 }
 
 func (r *profileRepository) distinctDimensionValues(ctx context.Context, projectId uuid.UUID, service, profileType, column string, from, to time.Time) ([]string, error) {
-	rows, err := lit.SelectNamed[labelValueRow](db.TelemetryDB,
+	rows, err := lit.SelectNamed[labelValueRow](shared.Traced(ctx, db.TelemetryDB),
 		fmt.Sprintf(`SELECT DISTINCT %s AS v
 		FROM profiling_samples
 		WHERE project_id = :project_id AND service_name = :service AND type = :type

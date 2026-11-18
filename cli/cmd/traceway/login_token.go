@@ -10,9 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/internal/state"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 func runLoginToken(cmd *cobra.Command) error {
@@ -35,7 +36,11 @@ func runLoginToken(cmd *cobra.Command) error {
 		}
 	}
 	if token == "" {
-		return renderUsageError(cmd.ErrOrStderr(), mode, "no token provided", "traceway login --token <token>")
+		return renderUsageError(cmd.ErrOrStderr(), mode, "no token provided", appdir.Binary+" login --token <token>")
+	}
+	if !editionWrite && strings.HasPrefix(token, "tww_") {
+		return renderUsageError(cmd.ErrOrStderr(), mode, "this is a write token (tww_), and the read-only traceway CLI does not keep write credentials",
+			"use it with 'traceway-write login --token', or create a Read only token (twp_) under Account > Personal Access Tokens")
 	}
 
 	username := loginUsername
@@ -53,6 +58,9 @@ func runLoginToken(cmd *cobra.Command) error {
 		return err
 	}
 
+	if editionWrite && strings.HasPrefix(token, "twp_") {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: this is a read-only token (twp_), so every write will be refused. Create a Read and write token (tww_) under Account > Personal Access Tokens.")
+	}
 	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Stored personal access token for %s (profile: %s)\n", url, profileName)
 	return err
 }

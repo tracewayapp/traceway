@@ -3,7 +3,7 @@ package mcpserver
 import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // addTools registers the full tool surface. Every tool wraps exactly one
@@ -27,14 +27,14 @@ func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_exception",
 		OutputSchema: outSchema[client.GetExceptionResponse](),
-		Description:  "Get one exception group by its 16-hex hash: the representative stack trace plus paginated occurrences, each with recordedAt, attributes, and optional distributedTraceId/sessionId. A hash can bundle several distinct errors that share top frames: when debugging, anchor on the most recent occurrence, not the group; distinct first stack lines mean distinct bugs. Capture each occurrence's id together with its recordedAt for the by-id drill-in tools.",
+		Description:  "Get one exception group by its 16-hex hash: the representative stack trace plus paginated occurrences, each with recordedAt, attributes, and optional traceId/spanId/sessionId, plus relatedEntity: the endpoint, task or AI trace the newest occurrence happened in (its id and recordedAt feed the by-id tools, its traceId feeds get_trace). A hash can bundle several distinct errors that share top frames: when debugging, anchor on the most recent occurrence, not the group; distinct first stack lines mean distinct bugs. Capture each occurrence's id together with its recordedAt for the by-id drill-in tools.",
 		Annotations:  readOnly(),
 	}, s.getException)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_exception_occurrence",
 		OutputSchema: outSchema[client.ExceptionByIdResponse](),
-		Description:  "Get a single exception occurrence by UUID, including its sessionId and session recording reference. Prefer this over get_exception when you already hold the occurrence id and its timestamp (dashboard URL path + ?t= param, or a notification's Exception ID + Occurred at).",
+		Description:  "Get a single exception occurrence by UUID, including its traceId, its relatedEntity (the endpoint, task or AI trace it happened in), its sessionId and session recording reference. Prefer this over get_exception when you already hold the occurrence id and its timestamp (dashboard URL path + ?t= param, or a notification's Exception ID + Occurred at).",
 		Annotations:  readOnly(),
 	}, s.getExceptionOccurrence)
 
@@ -48,21 +48,28 @@ func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "list_endpoints",
 		OutputSchema: outSchema[client.ListEndpointsResponse](),
-		Description:  "Per-endpoint latency stats in a window: request count, p50/p95/p99/avg durations (nanoseconds), impact score with reason. This is the ONLY source of true latency percentiles (computed from raw request durations; query_metrics cannot do quantiles). Read the shape first: high p50 means every request pays the cost (systemic), p99 much greater than p50 means a tail (contention, pool exhaustion, GC, retries). Raw percentiles are not adjusted for operator-accepted slowness; check get_slow_endpoint_config before calling an endpoint slow.",
+		Description:  "Per-endpoint latency stats in a window: request count, p50/p95/p99/avg durations (nanoseconds), impact score with reason. These endpoint percentiles are computed from raw request durations. Distribution metrics also support percentiles on the server, but query_metrics tool validation does not expose them. Read the shape first: high p50 means every request pays the cost (systemic), p99 much greater than p50 means a tail (contention, pool exhaustion, GC, retries). Raw percentiles are not adjusted for operator-accepted slowness; check get_slow_endpoint_config before calling an endpoint slow.",
 		Annotations:  readOnly(),
 	}, s.listEndpoints)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:         "list_endpoint_requests",
+		OutputSchema: outSchema[client.ListEndpointRequestsResponse](),
+		Description:  "One endpoint's individual requests in a window, slowest first by default: each with its id, recordedAt, duration (nanoseconds), status code and traceId, plus the endpoint's stats (milliseconds). This is where a request id comes from: pass id and recordedAt to get_endpoint_request, or traceId and recordedAt to get_trace.",
+		Annotations:  readOnly(),
+	}, s.listEndpointRequests)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_endpoint_request",
 		OutputSchema: outSchema[client.EndpointDetailResponse](),
-		Description:  "Get one request (transaction) by id: the request, its span waterfall, and any linked exception/messages. In the waterfall, a gap before work starts is itself the finding: time spent queueing, waiting on a lock, or acquiring a pool connection.",
+		Description:  "Get one request (transaction) by id (from list_endpoint_requests or a distributed trace node): the request, its span waterfall, and any linked exception/messages. In the waterfall, a gap before work starts is itself the finding: time spent queueing, waiting on a lock, or acquiring a pool connection.",
 		Annotations:  readOnly(),
 	}, s.getEndpointRequest)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "endpoints_chart",
 		OutputSchema: outSchema[client.EndpointChartResponse](),
-		Description:  "Endpoint latency bucketed over time: the top 5 endpoints ranked by metric_type (plus an Other bucket), each as a {timestamp, endpoint, value} series in milliseconds. Use it to pinpoint WHEN latency changed: read down one endpoint's buckets for the step. A non-top-5 endpoint folds into Other; bisect list_endpoints over narrowing from/to windows for it instead.",
+		Description:  "Endpoint latency bucketed over time: the top 5 endpoints ranked by metric_type (plus an Other bucket), each as a {timestamp, endpoint, value} series in milliseconds. Use it to pinpoint WHEN latency changed: read down one endpoint's buckets for the first one that jumped. Each timestamp is the start of its bucket, so the change happened inside that bucket; re-run it with from/to and an interval_minutes of 15 or less before reporting the time. A non-top-5 endpoint folds into Other; bisect list_endpoints over narrowing from/to windows for it instead.",
 		Annotations:  readOnly(),
 	}, s.endpointsChart)
 
@@ -76,7 +83,7 @@ func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "query_metrics",
 		OutputSchema: outSchema[client.QueryMetricsResponse](),
-		Description:  "Query time-bucketed metric series (aggregations: avg, sum, count, min, max). There is NO quantile aggregation: latency percentiles come from list_endpoints only. Host metrics from the Traceway OTel Agent live under system.* names; runtime names include go.gc_pause, mem.used_pcnt, go.go_routines. OTLP histogram metrics are stored as two series, <name>.avg and <name>.count. An unknown name returns an empty series cleanly, so probing names is safe. A grouped query is cut to the first 200 groups (alphabetical) and that result carries truncatedGroups: true, while the top-level intervalMinutes is the bucket size actually used after the server widens it so no series exceeds 2000 points.",
+		Description:  "Query time-bucketed metric series (aggregations: avg, sum, count, min, max, rate, last). There is NO quantile aggregation: latency percentiles come from list_endpoints only. Host metrics from the Traceway OTel Agent live under system.* names and are split by tags: system.cpu.utilization and system.memory.utilization have one series per state, so filter with tag_filters {state: idle} (busy CPU is 1 minus idle) or {state: used}, or group by state; never read them unfiltered. Runtime metrics use the OpenTelemetry names of the language (jvm.*, go.*, v8js.*, process.runtime.*). OTLP histogram metrics are stored as two series, <name>.avg and <name>.count. An unknown name returns an empty series cleanly, so probing names is safe. A grouped query is cut to the first 200 groups (alphabetical) and that result carries truncatedGroups: true, while the top-level intervalMinutes is the bucket size actually used after the server widens it so no series exceeds 2000 points.",
 		Annotations:  readOnly(),
 	}, s.queryMetrics)
 
@@ -104,10 +111,23 @@ func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_trace",
 		OutputSchema: outSchema[client.DistributedTraceResponse](),
-		Description:  "Get a distributed trace by id: every endpoint/task/AI-trace/exception node sharing the trace id, across services and across all projects the user can see (no project_id param). Usually the single highest-value root-cause call: it stitches one logical request together end to end. The lookup window is 48h around recorded_at.",
+		Description:  "Get a distributed trace by trace id (32 hex characters, the traceId of any occurrence or request): every endpoint/task/AI-trace/exception node sharing the trace id, across services and across all projects the user can see (no project_id param). Each node carries its spanId and parentEntitySpanId, the spanId of the node it sits under, so the call chain can be rebuilt. Usually the single highest-value root-cause call: it stitches one logical request together end to end. The lookup window is 48h around recorded_at.",
 		Annotations:  readOnly(),
 	}, s.getTrace)
 
+	s.addOperationReadTools(srv)
+	s.addOpampReadTools(srv)
+	s.addDashboardReadTools(srv)
+	s.addAlertingConfigurationTools(srv, false)
+	if s.cfg.AllowWrite {
+		s.addWriteTools(srv)
+	}
+}
+
+// addWriteTools registers the mutating tools. They exist only on the write
+// server (traceway-write mcp, or /mcp/write on the backend), so a read
+// session never sees them in its tool list.
+func (s *server) addWriteTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "archive_exceptions",
 		OutputSchema: outSchema[archiveResult](),
@@ -121,4 +141,9 @@ func (s *server) addTools(srv *mcp.Server) {
 		Description:  "Unarchive previously archived exception groups by hash. MUTATING. Only call when the user explicitly asked for it.",
 		Annotations:  mutating(),
 	}, s.unarchiveExceptions)
+
+	s.addOperationWriteTools(srv)
+	s.addOpampWriteTools(srv)
+	s.addDashboardWriteTools(srv)
+	s.addAlertingConfigurationTools(srv, true)
 }

@@ -10,24 +10,47 @@ import (
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	Scope    string `json:"scope,omitempty"`
 }
 
 type loginResponse struct {
-	Token string `json:"token"`
+	Token        string `json:"token"`
+	RefreshToken string `json:"refreshToken"`
+	ExpiresIn    int    `json:"expiresIn"`
+}
+
+// LoginResult is a scoped password login. A server that supports agent
+// scopes returns a short-lived access token with a refresh token, refreshed
+// and revoked like a device-flow session; RefreshToken is empty otherwise.
+type LoginResult struct {
+	Token        string
+	RefreshToken string
+	ExpiresIn    int
 }
 
 // Login exchanges an email + password for a JWT. The returned token should be
 // stored by the caller and passed to subsequent Client constructions via
 // WithJWT.
 func (c *Client) Login(ctx context.Context, email, password string) (string, error) {
-	var resp loginResponse
-	if err := c.do(ctx, http.MethodPost, "/api/login", loginRequest{Email: email, Password: password}, &resp); err != nil {
+	res, err := c.LoginScoped(ctx, email, password, "")
+	if err != nil {
 		return "", err
 	}
-	if resp.Token == "" {
-		return "", errors.New("login response did not include a token")
+	return res.Token, nil
+}
+
+// LoginScoped is Login for agent credentials: with a scope the server returns
+// a scoped token held to the agent route allowlist instead of a full
+// dashboard session.
+func (c *Client) LoginScoped(ctx context.Context, email, password, scope string) (*LoginResult, error) {
+	var resp loginResponse
+	if err := c.do(ctx, http.MethodPost, "/api/login", loginRequest{Email: email, Password: password, Scope: scope}, &resp); err != nil {
+		return nil, err
 	}
-	return resp.Token, nil
+	if resp.Token == "" {
+		return nil, errors.New("login response did not include a token")
+	}
+	return &LoginResult{Token: resp.Token, RefreshToken: resp.RefreshToken, ExpiresIn: resp.ExpiresIn}, nil
 }
 
 // DeviceAuth is the response from starting the device authorization flow.
@@ -133,3 +156,8 @@ func mapOAuthError(err error) error {
 	}
 	return err
 }
+
+const (
+	ScopeRead  = "traceway:read"
+	ScopeWrite = "traceway:write"
+)

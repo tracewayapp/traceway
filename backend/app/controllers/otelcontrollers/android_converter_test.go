@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
 
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -73,7 +73,7 @@ func TestConvertTraces_AndroidR8Retraces(t *testing.T) {
 	})
 
 	req := androidExceptionRequest(string(androidConvFixture(t, "r8", "obfuscated.txt")), proguardUuid, nil)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
+	exceptions := convertTraces(context.Background(), tokenProject(projectId), projectId, req).Exceptions
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}
@@ -106,7 +106,7 @@ func TestConvertTraces_AndroidStructuredArrays(t *testing.T) {
 		intArrayKV("exception.structured_stacktrace.lines", 2),
 	}
 	req := androidExceptionRequest("", proguardUuid, extra)
-	_, _, _, exceptions, _, _ := convertTraces(context.Background(), tokenProject(projectId), projectId, req)
+	exceptions := convertTraces(context.Background(), tokenProject(projectId), projectId, req).Exceptions
 	if len(exceptions) != 1 {
 		t.Fatalf("expected 1 exception, got %d", len(exceptions))
 	}

@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
 
 func TestListEndpoints_callsGroupedRoute(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/endpoints/grouped" {
 			t.Errorf("path = %q (want grouped)", r.URL.Path)
 		}
@@ -57,8 +56,65 @@ func TestListEndpoints_callsGroupedRoute(t *testing.T) {
 	}
 }
 
+// TestListRequests_sendOrderByColumns: the backend sorts on column names and
+// falls back to its default order for anything else, so the camelCase flag
+// values must reach it as those names.
+func TestListRequests_sendOrderByColumns(t *testing.T) {
+	wire := func(v any) string {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		s, _ := body["orderBy"].(string)
+		return s
+	}
+	for in, want := range map[string]string{"impact": "impact", "count": "count", "p95": "p95_duration", "lastSeen": "last_seen", "": ""} {
+		if got := wire(ListEndpointsRequest{OrderBy: in}); got != want {
+			t.Errorf("endpoints --order-by %q sent %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{"count": "count", "lastSeen": "last_seen", "firstSeen": "first_seen"} {
+		if got := wire(ListExceptionsRequest{OrderBy: in}); got != want {
+			t.Errorf("exceptions --order-by %q sent %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestListEndpointRequests_callsEndpointRoute(t *testing.T) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/endpoints/endpoint" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("endpoint"); got != "GET /api/orders/:id" {
+			t.Errorf("endpoint = %q", got)
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["orderBy"] != "recorded_at" || body["fromDate"] == nil {
+			t.Errorf("body = %v", body)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"6f9619ff-8b86-d011-b42d-00c04fc964ff","endpoint":"GET /api/orders/:id","duration":45000000,"recordedAt":"2026-10-20T10:00:00Z","statusCode":200}],"stats":{"count":1,"p95Duration":45},"pagination":{"page":1,"pageSize":20,"total":1,"totalPages":1}}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, WithJWT("tok"))
+	resp, err := c.ListEndpointRequests(context.Background(), "proj-1", "GET /api/orders/:id", ListEndpointRequestsRequest{
+		TimeRange:  TimeRange{From: time.Now().Add(-time.Hour), To: time.Now()},
+		Pagination: PaginationParams{Page: 1, PageSize: 20},
+		OrderBy:    "recordedAt",
+	})
+	if err != nil {
+		t.Fatalf("ListEndpointRequests: %v", err)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].Duration != 45*time.Millisecond || resp.Stats == nil || resp.Stats.P95Duration != 45 {
+		t.Errorf("resp = %+v", resp)
+	}
+}
+
 func TestGetEndpointChart_callsChartRoute(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/endpoints/chart" {
 			t.Errorf("path = %q (want chart)", r.URL.Path)
 		}
@@ -107,7 +163,7 @@ func TestGetEndpointChart_callsChartRoute(t *testing.T) {
 }
 
 func TestGetSlowEndpoint_callsSlowRoute(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %q (want GET)", r.Method)
 		}

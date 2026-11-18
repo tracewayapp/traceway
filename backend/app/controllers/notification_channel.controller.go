@@ -9,15 +9,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/notifications"
-	"github.com/tracewayapp/traceway/backend/app/oncall"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/notifications"
+	"github.com/tracewayapp/traceway/backend/v2/app/oncall"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type notificationChannelController struct{}
@@ -41,6 +41,7 @@ func (ctrl *notificationChannelController) List(ctx *gin.Context) {
 
 type createChannelRequest struct {
 	Name        string          `json:"name"`
+	Enabled     *bool           `json:"enabled"`
 	ChannelType string          `json:"channelType"`
 	Config      json.RawMessage `json:"config"`
 }
@@ -141,6 +142,10 @@ func (ctrl *notificationChannelController) Create(ctx *gin.Context) {
 		UpdatedAt:   now,
 	}
 
+	if req.Enabled != nil {
+		channel.Enabled = *req.Enabled
+	}
+
 	id, err := transactional.NotificationChannelRepository.Create(tx, channel)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to create notification channel: %w", err))
@@ -204,6 +209,9 @@ func (ctrl *notificationChannelController) Update(ctx *gin.Context) {
 		return
 	}
 
+	if req.Enabled != nil {
+		existing.Enabled = *req.Enabled
+	}
 	existing.Name = req.Name
 	existing.ChannelType = req.ChannelType
 	existing.Config = req.Config
@@ -264,7 +272,7 @@ func (ctrl *notificationChannelController) Test(ctx *gin.Context) {
 		return
 	}
 
-	channel, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.NotificationChannel, error) {
+	channel, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.NotificationChannel, error) {
 		return transactional.NotificationChannelRepository.FindById(tx, id)
 	})
 	if err != nil {
@@ -284,7 +292,7 @@ func (ctrl *notificationChannelController) Test(ctx *gin.Context) {
 			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "An escalation policy is required."})
 			return
 		}
-		opened, err := oncall.OpenTestPage(policyId, projectId, channel.Id, channel.Name)
+		opened, err := oncall.OpenTestPage(ctx, policyId, projectId, channel.Id, channel.Name)
 		if err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("test page failed: %w", err))
 			return

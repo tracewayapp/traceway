@@ -38,6 +38,8 @@ var (
 	telemetryDroppedRows    = map[string]uint64{}
 	telemetryInsertFailures uint64
 	telemetryIngestRejects  uint64
+
+	telemetrySpanPartitionFallbacks uint64
 )
 
 // RecordIngestRejected counts requests turned away by the ingest admission
@@ -58,6 +60,18 @@ func RecordTelemetryRowDropped(table string) {
 	telemetryIngestMu.Lock()
 	telemetryDroppedRows[table]++
 	telemetryIngestMu.Unlock()
+}
+
+func RecordSpanPartitionTimeFallback() {
+	telemetryIngestMu.Lock()
+	telemetrySpanPartitionFallbacks++
+	telemetryIngestMu.Unlock()
+}
+
+func GetSpanPartitionTimeFallbacks() uint64 {
+	telemetryIngestMu.Lock()
+	defer telemetryIngestMu.Unlock()
+	return telemetrySpanPartitionFallbacks
 }
 
 func RecordTelemetryInsertFailure() {

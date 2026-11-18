@@ -154,7 +154,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           plugin_marketplaces: |
-            https://github.com/tracewayapp/traceway.git
+            https://github.com/tracewayapp/skills.git
           plugins: |
             tw@traceway
           claude_args: |

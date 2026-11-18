@@ -6,43 +6,115 @@ This page lists every self-monitoring metric, recommended alert thresholds, and 
 
 ## Enabling self-monitoring
 
-1. Create a project in your Traceway dashboard (a dedicated "monitoring" project keeps things tidy). For larger setups, point self-monitoring at a *separate* Traceway instance so an outage doesn't take down its own monitoring.
+1. Create a project in your Traceway dashboard with the **OpenTelemetry** framework (a dedicated "monitoring" project keeps things tidy). For larger setups, point self-monitoring at a *separate* Traceway instance so an outage doesn't take down its own monitoring.
 2. Copy the project token and set:
 
 ```bash
-MONITORING_TRACEWAY_URL="<project_token>@https://your-traceway-host/api/report"
+MONITORING_TRACEWAY_URL="<project_token>@https://your-traceway-host"
 ```
 
-That single variable turns everything on:
+Values that end in `/api/report`, the format older versions used, keep working.
 
-- Every HTTP request to the backend is captured as a transaction (so endpoint latency/error-rate alert rules work on `POST /api/report` out of the box).
-- Runtime metrics are reported every 30s: `cpu.used_pcnt`, `mem.used`, `mem.total`, `go.go_routines`, `go.heap_objects`, `go.num_gc`, `go.gc_pause`.
+That single variable turns everything on. The backend instruments itself with OpenTelemetry and exports over OTLP/HTTP to `/api/otel/v1/traces`, `/v1/metrics` and `/v1/logs`:
+
+- Every HTTP request to the backend is an endpoint, so endpoint latency and error-rate alert rules work on `POST /api/otel/v1/traces` out of the box. Database queries show up as child spans of the request. Ingest requests (`/api/report`, `/api/profiles/ingest` and `/api/otel/*`) are the exception: they are endpoints too, but their queries are not traced, because they grow with your clients' traffic and the `traceway.ingest.batch.*` metrics already time the writes.
+- Each pass of a background worker is a task: `outbox.drain`, `oncall.escalate`, `notifications.evaluate`, `synthetics.schedule`, `slo.compute` and `retention.*`. A pass that found nothing to do is not reported, so an idle instance does not fill the Tasks view with empty ticks. A pass that failed is always reported.
+- Handler errors and panics become issues linked to their request. A panic answers 500.
+- Server log lines are sent to Logs. Lines written during a request or task carry its trace.
+- Go runtime metrics are reported: `go.memory.used`, `go.memory.allocated`, `go.memory.gc.goal`, `go.goroutine.count` and more.
 - The backend reporters described below start emitting `traceway.*` metrics.
 
-Note: `mem.used` is Go **heap** memory only. The real OOM-relevant number is `traceway.proc.rss_mb` (resident set size, Linux only).
+The backend never traces a request that carries the monitoring project's token. Those requests are its own exports, and tracing them would report every report back to itself in a loop. It also skips the runner long-poll (`/api/runners/poll`), MCP streams and static assets. Requests from your other clients, including their ingest, are traced as usual. A `traceparent` header sent by a client can make a request part of that client's trace, but it never turns the backend's own tracing off, so an error on that request is still reported.
+
+Each instance reports under its short hostname as the server name. Set `OTEL_SERVICE_NAME` to choose another name, and `OTEL_RESOURCE_ATTRIBUTES` to add resource attributes.
+
+Host metrics (CPU, memory, disk and network of the machine) are not reported by the backend. Install the [Traceway OTel Agent](/learn/otel-agent) on the host with the same project token. The backend does report its own process: `traceway.proc.cpu_pcnt` and `traceway.proc.rss_mb`. The latter is the OOM-relevant number (resident set size, Linux only). `go.memory.used` only counts memory the Go runtime holds.
+
+### Upgrading from the Go SDK metrics
+
+Older versions reported through the Traceway Go SDK, with different metric names. Dashboards built from the **Go Application** template and alert rules on these names stop receiving data after the upgrade. Rebuild them on the new names:
+
+| Old name | Replacement |
+|----------|-------------|
+| `cpu.used_pcnt` | `traceway.proc.cpu_pcnt` for the backend process. Host CPU comes from the [Traceway OTel Agent](/learn/otel-agent) |
+| `mem.used` | `go.memory.used`, in bytes rather than MB. For the OOM-relevant number use `traceway.proc.rss_mb` |
+| `mem.total` | None from the backend. Host memory comes from the OTel Agent |
+| `go.go_routines` | `go.goroutine.count` |
+| `go.heap_objects`, `go.num_gc`, `go.gc_pause` | None. `go.memory.allocations` counts allocations and `go.memory.gc.goal` is the heap size that triggers the next collection |
 
 ## Metric reference
 
 ### Ingestion (every batch)
 
-Emitted once per `/api/report` and OTLP request, tagged with `signal` and `table`:
+Recorded for every ingest request, tagged with `signal` and `table`. Metrics are exported every 5 seconds. Each batch metric reports the largest value of that window for each `signal` and `table`, so a slow or oversized batch between two exports is never lost. `traceway.ingest.rate_limited` is a count of the events in the window.
 
 | Metric | Meaning |
 |--------|---------|
-| `traceway.ingest.batch.convert_ms` | Time converting the client payload into rows (backend CPU work) |
-| `traceway.ingest.batch.insert_ms` | Time writing the batch into ClickHouse (inside the request, so clients wait on this) |
-| `traceway.ingest.batch.size` | Rows in the batch |
-| `traceway.ingest.batch.bytes` | Decompressed payload size in bytes |
+| `traceway.ingest.batch.convert_ms` | Longest time converting a client payload into rows (backend CPU work) |
+| `traceway.ingest.batch.insert_ms` | Longest time writing a batch into ClickHouse (inside the request, so clients wait on this) |
+| `traceway.ingest.batch.size` | Rows in the largest batch |
+| `traceway.ingest.batch.bytes` | Decompressed size of the largest payload in bytes |
 | `traceway.ingest.rate_limited` | Fired when an org hits its ingest quota (tagged `org_id`) |
+
+### Log volume and ingestion outcomes
+
+The backend reports these gauges every 30 seconds. Each `_30s` value covers the most recent 30 one-second receipt-time buckets, including zero during idle periods. Counts are per backend process; use the server filter to investigate a replica. For charts over larger time buckets, use `max` for peaks or `avg` for typical window volume, rather than summing overlapping window snapshots.
+
+| Metric | Meaning |
+|--------|---------|
+| `traceway.ingest.logs.received_30s` | Decoded OTLP log records and native captured messages received, before client throttling and plan permissions |
+| `traceway.ingest.logs.accepted_30s` | Log records/messages accepted by the storage API; excludes generated review issues and duplicate exception projections of an OTLP log |
+| `traceway.ingest.logs.dropped_30s` | Records discarded by the client IP limiter, including limiter capacity exhaustion |
+| `traceway.ingest.logs.limiter_saturated_30s` | Requests denied because the bounded IP limiter cannot track another active project/IP |
+| `traceway.ingest.failures_30s` | Ingest requests ending in HTTP 4xx or 5xx, including requests without a sampled trace |
+| `traceway.ingest.admission_rejected.delta` | Requests rejected by the ingest concurrency gate since the previous reporting tick (503, clients may retry) |
+| `traceway.ingest.oversized_discarded` | `/api/report` bodies over `REPORT_MAX_BODY_MB` that were answered `200` and discarded, so the SDK drops the batch instead of resending it. The request carries `ingest.oversized_discarded=true` and the project id |
+| `traceway.ingest.body_rejected` | Ingest bodies turned away while they were being read, tagged `reason`: `body_too_slow` (the client stalled; 503), `client_aborted` (the client hung up or lost its connection mid-upload; 400), `invalid_body` (malformed; 400) or `body_too_large` (413) |
+| `traceway.ingest.body.network_ms` | Longest time one ingest request spent blocked on its client's upload in the interval. High values with normal `traceway.ingest.batch.*` timings mean slow clients, not a slow server |
+| `traceway.admission.in_use_pcnt` | Largest share of an admission gate's slots in use in the interval, tagged `gate` (`ingest`, `upload`, `opamp`). It reaches 100 before the first request has to wait |
+| `traceway.admission.wait_ms` | Longest a request waited for a slot of that gate in the interval. Above zero the gate is saturated; at `INGEST_ADMISSION_WAIT_SECONDS` requests are being rejected |
+| `traceway.storage.rows_dropped.delta` | Rows rejected by instrumented storage validation paths since the previous reporting tick |
+
+`traceway.ingest.logs.received`, `.accepted`, and `.dropped` are also OTel counters for longer-range totals and rates. Received need not equal accepted plus throttled: plan restrictions, storage failures, and requests spanning reporting windows account for differences. Storage acceptance is not a guarantee of durable flush for asynchronous storage backends. Consult storage-specific failure metrics as well.
+
+`traceway.ingest.requests` counts requests by `route` and `status_class` (such as `4xx` or `5xx`). `traceway.ingest.request.duration_ms` reports the maximum complete ingest request duration per export interval with the same labels, including admission waiting and decoding. `traceway.ingest.batches` and `traceway.ingest.rows` count completed batches and their rows by `signal` and `table`. These labels never include customer IPs, session IDs, or device IDs.
+
+### Client log flood protection
+
+Browser and mobile projects share a budget across the native report and OTLP logs endpoints: **1,000 records per project and trusted client IP per fixed 30-second window**, anchored to that IP's first request. Set a positive `CLIENT_LOG_LIMIT_30S` to change the budget; missing, invalid, or non-positive values use 1,000. The setting is read on first use after startup environment loading. Backend projects are exempt so applications behind a collector or NAT do not lose server logs to this client protection.
+
+For OTLP, every log event counts, including lifecycle and exception events. Within an oversized batch, lifecycle events and then exception events receive priority over ordinary logs. Once the budget is exhausted, additional events are discarded. Native reports count captured messages; native exceptions, traces, metrics, and replay payloads use their existing admission/body limits. Replay-embedded breadcrumbs are not standalone log records and are outside this limiter.
+
+Excess OTLP records return HTTP 200 with `partialSuccess.rejectedLogRecords` and an explanation, in either JSON or protobuf. Native reports return HTTP 200 and `X-Traceway-Dropped-Logs`. This deliberately discards excess records instead of telling exporters to repeatedly resend a flood. The allowance counts admitted attempts, including retries after storage errors; it is not a deduplication mechanism.
+
+The first throttled request for an IP in each window creates a **Client log volume exceeded: review this device or shared network** message issue in the customer's project, subject to the project's exception-ingestion permission. Its occurrence contains the trusted IP, rejected count for that request, configured limit, and the first rejected record's session/device identifiers when supplied. Customers can review it through Issues and follow the linked session. Repeated requests from that IP in the same window do not generate more review issues. A shared IP can represent several devices: the issue is a network-volume signal, not proof that the linked device alone caused the flood.
+
+Configure `TRUSTED_PROXIES` correctly: the limiter uses the same server-derived `ClientIP()` as sessions, never an IP in the uploaded log attributes. Untrusted forwarded headers do not change the key. The limiter holds at most 65,536 project/IP entries; when full it discards logs from unknown keys until expired entries can be reclaimed and increments `limiter_saturated_30s`. Existing active keys are not evicted to admit new ones.
+
+Limits and counters reset on restart and are local to each replica. A deployment with N replicas can admit up to N times the configured budget without sticky routing or a shared external limiter. Fixed-window boundaries can also allow two budgets close together. The 1,000-record default is a starting point for runaway client logging; adjust it for shared corporate networks using observed traffic and review issues.
 
 ### Backend process (every 30s)
 
 | Metric | Meaning |
 |--------|---------|
 | `traceway.ingest.in_flight` | Ingest requests currently being processed |
+| `traceway.proc.cpu_pcnt` | CPU used by the backend process since the last tick, as a percentage of the CPUs it may use. That is `GOMAXPROCS`, which follows a container's CPU limit, so 100 means the container is saturated (not reported on Windows) |
 | `traceway.proc.rss_mb` | Process resident memory in MB (Linux only) |
 | `traceway.cache.projects.entries` | Projects held in the in-memory token cache |
 | `traceway.cache.metric_registry.entries` | Known metric names cached in memory |
+
+### Database connection pools (every 30s)
+
+Tagged with `pool`: `main` for the relational database (SQLite or PostgreSQL) and `telemetry` for the SQLite or DuckDB telemetry database. ClickHouse has its own pool metrics below.
+
+| Metric | Meaning |
+|--------|---------|
+| `traceway.db.pool.open` / `traceway.db.pool.max_open` | Open connections and the pool's limit (`0` means no limit) |
+| `traceway.db.pool.in_use` / `traceway.db.pool.idle` | Connections running a query, and connections waiting for one |
+| `traceway.db.pool.wait_count.delta` | Queries that had to wait for a free connection since the last tick |
+| `traceway.db.pool.wait_ms.delta` | Total time those queries waited, in milliseconds |
+
+The SQLite main database runs on a single connection, so `wait_ms.delta` on `pool=main` is the time requests spent queued behind each other's transactions.
 
 ### ClickHouse health (every 60s, ClickHouse deployments only)
 
@@ -86,6 +158,26 @@ Not emitted in SQLite mode.
 | `traceway.sourcemap.store_hits.delta` / `builds.delta` | Memory misses served by a precompiled `.tw` from object storage vs. full rebuilds from `.map` + bundle; reported in both cache modes, since the `.tw` store tier is always active |
 | `traceway.sourcemap.disk.entries` / `disk.bytes` | Local `.tw` files cached on disk and their total size (only reported when `SOURCEMAP_CACHE_TYPE=disk`) |
 | `traceway.sourcemap.disk.hits.delta` / `disk.evictions.delta` | Memory misses served by a local `.tw` file, and local files evicted by the byte cap, since the last tick |
+| `traceway.sourcemap.warmup_dropped.delta` | Source-map warm-ups dropped because the 2048-job warm-up queue was full; the artifact is built on its first lookup instead. Sustained drops also raise a rate-limited (1/min) exception |
+| `traceway.sourcemap.warmup_backlog` | Source-map warm-ups not finished yet (uploads being enqueued, queued and running jobs). It rises after an upload and drains at the pace of the 2 warm-up workers |
+
+### SLO worker (every 30s)
+
+The [SLO](/learn/slos) worker recomputes every enabled SLO each `SLO_POLL_SECONDS`. The freshness metrics are read from the main database, so every instance reports the same values, and they also fire when the worker has stopped entirely. The tick metrics describe the last tick of the reporting instance.
+
+| Metric | Meaning |
+|--------|---------|
+| `traceway.slo.enabled` | Enabled SLOs across all projects |
+| `traceway.slo.max_staleness_sec` | Seconds since the least recently computed SLO was computed. It sits near `SLO_POLL_SECONDS` when the worker keeps up, and grows when ticks fall behind or an SLO keeps failing |
+| `traceway.slo.stale` | SLOs not computed in the last 5 minutes |
+| `traceway.slo.backfill_pending` | SLOs whose history does not cover their window yet, or that still have an outage gap to fill |
+| `traceway.slo.tick.running_sec` | How long the current tick has been running, 0 between ticks. A value that keeps growing is a stuck tick |
+| `traceway.slo.tick.duration_ms` | Duration of the last tick, split into `tick.compute_ms` (raw telemetry queries), `tick.store_ms` (bucket inserts) and `tick.snapshot_ms` (window sums and status updates) |
+| `traceway.slo.tick.slos` / `tick.buckets` | SLOs this instance computed in the last tick, and the buckets it wrote |
+| `traceway.slo.tick.full_snapshots` | SLOs whose whole window was re-read in the last tick. The rest only read their recent hours, so this should stay a small share of `tick.slos` |
+| `traceway.slo.tick.slowest_ms` | The slowest SLO of the last tick, tagged `kind`. Its id and project are in the `slo.lastTick.slowest` block of `/api/health/deep` |
+| `traceway.slo.computed.delta` / `errors.delta` / `timeouts.delta` | SLOs computed, failed, and stopped by `SLO_COMPUTE_TIMEOUT_SECONDS` since the last report. Each failure and timeout is also captured as an exception naming the SLO |
+| `traceway.slo.shards_owned` / `instances` | SLO shards leased by this instance, and the backend instances sharing them (Postgres builds; a single instance owns all 64) |
 
 ## Source map cache sizing
 
@@ -121,7 +213,7 @@ Create rules in the monitoring project under **Notifications** using the **Metri
 
 Two more rule types complete the picture:
 
-- **Endpoint P95 threshold** on `POST /api/report`: client-visible ingest latency (the backend's own HTTP requests are transactions in the monitoring project).
+- **Endpoint P95 threshold** on `POST /api/otel/v1/traces`: client-visible ingest latency (the backend's own HTTP requests are endpoints in the monitoring project).
 - **No data** with data type `metrics`, which fires when the backend stops self-reporting entirely (crash, network partition).
 
 ## Recommended starting alerts
@@ -139,16 +231,19 @@ Two more rule types complete the picture:
 | `traceway.ch.disk.used_pcnt` | max | gt | 80 | 15 | warning | ClickHouse disk filling up |
 | `traceway.ch.pool.open` | avg | gte | 15 | 10 | warning | Connection pool saturated; check `insert_ms` next |
 | `traceway.recordings.dropped.delta` | max | gt | 0 | 5 | warning | Recording segments being dropped (ingestion overload) |
+| `traceway.slo.max_staleness_sec` | max | gt | 600 | 10 | warning | SLOs are 10 minutes behind: ticks take too long or the worker stopped. Check `tick.duration_ms` and `tick.slowest_ms` |
+| `traceway.slo.timeouts.delta` | max | gt | 0 | 15 | warning | An SLO query hit `SLO_COMPUTE_TIMEOUT_SECONDS`; the exception names it |
+| `traceway.slo.tick.running_sec` | max | gt | 300 | 10 | warning | A single SLO tick has been running for 5 minutes |
 | `traceway.sourcemap.load_failures.delta` | max | gt | 0 | 10 | warning | Source map loads failing (storage errors/timeouts); traces stored unsymbolicated |
-| `cpu.used_pcnt` | avg | gt | 80 | 10 | warning | Backend CPU-bound |
+| `traceway.proc.cpu_pcnt` | avg | gt | 80 | 10 | warning | Backend CPU-bound |
 | `traceway.proc.rss_mb` | avg | gt | 80% of host RAM | 10 | warning | Memory pressure / OOM risk (e.g. 800 on a 1 GB box) |
 | `traceway.sourcemap.bytes` | avg | gt | ~half of `SOURCEMAP_CACHE_MAX_BYTES_MB`×1MB | 30 | info | Source map cache growing, revisit sizing |
 
-Plus the two non-metric rules: **Endpoint P95 threshold** on `POST /api/report` (e.g. 1000 ms over 10 minutes) and **No data** on `metrics` with 10 minutes of silence.
+Plus the two non-metric rules: **Endpoint P95 threshold** on `POST /api/otel/v1/traces` (e.g. 1000 ms over 10 minutes) and **No data** on `metrics` with 10 minutes of silence.
 
 ## Scale ClickHouse, scale the backend, or add Kafka?
 
-Ingestion in Traceway is synchronous: each `/api/report` request converts the payload and writes it to ClickHouse before responding. That makes the diagnosis straightforward: the metrics tell you which side of that pipeline is saturated, and whether the problem is sustained or bursty.
+Ingestion in Traceway is synchronous: each ingest request converts the payload and writes it to ClickHouse before responding. That makes the diagnosis straightforward: the metrics tell you which side of that pipeline is saturated, and whether the problem is sustained or bursty.
 
 ### Scale ClickHouse when the pressure is sustained and CH-side
 
@@ -163,20 +258,20 @@ Fix: more CPU/RAM/disk for ClickHouse, faster disks, or sharding. Kafka won't he
 
 ### Scale the backend server when the Go process is the bottleneck
 
-- `cpu.used_pcnt` avg > 80% together with high `traceway.ingest.batch.convert_ms`; payload conversion (JSON/OTLP decoding, hashing) is CPU work that scales with traffic
+- `traceway.proc.cpu_pcnt` avg > 80% together with high `traceway.ingest.batch.convert_ms`; payload conversion (JSON/OTLP decoding, hashing) is CPU work that scales with traffic
 - `traceway.proc.rss_mb` approaching host RAM: before resizing, tune the source map cache variables above; they're the largest tunable consumer
-- `go.go_routines` growing without bound
+- `go.goroutine.count` growing without bound
 
 Fix: a bigger box, or multiple backend instances behind a load balancer (the backend is stateless apart from in-memory caches).
 
 ### Add Kafka when the load is bursty and ClickHouse averages look healthy
 
-Because inserts happen inside the request, every ClickHouse hiccup or burst becomes client-visible `/api/report` latency. The tell-tale combination:
+Because inserts happen inside the request, every ClickHouse hiccup or burst becomes client-visible ingest latency. The tell-tale combination:
 
 - `traceway.ingest.batch.insert_ms` p95 spiking while ClickHouse CPU, disk, and merges look calm on average
 - `traceway.ch.pool.open` pinned at 15 (pool saturated) during peaks
 - `traceway.recordings.dropped.delta` > 0; the one buffered path is already overflowing during bursts
-- P95 on `POST /api/report` rising even though total `traceway.ch.inserted_rows.delta` is well within what ClickHouse handles at steady state
+- P95 on `POST /api/otel/v1/traces` rising even though total `traceway.ch.inserted_rows.delta` is well within what ClickHouse handles at steady state
 
 That pattern means ClickHouse can absorb your *average* write rate but not your *peaks*, and the synchronous path turns peaks into client errors and data loss. A queue (Kafka) between the HTTP handlers and ClickHouse decouples client latency from insert latency, absorbs spikes, and enables larger, better-shaped batches.
 

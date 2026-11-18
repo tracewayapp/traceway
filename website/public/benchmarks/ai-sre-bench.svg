@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#05070c"/>
+  <path d="M72 70h1056" stroke="#283041" stroke-width="2"/>
+  <path d="M72 70h160" stroke="#00d4ff" stroke-width="4"/>
+  <g font-family="monospace">
+    <text x="72" y="126" fill="#8a93a6" font-size="20" letter-spacing="3">AN OPEN BENCHMARK BY TRACEWAY</text>
+    <text x="65" y="276" fill="#f4f6fb" font-size="112" font-weight="700" letter-spacing="-5">AI SRE <tspan fill="#00d4ff">BENCH</tspan></text>
+    <g fill="#c9d0dd" font-size="30">
+      <text x="72" y="351">How well can AI agents do the work</text>
+      <text x="72" y="395">of a site reliability engineer?</text>
+    </g>
+    <text x="72" y="477" fill="#8a93a6" font-size="19">INCIDENT DIAGNOSIS / CODE FIXES / SAFE OPERATIONS</text>
+    <path d="M72 520h1056" stroke="#283041" stroke-width="2"/>
+    <text x="72" y="569" fill="#f4f6fb" font-size="22">tracewayapp.com/benchmarks</text>
+    <text x="1128" y="569" fill="#00d4ff" font-size="19" text-anchor="end">OPEN CASES. DETERMINISTIC GRADING.</text>
+  </g>
+</svg>

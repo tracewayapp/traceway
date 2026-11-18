@@ -1,13 +1,14 @@
 package main
 
 import (
-	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 var (
@@ -23,8 +24,6 @@ func newExceptionsCmd() *cobra.Command {
 	cmd.AddCommand(newExceptionsListCmd())
 	cmd.AddCommand(newExceptionsShowCmd())
 	cmd.AddCommand(newExceptionsOccurrenceCmd())
-	cmd.AddCommand(newExceptionsArchiveCmd())
-	cmd.AddCommand(newExceptionsUnarchiveCmd())
 	return cmd
 }
 
@@ -58,20 +57,20 @@ func runExceptionsList(cmd *cobra.Command, _ []string) error {
 	}
 	if err := validatePaginationFlags(cmd); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			paginationHint("traceway exceptions list"))
+			paginationHint(appdir.Binary+" exceptions list"))
 	}
 	page := resolvePagination(cmd)
 	search, _ := cmd.Flags().GetString("search")
 	searchType, _ := cmd.Flags().GetString("search-type")
 	if err := validateEnumFlag("--search-type", searchType, exceptionsSearchTypes); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint("traceway exceptions list", "--search-type", exceptionsSearchTypes))
+			enumFlagHint(appdir.Binary+" exceptions list", "--search-type", exceptionsSearchTypes))
 	}
 	includeArchived, _ := cmd.Flags().GetBool("include-archived")
 	orderBy, _ := cmd.Flags().GetString("order-by")
 	if err := validateEnumFlag("--order-by", orderBy, exceptionsOrderBy); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint("traceway exceptions list", "--order-by", exceptionsOrderBy))
+			enumFlagHint(appdir.Binary+" exceptions list", "--order-by", exceptionsOrderBy))
 	}
 
 	c := sess.Client()
@@ -132,7 +131,7 @@ func runExceptionsShow(cmd *cobra.Command, args []string) error {
 	}
 	if err := validatePaginationFlags(cmd); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			paginationHint("traceway exceptions show"))
+			paginationHint(appdir.Binary+" exceptions show"))
 	}
 	page := resolvePagination(cmd)
 	page.PageSize = pickDefault(page.PageSize, 20) // detail uses 20 by default
@@ -152,10 +151,17 @@ func runExceptionsShow(cmd *cobra.Command, args []string) error {
 		// Group header, then occurrences table.
 		if resp.Group != nil {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
-				"HASH:        %s\nCOUNT:       %d\nFIRST SEEN:  %s\nLAST SEEN:   %s\n\nSTACK TRACE:\n%s\n\nOCCURRENCES (%d):\n",
+				"HASH:        %s\nCOUNT:       %d\nFIRST SEEN:  %s\nLAST SEEN:   %s\n",
 				resp.Group.ExceptionHash, resp.Group.Count,
 				resp.Group.FirstSeen.Format("2006-01-02 15:04:05"),
 				resp.Group.LastSeen.Format("2006-01-02 15:04:05"),
+			)
+			if related := resp.RelatedEntity; related != nil {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "RELATED:     %s %s (%s, recorded %s)\n",
+					related.TraceType, related.Name, related.Id,
+					related.RecordedAt.UTC().Format(time.RFC3339Nano))
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nSTACK TRACE:\n%s\n\nOCCURRENCES (%d):\n",
 				resp.Group.StackTrace,
 				len(resp.Occurrences),
 			)
@@ -243,8 +249,11 @@ func runExceptionsOccurrence(cmd *cobra.Command, args []string) error {
 			pickStr(occ.AppVersion, "-"),
 			pickStr(occ.TraceType, "-"),
 		)
-		if occ.DistributedTraceId != nil {
-			_, _ = fmt.Fprintf(out, "TRACE ID:     %s\n", occ.DistributedTraceId.String())
+		renderTraceId(out, occ.TraceId)
+		if related := resp.RelatedEntity; related != nil {
+			_, _ = fmt.Fprintf(out, "RELATED:      %s %s (%s, recorded %s)\n",
+				related.TraceType, related.Name, related.Id,
+				related.RecordedAt.UTC().Format(time.RFC3339Nano))
 		}
 		sid := resp.SessionId
 		if sid == nil {
@@ -255,82 +264,6 @@ func runExceptionsOccurrence(cmd *cobra.Command, args []string) error {
 		}
 		_, _ = fmt.Fprintf(out, "\nSTACK TRACE:\n%s\n", occ.StackTrace)
 		return nil
-	}
-}
-
-func newExceptionsArchiveCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "archive <hash> [<hash>...]",
-		Short: "Archive one or more exception groups",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExceptionsMutation(cmd, args, "archive",
-				func(c *client.Client, ctx context.Context, projectID string, hashes []string) error {
-					return c.ArchiveExceptions(ctx, projectID, hashes)
-				})
-		},
-	}
-}
-
-func newExceptionsUnarchiveCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "unarchive <hash> [<hash>...]",
-		Short: "Unarchive one or more exception groups",
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExceptionsMutation(cmd, args, "unarchive",
-				func(c *client.Client, ctx context.Context, projectID string, hashes []string) error {
-					return c.UnarchiveExceptions(ctx, projectID, hashes)
-				})
-		},
-	}
-}
-
-// runExceptionsMutation is the shared body for archive and unarchive. The
-// 'verb' parameter controls the prompt wording and the rendered action label;
-// 'doIt' is the client method to call after confirmation passes.
-func runExceptionsMutation(
-	cmd *cobra.Command,
-	hashes []string,
-	verb string,
-	doIt func(c *client.Client, ctx context.Context, projectID string, hashes []string) error,
-) error {
-	ctx := cmd.Context()
-	mode := output.ResolveMode(flagOutput, output.StdoutIsTerminal())
-
-	sess, err := loadSession()
-	if err != nil {
-		return renderSessionError(cmd.ErrOrStderr(), mode, err)
-	}
-
-	summary := []string{
-		fmt.Sprintf("About to %s %d exception group(s):", verb, len(hashes)),
-	}
-	for _, h := range hashes {
-		summary = append(summary, "  - "+truncateHash(h, 12))
-	}
-	if err := confirmMutation(cmd, summary); err != nil {
-		return err
-	}
-
-	c := sess.Client()
-	if err := doIt(c, ctx, sess.ProjectID, hashes); err != nil {
-		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
-	}
-
-	result := map[string]any{
-		"action": verb,
-		"count":  len(hashes),
-		"hashes": hashes,
-	}
-	switch mode {
-	case output.ModeJSON:
-		return output.RenderJSON(cmd.OutOrStdout(), result, nil)
-	case output.ModeYAML:
-		return output.RenderYAML(cmd.OutOrStdout(), result, nil)
-	default:
-		_, err := fmt.Fprintf(cmd.OutOrStdout(), "%sd %d exception group(s).\n", verb, len(hashes))
-		return err
 	}
 }
 

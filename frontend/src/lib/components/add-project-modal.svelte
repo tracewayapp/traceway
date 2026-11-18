@@ -15,6 +15,7 @@
 	import { authState } from '$lib/state/auth.svelte';
 	import { ExternalLink, Plus } from '@lucide/svelte';
 	import CopyButton from '$lib/components/traceway/copy-button.svelte';
+	import { REPLAY_BLOCK_CLASS } from '$lib/utils/self-monitoring';
 	import FrameworkIcon from './framework-icon.svelte';
 	import FrameworkCombobox from './framework-combobox.svelte';
 
@@ -131,7 +132,12 @@
 				<div class="space-y-2">
 					<Label>Project Token</Label>
 					<div class="flex gap-2">
-						<Input type="text" value={createdProject.token} readonly class="font-mono text-sm" />
+						<Input
+							type="text"
+							value={createdProject.token}
+							readonly
+							class="font-mono text-sm {REPLAY_BLOCK_CLASS}"
+						/>
 						<CopyButton text={() => createdProject?.token ?? ''} size="default" />
 					</div>
 					<p class="text-sm text-muted-foreground">

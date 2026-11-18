@@ -3,19 +3,18 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/config"
-	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/internal/config"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
 )
 
 func TestLogin_passwordStdin_success(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/login" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -72,11 +71,33 @@ func TestLogin_passwordStdin_success(t *testing.T) {
 	}
 }
 
+func TestLogin_passwordWithRefreshToken_isRefreshableAndRevocable(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"token":"access","refreshToken":"twr_refresh","expiresIn":900}`))
+	}))
+	defer srv.Close()
+
+	if _, stderr, err := runCmd(t, "hunter2\n", "login", "--url", srv.URL, "--username", "fred@example.com", "--password-stdin"); err != nil {
+		t.Fatalf("login failed: %v %s", err, stderr.String())
+	}
+	st, err := state.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp := st.Profiles["default"]
+	if sp.JWT != "access" || sp.RefreshToken != "twr_refresh" || sp.CredentialKind != state.KindDevice || sp.TokenExpiresAt == 0 {
+		t.Errorf("a scoped password login must be stored as a refreshable session, got %+v", sp)
+	}
+}
+
 func TestLogin_namedProfile_secondLogin_doesNotOverrideCurrent(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"token":"tok"}`))
 	}))
 	defer srv.Close()
@@ -108,7 +129,7 @@ func TestLogin_invalidCredentials_writesEnvelope(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()
@@ -133,7 +154,7 @@ func TestLogin_refreshExistingProfile_keepsURLAndUsername(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfgDir)
 	t.Setenv("XDG_STATE_HOME", stateDir)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"token":"newtoken"}`))
 	}))
 	defer srv.Close()

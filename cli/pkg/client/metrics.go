@@ -43,7 +43,7 @@ type TimeSeriesPoint struct {
 }
 
 // MetricQueryResult is one query's results, optionally grouped by tag.
-// The map key is the group label ("all" if no GroupBy was specified).
+// The map key is the group label ("__all__" if no GroupBy was specified).
 type MetricQueryResult struct {
 	Name   string                       `json:"name"`
 	Unit   string                       `json:"unit"`

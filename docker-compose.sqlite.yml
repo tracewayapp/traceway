@@ -6,13 +6,18 @@ services:
     ports:
       - "80:80"
     environment:
-      JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
+      JWT_SECRET: change-this-to-a-secure-secret-at-least-32-chars
       # APP_BASE_URL: "https://traceway.example.com"
       # Proxies whose X-Forwarded-For is trusted for the real client IP (the
       # per-IP rate limits key on it). Only loopback is trusted by default, so
       # list every hop in front of Traceway: a proxy container, an ingress, a CDN.
       # TRUSTED_PROXIES: "172.18.0.0/16"
       # TRUSTED_PROXY_HEADER: "X-Real-IP"
+
+      # The telemetry page cache is per connection (up to 4) and costs about twice
+      # its size, so the 512 MB default can take up to 4 GB. On a memory-capped
+      # host set it to the container's memory in MB divided by 32: 32 for 1 GB.
+      # SQLITE_CACHE_SIZE_MB: "32"
 
       # Optional retention knobs. Defaults are 30 days; set to "0" to disable.
       # SQLITE_RETENTION_DAYS prunes telemetry rows; SESSION_RECORDING_RETENTION_DAYS

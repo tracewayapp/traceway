@@ -10,12 +10,20 @@ Single Docker container with ClickHouse, PostgreSQL, and the Go backend managed 
 
 ## Quick Start
 
-Pull the pre-built image from GitHub Container Registry:
+Generate a signing secret once and save it in a private environment file. Keep this file out of source control and reuse it when recreating the container:
+
+```bash
+umask 077
+printf 'JWT_SECRET=%s\n' "$(openssl rand -hex 32)" > traceway.env
+```
+
+Pull the pre-built image from GitHub Container Registry and pass that file to Docker:
 
 ```bash
 docker pull ghcr.io/tracewayapp/traceway:latest
 
 docker run -d --name traceway \
+  --env-file ./traceway.env \
   -p 80:80 \
   -v traceway-ch:/var/lib/clickhouse \
   -v traceway-pg:/var/lib/postgresql/data \
@@ -29,12 +37,13 @@ The `traceway-storage` volume holds [blob storage](/server/storage): uploaded so
 
 ## Build from Source
 
-Only needed if you want to run a custom or modified build:
+Only needed if you want to run a custom or modified build. Create `traceway.env` as shown above first:
 
 ```bash
 docker build -t traceway:latest .
 
 docker run -d --name traceway \
+  --env-file ./traceway.env \
   -p 80:80 \
   -v traceway-ch:/var/lib/clickhouse \
   -v traceway-pg:/var/lib/postgresql/data \
@@ -44,10 +53,10 @@ docker run -d --name traceway \
 
 ## Environment Variables
 
-All environment variables have working defaults, no configuration required. Override as needed:
+`JWT_SECRET` is required. The other variables below have defaults. Docker environment values (`-e` or `--env-file`) take precedence over values in `/app/.env`.
 
 <Callout type="warning">
-  **Set `JWT_SECRET` before exposing this image to anyone else.** It signs every authentication token (dashboard sessions and CLI/MCP device logins), so the built-in default, which is public, lets anyone forge a token for any account. Generate a strong secret with `openssl rand -hex 32`. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret).
+  **Upgrading an existing All-in-One installation:** older images replaced Docker-provided `JWT_SECRET` values with a public signing key. Upgrade the image and recreate the container with a strong, unique secret. The backend now refuses to start with a missing, short, or former built-in key, and `docker logs traceway` shows why. Changing the effective key invalidates existing JWTs. If the old instance was accessible to untrusted users, review access logs, account changes, personal access tokens and CLI/OAuth sessions; database-backed credentials survive JWT key rotation. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret).
 </Callout>
 
 | Variable | Default | Description |
@@ -63,14 +72,16 @@ All environment variables have working defaults, no configuration required. Over
 | `POSTGRES_USERNAME` | `traceway` | PostgreSQL username |
 | `POSTGRES_PASSWORD` | *(empty)* | PostgreSQL password |
 | `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
-| `JWT_SECRET` | *(built-in default, **override in production**)* | Signs all authentication tokens: dashboard sessions and CLI/MCP device logins. The built-in default is public; set a strong unique secret (min 32 chars, `openssl rand -hex 32`) and keep it stable. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
+| `JWT_SECRET` | *(required)* | Signs dashboard sessions and CLI/MCP access tokens. Set a strong unique secret (min 32 chars, `openssl rand -hex 32`) and keep it stable. Former built-in keys are rejected. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
 | `GIN_MODE` | `release` | Gin framework mode |
 | `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, deep links in notifications, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, the device-auth and `/.well-known` endpoints derive it per-request from the `Host` / `X-Forwarded-*` headers; set it explicitly behind a proxy that rewrites `Host`. See [CLI Authentication](/learn/cli-auth). |
 | `TRUSTED_PROXIES` | *(loopback)* | Comma-separated CIDRs of the proxies in front of Traceway whose `X-Forwarded-For` / `X-Real-IP` is trusted for the real client IP. Every per-IP rate limit keys on it, and `/api/report` stores it as each session's `client.ip`. Unset trusts loopback only, so a proxy container on a Docker network or an in-cluster ingress has to be listed before its header counts. A value replaces the default, so list every hop between the client and this server, not just the outermost one: naming only a CDN leaves a private ingress untrusted and turns `X-Forwarded-For` off entirely. `*` trusts every peer and lets clients spoof their address. Until the proxy is listed, every visitor shares one rate-limit bucket keyed on the proxy, and the server logs a warning the first time it sees a forwarding header from a peer it does not trust. |
 | `TRUSTED_PROXY_HEADER` | *(none)* | A header taken as the client IP on every request, ahead of `TRUSTED_PROXIES`: `X-Real-IP` behind ingress-nginx, `CF-Connecting-IP` behind Cloudflare. Only safe when every request provably passes through a proxy that overwrites the header; a directly reachable backend lets clients set it freely. |
-| `REPORT_MAX_BODY_MB` | `64` | Cap on the decompressed `/api/report` and `/api/profiles/ingest` body in megabytes. Gzip does not raise it. A body over the cap answers `413`. |
+| `REPORT_MAX_BODY_MB` | `64` | Cap on the decompressed `/api/report` and `/api/profiles/ingest` body in megabytes. Gzip does not raise it. A body over the cap is not ingested: `/api/profiles/ingest` answers `413`, and `/api/report` answers `200` with an `X-Traceway-Discarded: body_too_large` header, because the 1.x SDKs resend a rejected batch forever. |
 | `INGEST_MAX_CONCURRENT` | *(2 x CPU cores, min 4)* | Telemetry ingest requests processed at once (`/api/report`, `/api/profiles/ingest`, `/api/otel/*`). Excess requests wait up to `INGEST_ADMISSION_WAIT_SECONDS` (default 5) and then get `503` with `Retry-After`; past a bounded waiting room (four times the capacity, at least 16) they are turned away immediately. Each admitted request can hold a decoded body, so on a memory-capped container size this from the memory limit rather than the CPU count. |
 | `UPLOAD_MAX_CONCURRENT` | `4` | Source map and symbol uploads processed at once. Each holds a whole file in memory while it is parsed. Excess uploads wait 30 seconds and then get `503`. Separate from the ingest pool so a CI burst cannot starve telemetry. |
+| `OPAMP_POLL_INTERVAL_SECONDS` | `300` | [Remote SDK config](/learn/remote-config) (beta): how often 2.x browser SDKs poll for their settings, in seconds, clamped to 60-86400. Every open tab of every instrumented app polls, so this is a load setting; clients under a capture poll every 60 seconds |
+| `OPAMP_MAX_CONCURRENT` | *(4 x CPU cores, min 8)* | Remote SDK config (beta): OpAMP polls (`/api/otel/v1/opamp`) processed at once, on a gate separate from `INGEST_MAX_CONCURRENT`. Excess polls get 503 with `Retry-After: 60`, and the browser keeps its last settings |
 | `STORAGE_TYPE` | `local` | Blob storage backend for source maps, session recordings, and AI traces: `local` or `s3`. See [Blob Storage](/server/storage) for the S3 variables. |
 | `STORAGE_PATH` | `./storage` | Folder for local blob storage, `/app/storage` in this image. Mount a volume there. Ignored when `STORAGE_TYPE=s3`. |
 | `SESSION_RECORDING_RETENTION_DAYS` | `30` | Days to keep session recording files on disk under `STORAGE_PATH/recordings/`. Files older than the TTL are deleted hourly and on startup. No effect when `STORAGE_TYPE=s3`. Set to `0` to disable. |

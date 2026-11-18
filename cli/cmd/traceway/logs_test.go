@@ -2,13 +2,12 @@ package main
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
 func TestLogsQuery_basic(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/logs" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -32,7 +31,7 @@ func TestLogsQuery_basic(t *testing.T) {
 }
 
 func TestLogsQuery_table(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{
 			"data":[
 				{"id":"00000000-0000-0000-0000-000000000001","timestamp":"2026-05-13T12:00:00Z","severityText":"ERROR","severityNumber":17,"serviceName":"api","body":"failed to connect"}
@@ -57,7 +56,7 @@ func TestLogsQuery_table(t *testing.T) {
 }
 
 func TestLogsQuery_passesServiceFilter(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Decode body and assert serviceName was passed through
 		buf := make([]byte, 4096)
 		n, _ := r.Body.Read(buf)

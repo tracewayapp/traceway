@@ -1,16 +1,18 @@
 package middleware
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,7 +36,7 @@ func InitUseAppAuth() {
 			return
 		}
 
-		identity, err := AuthenticateBearer(strings.TrimPrefix(authHeader, "Bearer "))
+		identity, err := AuthenticateBearer(c, strings.TrimPrefix(authHeader, "Bearer "))
 		if err != nil {
 			if errors.Is(err, ErrInvalidBearer) {
 				c.AbortWithStatus(http.StatusUnauthorized)
@@ -46,6 +48,12 @@ func InitUseAppAuth() {
 
 		c.Set(UserIdContextKey, identity.UserId)
 		c.Set(UserEmailContextKey, identity.Email)
+		c.Set(BearerIdentityContextKey, identity)
+
+		if identity.IsAgent() {
+			authorizeAgentRequest(c, identity)
+			return
+		}
 
 		c.Next()
 	}
@@ -53,15 +61,44 @@ func InitUseAppAuth() {
 
 var ErrInvalidBearer = errors.New("invalid bearer token")
 
+const BearerIdentityContextKey = "bearerIdentity"
+
+const (
+	CredentialSession = "session"
+	CredentialPAT     = "pat"
+	CredentialOAuth   = "oauth"
+)
+
+// legacyAgentTokenLifetime separates the access tokens minted before scopes
+// existed (15 minutes, device and OAuth grants) from dashboard sessions (7
+// days): an unscoped JWT this short-lived came from the CLI or an MCP client
+// and is held to read access instead of being trusted as a session.
+const legacyAgentTokenLifetime = time.Hour
+
 type BearerIdentity struct {
-	UserId  int
-	Email   string
-	Expires time.Time
+	UserId         int
+	Email          string
+	Expires        time.Time
+	Scope          string
+	CredentialKind string
+	CredentialRef  string
 }
 
-func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
-	if strings.HasPrefix(tokenString, "twp_") {
-		pat, err := transactional.PersonalAccessTokenRepository.FindActiveByToken(db.DB, tokenString)
+func (b *BearerIdentity) IsAgent() bool {
+	return b.CredentialKind != CredentialSession
+}
+
+// HasAgentWriteScope reports whether this is an agent credential carrying the
+// write scope. A dashboard session never qualifies: MCP is an agent surface,
+// and a session behind /mcp/write would skip the agent gate's organization
+// opt-in and audit log, since sessions bypass the gate.
+func (b *BearerIdentity) HasAgentWriteScope() bool {
+	return b.IsAgent() && b.Scope == models.ScopeWrite
+}
+
+func AuthenticateBearer(ctx context.Context, tokenString string) (*BearerIdentity, error) {
+	if strings.HasPrefix(tokenString, "twp_") || strings.HasPrefix(tokenString, "tww_") {
+		pat, err := transactional.PersonalAccessTokenRepository.FindActiveByToken(db.BindContext(ctx, db.DB), tokenString)
 		if err != nil {
 			return nil, err
 		}
@@ -69,18 +106,36 @@ func AuthenticateBearer(tokenString string) (*BearerIdentity, error) {
 			return nil, ErrInvalidBearer
 		}
 		touchPersonalAccessToken(pat)
-		return &BearerIdentity{UserId: pat.UserId, Email: pat.Email}, nil
+		return &BearerIdentity{UserId: pat.UserId, Email: pat.Email, Scope: pat.Scope, CredentialKind: CredentialPAT, CredentialRef: pat.Id}, nil
 	}
 
 	claims, err := services.ValidateToken(tokenString)
 	if err != nil {
 		return nil, ErrInvalidBearer
 	}
-	identity := &BearerIdentity{UserId: claims.UserId, Email: claims.Email}
+	identity := &BearerIdentity{UserId: claims.UserId, Email: claims.Email, CredentialKind: CredentialSession}
 	if claims.ExpiresAt != nil {
 		identity.Expires = claims.ExpiresAt.Time
 	}
+	switch {
+	case claims.Scope != "":
+		identity.Scope = claims.Scope
+		identity.CredentialKind = CredentialOAuth
+		identity.CredentialRef = claims.ClientId
+	case claims.ExpiresAt != nil && claims.IssuedAt != nil && claims.ExpiresAt.Sub(claims.IssuedAt.Time) <= legacyAgentTokenLifetime:
+		identity.Scope = models.ScopeRead
+		identity.CredentialKind = CredentialOAuth
+	}
 	return identity, nil
+}
+
+func GetBearerIdentity(c *gin.Context) *BearerIdentity {
+	if v, ok := c.Get(BearerIdentityContextKey); ok {
+		if identity, ok := v.(*BearerIdentity); ok {
+			return identity
+		}
+	}
+	return nil
 }
 
 func touchPersonalAccessToken(pat *transactional.ActivePAT) {

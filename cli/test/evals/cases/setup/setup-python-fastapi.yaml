@@ -1,0 +1,87 @@
+id: setup-python-fastapi
+suite: setup
+title: Instrument a FastAPI service run by uvicorn until its routes show up in Traceway
+tags: [python, fastapi]
+seed: setup/python-fastapi
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: inventory-fastapi}
+setup:
+  path: fast
+  token: ingest
+  env:
+    TRACEWAY_URL: "@url"
+    TRACEWAY_PROJECT_TOKEN: "@token:inventory-api"
+    PORT: "@port"
+  # The image installs requirements.txt into a clean environment (and runs
+  # opentelemetry-bootstrap if its Dockerfile does), so the check does too: a
+  # package that only reached the agent's .venv never reaches production.
+  verify:
+    build: |
+      set -e
+      python3 -m venv .twevals-venv
+      .twevals-venv/bin/pip install -q --disable-pip-version-check -r requirements.txt
+      if grep -qs opentelemetry-bootstrap Dockerfile; then .twevals-venv/bin/opentelemetry-bootstrap -a install; fi
+      .twevals-venv/bin/python -m unittest -q
+    start: PATH="$PWD/.twevals-venv/bin:$PATH" ./start.sh
+    hit: [/api/items, /api/items/1, /api/items/2, /api/items/3]
+    env_files: [.env]
+prompt: |
+  I'd like inventory-api to report to Traceway. Our instance is {{env.url}} and there's already an "inventory-api" project for it. The ingest token is in TRACEWAY_PROJECT_TOKEN and the URL in TRACEWAY_URL, here and in production, where the image runs ./start.sh. Use the .venv from the README for anything local. Once it's done, requests to the API should show up in that project.
+budget: {max_turns: 45, max_tool_calls: 40, max_output_tokens: 20000, timeout: 20m}
+user:
+  - match: "(?i)upgrad|bump|0\\.14[0-9]|newer (fastapi|version)|built-in telemetry"
+    reply: "Please keep FastAPI at the pinned 0.115.12 for this change; upgrading it is a separate piece of work."
+  - match: "(?i)service.?name|call (it|the service)"
+    reply: "Call it inventory-api."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    - kind: file
+      path: requirements.txt
+      contains: ["(?i)^opentelemetry-", "^fastapi==0\\.115\\.12"]
+    - kind: file
+      path: "**/*"
+      contains: ["/api/otel", "TRACEWAY_PROJECT_TOKEN", "SERVICE_NAME|service\\.name|service_name"]
+    - kind: no_token_literal
+    - kind: no_token_printed
+    - kind: endpoint_seen
+      endpoint: "GET /api/items"
+    - kind: endpoint_seen
+      endpoint: "GET /api/items/{item_id}"
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: FastAPI is pinned below 0.142.0, so there is no built-in telemetry. The agent takes the generic Python path - opentelemetry-distro, the OTLP/HTTP exporter and the FastAPI instrumentation declared in requirements.txt - and changes start.sh to run uvicorn under opentelemetry-instrument with OTEL_EXPORTER_OTLP_ENDPOINT=$TRACEWAY_URL/api/otel, OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf (Python otherwise defaults to gRPC and exports nothing), the Authorization header built from TRACEWAY_PROJECT_TOKEN at runtime, and OTEL_SERVICE_NAME. It does not upgrade FastAPI without asking.
+  rubric:
+    - Sets OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf (or configures an HTTP exporter explicitly) and points OTEL_EXPORTER_OTLP_ENDPOINT at <instance>/api/otel without a /v1/traces suffix (a signal-specific endpoint or an exporter built in code takes the full /api/otel/v1/traces URL).
+    - Runs the production entry point (start.sh) under opentelemetry-instrument, or instruments the app in code, so the container exports too.
+    - Declares the new packages in requirements.txt so the image build installs them, and keeps FastAPI at the pinned version.
+    - Never prints or hard-codes the token, and sets service.name.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: requirements.txt
+  - read_file: start.sh
+  - read_file: main.py
+  - write_file: {path: requirements.txt, from: oracle/setup-python-fastapi/requirements.txt}
+  - write_file: {path: start.sh, from: oracle/setup-python-fastapi/start.sh}
+  - shell: |
+      [ -d .venv ] || python3 -m venv .venv
+      .venv/bin/pip install -q --disable-pip-version-check -r requirements.txt && .venv/bin/python -m unittest 2>&1 | tail -n 1
+      log=$(mktemp)
+      PATH="$PWD/.venv/bin:$PATH" ./start.sh > "$log" 2>&1 &
+      pid=$!
+      sleep 5
+      for id in 1 2 3; do curl -s -o /dev/null -w "GET /api/items/$id -> %{http_code}\n" "http://127.0.0.1:$PORT/api/items/$id"; done
+      sleep 6
+      kill $pid; wait $pid
+      grep -iE "error|exception|failed|not found in entry point" "$log" || echo "no exporter errors in the app log"
+  - finish:
+      summary: |
+        inventory-api now exports traces, metrics and logs to Traceway over OTLP/HTTP. FastAPI is pinned at 0.115.12, which has no built-in telemetry, so it uses the generic Python path: requirements.txt adds opentelemetry-distro, the OTLP/HTTP exporter and the FastAPI instrumentation, and start.sh runs uvicorn under opentelemetry-instrument. start.sh builds the exporter config from the environment at runtime: endpoint $TRACEWAY_URL/api/otel, protocol http/protobuf (without it the Python SDK picks gRPC and exports nothing), the Authorization header from $TRACEWAY_PROJECT_TOKEN, and OTEL_SERVICE_NAME=inventory-api. Tests pass and a local run served /api/items/1-3 with no exporter errors. In Traceway, /endpoints for the last 15 minutes should show GET /api/items/{item_id} as one row.
+      changes:
+        - {action: add OpenTelemetry packages, target: requirements.txt}
+        - {action: run uvicorn under opentelemetry-instrument with the Traceway exporter env, target: start.sh}

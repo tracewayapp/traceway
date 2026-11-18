@@ -1,0 +1,90 @@
+id: setup-nextjs
+suite: setup
+title: Instrument the server side of a Next.js App Router app until its API route shows up in Traceway
+tags: [node, nextjs]
+seed: setup/nextjs
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: catalog-next}
+setup:
+  path: fast
+  token: ingest
+  env:
+    TRACEWAY_URL: "@url"
+    TRACEWAY_BACKEND_TOKEN: "@token:catalog"
+    PORT: "@port"
+    NEXT_TELEMETRY_DISABLED: "1"
+  verify:
+    build: npm install --no-audit --no-fund --loglevel=error && npm run build
+    start: npm start
+    hit: [/, /api/products/1, /api/products/2, /api/products/3]
+    env_files: [.env]
+prompt: |
+  We want the server side of our catalog app in Traceway: the product API is used by partners and the mobile app, so we need its requests and errors. Our instance is {{env.url}}; the "catalog" project (OpenTelemetry) is already there. Its ingest token is in TRACEWAY_BACKEND_TOKEN and the instance URL in TRACEWAY_URL, locally and in production, where the image runs `npm run build` and then `npm start`. Browser monitoring will get its own project later, so leave the client side out of this change.
+budget: {max_turns: 45, max_tool_calls: 40, max_output_tokens: 20000, timeout: 25m}
+user:
+  - match: "(?i)browser|client.?side|frontend|@tracewayapp/react|react project"
+    reply: "Not in this change, server side only please."
+  - match: "(?i)service.?name|call (it|the service)"
+    reply: "Call it catalog."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    - kind: file
+      path: package.json
+      contains: ["@opentelemetry/(sdk-node|sdk-trace-node)|@vercel/otel", "@opentelemetry/exporter-trace-otlp-(http|proto)|@vercel/otel"]
+      not_contains: ["@tracewayapp/react"]
+    - kind: file
+      path: "instrumentation.*"
+      contains: ["register"]
+    - kind: file
+      path: "**/*"
+      contains: ["/api/otel", "TRACEWAY_BACKEND_TOKEN", "service\\.name|serviceName|SERVICE_NAME|registerOTel\\(\\s*['\"]"]
+    - kind: no_token_literal
+    - kind: no_token_printed
+    # Next.js 15 names app route handlers after their route file; one row
+    # here (not one per product id) means the request span came from Next.
+    - kind: endpoint_seen
+      endpoint: "GET /api/products/[id]/route"
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: The agent uses the Next.js instrumentation hook - an instrumentation.js(ts) whose register() imports a Node-only instrumentation.node module when NEXT_RUNTIME is "nodejs" - and starts the Node SDK there (or calls registerOTel from @vercel/otel) with OTLP/HTTP exporters to $TRACEWAY_URL/api/otel/v1/* and the bearer token from TRACEWAY_BACKEND_TOKEN. It does not preload the generic Node instrumentation (node --import or -r, directly or through NODE_OPTIONS), which would create a competing request span named after the literal URL. It leaves the browser side alone as asked, sets service.name, and keeps next build passing.
+  rubric:
+    - Uses the instrumentation.ts/js hook (the Node SDK in a separate Node-only module behind a NEXT_RUNTIME guard, or @vercel/otel), not a --import/--require preload (directly or through NODE_OPTIONS).
+    - Reads the token and URL from the environment; never prints or hard-codes the token.
+    - Leaves the browser side out (no @tracewayapp/react, no browser project token) as the user asked.
+    - Keeps npm run build passing, and lists @opentelemetry/auto-instrumentations-node in serverExternalPackages or otherwise keeps the build clean.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: package.json
+  - read_file: "app/api/products/[id]/route.js"
+  - read_file: next.config.mjs
+  - shell: npm install --no-audit --no-fund @opentelemetry/sdk-node@0.223.0 @opentelemetry/auto-instrumentations-node@0.81.2 @opentelemetry/api@1.9.1 @opentelemetry/api-logs@0.223.0 @opentelemetry/resources@2.12.0 @opentelemetry/sdk-metrics@2.12.0 @opentelemetry/sdk-logs@0.223.0 @opentelemetry/exporter-trace-otlp-http@0.223.0 @opentelemetry/exporter-metrics-otlp-http@0.223.0 @opentelemetry/exporter-logs-otlp-http@0.223.0 2>&1 | grep -v '^npm warn'
+  - write_file: {path: instrumentation.js, from: oracle/setup-nextjs/instrumentation.js}
+  - write_file: {path: instrumentation.node.js, from: oracle/setup-nextjs/instrumentation.node.js}
+  - write_file: {path: next.config.mjs, from: oracle/setup-nextjs/next.config.mjs}
+  - edit_file: {path: package.json, old: "\"start\": \"next start\"", new: "\"start\": \"NODE_OPTIONS=--enable-source-maps next start\""}
+  - shell: |
+      npm run build 2>&1 | grep -E 'Compiled|Failed|rror|/api/products'
+      echo "server source maps: $(find .next/server -name '*.js.map' | wc -l)"
+      log=$(mktemp)
+      node_modules/.bin/next start > "$log" 2>&1 &
+      pid=$!
+      sleep 5
+      for path in /api/products/1 /api/products/2 /api/products/3 /; do curl -s -o /dev/null -w "GET $path -> %{http_code}\n" "http://127.0.0.1:$PORT$path"; done
+      sleep 6
+      kill $pid; wait $pid
+      grep -iE "error|failed" "$log" || echo "no errors in the server log"
+  - finish:
+      summary: |
+        The catalog app's server side now reports to Traceway over OTLP/HTTP. instrumentation.js is the Next.js hook: register() imports instrumentation.node.js only when NEXT_RUNTIME is "nodejs", so the Edge compilation never sees Node-only packages. instrumentation.node.js starts the Node SDK with trace, metric and log exporters to $TRACEWAY_URL/api/otel/v1/*, the bearer token from $TRACEWAY_BACKEND_TOKEN, and service.name catalog. Next.js emits the request span itself with the matched route, so there is no --import preload (that would add a competing span per literal URL). next.config.mjs lists @opentelemetry/auto-instrumentations-node in serverExternalPackages and turns on experimental.serverSourceMaps (this build emits no server source maps otherwise), and npm start now runs next start with NODE_OPTIONS=--enable-source-maps, so server Issues point at the original files. The browser side is untouched, as asked. npm run build passes and a local next start served /api/products/1-3 and /. On /endpoints the API shows up as one row for the [id] route.
+      changes:
+        - {action: add the Next.js instrumentation hook, target: instrumentation.js}
+        - {action: start the OpenTelemetry Node SDK with Traceway exporters, target: instrumentation.node.js}
+        - {action: keep the auto-instrumentations package external and emit server source maps, target: next.config.mjs}
+        - {action: start with Node source maps enabled, target: package.json, new_value: "NODE_OPTIONS=--enable-source-maps next start"}
+        - {action: add OpenTelemetry dependencies, target: package.json}

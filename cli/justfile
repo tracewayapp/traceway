@@ -2,9 +2,11 @@ default: test
 
 build:
     go build -o bin/traceway ./cmd/traceway
+    go build -tags write -o bin/traceway-write ./cmd/traceway
 
 test:
     gotestsum --format pkgname -- ./...
+    gotestsum --format pkgname -- -tags write ./cmd/... ./pkg/mcpserver/...
 
 smoke-test:
     gotestsum --format pkgname -- -tags smoke ./test/smoke/...
@@ -16,9 +18,35 @@ contract-test *args:
 
 lint:
     golangci-lint run
+    golangci-lint run --build-tags write
 
 vulncheck:
     govulncheck ./...
+
+# Skill and MCP evals (test/evals). Manual only: none of these recipes is part
+# of check, test or default, and paid runs belong in the CLI Evals workflow.
+# See test/evals/README.md.
+
+# Free: harness tests plus every case's oracle trajectory, with the fake model.
+eval-harness:
+    cd test/evals && go test ./... && go run ./cmd/twevals oracle --all
+
+# Free: the dispatch matrix and a live-price cost estimate.
+eval-plan *args:
+    cd test/evals && go run ./cmd/twevals plan {{args}}
+
+# Start a paid run in GitHub (you still approve the evals environment gate).
+eval-dispatch *args:
+    gh workflow run cli-evals.yml {{args}}
+
+# Paid, local, for harness development only: asks you to type yes on a
+# terminal, and refuses to run without one.
+eval-local *args:
+    cd test/evals && go run ./cmd/twevals run {{args}}
+
+# Boot and seed one case and keep it running for review in the dashboard.
+eval-env case:
+    cd test/evals && go run ./cmd/twevals env up {{case}}
 
 # Regenerate the published skill (skills/traceway/) from the canonical
 # knowledge chunks in pkg/mcpserver/knowledge.
@@ -34,8 +62,12 @@ gen-skills-check:
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     go run ./tools/skillgen "$tmp" >/dev/null
-    diff -u ../skills/traceway/SKILL.md "$tmp/SKILL.md"
-    diff -u ../skills/traceway/performance.md "$tmp/performance.md"
+    diff -u ../skills/traceway/SKILL.md "$tmp/skills/traceway/SKILL.md"
+    diff -u ../skills/traceway/rum.md "$tmp/skills/traceway/rum.md"
+    diff -u ../skills/traceway-setup/rum.md "$tmp/skills/traceway-setup/rum.md"
+    diff -u ../skills/traceway/performance.md "$tmp/skills/traceway/performance.md"
+    diff -ru ../skills/traceway-learn "$tmp/skills/traceway-learn"
+    diff -ru ../plugins/tw-write/skills/traceway-write "$tmp/plugins/tw-write/skills/traceway-write"
 
 # Run everything that should pass before a commit
 check: lint test vulncheck gen-skills-check contract-test

@@ -1,0 +1,100 @@
+id: perf-ctl-metric-p95-trap
+suite: perf
+title: Afternoon slowdown where the relayed "p95 CPU" is really an average
+tags: [control, go, infrastructure, signal-hygiene]
+seed: perf/ctl-metric-p95-trap
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: Ops' "p95 CPU around 45%", which is what metrics query returns for --aggregation p95 over a day. The server has no quantile aggregation for metric points and silently averages, so that number is the daily mean. The max per bucket shows both query hosts pegged at 97-100% busy every afternoon while traffic more than triples, and every endpoint (not one span) slows down in the same hours.
+workspace: {repo: query-api-go}
+prompt: |
+  /traceway perf
+  Search gets sluggish every afternoon. Ops pulled the p95 CPU for the query hosts and says it is only around 45%, so they don't think it's the hosts. Can you check the CPU p95 yourself and figure out what is actually going on?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know how ops got the number; they just told me the p95 CPU. Please look at the data."
+expect:
+  answer:
+    checklist_item: cpu_saturation
+    not: [none_found, inefficient_algorithm_o_n2_hot_path, missing_or_unused_index, connection_pool_exhaustion, slow_third_party_upstream_api]
+  grounding:
+    - "system.cpu.utilization"
+  calls:
+    required:
+      - {op: "endpoints.*"}
+    any_of:
+      - [{op: metrics.query, args: {name: "~system\\.cpu", aggregation: "max"}}]
+      - [{op: metrics.query, args: {name: "~system\\.cpu", aggregation: "min"}}]
+      - [{op: metrics.query, args: {name: "~system\\.cpu", aggregation: "avg", interval_minutes: {max: 60}}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+  report:
+    contains:
+      - "average|\\bavg\\b|\\bmean\\b"
+      - "percentile|quantile|p95"
+      - "(9[5-9]|100)(\\.[0-9]+)?\\s*%|0\\.9[5-9]"
+judge:
+  expected: >-
+    CPU saturation. metrics query has no percentile aggregation for metric points: --aggregation p95 (p50/p99) is
+    silently computed as avg on the CLI (and rejected outright over MCP), so ops' "p95 CPU around 45%" is the daily
+    average busy CPU. With --aggregation max (grouped by state, user+system, or 1 - min idle) per 30-60 minute
+    bucket, both query-api hosts sit at 97-100% busy every afternoon (about 13:00-16:30 UTC) while traffic on every
+    endpoint more than triples (about four times the morning's rate). In the same hours the p95 of GET /api/query goes
+    from about 100ms to about 340ms and the other endpoints slow down too; a slow afternoon request has no single long
+    pole, its in-process spans (rank results, render highlights) are stretched the most and the database query less.
+    Fix: add capacity (more instances or bigger ones, CPU-based autoscaling; the deployment is two 2-vCPU instances
+    with autoscaling off), then look at trimming per-request CPU in ranking.
+  rubric:
+    - Explains that metrics query --aggregation p95 is not a percentile (the server averages), so the relayed 45% is the mean, and reports the CPU honestly with max (or the bucketed series) instead.
+    - Ties the afternoon slowdown to the hosts pegged at ~98% CPU while traffic more than triples, with every endpoint slower and no single span to blame.
+    - Recommends more capacity (scale out or up, autoscaling) rather than a code fix for one endpoint.
+oracle:
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation p95 --group-by state --since 24h --interval-minutes 60 --output json
+      | jq '.results[0].series as $s | {busy_pct_24h: ((([$s.user[].value] | add) + ([$s.system[].value] | add)) / ($s.user | length) * 100 | round),
+      hourly_busy_pct: [range(0; ($s.user | length)) | (($s.user[.].value + $s.system[.].value) * 100 | round)]}'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --group-by state --since 24h --interval-minutes 60 --output json
+      | jq '.results[0].series as $s | {busy_pct_24h: ((([$s.user[].value] | add) + ([$s.system[].value] | add)) / ($s.user | length) * 100 | round),
+      hourly_busy_pct: [range(0; ($s.user | length)) | (($s.user[.].value + $s.system[.].value) * 100 | round)]}'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 30 --output json
+      | jq '.results[0].series as $s | [range(0; ($s.user | length)) | {t: $s.user[.].timestamp, busy_pct: ((($s.user[.].value + $s.system[.].value) * 100) | round)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p95 --since 48h --interval-minutes 60 --output json
+      | jq '{endpoints, series: [.series[] | select(.endpoint != "Other") | {t: .timestamp, endpoint, p95_ms: (.value|round)}]}'
+  - shell: >-
+      traceway endpoints list --from {{seed.peakFrom}} --to {{seed.peakTo}} --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints list --from {{seed.quietFrom}} --to {{seed.quietTo}} --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway traces show {{seed.peakRequest.traceId}} --recorded-at {{seed.peakRequest.recordedAt}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, duration_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: (.duration/1e6|round)}]}]'
+  - shell: >-
+      traceway traces show {{seed.quietRequest.traceId}} --recorded-at {{seed.quietRequest.recordedAt}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, duration_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: (.duration/1e6|round)}]}]'
+  - read_file: deploy/query-api.yaml
+  - submit:
+      checklist_item: cpu_saturation
+      category: infrastructure
+      locus: {service: query-api, host: "query-api-1, query-api-2"}
+      onset: null
+      evidence:
+        - {call_id: c02, claim: "averaged over the last 24 hours, busy CPU (user plus system) is about 45%: the number ops called p95; the p95 aggregation returns the same averages on the CLI"}
+        - {call_id: c03, claim: "with max per 30-minute bucket, busy CPU is pinned at 97-100% through the afternoon (13:00-16:30 UTC)"}
+        - {call_id: c04, claim: "every top endpoint's p95 rises in the same afternoon hours"}
+        - {call_id: c05, claim: "during the peak the request rate is about four times the morning's and GET /api/query p95 is about 340ms"}
+        - {call_id: c06, claim: "in the quiet morning GET /api/query p95 is about 100ms"}
+        - {call_id: c07, claim: "a peak request has no single long pole: most of its ~320ms is in-process ranking and highlighting, spread over several spans"}
+        - {call_id: c09, claim: "two 2-vCPU instances with autoscaling disabled"}
+      ruled_out:
+        - {checklist_item: none_found, call_id: c03, reason: "the 45% is a daily average; the hosts are pegged in the afternoon"}
+        - {checklist_item: inefficient_algorithm_o_n2_hot_path, call_id: c08, reason: "the same endpoint runs the same spans in about 90ms in the quiet morning; only the load changes"}
+      fix: Add capacity for the afternoon peak (more instances or larger ones, CPU-based autoscaling), then reduce per-request CPU in ranking if needed.
+      confidence: high
+      report: |
+        The afternoon slowdown is CPU saturation on the query hosts. The "p95 CPU around 45%" is not a percentile: metrics query has no quantile aggregation for metric points, so --aggregation p95 silently returns the average (over MCP it is refused). Over a day the average busy CPU is about 45%, but with max per 30-minute bucket the query-api hosts are pinned at 97-100% busy every afternoon (about 13:00-16:30 UTC), when the request rate is about four times the morning's. In those hours GET /api/query's p95 goes from about 100ms to about 340ms and every other endpoint slows down too; a slow afternoon request has no single long pole, most of its time is in-process ranking and highlighting, which take a fraction of that in the quiet morning. The service runs on two 2-vCPU instances with autoscaling off. Fix: add capacity for the peak (more or larger instances, CPU-based autoscaling); trimming per-request CPU in ranking would help after that.

@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
 )
 
 func fetchCHHealth(parent context.Context) HealthDeepResponse {

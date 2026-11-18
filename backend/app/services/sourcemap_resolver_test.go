@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
 
 	"github.com/google/uuid"
 )

@@ -19,8 +19,10 @@ type NavItem = {
 
 const SECONDARY: (NavItem & { external?: boolean })[] = [
   { title: "Cloud", href: "/cloud" },
+  { title: "Services", href: "/services" },
   { title: "Blog", href: "/blog" },
   { title: "Releases", href: "/releases" },
+  { title: "Benchmarks", href: "/benchmarks" },
   { title: "Docs", href: "https://docs.tracewayapp.com", external: true },
   { title: "GitHub", href: GITHUB_URL, external: true },
   { title: "Discord", href: DISCORD_URL, external: true },

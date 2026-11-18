@@ -1,0 +1,164 @@
+id: setup-monorepo-plan
+suite: setup
+title: Propose a project map for a Go API + React web monorepo, submit it as a setup plan, then instrument both
+tags: [go, react, plan]
+seed: setup/monorepo-plan
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: shop-monorepo}
+setup:
+  path: plan
+  token: setup
+  approve_drafts: true
+  # The prompt gives the instance URL in chat only, so the shell has no
+  # TRACEWAY_URL: the API must get it from its own env file.
+  env:
+    PORT: "@port"
+  # The projects only exist once the plan is approved. The build step checks
+  # the topology from the approved plan (read with the setup token, as the
+  # apply script does): framework per project, and each ingest token in its
+  # own component's env file. dist/ is removed afterwards because the web
+  # bundle legitimately holds the browser connection string.
+  verify:
+    build: |
+      set -e
+      python3 - <<'PY'
+      import glob, json, os, sys, urllib.request
+
+      def fail(msg):
+          print(msg)
+          sys.exit(1)
+
+      url = "{{env.url}}".rstrip("/")
+      req = urllib.request.Request(url + "/api/setup/plan", headers={"Authorization": "Bearer {{env.setupToken}}"})
+      plan = json.load(urllib.request.urlopen(req, timeout=10))
+      if plan.get("status") != "approved":
+          fail("no approved setup plan (status %s)" % plan.get("status"))
+      projects = {p["name"]: p for p in plan.get("projects", [])}
+
+      def env_text(pattern):
+          return "\n".join(open(f).read() for f in glob.glob(pattern) if os.path.isfile(f))
+
+      api_env, web_env = env_text("api/.env*"), env_text("web/.env*")
+      want = {"Shop API": ("opentelemetry", api_env, web_env, "api/"), "Shop Web": ("react", web_env, api_env, "web/")}
+      for name, (framework, mine, other, where) in want.items():
+          p = projects.get(name)
+          if p is None:
+              fail("the approved plan has no %r project" % name)
+          if p["framework"] != framework:
+              fail("%r is a %s project, want %s" % (name, p["framework"], framework))
+          if p["token"] not in mine:
+              fail("the %s env files do not hold the %r ingest token" % (where, name))
+          if p["token"] in other:
+              fail("the %r ingest token is in the other component's env file" % name)
+      print("setup plan checks passed")
+      PY
+      (cd api && go build -o .twevals-app .)
+      cd web
+      npm install --no-audit --no-fund --loglevel=error
+      npm run build
+      grep -rqF -- "{{env.url}}" dist/assets || { echo "the web bundle does not carry the Traceway instance URL"; exit 1; }
+      grep -rqF -- "/api/report" dist/assets || { echo "the web bundle has no connection string ending in /api/report"; exit 1; }
+      rm -r dist
+    start: cd api && ./.twevals-app
+    hit: [/api/products, /api/products/1, /api/products/2]
+    env_files: [api/.env]
+prompt: |
+  Can you set up Traceway monitoring for this repo? We self-host it at {{env.url}} and haven't created any projects yet. Here's the setup token from the /setup page: {{env.setupToken}}. I have that page open, so I can approve your proposal there.
+budget: {max_turns: 55, max_tool_calls: 50, max_output_tokens: 24000, timeout: 30m}
+user:
+  - match: "(?is)project|api/|web/|opentelemetry|react|propos|plan|map"
+    reply: 'Yes, that split is right: both are deployed. The API runs as a Docker container on our VM and the web app is static files on S3. Please call the projects "Shop API" and "Shop Web". No host metrics for now. Go ahead and submit it; I''ll approve it on the setup page.'
+  - match: "(?i)deploy|host|vm|kubernetes|docker|cloud|self.?host|organi[sz]ation|s3"
+    reply: "It's our self-hosted instance with a single organization. The API runs as a Docker container on a VM; the web app is static files on S3. No host metrics for now."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    - kind: projects
+      projects: ["Shop API", "Shop Web"]
+      frameworks: {"Shop API": opentelemetry, "Shop Web": react}
+      count: {min: 2, max: 2}
+    - kind: file
+      path: "api/.env*"
+      contains: ["^(export )?[A-Z][A-Z0-9_]*=['\"]?[0-9a-f]{32}['\"]?$"]
+    - kind: file
+      path: "web/.env*"
+      contains: ["^(export )?VITE_[A-Z0-9_]+=['\"]?[0-9a-f]{32}(@\\S+/api/report)?['\"]?$"]
+    - kind: file
+      path: api/go.mod
+      contains: ["go.opentelemetry.io/otel"]
+    - kind: file
+      path: "**/*.go"
+      contains: ["service\\.name|ServiceName|OTEL_SERVICE_NAME"]
+    - kind: file
+      path: web/package.json
+      contains: ["\"@tracewayapp/react\""]
+    - kind: no_token_literal
+    - kind: no_token_printed
+    - kind: endpoint_seen
+      project: Shop API
+      endpoint: "GET /api/products"
+    - kind: endpoint_seen
+      project: Shop API
+      endpoint: "GET /api/products/{id}"
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+      - {op: ask_user, args: {question: "~(?is)\\bapi\\b.*\\bweb\\b|\\bweb\\b.*\\bapi\\b"}}
+    order:
+      - [ask_user, setup.apply]
+      - [ask_user, edit_file]
+      - [ask_user, "write_file:*.go"]
+      - [ask_user, "write_file:*.jsx"]
+      - [ask_user, "write_file:*.js"]
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: The agent inventories the repo (a Go net/http API in api/, deployed as a container, and a React + Vite SPA in web/, deployed as static files) and proposes two projects - an OpenTelemetry backend project for api/ and a React browser project for web/ - with their env wiring, and waits for the user's confirmation before writing anything. It then writes traceway-setup-plan.json with the confirmed names, frameworks opentelemetry and react, gitignored env files (api/.env with a token, web/.env* with a VITE_-prefixed variable), submits it with the setup token (curl + the wait script, or traceway setup apply), and lets the tokens flow into the env files without ever printing them. Finally it instruments api/ with OpenTelemetry (otelhttp per handler so http.route is recorded, the propagator set) and web/ with @tracewayapp/react plus the bundler plugin, both reading their credentials from those env files.
+  rubric:
+    - Presents the component inventory and a two-project map (OpenTelemetry for the API, React for the web app) and waits for confirmation before changing anything.
+    - Uses the setup token only to propose the plan; never asks for, prints, or reads back ingest token values.
+    - Keeps each token with its own component (backend token in api/, browser connection string with a VITE_ prefix in web/) in gitignored env files.
+    - Instruments both components against those variables and leaves both builds passing.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: README.md
+  - read_file: api/main.go
+  - read_file: web/package.json
+  - ask_user: |
+      Here is what I found and the Traceway project map I propose:
+
+      | Component | Evidence | Production role | Proposed project | Integration | Credential |
+      |---|---|---|---|---|---|
+      | api/ | Go module, net/http ServeMux routes, Dockerfile | Backend API (container on your VM) | Shop API, framework OpenTelemetry | OpenTelemetry (otelhttp), OTLP/HTTP | TRACEWAY_API_TOKEN in api/.env |
+      | web/ | React 19 + Vite SPA | Browser app (static files on S3) | Shop Web, framework React | @tracewayapp/react + debug IDs | VITE_TRACEWAY_CONNECTION_STRING in web/.env.local |
+
+      Neither component has any tracking today. Both env files are already gitignored. Does this map look right, are both components deployed, and are those names OK?
+  - write_file: {path: traceway-setup-plan.json, from: oracle/setup-monorepo-plan/traceway-setup-plan.json}
+  - shell: printf '%s' '{{env.setupToken}}' | traceway setup apply --url "{{env.url}}" --plan traceway-setup-plan.json --token-stdin
+  - shell: printf 'TRACEWAY_URL=%s\n' '{{env.url}}' >> api/.env && rm traceway-setup-plan.json && git status --short --ignored api web
+  - write_file: {path: api/telemetry.go, from: oracle/setup-monorepo-plan/telemetry.go}
+  - write_file: {path: api/main.go, from: oracle/setup-monorepo-plan/main.go}
+  - shell: |
+      cd api
+      go get go.opentelemetry.io/otel@v1.47.0 go.opentelemetry.io/otel/sdk@v1.47.0 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.47.0 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.72.0 > /dev/null 2>&1 && go mod tidy && go vet ./... && go test ./...
+      bin=$(mktemp -d)/shop-api && go build -o "$bin" . && log=$(mktemp)
+      (set -a; . ./.env; set +a; exec "$bin") > "$log" 2>&1 &
+      pid=$!
+      sleep 2
+      for id in 1 2 3; do curl -s -o /dev/null -w "GET /api/products/$id -> %{http_code}\n" "http://127.0.0.1:$PORT/api/products/$id"; done
+      kill $pid; wait $pid
+      cat "$log"; rm -r "${bin%/*}" "$log"
+  - shell: cd web && npm install --no-audit --no-fund --loglevel=error @tracewayapp/react@1.2.1 && npm install --no-audit --no-fund --loglevel=error -D @tracewayapp/bundler-plugin@1.2.1 @tracewayapp/sourcemap-upload@1.2.1
+  - write_file: {path: web/src/main.jsx, from: oracle/setup-monorepo-plan/main.jsx}
+  - write_file: {path: web/vite.config.js, from: oracle/setup-monorepo-plan/vite.config.js}
+  - shell: cd web && npm run build 2>&1 | tail -n 4 && echo "bundles with a debug ID:" $(grep -lE '//# debugId=' dist/assets/*.js | wc -l)
+  - finish:
+      summary: |
+        Traceway is set up for both components. You approved the plan, which created two projects: "Shop API" (OpenTelemetry) for api/ and "Shop Web" (React) for web/. The apply step wrote TRACEWAY_API_TOKEN into api/.env and VITE_TRACEWAY_CONNECTION_STRING into web/.env.local (both gitignored; I never printed the values), and I added TRACEWAY_URL to api/.env. api/ exports traces over OTLP/HTTP to $TRACEWAY_URL/api/otel/v1/traces with the token from TRACEWAY_API_TOKEN, service.name shop-api, the W3C propagator, and otelhttp around each handler so endpoints group by route (GET /api/products/{id}). web/ wraps the app in TracewayProvider with the connection string from VITE_TRACEWAY_CONNECTION_STRING and emits debug IDs and source maps. Both build, and the API tests pass. For production: run the API container with --env-file api/.env, and build web/ where web/.env.local (or the same variable) is present; upload web/dist source maps with a Shop Web upload token as TRACEWAY_SOURCEMAP_TOKEN. Check /endpoints in Shop API and /issues in Shop Web for the last 15 minutes.
+      changes:
+        - {action: create projects through an approved setup plan, target: "Shop API, Shop Web"}
+        - {action: add OpenTelemetry tracing, target: api/telemetry.go}
+        - {action: wrap route handlers with otelhttp, target: api/main.go}
+        - {action: wrap the app in TracewayProvider, target: web/src/main.jsx}
+        - {action: enable source maps and debug IDs, target: web/vite.config.js}

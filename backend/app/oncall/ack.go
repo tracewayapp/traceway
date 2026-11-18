@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/outbox"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 const (

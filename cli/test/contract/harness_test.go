@@ -33,8 +33,8 @@ import (
 	"testing"
 	"time"
 
-	tracewaybackend "github.com/tracewayapp/traceway/backend"
-	client "github.com/tracewayapp/traceway/cli/pkg/client"
+	tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
+	client "github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 const (

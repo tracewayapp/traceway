@@ -1,0 +1,11 @@
+{
+  "name": "tw-write",
+  "description": "Traceway write skill: /tw-write:traceway-write lets an agent archive issues, acknowledge pages, snooze alerts, run monitors and write post-mortems through the traceway-write CLI. Installed separately from the read-only tw plugin.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Traceway"
+  },
+  "homepage": "https://tracewayapp.com",
+  "repository": "https://github.com/tracewayapp/traceway",
+  "license": "MIT"
+}

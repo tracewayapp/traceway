@@ -5,7 +5,6 @@ group.lastSeen: string
 group.stackTrace: string
 occurrences[].appVersion: string
 occurrences[].attributes: null
-occurrences[].distributedTraceId: string
 occurrences[].exceptionHash: string
 occurrences[].id: string
 occurrences[].isMessage: bool
@@ -13,6 +12,7 @@ occurrences[].projectId: string
 occurrences[].recordedAt: string
 occurrences[].serverName: string
 occurrences[].sessionId: string
+occurrences[].spanId: string
 occurrences[].stackTrace: string
 occurrences[].traceId: string
 occurrences[].traceType: string
@@ -20,4 +20,11 @@ pagination.page: number
 pagination.pageSize: number
 pagination.total: number
 pagination.totalPages: number
+relatedEntity.duration: number
+relatedEntity.id: string
+relatedEntity.name: string
+relatedEntity.recordedAt: string
+relatedEntity.statusCode: number
+relatedEntity.traceId: string
+relatedEntity.traceType: string
 sessionId: string

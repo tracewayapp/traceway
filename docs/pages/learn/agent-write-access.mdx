@@ -20,6 +20,7 @@ Every write a write credential makes in the organization is recorded in its agen
 |---|---|---|
 | Create or replace dashboards and apply to the selected project | `dashboards import --file F [--mode create\|upsert]` | `import_dashboards` |
 | Configure channels and project alert rules | `channels create/update/delete/test`, `alerts create/update/delete` | Notification channel/rule tools |
+| Create, change, pause or delete SLOs | `slos create/update/delete` | `create_slo`, `update_slo`, `delete_slo` |
 | Configure organization on-call routing | `teams`, `schedules`, `escalation-policies` | Team, on-call schedule/override and escalation-policy tools |
 | Configure own delivery methods and urgency chains | `contact-methods`, `notification-chains replace` | Contact-method tools, `set_user_notification_rules` |
 | Archive or unarchive issues | `exceptions archive <hash>...` / `unarchive` | `archive_exceptions` / `unarchive_exceptions` |

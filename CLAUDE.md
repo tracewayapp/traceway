@@ -930,6 +930,8 @@ Checks (`synthetic_checks`, main DB) are http/tcp/browser probes with per-check 
 | POST | `/api/slos/preview` | App | `{good, total, sli, from, to}` of a definition over the last 24h straight from raw telemetry (the sheet's Preview button) |
 | GET | `/api/slos/breached-count` | App | Sidebar badge |
 
+Agents reach every SLO route: the reads and `preview` with any scope, create/update/delete with the write scope (`agent_routes.go`). The CLI and MCP surface is the `slos` resource in `client.AlertingOperations()` (`slos list/show/series/preview` in both editions, `create/update/delete` in `traceway-write`; tools `list_slos`, `get_slo`, `get_slo_series`, `preview_slo`, `create_slo`, `update_slo`, `delete_slo`), and the write skill's reference is `knowledge/slo-configuration.md`.
+
 **Logs**
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|

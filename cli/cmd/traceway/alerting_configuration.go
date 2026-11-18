@@ -21,7 +21,11 @@ func addAlertingConfigurationCommands(root *cobra.Command, write bool) {
 		}
 		group := groups[op.Resource]
 		if group == nil {
-			group = &cobra.Command{Use: op.Resource, Short: "Manage " + op.Resource + " configuration"}
+			short := "Manage " + op.Resource + " configuration"
+			if op.Resource == "slos" {
+				short = "Service level objectives: definitions, current SLI and error budget"
+			}
+			group = &cobra.Command{Use: op.Resource, Short: short}
 			root.AddCommand(group)
 			groups[op.Resource] = group
 		}
@@ -127,6 +131,12 @@ func newAlertingConfigurationCommand(op client.AlertingOperation) *cobra.Command
 		}
 		if op.Action == "update" || op.Action == "replace" || op.Action == "set-members" || op.Action == "set-projects" {
 			summary += "; this replaces the submitted configuration"
+		}
+		if op.Resource == "slos" && op.Action == "update" {
+			summary += "; changing sliKind, sliConfig or bucketMinutes resets the SLO's history and error budget"
+		}
+		if op.Resource == "slos" && op.Action == "delete" {
+			summary += "; the alert rules that reference it are permanently deleted too"
 		}
 		if op.Resource == "channels" && op.Action == "delete" {
 			summary += "; ALL attached notification rules are permanently deleted too"

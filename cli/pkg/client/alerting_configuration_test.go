@@ -48,12 +48,19 @@ func alertingTestBody(resource, action string) json.RawMessage {
 	if action == "verify" {
 		return json.RawMessage(`{"code":"123456"}`)
 	}
+	if resource == "slos" && action == "preview" {
+		return json.RawMessage(`{"sliKind":"session","sliConfig":{}}`)
+	}
+	if resource == "slos" && action == "series" {
+		return json.RawMessage(`{"fromDate":"2026-01-01T00:00:00Z","toDate":"2026-01-02T00:00:00Z"}`)
+	}
 	return json.RawMessage(map[string]string{
 		"channels": `{"name":"Ops","channelType":"email","config":{}}`,
 		"alerts":   `{"name":"Errors","channelId":1,"ruleType":"new_exception","config":{}}`,
 		"teams":    `{"name":"Ops"}`, "schedules": `{"teamId":1,"name":"Primary","timezone":"UTC","definition":{}}`,
 		"escalation-policies": `{"name":"Primary","definition":{}}`, "contact-methods": `{"methodType":"email","config":{}}`,
 		"notification-chains": `{"high":[],"low":[]}`, "notification-history": `{"pagination":{"page":1,"pageSize":20}}`,
+		"slos": `{"name":"Checkout","sliKind":"endpoint","sliConfig":{"endpoint":"POST /api/checkout","good":"availability"},"targetPercent":99.9,"windowDays":30}`,
 	}[resource])
 }
 func TestAlertingConfigurationValidation(t *testing.T) {
@@ -77,6 +84,14 @@ func TestAlertingConfigurationValidation(t *testing.T) {
 		{"notification-chains", "replace", `{"high":[{"contactMethodId":1,"delayMinutes":121}],"low":[]}`, false},
 		{"notification-history", "list", `{"pagination":{"page":1,"pageSize":0}}`, false},
 		{"teams", "create", `{"name":"Ops","unknown":true}`, false},
+		{"slos", "create", `{"name":"INP","sliKind":"metric","sliConfig":{"metricName":"browser.web_vital.inp","aggregation":"distribution","operator":"lte","threshold":200},"targetPercent":90,"windowDays":30,"bucketMinutes":1}`, true},
+		{"slos", "create", `{"name":"INP","sliKind":"metric","sliConfig":{},"targetPercent":90,"windowDays":30}`, false},
+		{"slos", "create", `{"name":"Crash free","sliKind":"session","sliConfig":{},"targetPercent":100,"windowDays":30}`, false},
+		{"slos", "create", `{"name":"Crash free","sliKind":"session","sliConfig":{},"targetPercent":99.5,"windowDays":14}`, false},
+		{"slos", "update", `{"name":"Crash free","sliKind":"sessions","sliConfig":{},"targetPercent":99.5,"windowDays":30}`, false},
+		{"slos", "update", `{"name":"Crash free","sliKind":"session","sliConfig":{},"targetPercent":99.5}`, false},
+		{"slos", "preview", `{"sliKind":"session","sliConfig":{},"name":"not a preview field"}`, false},
+		{"slos", "series", `{"fromDate":"2026-01-01T00:00:00Z","toDate":"2026-01-02T00:00:00Z","intervalMinutes":0}`, false},
 	} {
 		req := AlertingRequest{ProjectID: "project", OrganizationID: "1", ID: 1, Body: json.RawMessage(tc.body)}
 		if err := ValidateAlertingRequest(tc.resource, tc.action, req); (err == nil) != tc.valid {

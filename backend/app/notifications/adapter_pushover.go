@@ -48,7 +48,7 @@ func (a *PushoverAdapter) Validate() error {
 	return nil
 }
 
-func (a *PushoverAdapter) Send(ctx context.Context, msg Message) error {
+func (a *PushoverAdapter) form(msg Message) url.Values {
 	form := url.Values{
 		"token":   {a.AppToken},
 		"user":    {a.UserKey},
@@ -95,7 +95,11 @@ func (a *PushoverAdapter) Send(ctx context.Context, msg Message) error {
 		}
 	}
 
-	body := form.Encode()
+	return form
+}
+
+func (a *PushoverAdapter) Send(ctx context.Context, msg Message) error {
+	body := a.form(msg).Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		"https://api.pushover.net/1/messages.json",
 		strings.NewReader(body),

@@ -62,7 +62,7 @@ export async function BlogArticle({
   return (
     <main className="relative blog-scope">
       <section className="blog-wrap pt-12 pb-24">
-        <div className="blog-top">
+        <div className="blog-top" data-category={post.category}>
           <Link href={backHref} className="blog-back">
             <span className="blog-back-icon">
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />

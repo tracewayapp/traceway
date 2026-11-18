@@ -1674,6 +1674,15 @@
     .blog-wrap {
       padding-inline: 20px;
     }
+    .blog-top[data-category="engineering"] :is(.blog-back, .eyebrow) {
+      display: none;
+    }
+    .blog-top[data-category="engineering"] :is(.blog-header, .blog-title) {
+      margin-top: 0;
+    }
+    .blog-toc-inline {
+      display: none;
+    }
     .blog-hero {
       margin-top: 32px;
       aspect-ratio: 16 / 9;

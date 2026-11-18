@@ -27,8 +27,20 @@ const AUTHORS: Record<string, Author> = {
 
 const DEFAULT_AUTHOR_KEY = "dusan";
 
-export function BlogByline({ date, author }: { date: string; author?: string }) {
-  const author_record = AUTHORS[author ?? DEFAULT_AUTHOR_KEY] ?? AUTHORS[DEFAULT_AUTHOR_KEY];
+export function blogAuthor(author?: string): Author {
+  return AUTHORS[author ?? DEFAULT_AUTHOR_KEY] ?? AUTHORS[DEFAULT_AUTHOR_KEY];
+}
+
+export function BlogByline({
+  date,
+  author,
+  readingMinutes,
+}: {
+  date: string;
+  author?: string;
+  readingMinutes?: number;
+}) {
+  const author_record = blogAuthor(author);
   const className = author_record.note ? "blog-author blog-author-noted" : "blog-author";
   const inner = (
     <>
@@ -68,12 +80,11 @@ export function BlogByline({ date, author }: { date: string; author?: string }) 
           {inner}
         </span>
       )}
-      {date && (
-        <>
-          <span className="blog-byline-sep">·</span>
-          <span>{date}</span>
-        </>
-      )}
+      <span className="blog-byline-meta">
+        {date && <time>{date}</time>}
+        {date && readingMinutes && <span className="blog-byline-sep">·</span>}
+        {readingMinutes && <span>{readingMinutes} min read</span>}
+      </span>
     </div>
   );
 }

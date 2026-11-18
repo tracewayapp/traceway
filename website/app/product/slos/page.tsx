@@ -58,9 +58,9 @@ export default function SlosPage() {
         <section className="wrap">
           <FeatureRow
             eyebrow="Real User Monitoring"
-            title={<>Your frontend deserves <em>an error budget too</em></>}
-            description="Define a good interaction as INP at or below 200 ms, choose your target, and count every observed interaction toward it. Compare release-specific objectives to see a regression that the overall average hides. Missing observations remain no data; they do not silently become successful experiences."
-            bullets={["Every observation for LCP, INP and other distributions", "Separate objectives by release, device or another dimension", "Multi-window burn-rate alerts for sustained degradation"]}
+            title={<>Speed targets <em>for your frontend</em></>}
+            description="Decide what a good interaction is, for example a page that reacts to a click within 200 ms, and what share of interactions should meet it. Every measured interaction counts toward the objective. Give each release its own objective to spot a slow release that the overall number hides. A page nobody interacted with counts as no data, not as a success."
+            bullets={["Objectives on load time, click response and other page timings", "A separate objective per release, device or country", "Burn-rate alerts for a sustained slowdown, not one bad minute"]}
             image={{ src: "/images/rum-slo-detail.png", alt: "A frontend interaction SLO breached by the deliberately slow demo release, with its error budget and burn rates" }}
             cta={<Link href="/product/rum" className="btn btn-ghost">Explore Real User Monitoring <ArrowRight className="h-4 w-4" /></Link>}
           />

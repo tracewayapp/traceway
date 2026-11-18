@@ -43,8 +43,8 @@ export default function MetricsPage() {
         <section className="wrap">
           <FeatureRow
             eyebrow="Frontend metrics"
-            title={<>Measure the experience <em>inside the browser</em></>}
-            description="Web Vitals, route timings and blocking time tell you what backend metrics cannot. Browser projects receive Web Performance immediately, with percentiles, rating shares and release breakdowns. Follow a slow observation into its session or give the experience an SLO."
+            title={<>Page speed <em>as your visitors see it</em></>}
+            description="Server metrics cannot tell you that a page took five seconds to appear on a phone. Browser projects get a ready-made Web Performance dashboard that shows how fast pages load and react for real visitors, split by page, release and device. From a slow number you can open the visits behind it, or set a target for it."
             image={{ src: "/images/rum-dashboard.png", alt: "Frontend Web Performance dashboard with controlled-demo browser telemetry" }}
             cta={<Link href="/product/rum" className="btn btn-ghost">Explore Real User Monitoring <ArrowRight className="h-4 w-4" /></Link>}
           />

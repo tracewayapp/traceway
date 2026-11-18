@@ -45,7 +45,7 @@ const PILLARS = [
   {
     icon: Video,
     title: "Real user monitoring",
-    description: "Web Vitals, release regressions, SLOs and replay",
+    description: "Page speed, errors and replay from real visitors",
     href: "/product/rum",
   },
   {

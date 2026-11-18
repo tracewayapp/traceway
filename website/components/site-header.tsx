@@ -56,7 +56,7 @@ const PILLARS: NavItem[] = [
   },
   {
     title: "Real User Monitoring",
-    description: "Web Vitals, frontend SLOs, errors and replay.",
+    description: "Page speed, errors and replay from your real users.",
     href: "/product/rum",
     icon: Video,
   },

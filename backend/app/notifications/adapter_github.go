@@ -34,6 +34,12 @@ func (a *GitHubAdapter) Validate() error {
 }
 
 func (a *GitHubAdapter) Send(ctx context.Context, msg Message) error {
+	// every send opens an issue, and an open issue saying the problem is over
+	// is noise nobody closes
+	if msg.Recovered {
+		return nil
+	}
+
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues", a.Owner, a.Repo)
 
 	issueBody := msg.Body

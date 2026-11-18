@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	_ "modernc.org/sqlite"
 )
 
@@ -158,7 +158,7 @@ func (w *headerWriteObserver) WriteHeader(code int) {
 	w.ResponseRecorder.WriteHeader(code)
 }
 
-func serve(r *gin.Engine, method string) *httptest.ResponseRecorder {
+func serveTransaction(r *gin.Engine, method string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(method, "/tx", nil))
 	return rec
@@ -174,7 +174,7 @@ func TestTransactionalFailedCommitAnswers500WithoutHandlerResponse(t *testing.T)
 		c.JSON(http.StatusCreated, gin.H{"ok": true})
 	})
 
-	rec := serve(r, http.MethodPost)
+	rec := serveTransaction(r, http.MethodPost)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
@@ -289,7 +289,7 @@ func TestTransactionalPanicAfterWriteAnswers500(t *testing.T) {
 		panic("boom")
 	})
 
-	rec := serve(r, http.MethodPost)
+	rec := serveTransaction(r, http.MethodPost)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
@@ -316,7 +316,7 @@ func TestTransactionalPanickingCommitHookDoesNotStopOthers(t *testing.T) {
 		c.JSON(http.StatusCreated, gin.H{"ok": true})
 	})
 
-	rec := serve(r, http.MethodPost)
+	rec := serveTransaction(r, http.MethodPost)
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", rec.Code)

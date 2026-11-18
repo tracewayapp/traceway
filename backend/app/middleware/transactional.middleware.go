@@ -7,7 +7,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 // Transactional opens a main-DB transaction for the request and commits it

@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
 )
 
 func newTracesCmd() *cobra.Command {

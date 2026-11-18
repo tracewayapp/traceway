@@ -15,8 +15,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	_ "modernc.org/sqlite"
 )
 
@@ -188,6 +189,17 @@ func setupNotificationsTestDB(t *testing.T) {
 	db.Driver = lit.SQLite
 	models.Init(db.Driver)
 
+	if _, err := mainDB.Exec(`CREATE TABLE notification_rule_states (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER NOT NULL UNIQUE,
+		firing INTEGER NOT NULL DEFAULT 0,
+		since DATETIME,
+		updated_at DATETIME NOT NULL,
+		detail TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("failed to create notification_rule_states table: %v", err)
+	}
+
 	if _, err := telemetryDB.Exec(`CREATE TABLE tasks_v2 (
 		id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
@@ -209,6 +221,85 @@ func setupNotificationsTestDB(t *testing.T) {
 		recorded_at DATETIME NOT NULL
 	)`); err != nil {
 		t.Fatalf("failed to create exceptions_v2 table: %v", err)
+	}
+
+	if _, err := telemetryDB.Exec(`CREATE TABLE metric_points (
+		project_id TEXT NOT NULL,
+		name TEXT NOT NULL DEFAULT '',
+		value REAL NOT NULL DEFAULT 0,
+		tags TEXT NOT NULL DEFAULT '{}',
+		recorded_at DATETIME NOT NULL
+	)`); err != nil {
+		t.Fatalf("failed to create metric_points table: %v", err)
+	}
+
+	if _, err := telemetryDB.Exec(`CREATE TABLE metric_histograms (
+		project_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		recorded_at DATETIME NOT NULL,
+		grain_seconds INTEGER NOT NULL DEFAULT 60,
+		dims TEXT NOT NULL DEFAULT '{}',
+		cnt REAL NOT NULL DEFAULT 0,
+		total REAL NOT NULL DEFAULT 0,
+		min_val REAL NOT NULL DEFAULT 0,
+		max_val REAL NOT NULL DEFAULT 0,
+		zero_cnt REAL NOT NULL DEFAULT 0,
+		buckets TEXT NOT NULL DEFAULT '{}',
+ weight_squares REAL NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatalf("failed to create metric_histograms table: %v", err)
+	}
+}
+
+func TestEvaluateMetricThresholdTagFilter(t *testing.T) {
+	setupNotificationsTestDB(t)
+
+	ctx := context.Background()
+	projectId := uuid.New()
+	ts := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	for _, p := range []struct {
+		value float64
+		tags  string
+	}{
+		{3, `{"outcome":"healed","host":"fw1"}`},
+		{4, `{"outcome":"healed","host":"fw2"}`},
+		{2, `{"outcome":"failed","host":"fw1"}`},
+	} {
+		if _, err := db.TelemetryDB.Exec(
+			"INSERT INTO metric_points (project_id, name, value, tags, recorded_at) VALUES (?, ?, ?, ?, ?)",
+			projectId.String(), "syslogd_heal_total", p.value, p.tags, ts); err != nil {
+			t.Fatalf("failed to insert metric point: %v", err)
+		}
+	}
+
+	cases := []struct {
+		name      string
+		agg       string
+		tags      string
+		threshold float64
+		fired     bool
+	}{
+		{"no filter sums every series", "sum", `{}`, 8, true},
+		{"filter keeps only matching series", "sum", `{"outcome":"failed"}`, 2, false},
+		{"filter fires on matching series", "sum", `{"outcome":"failed"}`, 1, true},
+		{"every filter must match", "max", `{"outcome":"healed","host":"fw1"}`, 3, false},
+		{"no matching series never fires", "sum", `{"outcome":"unknown"}`, -1, false},
+		{"last honors the filter", "last", `{"host":"fw2"}`, 3.5, true},
+		{"percentile honors the filter", "p95", `{"outcome":"failed"}`, 2, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rule := &models.NotificationRule{
+				Config: json.RawMessage(fmt.Sprintf(`{"metricName":"syslogd_heal_total","aggregation":%q,"operator":"gt","thresholdValue":%v,"lookbackMinutes":5,"tags":%s}`, tc.agg, tc.threshold, tc.tags)),
+			}
+			result, err := evaluateMetricThreshold(ctx, rule, projectId)
+			if err != nil {
+				t.Fatalf("evaluateMetricThreshold failed: %v", err)
+			}
+			if result.Fired != tc.fired {
+				t.Errorf("fired = %v, want %v", result.Fired, tc.fired)
+			}
+		})
 	}
 }
 
@@ -293,6 +384,77 @@ func TestEvaluateTaskFailureRate(t *testing.T) {
 		}
 		if !strings.Contains(result.Message.Body, "2 of 5") {
 			t.Errorf("body %q does not contain 2 of 5", result.Message.Body)
+		}
+	})
+}
+
+func TestExceptionDetails(t *testing.T) {
+	setupNotificationsTestDB(t)
+	for _, column := range []string{"exception_hash", "stack_trace", "attributes", "app_version", "server_name"} {
+		if _, err := db.TelemetryDB.Exec("ALTER TABLE exceptions_v2 ADD COLUMN " + column + " TEXT NOT NULL DEFAULT ''"); err != nil {
+			t.Fatalf("failed to add %s: %v", column, err)
+		}
+	}
+
+	ctx := context.Background()
+	projectId := uuid.New()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	t.Run("described from the event without reading storage", func(t *testing.T) {
+		older := models.ExceptionStackTrace{
+			Id:            uuid.New(),
+			ProjectId:     projectId,
+			ExceptionHash: "05d3a12f49088c31",
+			StackTrace:    "TypeError: this.i.at is not a function\n    at web-vitals.attribution.js:1:2",
+			Attributes:    map[string]string{"url.path": "/login"},
+			RecordedAt:    now.Add(-time.Second),
+		}
+		newer := older
+		newer.Id = uuid.New()
+		newer.RecordedAt = now
+		other := models.ExceptionStackTrace{Id: uuid.New(), ProjectId: projectId, ExceptionHash: "ffffffffffffffff", StackTrace: "RangeError: x", RecordedAt: now.Add(time.Second)}
+		event := hooks.ReportEvent{
+			ProjectId:       projectId,
+			ExceptionHashes: []string{older.ExceptionHash, other.ExceptionHash, newer.ExceptionHash},
+			Exceptions:      []models.ExceptionStackTrace{older, other, newer},
+		}
+
+		details := exceptionDetails(ctx, event, "05d3a12f49088c31")
+		if details.ErrorType != "TypeError" {
+			t.Errorf("ErrorType = %q, want TypeError", details.ErrorType)
+		}
+		if details.Id != newer.Id.String() || !details.RecordedAt.Equal(newer.RecordedAt) {
+			t.Errorf("described %s at %v, want the newest occurrence %s at %v", details.Id, details.RecordedAt, newer.Id, newer.RecordedAt)
+		}
+		if details.Attributes["url.path"] != "/login" {
+			t.Errorf("Attributes = %v, want url.path", details.Attributes)
+		}
+	})
+
+	t.Run("read from storage when the event carries no rows", func(t *testing.T) {
+		id := uuid.New()
+		if _, err := db.TelemetryDB.Exec(
+			"INSERT INTO exceptions_v2 (id, project_id, exception_hash, stack_trace, attributes, app_version, server_name, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			id.String(), projectId.String(), "0123456789abcdef", "RuntimeError: boom", `{"user.id":"7"}`, "1.2.3", "web-1", now.Format(time.RFC3339Nano)); err != nil {
+			t.Fatalf("failed to insert exception: %v", err)
+		}
+
+		details := exceptionDetails(ctx, hooks.ReportEvent{ProjectId: projectId, ExceptionHashes: []string{"0123456789abcdef"}}, "0123456789abcdef")
+		if details.Id != id.String() || details.ErrorType != "RuntimeError" || details.AppVersion != "1.2.3" || details.ServerName != "web-1" {
+			t.Errorf("details = %+v, want the stored row", details)
+		}
+		if !details.RecordedAt.Equal(now) {
+			t.Errorf("RecordedAt = %v, want %v", details.RecordedAt, now)
+		}
+		if details.Attributes["user.id"] != "7" {
+			t.Errorf("Attributes = %v, want user.id", details.Attributes)
+		}
+	})
+
+	t.Run("unknown when neither has it", func(t *testing.T) {
+		details := exceptionDetails(ctx, hooks.ReportEvent{ProjectId: projectId}, "aaaaaaaaaaaaaaaa")
+		if details.ErrorType != "Unknown Error" || details.Id != "" {
+			t.Errorf("details = %+v, want an unknown error", details)
 		}
 	})
 }

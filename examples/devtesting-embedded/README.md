@@ -10,24 +10,32 @@ go run .
 
 Then:
 - App: http://localhost:8080/cdn (no build step) or http://localhost:8080 (requires `cd frontend && npm install && npm run build` first)
-- AI chat: http://localhost:8080/chat (needs `ORCAROUTER_API_KEY` or `OPENROUTER_API_KEY` in `.env`)
+- AI chat: http://localhost:8080/chat (needs `ORCAROUTER_API_KEY`, `CHEAPER_INFERENCE_API_KEY`, `UBERLLM_API_KEY` or `OPENROUTER_API_KEY` in `.env`)
 - Dashboard: http://localhost:8082 — login `admin@localhost.com` / `admin`
 
 ## AI chat (conversations, tool calls, sub-agents)
 
-`/chat` is a no-build chat UI backed by an OpenAI-compatible gateway, built to exercise the AI conversation analytics end to end. Configuration lives in `.env` (gitignored):
+`/chat` is a no-build chat UI backed by an OpenAI-compatible gateway, built to exercise the AI conversation analytics end to end. Configuration lives in `.env` (gitignored). Uncomment the settings for the provider you want to use:
 
 ```
-# OrcaRouter (https://www.orcarouter.ai) — preferred; routing, fallback, guardrails
-ORCAROUTER_API_KEY=sk-orca-...
-ORCAROUTER_MODEL=orcarouter/auto
+# OrcaRouter (https://www.orcarouter.ai)
+# ORCAROUTER_API_KEY=sk-orca-...
+# ORCAROUTER_MODEL=orcarouter/auto
 
-# OpenRouter — fallback provider
+# Cheaper Inference (https://cheaperinference.com)
+# CHEAPER_INFERENCE_API_KEY=ci_live_...
+# CHEAPER_INFERENCE_MODEL=gpt-5.4-mini
+
+# UberLLM (https://uberllm.dev)
+# UBERLLM_API_KEY=ull_...
+# UBERLLM_MODEL=openai/gpt-5.4-mini
+
+# OpenRouter (https://openrouter.ai)
 # OPENROUTER_API_KEY=sk-or-...
 # OPENROUTER_MODEL=anthropic/claude-sonnet-5
 ```
 
-When `ORCAROUTER_API_KEY` is set the chat routes through [OrcaRouter](https://www.orcarouter.ai) (`https://api.orcarouter.ai/v1`); otherwise it falls back to OpenRouter.
+Set one provider API key. If multiple keys are set, the example checks them in this order: `ORCAROUTER_API_KEY`, `CHEAPER_INFERENCE_API_KEY`, `UBERLLM_API_KEY`, then `OPENROUTER_API_KEY`.
 
 How it maps to Traceway:
 
@@ -52,6 +60,7 @@ curl -s http://localhost:8080/api/ai/chat -H 'Content-Type: application/json' -d
   - Traces via OTLP/HTTP → `http://localhost:8082/api/otel/v1/traces`
   - **Logs via OTLP/HTTP** → `http://localhost:8082/api/otel/v1/logs`
   - Two OTel providers in the same process to exercise the distributed-logs flow: `backend-service` and `worker-service`, both reporting to the `Backend API` project.
+- A **Shoply Storefront** React project (token `shop-dev-token`) for `testing/shop`'s storefront, which exercises remote data collection and the browser performance metrics; see that README.
 - **jQuery frontend** pages (`/` and `/cdn`) — unchanged; useful for exercising the jQuery SDK independently.
 
 ## Testing the logs feature

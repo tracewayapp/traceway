@@ -1,6 +1,9 @@
-// skillgen assembles the published Claude Code skill (skills/traceway/) from
-// the canonical knowledge chunks embedded in pkg/mcpserver/knowledge, so the
-// skill and the MCP server cannot drift. Run via 'just gen-skills' from cli/.
+// skillgen assembles the published Claude Code skills from the canonical
+// knowledge chunks embedded in pkg/mcpserver/knowledge, so the skills and the
+// MCP server cannot drift. It writes the read-only skill to skills/traceway/,
+// the product guide to skills/traceway-learn/, and the write skill to
+// plugins/tw-write/skills/traceway-write/, a separate Claude Code plugin from
+// the read-only tw one. Run via 'just gen-skills' from cli/.
 //
 // Note: skills-lock.json pins an installer-computed hash of the skill; after
 // regenerating, reinstall the skill (or rerun the skill installer) to refresh
@@ -15,20 +18,65 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/tracewayapp/traceway/cli/pkg/mcpserver/knowledge"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 //go:embed skill.tmpl.md
 var skillTemplate string
 
-const perfHeader = "<!-- GENERATED FILE: copied from cli/pkg/mcpserver/knowledge/performance.md by cli/tools/skillgen. Edit there and run just gen-skills in cli/. -->\n"
+//go:embed skill-write.tmpl.md
+var writeSkillTemplate string
 
+//go:embed skill-learn.tmpl.md
+var learnSkillTemplate string
+
+var learnTopics = []string{
+	"rum.md",
+	"issues.md",
+	"endpoints-and-tasks.md",
+	"traces-and-logs.md",
+	"metrics-and-dashboards.md",
+	"sessions-and-ai.md",
+	"monitors.md",
+	"alerts.md",
+	"on-call.md",
+	"data-collection.md",
+	"organization.md",
+}
+
+func copiedHeader(file string) string {
+	return "<!-- GENERATED FILE: copied from cli/pkg/mcpserver/knowledge/" + file + " by cli/tools/skillgen. Edit there and run just gen-skills in cli/. -->\n"
+}
+
+// main takes an optional root to write into instead of the repository root,
+// which is how gen-skills-check generates into a temp dir and diffs.
 func main() {
-	outDir := "../skills/traceway"
+	root := ".."
 	if len(os.Args) > 1 {
-		outDir = os.Args[1]
+		root = os.Args[1]
 	}
 
+	readDir := filepath.Join(root, "skills", "traceway")
+	write(filepath.Join(readDir, "SKILL.md"), render(skillTemplate))
+	write(filepath.Join(readDir, "performance.md"), copiedHeader("performance.md")+knowledge.MustRead("performance.md"))
+
+	learnDir := filepath.Join(root, "skills", "traceway-learn")
+	write(filepath.Join(learnDir, "SKILL.md"), render(learnSkillTemplate))
+	for _, topic := range learnTopics {
+		write(filepath.Join(learnDir, topic), copiedHeader("learn/"+topic)+knowledge.MustRead("learn/"+topic))
+	}
+
+	writeDir := filepath.Join(root, "plugins", "tw-write", "skills", "traceway-write")
+	for _, dir := range []string{readDir, writeDir, filepath.Join(root, "skills", "traceway-setup")} {
+		write(filepath.Join(dir, "rum.md"), copiedHeader("learn/rum.md")+knowledge.MustRead("learn/rum.md"))
+	}
+	write(filepath.Join(writeDir, "SKILL.md"), render(writeSkillTemplate))
+	for _, topic := range []string{"dashboard-building.md", "write-setup.md", "alert-configuration.md", "oncall-configuration.md", "personal-notifications.md", "incident-actions.md", "sdk-configuration.md"} {
+		write(filepath.Join(writeDir, topic), copiedHeader(topic)+knowledge.MustRead(topic))
+	}
+}
+
+func render(text string) string {
 	tmpl := template.Must(template.New("skill").Funcs(template.FuncMap{
 		"include": func(name string) (string, error) {
 			b, err := knowledge.FS.ReadFile(name)
@@ -37,17 +85,19 @@ func main() {
 			}
 			return strings.TrimRight(string(b), "\n"), nil
 		},
-	}).Parse(skillTemplate))
+	}).Parse(text))
 
 	var sb strings.Builder
 	if err := tmpl.Execute(&sb, nil); err != nil {
 		fatal(err)
 	}
-	write(filepath.Join(outDir, "SKILL.md"), sb.String())
-	write(filepath.Join(outDir, "performance.md"), perfHeader+knowledge.MustRead("performance.md"))
+	return sb.String()
 }
 
 func write(path, content string) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		fatal(err)
 	}

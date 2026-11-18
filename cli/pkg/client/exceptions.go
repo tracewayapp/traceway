@@ -41,7 +41,8 @@ type ListExceptionsRequest struct {
 }
 
 // MarshalJSON expands TimeRange.From / TimeRange.To into top-level fromDate /
-// toDate so the wire shape matches Traceway's ExceptionSearchRequest.
+// toDate so the wire shape matches Traceway's ExceptionSearchRequest, and
+// sends OrderBy as the column name the backend sorts on.
 func (r ListExceptionsRequest) MarshalJSON() ([]byte, error) {
 	type alias ListExceptionsRequest
 	wire := struct {
@@ -53,6 +54,7 @@ func (r ListExceptionsRequest) MarshalJSON() ([]byte, error) {
 		ToDate:   r.TimeRange.To,
 		alias:    alias(r),
 	}
+	wire.OrderBy = orderByColumn(r.OrderBy)
 	return jsonMarshalNoHTMLEscape(wire)
 }
 

@@ -3,20 +3,31 @@
 	import Highlight from 'svelte-highlight';
 	import type { LanguageFn } from 'highlight.js';
 	import { themeState } from '$lib/state/theme.svelte';
+	import { cn } from '$lib/utils';
+	import { REPLAY_BLOCK_CLASS } from '$lib/utils/self-monitoring';
 	import 'svelte-highlight/styles/github-dark.css';
 
 	let {
 		code,
 		language,
-		wrap = false
-	}: { code: string; language: { name: string; register: LanguageFn }; wrap?: boolean } = $props();
+		wrap = false,
+		secret = false
+	}: {
+		code: string;
+		language: { name: string; register: LanguageFn };
+		wrap?: boolean;
+		secret?: boolean;
+	} = $props();
 </script>
 
 <div class="flex items-start gap-2">
 	<div
-		class="min-w-0 flex-1 overflow-x-auto rounded-md text-sm {wrap
-			? 'wrap-code'
-			: ''} {themeState.isDark ? 'dark-code' : 'light-code'}"
+		class={cn(
+			'min-w-0 flex-1 overflow-x-auto rounded-md text-sm',
+			wrap && 'wrap-code',
+			themeState.isDark ? 'dark-code' : 'light-code',
+			secret && REPLAY_BLOCK_CLASS
+		)}
 	>
 		<Highlight {language} {code} />
 	</div>

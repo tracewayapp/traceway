@@ -13,7 +13,7 @@ import { Terminal } from "@/components/terminal";
 import { SkillInstallCommand } from "@/components/skill-install-command";
 import { AgentDebugTerminal } from "@/components/agent-debug-terminal";
 import { VideoPlayer } from "@/components/video-player";
-import { GITHUB_URL } from "@/lib/links";
+import { GITHUB_URL, SKILLS_GITHUB_URL } from "@/lib/links";
 
 export const metadata: Metadata = {
   title: "Agent Skills · Traceway",
@@ -35,6 +35,20 @@ const SKILLS = [
     description:
       "Installs the traceway CLI, then uses it: exceptions, logs, endpoints, and metrics, from bug report to root cause.",
     tags: ["CLI install", "Telemetry queries", "Debugging", "Issue triage"],
+  },
+  {
+    label: "03 · Learn",
+    name: "/traceway-learn",
+    description:
+      "The full guide to Traceway: issues, endpoints, traces, logs, monitors, status pages, alerts and on-call. Ask how anything works and get the answer.",
+    tags: ["Product guide", "On-call", "Status pages", "Alert rules"],
+  },
+  {
+    label: "04 · Operate",
+    name: "/traceway-write",
+    description:
+      "Lets your agent act, not just read: archive issues, acknowledge pages, snooze rules, run monitors and draft post-mortems. Needs the write CLI and an admin opt-in.",
+    tags: ["Write CLI", "On-call actions", "Post-mortems", "Admin opt-in"],
   },
 ];
 
@@ -72,14 +86,20 @@ export default function AgentSkillsPage() {
               Works with Claude Code, Cursor, Codex, and any agent that reads
               SKILL.md.
             </p>
-            <p className="mt-3 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
+            <p className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2 font-mono text-[0.6875rem] uppercase tracking-[0.08em]">
               <Link
-                href={GITHUB_URL}
+                href={SKILLS_GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-fg-2 hover:text-blue-bright transition-colors"
               >
                 View on GitHub →
+              </Link>
+              <Link
+                href="/benchmarks"
+                className="text-fg-2 hover:text-blue-bright transition-colors"
+              >
+                Explore AI SRE BENCH →
               </Link>
             </p>
           </div>
@@ -233,11 +253,12 @@ export default function AgentSkillsPage() {
         <section className="wrap py-8">
           <Eyebrow>The skills</Eyebrow>
           <h2 className="mt-4 max-w-[24ch]">
-            Two skills, <em>one install.</em>
+            Four skills, <em>one install.</em>
           </h2>
           <p className="muted mt-4 max-w-[640px] text-pretty">
             Plain Markdown playbooks your agent loads on demand. One sets up
-            your project, the other queries and debugs it.
+            your project, one queries and debugs it, one explains how every
+            part of Traceway works, and one lets your agent take action.
           </p>
 
           <dl className="mt-14 grid gap-6 md:grid-cols-2">
@@ -283,8 +304,8 @@ export default function AgentSkillsPage() {
             <h2>One format, every agent</h2>
             <p style={{ color: "var(--fg-1)", fontSize: 17 }}>
               Skills are plain Markdown in the open SKILL.md format. No
-              marketplace, no lock-in. They live in the same MIT-licensed repo
-              as Traceway itself.
+              marketplace, no lock-in. They live in a small MIT-licensed repo,
+              tracewayapp/skills.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
               {AGENTS.map((agent) => (
@@ -361,7 +382,7 @@ export default function AgentSkillsPage() {
               items={[
                 {
                   q: "What exactly is an agent skill?",
-                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships two, one that sets up a project and one that queries and debugs it. Both live in the open-source repo.",
+                  a: "A SKILL.md file: Markdown instructions your agent loads when a task matches. Traceway ships four: one sets up a project, one queries and debugs it, one explains how every part of Traceway works, and one makes changes once an admin allows it. All four live in the open-source tracewayapp/skills repo.",
                 },
                 {
                   q: "Which agents are supported?",
@@ -372,7 +393,7 @@ export default function AgentSkillsPage() {
                         Codex, OpenCode, Gemini CLI, Copilot, and more.
                       </p>
                       <p>
-                        <code>npx skills add tracewayapp/traceway</code>{" "}
+                        <code>npx skills add tracewayapp/skills --all</code>{" "}
                         installs the skills for every agent it finds on your
                         machine.
                       </p>
@@ -381,7 +402,7 @@ export default function AgentSkillsPage() {
                 },
                 {
                   q: "Can an agent damage my production data?",
-                  a: "No. The CLI is read-only apart from archiving exception groups, and that requires an explicit --yes flag.",
+                  a: "No. The traceway CLI only reads. The install also adds the traceway-write skill, but it changes nothing on its own: writes need the separate traceway-write CLI or a write token, and an organization admin who turned on Agent Access.",
                 },
                 {
                   q: "Does this work with self-hosted Traceway?",

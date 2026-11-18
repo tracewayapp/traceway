@@ -275,6 +275,25 @@
 								Create Account
 							{/if}
 						</Button>
+
+						{#if __CLOUD_MODE__}
+							<p class="mt-3 text-center text-xs text-muted-foreground">
+								By creating an account you agree to the
+								<a
+									href="https://tracewayapp.com/terms-of-use"
+									target="_blank"
+									rel="noopener noreferrer"
+									class="underline hover:text-primary">Terms of Use</a
+								>
+								and acknowledge the
+								<a
+									href="https://tracewayapp.com/privacy-policy"
+									target="_blank"
+									rel="noopener noreferrer"
+									class="underline hover:text-primary">Privacy Policy</a
+								>.
+							</p>
+						{/if}
 					</form>
 				{/if}
 			{/if}

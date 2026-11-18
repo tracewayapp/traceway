@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "name": "Traceway BE - Runtime and Database Pools",
+  "description": "Backend self-monitoring: runtime and database pools. Peak gauges and delta totals, split by bounded dimensions. New log-protection metrics require the instrumentation deployment. Storage-specific metrics and unused worker paths may be empty; empty is not zero.",
+  "widgets": [
+    {
+      "id": "tw_afcd16dc5471",
+      "title": "db / pool / idle (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.db.pool.idle",
+            "aggregation": "max",
+            "groupBy": "pool"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_028ec641b001",
+      "title": "db / pool / in use (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.db.pool.in_use",
+            "aggregation": "max",
+            "groupBy": "pool"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_152207187a0a",
+      "title": "db / pool / max open (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.db.pool.max_open",
+            "aggregation": "max",
+            "groupBy": "pool"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_0209f3d78eb1",
+      "title": "db / pool / open (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.db.pool.open",
+            "aggregation": "max",
+            "groupBy": "pool"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_abd2272c58e1",
+      "title": "db / pool / wait count (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.db.pool.wait_count.delta",
+            "aggregation": "sum",
+            "groupBy": "pool"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_6dc118a38463",
+      "title": "db / pool / wait ms (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.db.pool.wait_ms.delta",
+            "aggregation": "sum",
+            "groupBy": "pool"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "tw_53dc1db81a59",
+      "title": "proc / cpu pcnt (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.proc.cpu_pcnt",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "%"
+      }
+    },
+    {
+      "id": "tw_91b82ddcddc2",
+      "title": "proc / rss mb (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.proc.rss_mb",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "MB"
+      }
+    }
+  ]
+}

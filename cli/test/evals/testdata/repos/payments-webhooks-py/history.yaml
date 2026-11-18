@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'v2.5.3: acknowledge unknown event types with 200'
+  age: 700h
+  author: Lena Fischer <lena@example.com>
+head:
+  message: 'v2.6.0: link paid invoices to customer accounts and activate their subscriptions'
+  age: 22h30m
+  author: Omar Haddad <omar@example.com>

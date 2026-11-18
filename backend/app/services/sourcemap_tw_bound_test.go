@@ -2,11 +2,15 @@ package services
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func awaitTWWarmups(t *testing.T) {
@@ -25,6 +29,15 @@ func awaitTWWarmups(t *testing.T) {
 }
 
 func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	t.Cleanup(traceway.Install(traceway.Providers{
+		TracerProvider: sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)),
+	}))
+	twPendingMu.Lock()
+	twDropReportedAt = time.Time{}
+	twPendingMu.Unlock()
+	droppedBefore := twDropped.Load()
+
 	var live, peak int64
 	gate := make(chan struct{})
 	started := make(chan twJob, twWorkers+twQueueDepth+8)
@@ -79,6 +92,15 @@ func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("enqueue blocked on a full queue")
 	}
+	if enqueueTWWarmup(job(10_001)) {
+		t.Fatal("a job past the queue depth was accepted")
+	}
+	if dropped := twDropped.Load() - droppedBefore; dropped != 2 {
+		t.Fatalf("counted %d dropped warm-ups, want 2", dropped)
+	}
+	if reports := recorder.Ended(); len(reports) != 1 || !strings.Contains(reports[0].Status().Description, "warm-up queue full") {
+		t.Fatalf("a burst of drops must be reported once, got %d reports", len(reports))
+	}
 
 	if enqueueTWWarmup(job(twWorkers + 1)) {
 		t.Fatal("a pending job was queued a second time")
@@ -86,5 +108,41 @@ func TestTWWarmupQueueIsBoundedAndCoalesced(t *testing.T) {
 
 	if peak > int64(twWorkers) {
 		t.Fatalf("peak concurrent warm-ups %d exceeded the %d worker bound", peak, twWorkers)
+	}
+}
+
+func TestTWWarmupQueueFitsACodeSplitUpload(t *testing.T) {
+	gate := make(chan struct{})
+	prev := twRun
+	twRun = func(twJob) { <-gate }
+	t.Cleanup(func() { twRun = prev })
+	defer func() {
+		close(gate)
+		awaitTWWarmups(t)
+	}()
+	droppedBefore := twDropped.Load()
+
+	// 274 uploaded files with debug ids: one job per bundle and one per alias.
+	const jobs = 548
+	project := uuid.New()
+	for i := range jobs {
+		enqueueTWWarmup(twJob{projectId: project, base: fmt.Sprintf("chunk-%d.js", i)})
+	}
+	if dropped := twDropped.Load() - droppedBefore; dropped != 0 {
+		t.Fatalf("%d of %d warm-ups of one upload were dropped", dropped, jobs)
+	}
+	if backlog := SourceMapWarmupBacklog(); backlog != jobs {
+		t.Fatalf("backlog %d, want %d", backlog, jobs)
+	}
+}
+
+func TestTWWarmupDropReportGroupsAcrossFiles(t *testing.T) {
+	project := uuid.New()
+	messages := map[string]bool{}
+	for _, base := range []string{"CmCdXAve.js", "by-debug-id/ad1df046-8d80-407c-84aa-d130d84e8da8.js"} {
+		messages[twDropMessage(twJob{projectId: project, base: base})] = true
+	}
+	if len(messages) != 1 {
+		t.Fatalf("drop reports differ per file and would open an issue each: %v", messages)
 	}
 }

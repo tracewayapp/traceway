@@ -1,0 +1,282 @@
+name: CLI Evals
+
+# Manual only. This workflow has no automatic trigger and must never get one
+# (cli/test/evals/internal/guard/triggers_test.go enforces it). Start it from
+# Actions > CLI Evals > Run workflow, or `gh workflow run cli-evals.yml`.
+#
+# It is the one exception to the label-gated CI pattern: every run spends real
+# money on OpenRouter, so a person dispatches it, reads the preflight estimate
+# in the job summary, and approves the paid job at the `evals` environment
+# gate (the only place OPENROUTER_API_KEY lives; the preflight refuses a paid
+# run unless that environment has a required reviewer). `dry_run` runs
+# everything except the paid and report jobs for $0. The workflow never commits; update baseline.json
+# yourself with `twevals baseline update`. See cli/test/evals/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        type: choice
+        options: [smoke, core, full]
+        default: smoke
+        description: smoke = starred cases on the primary arm; core = every case, primary arm; full = every arm
+      cases:
+        type: string
+        required: false
+        description: "comma-separated case ids or globs; overrides the preset"
+      suites:
+        type: string
+        required: false
+        description: "perf,debug,write,setup"
+      arms:
+        type: string
+        required: false
+        description: "cli+skill,cli-noskill,mcp,cli-write+skill,mcp-write,cli+setup-skill"
+      models:
+        type: string
+        default: "opus,astra"
+        description: "comma-separated agent keys from models.yaml: opus, astra, haiku, deepseek-flash, luna, minimax-flash, mimo-pro, qwen-27b, glm"
+      runs:
+        type: number
+        default: 1
+        description: "1-3 repeats per case"
+      max_cost_usd:
+        type: string
+        required: true
+        description: "cap for the whole dispatch in USD, split per shard, no default"
+      dry_run:
+        type: boolean
+        default: false
+        description: "preflight + harness + oracle only, no model calls, $0"
+      judge:
+        type: boolean
+        default: true
+      compare_baseline:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-evals
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight ($0)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Reads the evals environment's protection rules (the gate check below).
+      actions: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    defaults:
+      run:
+        working-directory: cli/test/evals
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: cli/test/evals/go.mod
+          cache-dependency-path: cli/test/evals/go.sum
+
+      - name: Validate inputs
+        env:
+          MAX_COST: ${{ inputs.max_cost_usd }}
+          RUNS: ${{ inputs.runs }}
+        run: |
+          if ! [[ "$MAX_COST" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! awk "BEGIN{exit !($MAX_COST > 0)}"; then
+            echo "::error::max_cost_usd must be a number greater than 0 (got '$MAX_COST')"; exit 1
+          fi
+          if ! [[ "$RUNS" =~ ^[1-3]$ ]]; then
+            echo "::error::runs must be 1, 2 or 3 (got '$RUNS')"; exit 1
+          fi
+
+      # GitHub creates a missing environment on first use with no protection
+      # rules, so a job naming `environment: evals` alone is no gate. Refuse
+      # the paid job unless the environment exists with a required reviewer.
+      - name: Check the evals gate
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          reviewers=$(gh api "repos/$GITHUB_REPOSITORY/environments/evals" \
+            --jq '[.protection_rules[]? | select(.type == "required_reviewers") | (.reviewers // [])[]] | length') || {
+            echo "::error::cannot read the evals environment; create it with a required reviewer before a paid run"; exit 1
+          }
+          if [ "${reviewers:-0}" -lt 1 ]; then
+            echo "::error::the evals environment has no required reviewer; add one (Settings > Environments > evals) before a paid run"; exit 1
+          fi
+
+      - name: Plan and estimate
+        id: plan
+        env:
+          PRESET: ${{ inputs.preset }}
+          CASES: ${{ inputs.cases }}
+          SUITES: ${{ inputs.suites }}
+          ARMS: ${{ inputs.arms }}
+          MODELS: ${{ inputs.models }}
+          RUNS: ${{ inputs.runs }}
+          MAX_COST: ${{ inputs.max_cost_usd }}
+        run: |
+          go run ./cmd/twevals plan --preset "$PRESET" --cases "$CASES" --suites "$SUITES" --arms "$ARMS" \
+            --models "$MODELS" --runs "$RUNS" --max-cost-usd "$MAX_COST" --shards \
+            --out plan.json --summary "$GITHUB_STEP_SUMMARY"
+          echo "matrix=$(jq -c .matrix plan.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload plan
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-plan
+          path: cli/test/evals/plan.json
+          retention-days: 30
+
+  harness:
+    name: Harness and oracle ($0)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli/test/evals
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: cli/test/evals/go.mod
+          cache-dependency-path: cli/test/evals/go.sum
+
+      - name: Unit and harness tests (fake model only)
+        run: go test ./...
+
+      - name: Oracle trajectories for the selection
+        env:
+          CASES: ${{ inputs.cases }}
+          SUITES: ${{ inputs.suites }}
+        run: |
+          if [ -n "$CASES" ]; then
+            go run ./cmd/twevals oracle -j 3 "$CASES"
+          elif [ -n "$SUITES" ]; then
+            go run ./cmd/twevals oracle -j 3 --suites "$SUITES"
+          else
+            go run ./cmd/twevals oracle -j 3 --all
+          fi
+
+  evals:
+    name: Evals (${{ matrix.shard }})
+    needs: [preflight, harness]
+    if: ${{ !inputs.dry_run }}
+    # The approval gate: this job waits for a required reviewer on the evals
+    # environment, who approves after reading the preflight estimate.
+    environment: evals
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
+    defaults:
+      run:
+        working-directory: cli/test/evals
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: cli/test/evals/go.mod
+          cache-dependency-path: cli/test/evals/go.sum
+
+      - name: Run the shard
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TWEVALS_APPROVED: "1"
+          PRESET: ${{ inputs.preset }}
+          CASES: ${{ inputs.cases }}
+          SUITES: ${{ inputs.suites }}
+          ARMS: ${{ inputs.arms }}
+          MODELS: ${{ inputs.models }}
+          RUNS: ${{ inputs.runs }}
+          JUDGE: ${{ inputs.judge }}
+          SHARD: ${{ matrix.shard }}
+          SHARD_CAP: ${{ matrix.cap }}
+        run: |
+          go run ./cmd/twevals run --preset "$PRESET" --cases "$CASES" --suites "$SUITES" --arms "$ARMS" \
+            --shard "$SHARD" --models "$MODELS" --runs "$RUNS" --judge="$JUDGE" \
+            --max-cost-usd "$SHARD_CAP" -j 4 --yes --out "results/$SHARD"
+
+      - name: Redact credentials before upload
+        if: always()
+        run: |
+          if [ -d results ]; then
+            find results -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.md' -o -name '*.log' -o -name '.env*' -o -name '*.txt' \) -print0 \
+              | xargs -0 -r sed -i -E \
+                  -e 's/sk-or-[A-Za-z0-9_-]+/sk-or-[REDACTED]/g' \
+                  -e 's/(tww|twp|twr|tws|twa|twk)_[A-Za-z0-9_-]+/\1_[REDACTED]/g' \
+                  -e 's/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/[REDACTED_JWT]/g'
+            # Backend databases, CLI credential stores and env files the agent
+            # wrote hold the run's tokens; never upload them.
+            find results -type d \( -name backend -o -name cli \) -prune -exec rm -rf {} +
+            find results -type f -name '.env*' -delete
+          fi
+
+      - name: Upload shard results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-shard-${{ matrix.shard }}
+          path: cli/test/evals/results/${{ matrix.shard }}
+          retention-days: 30
+          if-no-files-found: warn
+
+  report:
+    name: Report
+    needs: evals
+    if: ${{ always() && !inputs.dry_run && needs.evals.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli/test/evals
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: cli/test/evals/go.mod
+          cache-dependency-path: cli/test/evals/go.sum
+
+      - name: Download shard results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: eval-shard-*
+          path: cli/test/evals/shards
+
+      - name: Merge and summarize
+        run: |
+          go run ./cmd/twevals report --merge --out merged shards/* > /dev/null || true
+          cat merged/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compare with the baseline
+        if: ${{ inputs.compare_baseline }}
+        run: |
+          set -o pipefail
+          go run ./cmd/twevals compare merged baseline.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the merged report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-report
+          path: |
+            cli/test/evals/merged
+            cli/test/evals/shards
+          retention-days: 30

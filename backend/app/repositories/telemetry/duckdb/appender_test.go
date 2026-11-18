@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/duckdb/duckdb-go/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
 )
 
 func openAppenderTestTable(t *testing.T) driver.Conn {

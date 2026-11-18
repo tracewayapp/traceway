@@ -1,0 +1,83 @@
+id: perf-cache-cold-start
+suite: perf
+title: Pricing times out for a few minutes after every release
+tags: [caching, java, spring-boot, deploy]
+seed: perf/cache-cold-start
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: 2.16.0, shipped ~3h ago, rewrote the promotion rules engine, which invites a regression reading, but the same 5-7s first requests followed 2.14.1, 2.15.0 and 2.15.1 on every pod, and steady-state p50/p95 after 2.16.0 equal the day before it.
+workspace: {repo: pricing-service-java}
+prompt: |
+  Every time we release pricing-service, checkout logs a handful of pricing timeouts (its client gives up after 3 seconds) for the first few minutes, and then it settles down. We shipped 2.16.0 a few hours ago with the rewritten promotion rules engine and it happened again. Is 2.16.0 slower, and what should we do about it?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: cold_start_jit_connection_warmup
+    not: [connection_pool_exhaustion, cpu_saturation, expensive_join_or_aggregation, inefficient_algorithm_o_n2_hot_path]
+    locus: {endpoint: "POST /api/prices/quote", service: pricing-service}
+  grounding:
+    - "HikariPool-1 - Starting..."
+    - "2.15.1"
+  calls:
+    required:
+      - {op: logs.query}
+    any_of:
+      - [{op: endpoints.chart}, {op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.chart}, {op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: endpoints.list, args: {from: present}}, {op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.list, args: {from: present}}, {op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Cold start / connection warm-up, not a 2.16.0 regression. pricing-service runs with spring.main.lazy-initialization=true (src/main/resources/application.yml), so a new pod reports started in ~7s but its first request initializes the DispatcherServlet, creates the web and data beans and starts the Hikari pool on its first query (the request carries "Initializing Spring DispatcherServlet" and "HikariPool-1 - Starting..." logs) and takes 5-7s; the next couple of requests run cold, interpreted code at 0.4-0.8s, and after a handful of requests per pod latency is back to ~19ms p50 / ~28ms p95. The same pattern follows every release in the window (2.14.1, 2.15.0, 2.15.1, 2.16.0) on each of the three pods, and steady-state latency after 2.16.0 equals the day before. Fix by creating beans eagerly (drop lazy initialization), pre-filling the pool, and warming the quote path before the pod reports ready (an ApplicationRunner, which Spring finishes before readiness flips), so the rollout only sends traffic to warm pods.
+  rubric:
+    - Shows the outliers are the first requests on each new pod after every release (5-7s, with the DispatcherServlet and Hikari initialization logs inside them), and that latency normalizes after a few requests.
+    - Rules out a 2.16.0 regression with the data (the same outliers after older releases; steady-state p50/p95 before and after 2.16.0 match) and does not blame the promotion rules rewrite.
+    - Proposes removing lazy initialization and warming the pool and the hot path before readiness, so traffic reaches only warmed pods.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --search /api/prices --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round), p99_ms: (.p99Duration / 1e6 | round)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p99 --since 10d --interval-minutes 360 --output json
+      | jq '[.series[] | select(.endpoint == "POST /api/prices/quote") | {t: .timestamp, p99_ms: (.value | round)}]'
+  - shell: >-
+      traceway logs query --since 10d --service pricing-service --search PricingServiceApplication --page-size 30 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.resourceAttributes["host.name"]) \(.resourceAttributes["service.version"]) \(.body)"'
+  - shell: >-
+      traceway logs query --since 3d --service pricing-service --search HikariPool-1 --page-size 20 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.resourceAttributes["host.name"]) \(.resourceAttributes["service.version"]) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.coldRequest.traceId}} --recorded-at {{seed.coldRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, start: .endpoint.recordedAt, ms: (.endpoint.duration / 1e6), version: .endpoint.appVersion,
+      spans: [.spans | sort_by(.startTime)[] | {name, start: .startTime, ms: (.duration / 1e6 | round)}]}'
+  - shell: >-
+      traceway endpoints list --search /api/prices/quote --from {{seed.beforeFrom}} --to {{seed.deploy4}} --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round)}]'
+  - shell: >-
+      traceway endpoints list --search /api/prices/quote --from {{seed.afterFrom}} --to {{env.now}} --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round)}]'
+  - shell: git log --format='%h %ad %s' --date=iso -6
+  - read_file: src/main/resources/application.yml
+  - submit:
+      checklist_item: cold_start_jit_connection_warmup
+      category: caching
+      locus: {endpoint: "POST /api/prices/quote", span: "first request on each new pod: lazy bean creation and HikariPool-1 start before the first JDBC span", service: pricing-service}
+      onset: null
+      evidence:
+        - {call_id: c02, claim: "p99 jumps only in the 6-hour buckets that contain a release, for every release in the last 10 days"}
+        - {call_id: c03, claim: "each release restarts all three pods; they report started in ~7s"}
+        - {call_id: c04, claim: "the first request on each pod after 2.16.0 and after 2.15.1 starts HikariPool-1 itself (Starting..., Added connection, Start completed)"}
+        - {call_id: c05, claim: "that first request takes 5-7s, mostly before its first JDBC span, and its pricing work is slow too"}
+        - {call_id: c06, claim: "p50/p95 over the day before 2.16.0"}
+        - {call_id: c07, claim: "p50/p95 since 2.16.0 warmed up are the same: no regression in steady state"}
+      ruled_out:
+        - {checklist_item: connection_pool_exhaustion, call_id: c04, reason: "the wait before the first query is the pool being created on the first request of a new pod, not queueing for a connection; it does not recur"}
+      fix: Turn off spring.main.lazy-initialization, pre-fill the Hikari pool, and run a warm-up of the quote path in an ApplicationRunner so pods report ready only when warm.
+      confidence: high
+      report: |
+        2.16.0 is not slower. The timeouts come from cold pods: pricing-service sets spring.main.lazy-initialization=true (src/main/resources/application.yml), so after every release each new pod starts in ~7s but its first request creates the beans, initializes the DispatcherServlet and starts the Hikari pool (you can see "HikariPool-1 - Starting..." inside those requests) and takes 5-7s, over checkout's 3s timeout; the next few requests run cold code. The same outliers followed 2.14.1, 2.15.0 and 2.15.1 on all three pods, and the p50/p95 since 2.16.0 warmed up match the day before it, so the promotion rules rewrite did not change steady-state latency. Fix: turn lazy initialization off, pre-fill the pool and add a warm-up ApplicationRunner that exercises the quote path before the pod reports ready, so the rolling update only sends traffic to warm pods.

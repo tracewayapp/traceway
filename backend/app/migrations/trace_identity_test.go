@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 func TestTraceIdentityFreshInstall(t *testing.T) {
@@ -48,15 +49,17 @@ func TestTraceIdentityUpgrade(t *testing.T) {
 	const project = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 	const trace = "0102030405060708090a0b0c0d0e0f10"
 	const span = "0102030405060708"
+	// Relative to now: ClickHouse's 30-day TTL on profiles drops an older row when a cleanup mutation rewrites its part.
+	recordedAt := time.Now().UTC().Format(time.DateTime)
 	for i, old := range []string{"'01020304-0506-0708-090A-0B0C0D0E0F10'", "NULL", "'00000000-0000-0000-0000-000000000000'"} {
-		exec(fmt.Sprintf("INSERT INTO sessions (id, project_id, started_at, distributed_trace_id) VALUES ('00000000-0000-0000-0000-%012d', '%s', '2026-09-21 12:00:00', %s)", i+1, project, old))
+		exec(fmt.Sprintf("INSERT INTO sessions (id, project_id, started_at, distributed_trace_id) VALUES ('00000000-0000-0000-0000-%012d', '%s', '%s', %s)", i+1, project, recordedAt, old))
 	}
 	for _, table := range []string{"endpoints_v2", "tasks_v2", "ai_traces_v2", "exceptions_v2", "profiles"} {
 		legacy := "linked_trace_id"
 		if table == "profiles" {
 			legacy = "distributed_trace_id"
 		}
-		exec(fmt.Sprintf("INSERT INTO %s (id, project_id, recorded_at, trace_id, span_id, %s) VALUES ('11111111-1111-1111-1111-111111111111', '%s', '2026-09-21 12:00:00', '%s', '%s', '99999999-9999-9999-9999-999999999999')", table, legacy, project, trace, span))
+		exec(fmt.Sprintf("INSERT INTO %s (id, project_id, recorded_at, trace_id, span_id, %s) VALUES ('11111111-1111-1111-1111-111111111111', '%s', '%s', '%s', '%s', '99999999-9999-9999-9999-999999999999')", table, legacy, project, recordedAt, trace, span))
 	}
 	if err := run(source); err != nil {
 		t.Fatal(err)

@@ -23,10 +23,10 @@ traceway exceptions list --since 7d --search "checkout" --output json \
 ### 2. Drill into the issue
 
 ```bash
-traceway exceptions show <hash>
+traceway exceptions show <hash> --page-size 5
 ```
 
-This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `traceId` / `spanId` / `sessionId` per occurrence. `traceId` is the OpenTelemetry trace id (32 hex characters), the same id the request's logs and spans carry. The response also has `relatedEntity`: the endpoint, task or AI trace the newest occurrence happened in, with the `id` and `recordedAt` that `endpoints show` / `tasks show` / `ai-traces show` take. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
+This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `traceId` / `spanId` / `sessionId` per occurrence. Occurrences come newest first, and each carries its own full stack trace, so the default page of 50 runs to well over 100k characters and gets cut off by any tool output limit; `--page-size 5` keeps the group header plus the five newest occurrences, which is what a first read needs. Keep the default page only when you pipe the JSON through `jq` to reduce it, as below. `traceId` is the OpenTelemetry trace id (32 hex characters), the same id the request's logs and spans carry. The response also has `relatedEntity`: the endpoint, task or AI trace the newest occurrence happened in, with the `id` and `recordedAt` that `endpoints show` / `tasks show` / `ai-traces show` take. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
 
 **When the user gave an issue URL (or hash), fix the LAST occurrence — not "the group".** A single hash can bundle *several distinct errors*: the hash is computed from a normalized stack trace with the message stripped, so two unrelated failures that share their top frames (e.g. both captured at the same middleware/recovery frame) collapse into one group. The group's representative stack trace and `firstSeen` may belong to a different, now-dormant error than the one the user is looking at. Anchor on the most recent occurrence and fix that specific failure path:
 
@@ -53,7 +53,7 @@ traceway exceptions list --since 24h --order-by lastSeen        # what is errori
 traceway logs query --since 24h --min-severity 17               # errors and worse
 traceway logs query --since 24h --search "payment declined"     # search log bodies
 traceway logs query --since 24h --service checkout-api --min-severity 13
-traceway endpoints list --since 24h --search "checkout"         # latency p50/p95/p99 and error counts, --order-by impact|count|p95|lastSeen
+traceway endpoints list --since 24h --search "checkout"         # latency p50/p95/p99, count and impact, --order-by impact|count|p95|lastSeen
 ```
 
 Severity is an OTel number, not a name: 1 TRACE, 5 DEBUG, 9 INFO, 13 WARN, 17 ERROR, 21 FATAL. The flag is `--min-severity 17`, never `--severity error`.
@@ -81,11 +81,11 @@ SID=$(jq -r '.sessionId // empty' <<<"$OCC")
 **Check metrics for systemic causes** (spikes lining up with `firstSeen` suggest saturation rather than a code bug):
 
 ```bash
-traceway metrics query --name system.cpu.utilization --aggregation max --since 24h
+traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min --since 24h   # busy = 1 - idle
 traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
 ```
 
-The CLI also accepts `p50|p95|p99`, but the server has no quantile aggregation for metric points and silently computes `avg` for them — never present those as percentiles. Latency percentiles come from `traceway endpoints list`, computed from raw request durations. There is no `metrics list`; a bogus name returns an empty `series: {}` cleanly, so probing names is safe. Host metrics from the Traceway OTel Agent live under `system.*` names, and OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`.
+Current servers compute CLI p50/p95/p99 for distribution metrics; point metrics cannot yield percentiles. MCP query validation still rejects these aggregations. Use endpoint statistics for request-population percentiles and [rum.md](rum.md) for browser distributions and query limits. Discover names with `traceway metrics discover`; no `metrics list` exists. Host metrics use `system.*`; explicit-bound backend histograms retain `.avg`/`.count` alongside distributions. An empty series can mean missing data or an unsupported query; inspect errors before drawing conclusions.
 
 ### 4. Correlate with the code
 

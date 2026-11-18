@@ -40,6 +40,7 @@ type progressBody struct {
 	read     int64
 	started  bool
 	done     bool
+	cutOff   bool
 }
 
 func (p *progressBody) Read(b []byte) (int, error) {
@@ -61,6 +62,9 @@ func (p *progressBody) Read(b []byte) (int, error) {
 		p.done = true
 		_ = p.ctl.SetReadDeadline(time.Time{})
 		return n, err
+	}
+	if err != nil && !errors.Is(err, ErrBodyTimedOut) {
+		p.cutOff = true
 	}
 	if n == 0 {
 		return n, err
@@ -97,6 +101,17 @@ func (p *progressBody) restart(now time.Time, idle, total time.Duration) {
 }
 
 func (p *progressBody) Close() error { return p.rc.Close() }
+
+// bodyCutOff reports whether the connection failed before the body was complete: the client hung up or was cut off
+// mid-upload (a phone losing signal, a closed tab), which leaves a decoder with a truncated body like a malformed one.
+func bodyCutOff(c *gin.Context) bool {
+	if existing, ok := c.Get(bodyGuardContextKey); ok {
+		if p, ok := existing.(*progressBody); ok {
+			return p.cutOff
+		}
+	}
+	return false
+}
 
 func restartBodyGuard(c *gin.Context) {
 	if existing, ok := c.Get(bodyGuardContextKey); ok {

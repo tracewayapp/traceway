@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { setAttributes } from '@tracewayapp/react'
+import { setAttributes, setMetricDimension } from '@tracewayapp/react'
 import { getCart } from './api.js'
 import { getDemoUser } from './demoUser.js'
 import ProductsPage from './ProductsPage.jsx'
@@ -13,8 +13,27 @@ const NAV = [
   { key: 'checkout', label: 'Checkout' }
 ]
 
+const PATHS = { products: '/', cart: '/cart', checkout: '/checkout' }
+
+function pageFromLocation() {
+  const match = Object.entries(PATHS).find(([, path]) => path === window.location.pathname)
+  return match ? match[0] : 'products'
+}
+
 export default function App() {
-  const [page, setPage] = useState('products')
+  const [page, setCurrentPage] = useState(pageFromLocation)
+
+  // Pages are real history entries, so the back button works and the SDK can time each route change.
+  function setPage(next) {
+    if (PATHS[next] !== window.location.pathname) window.history.pushState(null, '', PATHS[next])
+    setCurrentPage(next)
+  }
+
+  useEffect(() => {
+    const onPopState = () => setCurrentPage(pageFromLocation())
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
   const [cartCount, setCartCount] = useState(0)
 
   async function refreshCartCount() {
@@ -29,7 +48,8 @@ export default function App() {
 
   useEffect(() => {
     const user = getDemoUser()
-    setAttributes({ 'user.email': user.email, 'user.name': user.name, plan: user.plan })
+    setAttributes({ 'user.id': user.email, 'user.email': user.email, 'user.name': user.name, plan: user.plan })
+    setMetricDimension('plan', user.plan)
   }, [])
 
   useEffect(() => {

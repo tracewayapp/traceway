@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 // daytimeLayer covers 09:00-17:00 every day via a daily restriction.

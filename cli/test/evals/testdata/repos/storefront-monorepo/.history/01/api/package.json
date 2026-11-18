@@ -1,0 +1,17 @@
+{
+  "name": "storefront-api",
+  "version": "5.8.2",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --require @opentelemetry/auto-instrumentations-node/register src/server.js"
+  },
+  "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "^0.62.0",
+    "@opentelemetry/sdk-node": "^0.203.0",
+    "@opentelemetry/winston-transport": "^0.14.0",
+    "express": "^5.1.0",
+    "pg": "^8.16.0",
+    "winston": "^3.17.0"
+  }
+}

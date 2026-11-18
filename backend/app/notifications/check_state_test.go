@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/synthetics"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/synthetics"
 )
 
-func seedCheckDownRule(t *testing.T, fixture *dispatchFixture, snoozedUntil *time.Time) {
+func seedCheckDownRule(t *testing.T, fixture *dispatchFixture, snoozedUntil *time.Time) int {
 	t.Helper()
 	ruleId, err := db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
 		now := time.Now().UTC()
@@ -36,6 +36,7 @@ func seedCheckDownRule(t *testing.T, fixture *dispatchFixture, snoozedUntil *tim
 		t.Fatalf("seed rule: %v", err)
 	}
 	t.Cleanup(func() { ClearRuleState(ruleId) })
+	return ruleId
 }
 
 func queuedSubjects(t *testing.T) []string {
@@ -105,5 +106,46 @@ func TestSnoozedCheckDownRuleSendsNothing(t *testing.T) {
 
 	if got := queuedSubjects(t); len(got) != 0 {
 		t.Errorf("a snoozed rule must stay silent, queued %q", got)
+	}
+}
+
+func TestRecoveryOnlyResetsRecoveredMonitorCooldown(t *testing.T) {
+	fixture := setupDispatchDB(t)
+	seedCheckDownRule(t, fixture, nil)
+	first := models.SyntheticCheck{Id: 7, ProjectId: fixture.Channel.ProjectId, Name: "first"}
+	second := models.SyntheticCheck{Id: 8, ProjectId: fixture.Channel.ProjectId, Name: "second"}
+	OnCheckStateChange(checkWent(first, models.CheckStatusUp, models.CheckStatusDown))
+	OnCheckStateChange(checkWent(second, models.CheckStatusUp, models.CheckStatusDown))
+	OnCheckStateChange(checkWent(first, models.CheckStatusDown, models.CheckStatusUp))
+	OnCheckStateChange(checkWent(second, models.CheckStatusUnknown, models.CheckStatusDown))
+	OnCheckStateChange(checkWent(first, models.CheckStatusUp, models.CheckStatusDown))
+	want := []string{`[api] Check "first" is down`, `[api] Check "second" is down`, `[api] Check "first" recovered`, `[api] Check "first" is down`}
+	if got := queuedSubjects(t); !slices.Equal(got, want) {
+		t.Errorf("queued notifications: got %q, want %q", got, want)
+	}
+}
+
+func TestSnoozedRecoveryResetsCooldownWithoutNotification(t *testing.T) {
+	fixture := setupDispatchDB(t)
+	ruleId := seedCheckDownRule(t, fixture, nil)
+	check := models.SyntheticCheck{Id: 7, ProjectId: fixture.Channel.ProjectId, Name: "api health"}
+	OnCheckStateChange(checkWent(check, models.CheckStatusUp, models.CheckStatusDown))
+	setSnooze := func(until *time.Time) {
+		t.Helper()
+		_, err := db.ExecuteTransaction(func(tx *sql.Tx) (struct{}, error) {
+			return struct{}{}, transactional.NotificationRuleRepository.UpdateSnoozedUntil(tx, ruleId, until)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	until := time.Now().UTC().Add(time.Hour)
+	setSnooze(&until)
+	OnCheckStateChange(checkWent(check, models.CheckStatusDown, models.CheckStatusUp))
+	setSnooze(nil)
+	OnCheckStateChange(checkWent(check, models.CheckStatusUp, models.CheckStatusDown))
+	want := []string{`[api] Check "api health" is down`, `[api] Check "api health" is down`}
+	if got := queuedSubjects(t); !slices.Equal(got, want) {
+		t.Errorf("queued notifications: got %q, want %q", got, want)
 	}
 }

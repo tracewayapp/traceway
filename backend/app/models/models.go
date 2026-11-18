@@ -71,6 +71,10 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[OutboxRuleEnqueue](driver)
 	lit.RegisterModel[OutboxHealthCounts](driver)
 	lit.RegisterModel[SyntheticCheck](driver)
+	lit.RegisterModel[SLO](driver)
+	lit.RegisterModel[SLOFreshness](driver)
+	lit.RegisterModel[NotificationRuleState](driver)
+	lit.RegisterModel[NotificationRuleFiring](driver)
 	lit.RegisterModel[CheckRun](driver)
 	lit.RegisterModel[CheckRunHealthCounts](driver)
 	lit.RegisterModel[CheckIncident](driver)
@@ -85,6 +89,8 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[PostMortemEventItem](driver)
 	lit.RegisterModel[SyntheticRunner](driver)
 	lit.RegisterModel[StatusPage](driver)
+	lit.RegisterModel[SdkConfigRule](driver)
+	lit.RegisterModel[SdkCapture](driver)
 
 	for _, register := range ExtensionModelRegistrations {
 		register(driver)

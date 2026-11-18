@@ -15,3 +15,11 @@ type MetricRegistry struct {
 	Description string    `json:"description" lit:"description"`
 	CreatedAt   time.Time `json:"createdAt" lit:"created_at"`
 }
+
+const (
+	MetricTypeGauge   = "gauge"
+	MetricTypeCounter = "counter"
+	// MetricTypeHistogram is a distribution stored in metric_histograms: it answers
+	// percentiles, and every aggregation of it is read from the buckets.
+	MetricTypeHistogram = "histogram"
+)

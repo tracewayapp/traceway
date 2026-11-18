@@ -1,0 +1,17 @@
+{
+  "projects": [
+    {
+      "name": "Shop API",
+      "framework": "opentelemetry",
+      "envFile": "api/.env",
+      "envVar": "TRACEWAY_API_TOKEN"
+    },
+    {
+      "name": "Shop Web",
+      "framework": "react",
+      "envFile": "web/.env.local",
+      "envVar": "VITE_TRACEWAY_CONNECTION_STRING",
+      "envFormat": "connectionString"
+    }
+  ]
+}

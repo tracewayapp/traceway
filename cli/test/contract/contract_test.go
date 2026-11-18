@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	client "github.com/tracewayapp/traceway/cli/pkg/client"
+	client "github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // timeWindow brackets the seeded instant so list/query endpoints return it.
@@ -52,6 +52,22 @@ func TestContract_endpointsGrouped(t *testing.T) {
 		t.Fatal("expected seeded endpoint in response")
 	}
 	goldenAssert(t, "endpoints-grouped", rt.body)
+}
+
+func TestContract_endpointRequests(t *testing.T) {
+	c, rt := capturedClient()
+	resp, err := c.ListEndpointRequests(context.Background(), projectID, "GET /api/contract", client.ListEndpointRequestsRequest{
+		TimeRange:  timeWindow(),
+		Pagination: client.PaginationParams{Page: 1, PageSize: 20},
+		OrderBy:    "duration",
+	})
+	if err != nil {
+		t.Fatalf("endpoint requests: %v", err)
+	}
+	if len(resp.Data) == 0 || resp.Data[0].Id != seedEndpointID || resp.Data[0].RecordedAt.IsZero() {
+		t.Fatalf("the seeded request is missing its id or recordedAt: %s", rt.body)
+	}
+	goldenAssert(t, "endpoint-requests", rt.body)
 }
 
 func TestContract_endpointDetail(t *testing.T) {

@@ -20,6 +20,8 @@ type Cfg struct {
 	PostgresSSLMode  string
 	SQLitePath       string
 
+	SQLiteCacheSizeMB string
+
 	DuckDBMemoryLimit         string
 	DuckDBThreads             string
 	DuckDBCheckpointThreshold string
@@ -60,8 +62,12 @@ type Cfg struct {
 	SymbolicatorParser       string
 
 	NotificationPollSeconds string
+	OpampPollSeconds        string
 	OncallPollSeconds       string
 	OutboxPollSeconds       string
+	SLOPollSeconds          string
+	SLOComputeWorkers       string
+	SLOComputeTimeoutSecs   string
 
 	SyntheticsPollSeconds             string
 	SyntheticsBrowserMode             string
@@ -136,6 +142,18 @@ func PollSeconds(value string, defaultSeconds int) time.Duration {
 		}
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+// OpampHeartbeatSeconds is the poll interval OpAMP clients are told to use. Every browser profile of every
+// instrumented app polls, so it is an operator setting with a floor, not a per-project one.
+func OpampHeartbeatSeconds() uint64 {
+	seconds := 300
+	if Config != nil && Config.OpampPollSeconds != "" {
+		if parsed, err := strconv.Atoi(Config.OpampPollSeconds); err == nil {
+			seconds = min(max(parsed, 60), 86400)
+		}
+	}
+	return uint64(seconds)
 }
 
 const maxConfigurableMB = 1 << 20
@@ -218,6 +236,8 @@ func LoadFromEnv() *Cfg {
 		PostgresSSLMode:  os.Getenv("POSTGRES_SSLMODE"),
 		SQLitePath:       os.Getenv("SQLITE_PATH"),
 
+		SQLiteCacheSizeMB: os.Getenv("SQLITE_CACHE_SIZE_MB"),
+
 		DuckDBMemoryLimit:         os.Getenv("DUCKDB_MEMORY_LIMIT"),
 		DuckDBThreads:             os.Getenv("DUCKDB_THREADS"),
 		DuckDBCheckpointThreshold: os.Getenv("DUCKDB_CHECKPOINT_THRESHOLD"),
@@ -258,8 +278,12 @@ func LoadFromEnv() *Cfg {
 		SymbolicatorParser:       os.Getenv("SYMBOLICATOR_PARSER"),
 
 		NotificationPollSeconds: os.Getenv("NOTIFICATION_POLL_SECONDS"),
+		OpampPollSeconds:        os.Getenv("OPAMP_POLL_INTERVAL_SECONDS"),
 		OncallPollSeconds:       os.Getenv("ONCALL_POLL_SECONDS"),
 		OutboxPollSeconds:       os.Getenv("OUTBOX_POLL_SECONDS"),
+		SLOPollSeconds:          os.Getenv("SLO_POLL_SECONDS"),
+		SLOComputeWorkers:       os.Getenv("SLO_COMPUTE_WORKERS"),
+		SLOComputeTimeoutSecs:   os.Getenv("SLO_COMPUTE_TIMEOUT_SECONDS"),
 
 		SyntheticsPollSeconds:             os.Getenv("SYNTHETICS_POLL_SECONDS"),
 		SyntheticsBrowserMode:             os.Getenv("SYNTHETICS_BROWSER_MODE"),

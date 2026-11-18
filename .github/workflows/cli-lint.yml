@@ -64,6 +64,15 @@ jobs:
           version: v2.13.1
           working-directory: cli
 
+      # .golangci.yml lints the read build; the write build's files
+      # (edition_write.go, exceptions_write.go) need a pass with its tag.
+      - name: Lint (write build)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.1
+          working-directory: cli
+          args: --build-tags write
+
   vulncheck:
     if: github.event_name != 'pull_request' || github.event.label.name == 'ci'
     runs-on: ubuntu-latest

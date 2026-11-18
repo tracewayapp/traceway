@@ -1,0 +1,48 @@
+name: Eval Guard
+
+# Enforces the manual-only rule of the skill and MCP evals on every change to a
+# workflow, a composite action or the CLI justfile: the paid eval workflow keeps
+# workflow_dispatch as its only trigger, nothing else dispatches it or uses its
+# environment, and no check/test/default recipe runs it. cli/test/evals is its
+# own Go module, so the CLI workflow's `go test ./...` never reaches these
+# tests. Free: no model calls. Equivalent local command:
+# cd cli/test/evals && go test ./internal/guard/
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - "cli/justfile"
+      - "cli/test/evals/**"
+  pull_request:
+    types: [labeled]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - "cli/justfile"
+      - "cli/test/evals/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'ci'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli/test/evals
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: cli/test/evals/go.mod
+          cache-dependency-path: cli/test/evals/go.sum
+
+      - name: Manual-only guard
+        run: go test ./internal/guard/

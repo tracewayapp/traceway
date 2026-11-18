@@ -1,0 +1,83 @@
+id: debug-timeout-downstream
+suite: debug
+title: Cart quotes fail since the release that lowered the pricing call's timeout
+tags: [go, timeout, config, multi-service]
+seed: debug/timeout-downstream
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: The pricing service looks slow (GET /v1/quotes p95 about 2.4s), but it has not changed all week; the failures start with cart-api v1.14.0, which lowered the pricing client's default timeout from 5s to 2s.
+workspace: {repo: cart-api-go}
+prompt: |
+  /traceway debug
+  For about a day now a lot of customers see "We couldn't calculate your total" on the cart page. Retrying usually works. Find out why and fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I don't know more than that. Please fix it."
+expect:
+  answer:
+    category: timeout
+    culprit: {file: internal/config/config.go, line: 28}
+    needs_instrumentation: false
+    mentions_all: ["1\\.14\\.0|release|deploy", "\\b2 ?(s|secs?|seconds?)\\b|\\b2,?000 ?ms|two seconds|2-second|2 ?\\* ?time\\.Second"]
+  grounding:
+    - "Client.Timeout exceeded"
+  calls:
+    any_of:
+      - [{op: endpoints.list}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: traces.show}]
+      - [{op: endpoints.chart}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-timeout-downstream
+    command: go test ./...
+    gating: true
+    touches_culprit: true
+judge:
+  expected: >-
+    GET /api/cart/quote answers 502 for about one request in ten since cart-api v1.14.0 (about 26 hours ago): the pricing call fails with
+    "context deadline exceeded (Client.Timeout exceeded while awaiting headers)" at exactly 2s. The pricing service (GET /v1/quotes) takes
+    about 1.1s at the median, 2.4s at p95 and 3.1-3.4s at p99, unchanged all week; the trace shows it still working after cart-api gave
+    up. v1.14.0 lowered the default PRICING_TIMEOUT in internal/config/config.go (Load, line 28) from 5s to 2s. The fix restores a
+    finite timeout above the pricing service's p99, such as the previous 5s.
+  rubric:
+    - Quantifies the pricing service's latency (p95 around 2.4s, stable) against the 2s client timeout, and ties the onset to v1.14.0.
+    - Puts the fix in cart-api's configured pricing timeout (finite, above the dependency's tail), not in the pricing service and not by removing the timeout or adding retries.
+    - Explains why retrying usually works (only the slow tail exceeds 2s).
+oracle:
+  - shell: >-
+      traceway exceptions list --since 24h --order-by count --page-size 10 --output json
+      | jq '[.data[] | {hash: .exceptionHash, count, firstSeen, lastSeen, top: (.stackTrace | split("\n")[0])}]'
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 5 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}), latest: (.occurrences | sort_by(.recordedAt) | last | {recordedAt, appVersion, traceId}), relatedEntity}'
+  - shell: >-
+      traceway endpoints show {{calls.c02.relatedEntity.id}} --recorded-at {{calls.c02.relatedEntity.recordedAt}} --output json
+  - shell: >-
+      traceway endpoints list --since 24h --search quote --output json
+      | jq '[.data[] | {endpoint, count, p50ms: (.p50Duration / 1e6), p95ms: (.p95Duration / 1e6), p99ms: (.p99Duration / 1e6)}]'
+  - shell: >-
+      traceway endpoints list --from {{seed.weekAgo}} --to {{seed.deployAt}} --search quote --output json
+      | jq '[.data[] | {endpoint, count, p50ms: (.p50Duration / 1e6), p95ms: (.p95Duration / 1e6), p99ms: (.p99Duration / 1e6)}]'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - shell: git show HEAD -- internal/config/config.go
+  - write_file: {path: internal/config/config.go, from: oracle/debug-timeout-downstream/config.go}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      category: timeout
+      culprit: {file: internal/config/config.go, symbol: Load, line: 28}
+      evidence:
+        - {call_id: c02, claim: "GET /api/cart/quote fails with context deadline exceeded (Client.Timeout exceeded while awaiting headers) calling the pricing service, first seen right after the v1.14.0 deploy"}
+        - {call_id: c03, claim: "in a failing request the pricing call is cut at 2s while the pricing service's own span keeps running past it"}
+        - {call_id: c04, claim: "GET /v1/quotes on the pricing service has a p95 around 2.4s, so a 2s client timeout fails its tail"}
+        - {call_id: c05, claim: "before the deploy GET /v1/quotes had the same p50, p95 and p99, and GET /api/cart/quote ran past 2s at its p95 and p99, so nothing cut it at 2s"}
+        - {call_id: c07, claim: "v1.14.0 lowered the default PRICING_TIMEOUT from 5s to 2s"}
+      fix_summary: Restore the pricing client's default timeout to 5s (above the pricing service's p99, still bounded); PRICING_TIMEOUT still overrides it.
+      files_changed: [internal/config/config.go]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The cart quote fails because cart-api gives up on the pricing service too early. Since v1.14.0 (deployed about 26 hours ago) the pricing call times out at 2s ("context deadline exceeded (Client.Timeout exceeded while awaiting headers)") and the endpoint answers 502. The pricing service itself has not changed: GET /v1/quotes takes about 1.1s at the median and about 2.4s at p95, the same as last week, so roughly one quote in ten runs past 2s, which is also why a retry usually works. v1.14.0 lowered the default PRICING_TIMEOUT in internal/config/config.go from 5s to 2s. I restored it to 5s, which is above the pricing service's slowest responses and still bounded.

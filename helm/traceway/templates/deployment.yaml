@@ -78,12 +78,12 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if or .Values.persistence.enabled (eq .Values.variant "sqlite") }}
+          {{- if or .Values.persistence.enabled (include "traceway.embeddedDB" .) }}
           volumeMounts:
             - name: data
               mountPath: /data
           {{- end }}
-      {{- if or .Values.persistence.enabled (eq .Values.variant "sqlite") }}
+      {{- if or .Values.persistence.enabled (include "traceway.embeddedDB" .) }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}

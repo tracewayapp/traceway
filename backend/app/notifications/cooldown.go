@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type cooldownTracker struct {
@@ -55,6 +55,10 @@ func aiFlaggedContentDedupKey(ruleId int, subject string) string {
 
 func checkDownDedupKey(ruleId int, checkId int) string {
 	return ruleStatePrefix(ruleId) + fmt.Sprintf("check_down:%d", checkId)
+}
+
+func metricSeriesDedupKey(ruleId int, groupKey string) string {
+	return ruleStatePrefix(ruleId) + "metric_series:" + groupKey
 }
 
 func ClearRuleState(ruleId int) {

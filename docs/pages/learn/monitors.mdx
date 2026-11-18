@@ -23,6 +23,54 @@ Two properties matter operationally:
 - **A probe never runs late.** A queued run that outlives its window (the check's interval, capped at five minutes) is recorded as `missed`, not executed. A stale "is it up" answer would corrupt the uptime timeline.
 - **Downtime of Traceway itself shows as a gap, not as uptime.** If the backend was off, no runs existed, and the charts show unknown rather than a fabricated 100%.
 
+## Keeping monitors out of your analytics
+
+Monitor traffic is not real user traffic, so you usually want it out of Google Analytics and similar tools.
+
+**HTTP checks** do not run JavaScript, so a client-side analytics tag never fires for them. Every HTTP probe also sends two headers you can match on:
+
+```
+User-Agent: Traceway-Synthetics/1.0
+X-Traceway-Synthetics: 1
+```
+
+A custom `User-Agent` on the check replaces the default one. `X-Traceway-Synthetics` is always sent. Use it to skip server-side analytics, or to drop monitor requests from your access logs.
+
+**Browser checks** run a real Chromium, so the page's analytics tag runs and every run counts as a visit. Traceway does not add the header to browser checks automatically. A header added to every request would also go to third-party APIs the page calls, and a cross-origin request carrying an unknown header fails its CORS preflight. That would break the page you are trying to monitor.
+
+Instead, add the header in your script, scoped to your own origin:
+
+```ts
+import { test, expect } from '@playwright/test';
+
+test('homepage loads', async ({ page }) => {
+  await page.route('https://example.com/**', (route) =>
+    route.continue({
+      headers: { ...route.request().headers(), 'x-traceway-synthetics': '1' },
+    })
+  );
+  await page.goto('https://example.com/');
+  await expect(page).toHaveTitle(/Example/);
+});
+```
+
+Your server can then leave the analytics snippet out of the page when the header is present. For example, in a server-rendered template:
+
+```js
+const isMonitor = req.headers['x-traceway-synthetics'] === '1';
+// render the Google Analytics <script> only when !isMonitor
+```
+
+If you would rather not touch the server, block analytics requests from the script itself. The tag still loads, but nothing reaches Google:
+
+```ts
+await page.route(/google-analytics\.com|googletagmanager\.com|analytics\.google\.com/, (route) =>
+  route.abort()
+);
+```
+
+Do not rely on Google Analytics' built-in bot filtering. It works from a list of known bots and often lets headless Chrome through.
+
 ## Alerting
 
 Add a notification rule of type **Monitor Down** on the Alerts page. It fires when any monitor in the project crosses its failure threshold, and sends a recovery notice when the check comes back. Pointing the rule at an escalation channel opens an on-call page instead; the page deduplicates per check, and recovery resolves it automatically, so a blip at night that recovers by itself never needs a human.

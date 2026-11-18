@@ -21,6 +21,16 @@ func JSONAttributes(attributes []*commonpb.KeyValue) map[string]any {
 	return result
 }
 
+// storedJSONAttributes is JSONAttributes for a readable column, with NormalizeStoredAttributes applied to the top level.
+func storedJSONAttributes(attributes []*commonpb.KeyValue) map[string]any {
+	result := JSONAttributes(attributes)
+	delete(result, DebugIdsAttribute)
+	if value, ok := result[SessionIdAttribute].(string); ok {
+		result[SessionIdAttribute] = CanonicalSessionId(value)
+	}
+	return result
+}
+
 // StringAttributes is the span_attributes value on every backend, a Map on ClickHouse and a JSON object elsewhere. It
 // follows the OpenTelemetry Collector's ClickHouse exporter: keys verbatim, scalars as text, arrays and key/value lists
 // as JSON. Exact types stay in the lossless payload.
@@ -39,6 +49,7 @@ func StringAttributes(attributes []*commonpb.KeyValue) map[string]string {
 			result[attribute.Key] = string(encoded)
 		}
 	}
+	NormalizeStoredAttributes(result)
 	return result
 }
 
@@ -82,7 +93,7 @@ func MetadataJSON(message proto.Message, attributes []*commonpb.KeyValue) (strin
 	if err := json.Unmarshal(encoded, &fields); err != nil {
 		return "", err
 	}
-	text, err := json.Marshal(JSONAttributes(attributes))
+	text, err := json.Marshal(storedJSONAttributes(attributes))
 	if err != nil {
 		return "", err
 	}
@@ -113,7 +124,7 @@ func EventsJSON(events []*tracepb.Span_Event) (string, error) {
 	}
 	values := make([]eventText, len(events))
 	for i, event := range events {
-		values[i] = eventText{event.TimeUnixNano, event.Name, JSONAttributes(event.Attributes), event.DroppedAttributesCount}
+		values[i] = eventText{event.TimeUnixNano, event.Name, storedJSONAttributes(event.Attributes), event.DroppedAttributesCount}
 	}
 	encoded, err := json.Marshal(values)
 	return string(encoded), err
@@ -125,7 +136,7 @@ func LinksJSON(links []*tracepb.Span_Link) (string, error) {
 	}
 	values := make([]linkText, len(links))
 	for i, link := range links {
-		values[i] = linkText{hex.EncodeToString(link.TraceId), hex.EncodeToString(link.SpanId), link.TraceState, link.Flags, JSONAttributes(link.Attributes), link.DroppedAttributesCount}
+		values[i] = linkText{hex.EncodeToString(link.TraceId), hex.EncodeToString(link.SpanId), link.TraceState, link.Flags, storedJSONAttributes(link.Attributes), link.DroppedAttributesCount}
 	}
 	encoded, err := json.Marshal(values)
 	return string(encoded), err

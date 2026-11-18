@@ -10,12 +10,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type postMortemController struct{}
@@ -34,6 +33,10 @@ type postMortemRequest struct {
 	ContentMd  string   `json:"contentMd"`
 	Tags       []string `json:"tags"`
 	IncidentId *int     `json:"incidentId"`
+	// ExpectedUpdatedAt, on update, is the updatedAt the caller read: a
+	// document changed since then answers 409 instead of being overwritten.
+	// The CLI and MCP send it because they merge into a document they read.
+	ExpectedUpdatedAt *time.Time `json:"expectedUpdatedAt"`
 }
 
 func normalizePostMortemTags(tags []string) (models.StringSlice, string) {
@@ -283,6 +286,10 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 		return
 	}
 	tx := db.GetTx(ctx)
+	if err := transactional.PostMortemRepository.LockForUpdate(tx, id, projectId); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to lock post-mortem: %w", err))
+		return
+	}
 	postMortem, err := transactional.PostMortemRepository.FindByIdForProject(tx, id, projectId)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load post-mortem: %w", err))
@@ -290,6 +297,10 @@ func (ctrl *postMortemController) Update(ctx *gin.Context) {
 	}
 	if postMortem == nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Post-mortem not found"})
+		return
+	}
+	if req.ExpectedUpdatedAt != nil && !postMortem.UpdatedAt.Equal(*req.ExpectedUpdatedAt) {
+		ctx.JSON(http.StatusConflict, gin.H{"error": "The post-mortem was changed since it was read. Read it again and reapply the change."})
 		return
 	}
 	tags, message := validatePostMortemRequest(&req)

@@ -1,0 +1,1 @@
+ALTER TABLE notification_rule_states ADD COLUMN IF NOT EXISTS detail TEXT NOT NULL DEFAULT ''

@@ -1,0 +1,179 @@
+# Pinned OpenRouter models for the eval agents and the judge. Every paid call
+# goes through OpenRouter Chat Completions with one key (OPENROUTER_API_KEY).
+# Oracle runs use the fake model and only record these ids in the results
+# header.
+#
+# Never use a floating alias (~provider/model-latest): results must stay
+# comparable over time, so a model change is a reviewed edit to this file.
+# Prices and supported_parameters were checked against
+# GET https://openrouter.ai/api/v1/models on 2026-10-17. The preflight reads live
+# prices; fallback_price is used when that list cannot be fetched or does not
+# list the pinned id.
+#
+# estimate is the per-run token envelope the preflight multiplies by live
+# prices until baseline.json carries measured averages.
+
+agents:
+  opus:
+    id: anthropic/claude-opus-5.5
+    label: Claude Opus 5.5
+    provider:
+      # Anthropic first so the explicit prompt cache keeps hitting the same
+      # upstream; fallbacks stay allowed so one provider outage is not a
+      # failed run (the serving provider is recorded per run).
+      order: [anthropic]
+      allow_fallbacks: true
+    caching: anthropic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 4.00, completion: 20.00, cache_read: 0.20, cache_write: 5.00}
+
+  astra:
+    id: openai/gpt-6-astra
+    label: GPT-6 Astra
+    provider:
+      order: [openai]
+      allow_fallbacks: true
+    caching: automatic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 10.00, completion: 50.00, cache_read: 1.00, cache_write: 12.50}
+
+  haiku:
+    # Same settings as opus so the two compare on equal terms.
+    id: anthropic/claude-haiku-5.5
+    label: Claude Haiku 5.5
+    provider:
+      order: [anthropic]
+      allow_fallbacks: true
+    caching: anthropic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 0.10, completion: 0.50, cache_read: 0.01, cache_write: 0.125}
+
+  deepseek-flash:
+    # The dated snapshot, because DeepSeek itself serves only this id; the
+    # undated one is third-party only, several hosts at fp4.
+    id: deepseek/deepseek-v4.1-flash-1017
+    label: DeepSeek V4.1 Flash
+    provider:
+      order: [deepseek]
+      allow_fallbacks: true
+    caching: automatic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 0.15, completion: 0.60, cache_read: 0.003, cache_write: 0.15}
+
+  glm:
+    # Z.AI first party (fp8). Third-party fp4 hosts list far lower prices;
+    # the benchmark pins the vendor so the quantization is known.
+    id: z-ai/glm-5.3
+    label: GLM-5.3
+    provider:
+      order: [z-ai]
+      allow_fallbacks: true
+    caching: automatic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 1.40, completion: 4.40, cache_read: 0.26, cache_write: 1.40}
+
+  qwen-27b:
+    # Alibaba first party; the Apache-licensed distilled Qwen3.8.
+    id: qwen/qwen3.8-27b
+    label: Qwen3.8 27B
+    provider:
+      order: [alibaba]
+      allow_fallbacks: true
+    caching: automatic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 0.425, completion: 2.55, cache_read: 0.085, cache_write: 0.425}
+
+  minimax-flash:
+    id: minimax/minimax-m3.1-flash
+    label: MiniMax M3.1 Flash
+    provider:
+      order: [minimax]
+      allow_fallbacks: true
+    caching: automatic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 0.15, completion: 0.60, cache_read: 0.015, cache_write: 0.15}
+
+  mimo-pro:
+    # Not benchmarked yet: too slow for the case budgets on 2026-10-22. On
+    # Xiaomi one write case took 4 turns in 8 minutes, and on DeepInfra a perf
+    # case ran out of its 10 minute budget after 14 tool calls. Pinned to
+    # Xiaomi only, since with fallbacks on the smoke run was served by
+    # DeepInfra although Xiaomi was up.
+    id: xiaomi/mimo-v2.6-pro
+    label: MiMo-V2.6 Pro
+    provider:
+      order: [xiaomi]
+      allow_fallbacks: false
+    caching: automatic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 0.435, completion: 0.87, cache_read: 0.0036, cache_write: 0.435}
+
+  luna:
+    id: openai/gpt-6-luna
+    label: GPT-6 Luna
+    provider:
+      order: [openai]
+      allow_fallbacks: true
+    caching: automatic
+    reasoning_effort: medium
+    max_tokens_per_turn: 16000
+    estimate:
+      input_tokens: [100000, 400000]
+      cached_fraction: 0.7
+      output_tokens: [5000, 15000]
+    fallback_price: {prompt: 0.10, completion: 0.50, cache_read: 0.01, cache_write: 0.10}
+
+judge:
+  id: anthropic/claude-haiku-5.5
+  label: Claude Haiku 5.5 (judge)
+  provider:
+    order: [anthropic]
+    allow_fallbacks: true
+  caching: none
+  max_tokens_per_turn: 2000
+  temperature: 0
+  estimate:
+    input_tokens: [6000, 15000]
+    cached_fraction: 0
+    output_tokens: [300, 1200]
+  fallback_price: {prompt: 0.10, completion: 0.50, cache_read: 0.01, cache_write: 0.125}

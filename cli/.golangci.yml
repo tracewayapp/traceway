@@ -9,6 +9,11 @@ version: "2"
 run:
   # cli/test/smoke sits behind //go:build smoke, so the default package load
   # cannot see it. It is the module's largest end-to-end surface; lint it too.
+  #
+  # This lints the read build (traceway). The write build (traceway-write,
+  # -tags write) is a second pass: `just lint` and CI run it again with
+  # --build-tags write, which golangci-lint adds to the tags listed here, so
+  # each edition's own files (edition_read.go, edition_write.go) get linted.
   build-tags:
     - smoke
 

@@ -2,7 +2,7 @@
 
 package telemetry
 
-import sqliterepo "github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlite"
+import sqliterepo "github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlite"
 
 var (
 	AiTraceRepository             = sqliterepo.AiTraceRepository
@@ -12,10 +12,12 @@ var (
 	FiredNotificationRepository   = sqliterepo.FiredNotificationRepository
 	LogRecordRepository           = sqliterepo.LogRecordRepository
 	MetricPointRepository         = sqliterepo.MetricPointRepository
+	MetricHistogramRepository     = sqliterepo.MetricHistogramRepository
 	ProfileRepository             = sqliterepo.ProfileRepository
 	SessionRecordingRepository    = sqliterepo.SessionRecordingRepository
 	SessionRepository             = sqliterepo.SessionRepository
 	OtelSpanRepository            = sqliterepo.OtelSpanRepository
 	LegacyRepository              = sqliterepo.LegacyRepository
 	TaskRepository                = sqliterepo.TaskRepository
+	SLOBucketRepository           = sqliterepo.SLOBucketRepository
 )

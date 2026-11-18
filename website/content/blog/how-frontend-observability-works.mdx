@@ -1,0 +1,312 @@
+---
+title: "How frontend observability works: A complete guide"
+date: "2026-11-18"
+category: "engineering"
+cover: "wave"
+author: "dusan"
+---
+
+You tap **Add to cart** on your phone but nothing happens. Just as you’re about to tap again, the cart updates. I built that delay into version 0.2.0 of Shoply, my demo store. On Android, the button sometimes takes half a second or more to respond.
+
+The backend sees none of it. The API answers as fast as before, because the delay never leaves the browser. Latency is flat, the error rate is flat, the uptime check passes. On a backend dashboard, 0.2.0 is a clean release.
+
+SREs need to know how many shoppers hit the delay. Developers need to explain one slow tap, but it’s hard to say in advance what they’ll need to see. This post shows which browser signals answer both questions and how to collect them without recording every visit.
+
+> I build [Traceway](https://github.com/tracewayapp/traceway), the open-source tool in the screenshots. All the numbers come from the demo store.
+
+## What we're building
+
+This is the sentence I want to be able to say about a frontend:
+
+> For each release, at least 90% of page views with a measured interaction should respond to input within 200 ms over a 30-day window. If a release misses that target, I want to open a slow session and see what happened.
+
+![The SLO list of the demo shop. Fast interactions for release 0.1.0 and crash-free sessions meet their 90% targets. Fast interactions for release 0.2.0 is breached.](/blog/how-frontend-observability-works/slo-list.webp)
+
+The first sentence sets a *service level objective* (SLO). The second asks whether we can follow a missed target back to the code that caused the delay.
+
+It takes three things:
+
+1. Every visit is measured. An SLO over the sessions we happened to record says nothing about the rest.
+2. A bad number leads somewhere: a line of code, or one person's session.
+3. A healthy visit uploads almost nothing.
+
+The first and third pull against each other. Explaining any visit means keeping the detail of every visit, and the detail is the expensive and personal part. The second half of this post exists to resolve that.
+
+## The browser already measures this
+
+Think about the last page that frustrated you. Did you wait for the main content to appear? Did you tap a button and wait for it to respond? Did the button move just as you reached for it? Browsers expose measurements for all three experiences.
+
+| Signal | Browser API | What the user feels | What we use it for |
+| --- | --- | --- | --- |
+| LCP, Largest Contentful Paint | `largest-contentful-paint` | "Has it loaded yet?" | SLO |
+| INP, Interaction to Next Paint | Event Timing | "Did my tap do anything?" | SLO |
+| CLS, Cumulative Layout Shift | `layout-shift` | "The button moved while I was tapping it" | SLO |
+| TTFB and FCP | Navigation Timing, Paint Timing | Nothing by themselves | Explaining a slow LCP |
+| Long animation frames | `long-animation-frame` | Stutter, a frozen page | Explaining a slow INP, naming the script |
+| Errors | `error`, `unhandledrejection` | "It broke" | SLO: crash-free sessions |
+| Requests | `fetch`, XHR | A spinner, a failed action | Failure rate, and the link to the backend |
+
+None of it is magic. This is the raw material of INP:
+
+```js
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    // duration: from the tap until the next frame was painted
+    console.log(entry.name, entry.duration, entry.target);
+  }
+}).observe({ type: "event", durationThreshold: 40, buffered: true });
+```
+
+In practice, I use Google’s `web-vitals` library to calculate INP for each page view. Its `interactionTarget` tells me which element the user interacted with.
+
+```js
+import { onINP } from "web-vitals/attribution";
+
+onINP(({ value, rating, attribution }) => {
+  console.log(value, rating, attribution.interactionTarget);
+  // 952 "poor" "button.bg-neutral-900.disabled:opacity-…"
+});
+```
+
+These are _field_ measurements. Lighthouse is a _lab_ measurement: one run, on your laptop, on your network. It tells you whether a page can be fast. Field data tells you whether it was fast for someone on a three year old Android phone on hotel wifi.
+
+![The Web Performance dashboard of the demo shop: LCP, INP and CLS as p75 and p95 over time, and the share of good, needs improvement and poor values for each.](/blog/how-frontend-observability-works/web-performance.webp)
+
+## Why these are the right numbers for an SLO
+
+An SLO has three parts.
+
+**SLI**, the service level indicator, is a ratio: good events divided by all events. For us that is page views that responded within 200 ms, divided by page views that had an interaction.
+
+**SLO**, the service level objective, is a target for that ratio over a window. Ours is 90% over 30 days.
+
+With a 90% target, the **error budget** is 10 slow page views for every 100 measured. If 7 of those 100 were slow, you’ve used 70% of the budget.
+
+So choosing an SLO starts with choosing the number behind the SLI.
+
+### What makes a good SLI
+
+A number has to pass four tests:
+
+1. **On the device.** It is measured where the user is.
+2. **Follows the pain.** It moves when the user suffers, and stays still when they don't.
+3. **Defensible.** It has a threshold you can defend to someone who disagrees.
+4. **Countable.** It can be counted as good events and total events.
+
+Most numbers a frontend team already has fail at least one:
+
+| Candidate | Why it fails |
+| --- | --- |
+| Uptime | It does not follow the pain. The CDN is up while the checkout button is dead |
+| API latency | It is not measured on the device. Release 0.2.0 does not move it |
+| An average | It hides the pain. One slow phone disappears among a thousand fast laptops |
+| A Lighthouse score | It is one lab run on your laptop, with nothing to count |
+
+The Web Vitals pass all four. They are measured on the device. Each is defined around something a person perceives. They come with published thresholds: LCP within 2.5 seconds, INP within 200 ms, CLS within 0.1. And each page view reports one value, so good and total can be counted.
+
+### A Core Web Vital is already an SLO
+
+Line up the measured page views from fastest to slowest. The 75th percentile, or p75, is the point three quarters of the way along that line.
+
+> If p75 INP is 200 ms or less, at least 75% of measured page views were within 200 ms.
+
+That is an SLO with a 75% target that somebody else picked. 75% is reasonable for a ranking signal across the whole web. Checkout can still pass even if taps or clicks take longer than 200 ms on one in four measured page views. Your own SLO can ask for 90% or 95% on the routes that earn money, and leave the blog at 75%.
+
+The demo shows the difference. Release 0.2.0 has a p75 INP of 87 ms, a comfortable pass by Google's rule, because fewer than a quarter of its page views are slow. Its 90% objective is breached at 78%, and on Android the p75 is 782 ms:
+
+![INP for the two releases side by side. Release 0.1.0 has 99% good page views and release 0.2.0 has 79%. By operating system on 0.2.0, p75 is 782 ms on Android and about 75 ms on Windows, iOS and macOS.](/blog/how-frontend-observability-works/release-compare.webp)
+
+### Where to start
+
+Starting from nothing, I would create two:
+
+- **Fast interactions:** INP within 200 ms, on the route the business depends on most.
+- **Crash-free sessions:** sessions without an uncaught error, divided by all sessions.
+
+They need separate budgets, because a session can be fast right up to the exception. Give each release its own budget too, and each device class if you have the traffic. One SLO over everybody hides the population you are looking for. This is the 0.2.0 objective from the demo:
+
+![The detail page of the breached SLO for release 0.2.0: the SLI at 77.75% against the 90% target, the error budget overspent, a burn rate of 2.1x, and the SLI over the last hour dipping under the target most of the time.](/blog/how-frontend-observability-works/slo-detail.webp)
+
+### Three traps
+
+- **A page with no interaction has no INP.** It is a missing sample, not a 0 ms interaction, and missing must not count as good. The denominator is page views that had an interaction.
+- **Percentiles cannot be averaged.** The p75 of a day is not the average of 24 hourly p75 values, which decides how the data has to be stored.
+- **A change in who visits moves the percentile.** If a release reaches older phones first, its p75 looks worse for a reason that has nothing to do with the code. Compare like with like: same device class, same OS.
+
+## Why metrics are not enough
+
+The SLO for 0.2.0 is breached. Metrics can also say where, because every measurement is stored with its release, route, browser, OS and device class. Filter the dashboard to 0.2.0, then to Android:
+
+![The same dashboard filtered to release 0.2.0 on Android. INP is rated poor for 52% of page views, while LCP and CLS look healthy.](/blog/how-frontend-observability-works/release-android.webp)
+
+That gives us the population, and it is as far as metrics go. They cannot say why those taps are slow or show what one of those people saw, because a metric describes everyone together. There is no user inside a histogram, which is also what keeps metrics cheap and free of personal data.
+
+The other kinds of data pick up from there, each answering the question the one above it raised:
+
+| Kind | The question it answers | Collected for |
+| --- | --- | --- |
+| Metrics | Is it slow or broken? For how many? Since which release? | Every visit |
+| Sessions | Who was it, and on what device? | Every visit |
+| Exceptions | What broke, and on which line? | Every failure |
+| Logs and events | What happened before it? | Visits with a problem |
+| Traces | Where did the time go after the request left the browser? | Visits with a problem |
+| Replay | What did the user see? | Visits with a problem |
+
+The third column is the design. The top rows are small and cover everyone. The bottom rows are large and personal, and we only want them when there is something to explain.
+
+Metrics carry no identity, so getting from the first row to the second takes an _exemplar_. When a device records a poor value, it keeps a link to its own session next to the number, plus the element the browser blamed. On the chart, exemplars become a list of the worst values with the route, the element and a link to the session:
+
+<img width="420" alt="The Slow sessions list opened from the INP chart: the worst INP values, between 952 ms and 1.9 seconds, all on the route / and all naming the same button." src="/blog/how-frontend-observability-works/slow-sessions.webp" />
+
+Every row names the same element. The selector comes from the element's `id` if it has one, otherwise from its tag and classes. With Tailwind that reads `button.bg-neutral-900.disabled:opacity-…`, which is the `Add to cart` button but takes a moment to recognize. Give the buttons you care about an `id`.
+
+One click further is a single visit: the device, the release, the user if the app identified them, and whatever else was collected for that session.
+
+![A session page opened from the list: when it started, the release, the browser and device attributes.](/blog/how-frontend-observability-works/session.webp)
+
+## Exceptions are only useful after symbolication
+
+The slow tap in the demo never throws an error. A separate checkout example shows what you get when the browser does throw one. The exception includes a stack trace, and the device can upload the events leading up to it.
+
+Here’s how the coupon error looks in the JavaScript bundle sent to the browser.
+
+```text
+TypeError: Cannot read properties of null (reading 'percent')
+    at ak (http://localhost:5175/assets/index-zy2NUisC.js:9:94956)
+    at pl (http://localhost:5175/assets/index-zy2NUisC.js:6:17186)
+    at Th (http://localhost:5175/assets/index-zy2NUisC.js:8:44273)
+    at wh (http://localhost:5175/assets/index-zy2NUisC.js:8:39940)
+    at Uy (http://localhost:5175/assets/index-zy2NUisC.js:8:39868)
+    at uo (http://localhost:5175/assets/index-zy2NUisC.js:8:39721)
+    at zl (http://localhost:5175/assets/index-zy2NUisC.js:8:36050)
+    at gh (http://localhost:5175/assets/index-zy2NUisC.js:8:34998)
+    at ie (http://localhost:5175/assets/index-zy2NUisC.js:1:10199)
+    at MessagePort.pe (http://localhost:5175/assets/index-zy2NUisC.js:1:10568)
+```
+
+Nobody can read that. Something called `ak` read `percent` from a null, at character 94,956 of line 9. The bigger cost is grouping. Error trackers group exceptions into issues by stack trace, and a minified stack trace changes with every build: the chunk gets a new hash and the columns shift. The same bug becomes a new issue on every deploy, the "new issue" alert fires for old bugs, and the count of affected users is split across a dozen rows.
+
+_Symbolication_ maps each minified frame back to its original file and line, using the source map of that exact build. The build emits the maps, CI uploads them, and the server resolves frames when the exception arrives. A _debug ID_, a UUID the build writes into both the bundle and its map, does the matching, so nothing depends on file names or deploy timing. I have written about the internals in [a walk through source maps by hand](/blog/deep-dive-into-the-sourcemaps) and in [how the symbolicator is built](/blog/system-design-of-a-symbolicator). The same exception afterwards:
+
+![The issue page for the same exception. The top frame now reads src/CheckoutPage.jsx at line 10, column 40, and the nine React frames under it are folded as library frames.](/blog/how-frontend-observability-works/issue-stack.webp)
+
+The first frame now points to `src/CheckoutPage.jsx`, line 10. The nine React frames are folded underneath it.
+
+The stack tells you where to look in the code. To see what happened just before the exception, look at the request timeline under the replay. It ends with a failed request to `/api/coupon`. The replay shows the coupon field, with the typed characters masked on the device.
+
+![The same issue's event. A replay clip of the checkout page with the coupon field masked, and under it the requests, clicks and navigations before the error, ending in a failed POST to /api/coupon.](/blog/how-frontend-observability-works/issue-context.webp)
+
+One kind of failure never shows up here: the kind that does not throw. A declined payment, a search with no results, a form the user gave up on. The code handled it correctly and the user still had a bad time. Those need a name you give them yourself, and the rest of this post is about getting their data too.
+
+## When logs and traces come into play
+
+In a backend, logs are the first thing you reach for. In a browser they have a narrower job. Browser logs are _breadcrumbs_: console lines, clicks, navigations, requests and your own events, in order. They answer "what happened before this?".
+
+![A session timeline: requests, clicks and route changes in order, each request with a link to its trace.](/blog/how-frontend-observability-works/session-timeline.webp)
+
+A _trace_ answers "where did the time go after the request left the browser?". The browser adds a `traceparent` header to each request, an instrumented backend continues the same trace, and both sides show up as one tree, with the browser's request at the top and the queries it caused under it.
+
+![One trace of six spans across two projects. The browser's POST at the top takes 937 ms. Under it the backend's POST /api/checkout, a SELECT, payment.charge at 930 ms, order.persist and a DELETE.](/blog/how-frontend-observability-works/trace.webp)
+
+This checkout took 937 ms in the browser, and 930 of them were `payment.charge` on the server. No amount of frontend work would have made it faster.
+
+Which one you need depends on the problem:
+
+- **A slow interaction with no request involved**, like the taps in 0.2.0. Neither. The element and the long animation frame already name the handler and the script.
+- **A slow route change that waits on an API.** The trace, because the time is on the server.
+- **An error after a sequence of steps.** The breadcrumbs.
+- **"It looked wrong."** The replay.
+
+Breadcrumbs are context around a problem, not a record of everything, because healthy visits never upload theirs. Counting log lines only counts the visits that had some other problem. Use a counter metric for counting.
+
+## Getting the rest of the debug data
+
+It’s easy to decide what to log once you know what went wrong. The harder question comes before you ship. Which details should the browser keep so they’re still available when someone reports a problem?
+
+Producing those signals is the easy part. The OpenTelemetry browser instrumentations turn uncaught errors, console lines, clicks and navigations into OTLP log records. Every `fetch` and XHR becomes a span that carries `traceparent` to the backend. rrweb records the page for replay.
+
+The hard part is deciding which of it to upload. Everything from everyone costs bytes, costs main-thread time on the cheap phones whose INP we are trying to protect, and puts what people typed and clicked on a server where almost none of it will ever be looked at. A sample rate fixed in `init()` is cheap, but the session you need was probably not in the sample, and changing your mind takes a deploy.
+
+## A ring buffer in the browser
+
+We took a third route, and the idea is not ours. [bitdrift](https://blog.bitdrift.io/post/bitdrift-ring-buffer) built it for mobile apps: keep the telemetry in a ring buffer on the device, and let the server decide what is worth uploading. We brought that approach to the browser and built it on open standards: OTLP for the data, rrweb for the replay and OpAMP for the control channel.
+
+The browser keeps a summary for charts and a short history for debugging.
+
+- **The summary** goes into a histogram on the device. A slow tap adds to a timing bucket. Those counts feed the dashboard across visits, including visits without a replay.
+- **The history** holds clicks, navigations, requests, console messages and app events. The ring buffer keeps up to 10 minutes or 2 MB, whichever limit it reaches first. As new events arrive, the oldest drop out. The history survives page loads. Replay has its own in-memory buffer, with typed input masked.
+
+By default, a healthy visit uploads the summary. A collection rule can request more detail.
+
+![The ring buffer on the device. Breadcrumbs for the last 10 minutes or 2 MB and replay segments up to 8 MB stay in the browser while a session is healthy. An error, a trigger or a capture opens the buffer and uploads the history under one session id.](/blog/how-frontend-observability-works/ring-buffer.webp)
+
+## How the browser and the server talk
+
+Something has to open the buffer at the right moment, and the right moment is rarely known when you write `init()`. So the server has to be able to ask.
+
+For that we use _OpAMP_, the Open Agent Management Protocol. It is how OpenTelemetry manages fleets of Collectors: an agent reports who it is, and a server sends it configuration. We treat every browser tab as an agent.
+
+![A sequence diagram between the browser, the Traceway server and a developer. On page load the browser applies cached settings and polls over OpAMP with its description and settings hash, and the server answers with a settings document and a 5 minute interval. During a healthy visit only session start and metric histograms are uploaded, while clicks, requests, console lines and replay stay in the ring buffer. When an error is thrown the exception is sent with up to 10 minutes of the buffer and a 30 second replay clip. When a developer starts a capture, the next poll returns new settings, and the browser uploads what the ring buffer holds and then streams everything until the capture ends.](/blog/how-frontend-observability-works/opamp-sequence.webp)
+
+How often each thing happens:
+
+- **Settings.** A tab polls every 5 minutes, and again when it becomes visible. Under an active capture it polls every 60 seconds. The server answers from the description in the request and keeps nothing per client, so any server instance can answer any browser.
+- **Metrics.** One small payload when the page is hidden, and every 5 minutes on a long visit.
+- **Errors.** Right away, with up to 10 minutes of the buffer and a 30 second replay clip.
+- **Everything else.** Only when a rule, a trigger or a capture asks for it.
+
+## Rules: who sends what
+
+The server's side of this is one page in the dashboard. A rule has two halves: which browsers it applies to, and what those browsers send. These are the four rules of the demo project, with its captures under them:
+
+![The Data Collection page of the demo project. Four rules: Android on 0.2.0 streams network, console, navigation and clicks; Acme Corp, matched by tenant.id, streams replay; a checkout failed trigger for all clients; and a 1% sample of healthy sessions. Under them, three captures with their status, the first for user.id u-9481 with 59 minutes left.](/blog/how-frontend-observability-works/data-collection.webp)
+
+For each kind of data, choose one mode.
+
+- **Stream** sends each event as it happens.
+- **Buffer** keeps recent events on the device.
+- **Off** drops the event.
+
+A *trigger* tells the device when to upload what it has buffered. For example, it can watch for three failed requests in a minute or a `track("checkout_failed")` call. Triggers evaluate incoming records even for signals you’ve chosen to drop.
+
+The other half is the scope. A browser describes itself on every poll, so a rule can target anything in that description:
+
+<img width="620" alt="The Applies to tab of the Acme Corp rule: tenant.id equals acme, os.name equals Android, rolled out to 25% of matching clients." src="/blog/how-frontend-observability-works/rule-scope.webp" />
+
+| Scope | Condition | When you would use it |
+| --- | --- | --- |
+| One user | `user.id` equals `u-9481` | A customer reports something you cannot reproduce |
+| One organization | `tenant.id` equals `acme`, or any attribute your app sets | An enterprise customer's rollout week |
+| A platform | `os.name` equals `Android`, `browser.name` equals `Safari` | A regression on one platform, like ours |
+| A release | `service.version` equals `0.2.0` | Watching a new release for its first day |
+| A share of traffic | A rollout of 1% | A small baseline of healthy sessions |
+
+Conditions combine, so "Android on 0.2.0" is two of them. For a single user or device there is a shortcut called a _capture_: at its next poll that browser uploads what its buffer holds, then streams everything for as long as you asked, up to 24 hours.
+
+<img width="380" alt="The New Capture dialog, targeting one user id for one hour, including the last 10 minutes and session replay." src="/blog/how-frontend-observability-works/capture-dialog.webp" />
+
+## What comes back
+
+Whatever a rule, a trigger or a capture uploads lands on the session page: the replay, and under it the requests, clicks and console lines of the visit in order, each request linked to its backend trace. This is one of the slow taps from 0.2.0, paused seven seconds in, with the `Add to cart` button greyed out while the page is blocked:
+
+![The session page of one Android visit on release 0.2.0. The replay is paused 7 seconds into a 20 second visit, on the product list at phone size, with the tapped button greyed out. Under it, the session's requests and clicks in order, each request with a Trace link.](/blog/how-frontend-observability-works/session-replay.webp)
+
+## Why asking on the fly is such a strong debugging tool
+
+Go back to release 0.2.0. Metrics told us Android. No exception will ever explain a slow tap, so the error tracker has nothing. Before this, the options were to ship a build with more logging and wait, or to ask a customer to open devtools on their phone.
+
+A developer turns on streaming for Android browsers running 0.2.0. On their next poll, those tabs start sending clicks, navigation, requests and console messages to the session timeline. When a customer writes in, I can start a capture for their user ID. On its next poll, their tab sends whatever breadcrumbs it still has, up to ten minutes of history. When the question is answered, the rule is deleted and those browsers go back to uploading almost nothing.
+
+The developer debugging the problem decides what is worth collecting, at the moment they know what they need. Nobody has to guess it in advance, in `init()`.
+
+That much control needs guard rails. Remote config can only restrict: what `init()` switches off, such as `sessionRecording: false`, cannot be switched on from the server. Rules are data, with a fixed set of operators, and no code is ever sent to the page. And one rule with the kill switch makes a broken release send nothing at all.
+
+## What comes next
+
+This post stayed out of the implementation on purpose. The next one goes through it with code: the OpenTelemetry setup in the browser, the on-device histogram and how a percentile survives merging, how rrweb is cut into clips that can be replayed, the OpAMP client, and the SvelteKit wiring.
+
+Some things to know before you try it. The 2.x browser SDK is in beta. CLS and long animation frames only exist in Chromium. A settings change takes up to one poll interval to arrive. A capture cannot bring back what the buffer already evicted.
+
+The [Traceway server](https://github.com/tracewayapp/traceway) and [browser SDK](https://github.com/tracewayapp/js-client) are open source and use OTLP, rrweb and OpAMP.
+
+To try this on your own site, pick one interaction people rely on. Compare its route’s INP across releases, then open a slow session if one is available. Which element did the person interact with, and what happened before the screen responded?

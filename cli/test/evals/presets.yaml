@@ -1,0 +1,19 @@
+# Case and arm selections for `twevals list|plan|run --preset`. A --cases glob
+# overrides the preset's case filter; --arms overrides its arm policy.
+presets:
+  smoke:
+    description: The starred cases, each suite's primary arm only
+    tags: [smoke]
+    arms: primary
+  core:
+    description: Every case, each suite's primary arm only
+    arms: primary
+  full:
+    description: Every case on every arm it lists (adds cli-noskill, mcp, mcp-write)
+    arms: all
+
+primary_arms:
+  perf: [cli+skill]
+  debug: [cli+skill]
+  write: [cli-write+skill]
+  setup: [cli+setup-skill]

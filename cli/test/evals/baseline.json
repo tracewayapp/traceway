@@ -1,0 +1,9 @@
+{
+  "generatedAt": "",
+  "from": "",
+  "gitSha": "",
+  "note": "No baseline yet. Phase 8: dispatch a core run, then `twevals baseline update <run-dir>` and commit the result by hand.",
+  "suites": {},
+  "cases": {},
+  "perRun": {}
+}

@@ -1,0 +1,80 @@
+id: perf-db-missing-query-cache
+suite: perf
+title: Every storefront request reloads the feature flags from Postgres
+tags: [database, node, nestjs]
+seed: perf/db-missing-query-cache
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: No cache / a low hit ratio. Product data is already behind Redis and the app's cache.hit_ratio gauge stays between about 96% and 99%, and the product spans show Redis hits; what is not cached is one specific query, the parameterless feature_flags read that a global guard runs before every handler.
+workspace: {repo: storefront-api-nest}
+prompt: |
+  /traceway perf GET /api/me
+  Every endpoint of the storefront API is slower than it should be. Even GET /api/me, which reads a single customer row, takes 20-30ms. Product data already sits behind Redis with a ~98% hit rate, so I don't think it's a caching problem. Where is the time going?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: missing_query_result_caching
+    not: [no_cache_low_hit_ratio, select_n_plus_1, missing_or_unused_index, expensive_join_or_aggregation, cpu_saturation, chatty_ipc_microservice_fan_out]
+    locus: {endpoint: "GET /api/me", span_contains: "feature_flags"}
+  grounding:
+    - "FROM feature_flags WHERE archived_at IS NULL"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, traces.show]
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Missing query/result caching. A global NestJS guard (FeatureFlagsGuard) calls FeatureFlagsService.load on every request, which runs the same parameterless query, SELECT key, enabled, rollout_percent, rules FROM feature_flags WHERE archived_at IS NULL ORDER BY key, returning the same 214 rows each time and taking ~15-30ms. It is most of GET /api/me (the customer read takes ~1.5ms) and it is in front of every endpoint, so every endpoint pays it. Redis works for product data (hit ratio 96-99%, ~98% on average; product spans are Redis hits); the flags are simply not cached. Flags only need to propagate within a minute (README), so cache them in memory with a short TTL (or refresh in the background / on change) instead of querying per request.
+  rubric:
+    - Identifies the feature_flags query as the dominant span of GET /api/me and shows it runs identically (same text, no parameters, same row count) on other endpoints too.
+    - Rules out a low cache hit ratio (the product cache stays at 96-99% and its spans are Redis hits) and N+1 (one flags query per request).
+    - Proposes caching the flag set in process with a short TTL or change-driven refresh, consistent with the one-minute propagation requirement.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6), p95_ms: (.p95Duration / 1e6)}]'
+  - shell: >-
+      traceway logs query --since 8h --search /api/me --page-size 5 --output json
+      | jq '{data: [.data[] | {traceId, timestamp, body}]}'
+  - shell: >-
+      traceway traces show {{calls.c02.data.0.traceId}} --recorded-at {{calls.c02.data.0.timestamp}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6),
+      spans: [.spans[] | {name, ms: (.duration / 1e6), query: .attributes["db.query.text"], rows: .attributes["db.response.returned_rows"]}]}]'
+  - shell: >-
+      traceway logs query --since 8h --search /api/categories/ --page-size 3 --output json
+      | jq '{data: [.data[] | {traceId, timestamp, body}]}'
+  - shell: >-
+      traceway traces show {{calls.c04.data.0.traceId}} --recorded-at {{calls.c04.data.0.timestamp}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6),
+      spans: [.spans[] | {name, ms: (.duration / 1e6), query: .attributes["db.query.text"], rows: .attributes["db.response.returned_rows"]}]}]'
+  - shell: traceway metrics query --name cache.hit_ratio --aggregation min --since 24h --interval-minutes 360 --output json
+  - read_file: src/flags/feature-flags.guard.ts
+  - read_file: src/flags/feature-flags.service.ts
+  - submit:
+      checklist_item: missing_query_result_caching
+      category: database
+      locus: {endpoint: "GET /api/me", span: "SELECT feature_flags: SELECT key, enabled, rollout_percent, rules FROM feature_flags WHERE archived_at IS NULL ORDER BY key", service: storefront-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "every endpoint has a p50 of 20ms or more, even trivial ones like GET /api/me"}
+        - {call_id: c03, claim: "GET /api/me spends most of its time in the feature_flags query (214 rows); the customer read is ~1.5ms"}
+        - {call_id: c05, claim: "the category listing runs the identical feature_flags query (same text, 214 rows) before its handler looks the page up in Redis"}
+        - {call_id: c06, claim: "the product cache hit ratio never drops below ~96% (the lowest value in each 6-hour bucket), so the existing cache is fine"}
+        - {call_id: c07, claim: "a global guard loads the flags on every request"}
+      ruled_out:
+        - {checklist_item: no_cache_low_hit_ratio, call_id: c06, reason: "the Redis product cache hit ratio stays above 95%; the uncached work is one specific query"}
+        - {checklist_item: select_n_plus_1, call_id: c03, reason: "one flags query per request, not a loop"}
+      fix: Cache the flag set in memory in FeatureFlagsService with a short TTL (30s, single-flight refresh, serve the previous copy while refreshing), which still meets the one-minute propagation the back office expects; or refresh on change via LISTEN/NOTIFY.
+      confidence: high
+      report: |
+        The time is a query that runs on every request: FeatureFlagsGuard is a global guard, and it reloads every feature flag (SELECT key, enabled, rollout_percent, rules FROM feature_flags WHERE archived_at IS NULL ORDER BY key, 214 rows) before any handler runs. That query takes ~15-30ms and is most of GET /api/me, whose own customer read takes ~1.5ms; the category listing and the other endpoints run the identical query before their own work. Redis is fine (the product cache hit ratio stays above 95%); the flags just are not cached. Fix: have FeatureFlagsService keep the flags in memory for 30 seconds with a single-flight refresh (serving the previous copy while it refreshes), so a request reads them from memory and a flag change still reaches the API within a minute.

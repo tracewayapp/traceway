@@ -16,13 +16,13 @@ const TABS = [
         {"  - "}
         <span style={{ color: "var(--a2)" }}>gomod:</span>{" "}
         <span style={{ color: "var(--ok)" }}>
-          github.com/tracewayapp/traceway/backend v1.8.0
+          github.com/tracewayapp/traceway/backend/v2 v2.0.11
         </span>
         {"\n"}
         {"    "}
         <span style={{ color: "var(--a2)" }}>import:</span>{" "}
         <span style={{ color: "var(--ok)" }}>
-          github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor
+          github.com/tracewayapp/traceway/backend/v2/app/symbolicator/otelprocessor
         </span>
         {"\n\n"}
         <span style={{ color: "var(--a2)" }}>$</span>{" "}

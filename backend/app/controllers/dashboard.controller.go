@@ -1,16 +1,21 @@
 package controllers
 
 import (
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"context"
+	"fmt"
+
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type dashboardController struct{}
@@ -27,13 +32,14 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
 		return
 	}
+	traceway.SetAttribute(c, "project_id", projectId.String())
 
 	now := time.Now()
 	start := now.Add(-24 * time.Hour)
 
 	// Get last 10 issues in the last 24 hours (only exceptions, not messages)
-	span := traceway.StartSpan(c, "loading recent issues")
-	recentIssues, _, err := telemetry.ExceptionStackTraceRepository.FindGrouped(c, projectId, start, now, 1, 10, "last_seen", "", "issues", false)
+	spanCtx, span := traceway.StartSpan(c, "loading recent issues")
+	recentIssues, _, err := telemetry.ExceptionStackTraceRepository.FindGrouped(spanCtx, projectId, start, now, 1, 10, "last_seen", "", "issues", false)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading recent issues: %w", err))
@@ -41,8 +47,8 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 	}
 
 	// Get 10 worst performing endpoints
-	span = traceway.StartSpan(c, "loading worst endpoints")
-	worstEndpoints, err := telemetry.EndpointRepository.FindWorstEndpoints(c, projectId, start, now, 10)
+	spanCtx, span = traceway.StartSpan(c, "loading worst endpoints")
+	worstEndpoints, err := telemetry.EndpointRepository.FindWorstEndpoints(spanCtx, projectId, start, now, 10)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading worst endpoints: %w", err))
@@ -51,13 +57,11 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 
 	hasData := true
 	if len(worstEndpoints) == 0 && len(recentIssues) == 0 {
-		// Check if project has received ANY data (all time, not just 24h)
-		var epoch time.Time // zero time = beginning of time
-		span = traceway.StartSpan(c, "checking project data")
-		endpointCount, _ := telemetry.EndpointRepository.CountBetween(c, projectId, epoch, now)
-		exceptionCount, _ := telemetry.ExceptionStackTraceRepository.CountBetween(c, projectId, epoch, now)
+		// A count past the deadline finishes after the request, so it must
+		// not hold the gin context, which gin reuses for the next request.
+		spanCtx, span = traceway.StartSpan(context.WithoutCancel(c.Request.Context()), "checking project data")
+		hasData = projectHasData(spanCtx, projectId, now)
 		span.End()
-		hasData = endpointCount > 0 || exceptionCount > 0
 	}
 
 	c.JSON(http.StatusOK, DashboardOverviewResponse{
@@ -65,6 +69,119 @@ func (d dashboardController) GetDashboardOverview(c *gin.Context) {
 		WorstEndpoints: worstEndpoints,
 		HasData:        hasData,
 	})
+}
+
+var (
+	hasDataTimeout   = 10 * time.Second
+	countProjectData = countEndpointsAndExceptions
+
+	// Only a counted yes is remembered, for the life of the process: the
+	// answer turns back into no only when retention removes a project's last
+	// row, and showing that project an empty dashboard until the next restart
+	// costs less than repeating the count on every visit.
+	projectsWithData sync.Map
+)
+
+// A false answer swaps the dashboard for the setup guide, so a count that
+// fails or times out must not be read as "this project never sent data".
+// The SQLite and DuckDB reads cannot be cancelled (lit has no context), so
+// the deadline is kept here: a count past it finishes in the background and
+// its answer is dropped.
+func projectHasData(ctx context.Context, projectId uuid.UUID, now time.Time) bool {
+	if _, known := projectsWithData.Load(projectId); known {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(ctx, hasDataTimeout)
+	defer cancel()
+
+	type answer struct {
+		hasData bool
+		err     error
+	}
+	result := make(chan answer, 1)
+	go func() {
+		a := answer{hasData: true}
+		defer func() { result <- a }()
+		defer traceway.Recover()
+		a.hasData, a.err = countProjectData(ctx, projectId, now)
+		if a.err == nil && a.hasData {
+			projectsWithData.Store(projectId, struct{}{})
+		}
+	}()
+
+	select {
+	case a := <-result:
+		if a.err != nil {
+			traceway.CaptureExceptionContext(ctx, fmt.Errorf("dashboard overview: checking whether project %s has data: %w", projectId, a.err))
+			return true
+		}
+		return a.hasData
+	case <-ctx.Done():
+		traceway.CaptureExceptionContext(ctx, fmt.Errorf("dashboard overview: checking whether project %s has data: %w", projectId, ctx.Err()))
+		return true
+	}
+}
+
+// Newest first, and never before the project existed: the count over all time
+// is the one read of this page with no time bound, and on ClickHouse it has to
+// open every daily partition of the table even for a project with no rows in
+// it (10s and a timeout on a project with zero endpoints, while the same table
+// answered a 24h read in the same request). A project that is quiet today
+// almost always has rows in the last 30 days, and a new project has nothing
+// older than itself, so the unbounded read is left to old projects that have
+// been silent for a month.
+func hasDataWindows(projectId uuid.UUID, now time.Time) []hasDataWindow {
+	var oldest time.Time
+	if project := cache.ProjectCache.GetById(projectId); project != nil {
+		oldest = project.CreatedAt.Add(-hasDataClockSlack)
+	}
+	recentStart := now.Add(-hasDataRecentWindow)
+	if !oldest.Before(recentStart) {
+		return []hasDataWindow{{"recent", oldest, now}}
+	}
+	return []hasDataWindow{{"recent", recentStart, now}, {"older", oldest, recentStart}}
+}
+
+type hasDataWindow struct {
+	name       string
+	start, end time.Time
+}
+
+const (
+	hasDataRecentWindow = 30 * 24 * time.Hour
+	hasDataClockSlack   = 24 * time.Hour
+)
+
+func countEndpointsAndExceptions(ctx context.Context, projectId uuid.UUID, now time.Time) (bool, error) {
+	for _, window := range hasDataWindows(projectId, now) {
+		countCtx, countSpan := traceway.StartSpan(ctx, "dashboard.count_endpoints")
+		traceway.SetAttribute(countCtx, "dashboard.window", window.name)
+		endpointCount, err := telemetry.EndpointRepository.CountBetween(countCtx, projectId, window.start, window.end)
+		if err == nil {
+			traceway.SetAttribute(countCtx, "dashboard.record_count", fmt.Sprint(endpointCount))
+		}
+		countSpan.End()
+		if err != nil {
+			return true, fmt.Errorf("counting endpoints (%s): %w", window.name, err)
+		}
+		if endpointCount > 0 {
+			return true, nil
+		}
+		countCtx, countSpan = traceway.StartSpan(ctx, "dashboard.count_exceptions")
+		traceway.SetAttribute(countCtx, "dashboard.window", window.name)
+		exceptionCount, err := telemetry.ExceptionStackTraceRepository.CountBetween(countCtx, projectId, window.start, window.end)
+		if err == nil {
+			traceway.SetAttribute(countCtx, "dashboard.record_count", fmt.Sprint(exceptionCount))
+		}
+		countSpan.End()
+		if err != nil {
+			return true, fmt.Errorf("counting exceptions (%s): %w", window.name, err)
+		}
+		if exceptionCount > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (d dashboardController) GetDashboard(c *gin.Context) {
@@ -120,8 +237,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics := make([]models.DashboardMetric, 0, 11)
 
 	// 1. Requests count
-	span := traceway.StartSpan(c, "loading requests trend")
-	requestsTrend, err := telemetry.EndpointRepository.CountByInterval(c, projectId, start, end, intervalMinutes)
+	spanCtx, span := traceway.StartSpan(c, "loading requests trend")
+	requestsTrend, err := telemetry.EndpointRepository.CountByInterval(spanCtx, projectId, start, end, intervalMinutes)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading requestsTrend: %w", err))
@@ -133,8 +250,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetric("requests", "Requests", float64(requestsCurrent), "count", requestsTrend, float64(requestsPrev), "requests"))
 
 	// 2. Exceptions count
-	span = traceway.StartSpan(c, "loading exceptions trend")
-	exceptionsTrend, err := telemetry.ExceptionStackTraceRepository.CountByInterval(c, projectId, start, end, intervalMinutes)
+	spanCtx, span = traceway.StartSpan(c, "loading exceptions trend")
+	exceptionsTrend, err := telemetry.ExceptionStackTraceRepository.CountByInterval(spanCtx, projectId, start, end, intervalMinutes)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading exceptionsTrend: %w", err))
@@ -146,8 +263,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetric("exceptions", "Exceptions", float64(exceptionsCurrent), "count", exceptionsTrend, float64(exceptionsPrev), "exceptions"))
 
 	// 3. Average Response Time
-	span = traceway.StartSpan(c, "loading avg response time")
-	avgDurationTrend, err := telemetry.EndpointRepository.AvgDurationByInterval(c, projectId, start, end, intervalMinutes)
+	spanCtx, span = traceway.StartSpan(c, "loading avg response time")
+	avgDurationTrend, err := telemetry.EndpointRepository.AvgDurationByInterval(spanCtx, projectId, start, end, intervalMinutes)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading avgDurationTrend: %w", err))
@@ -160,8 +277,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetric("avg_response_time", "Avg Response Time", avgDurationCurrent, "ms", avgDurationTrend, avgDurationPrev, "response_time"))
 
 	// 4. Error Rate
-	span = traceway.StartSpan(c, "loading error rate")
-	errorRateTrend, err := telemetry.EndpointRepository.ErrorRateByInterval(c, projectId, start, end, intervalMinutes)
+	spanCtx, span = traceway.StartSpan(c, "loading error rate")
+	errorRateTrend, err := telemetry.EndpointRepository.ErrorRateByInterval(spanCtx, projectId, start, end, intervalMinutes)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading errorRateTrend: %w", err))
@@ -174,8 +291,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetric("error_rate", "Error Rate", errorRateCurrent, "%", errorRateTrend, errorRatePrev, "error_rate"))
 
 	// 5. CPU Usage
-	span = traceway.StartSpan(c, "loading cpu usage")
-	cpuPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameCpuUsage, start, end, intervalMinutes, selectedServers)
+	spanCtx, span = traceway.StartSpan(c, "loading cpu usage")
+	cpuPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(spanCtx, projectId, models.MetricNameCpuUsage, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading cpuPerServer: %w", err))
@@ -186,8 +303,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetricWithServers("cpu_usage", "CPU Usage", "%", cpuPerServer, cpuPrev, "cpu"))
 
 	// 6. Memory Usage (MB)
-	span = traceway.StartSpan(c, "loading memory usage")
-	memPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameMemoryUsage, start, end, intervalMinutes, selectedServers)
+	spanCtx, span = traceway.StartSpan(c, "loading memory usage")
+	memPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(spanCtx, projectId, models.MetricNameMemoryUsage, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading memPerServer: %w", err))
@@ -198,8 +315,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetricWithServers("memory_usage", "Memory Usage", "MB", memPerServer, memPrev, "memory"))
 
 	// 7. Total System Memory (MB)
-	span = traceway.StartSpan(c, "loading total memory")
-	memTotalPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameMemoryTotal, start, end, intervalMinutes, selectedServers)
+	spanCtx, span = traceway.StartSpan(c, "loading total memory")
+	memTotalPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(spanCtx, projectId, models.MetricNameMemoryTotal, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading memTotalPerServer: %w", err))
@@ -210,8 +327,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetricWithServers("memory_total", "Total Memory", "MB", memTotalPerServer, memTotalPrev, "memory_total"))
 
 	// 8. Go Routines
-	span = traceway.StartSpan(c, "loading go routines")
-	goRoutinesPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameGoRoutines, start, end, intervalMinutes, selectedServers)
+	spanCtx, span = traceway.StartSpan(c, "loading go routines")
+	goRoutinesPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(spanCtx, projectId, models.MetricNameGoRoutines, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading goRoutinesPerServer: %w", err))
@@ -222,8 +339,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetricWithServers("go_routines", "Go Routines", "", goRoutinesPerServer, goRoutinesPrev, "go_routines"))
 
 	// 9. Heap Objects
-	span = traceway.StartSpan(c, "loading heap objects")
-	heapObjectsPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameHeapObjects, start, end, intervalMinutes, selectedServers)
+	spanCtx, span = traceway.StartSpan(c, "loading heap objects")
+	heapObjectsPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(spanCtx, projectId, models.MetricNameHeapObjects, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading heapObjectsPerServer: %w", err))
@@ -234,8 +351,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetricWithServers("heap_objects", "Heap Objects", "", heapObjectsPerServer, heapObjectsPrev, "heap_objects"))
 
 	// 10. Num GC
-	span = traceway.StartSpan(c, "loading gc cycles")
-	numGCPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameNumGC, start, end, intervalMinutes, selectedServers)
+	spanCtx, span = traceway.StartSpan(c, "loading gc cycles")
+	numGCPerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(spanCtx, projectId, models.MetricNameNumGC, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading numGCPerServer: %w", err))
@@ -246,8 +363,8 @@ func (d dashboardController) GetDashboard(c *gin.Context) {
 	metrics = append(metrics, buildMetricWithServers("num_gc", "GC Cycles", "", numGCPerServer, numGCPrev, "num_gc"))
 
 	// 11. GC Pause Total (convert from nanoseconds to milliseconds)
-	span = traceway.StartSpan(c, "loading gc pause")
-	gcPausePerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(c, projectId, models.MetricNameGCPauseTotal, start, end, intervalMinutes, selectedServers)
+	spanCtx, span = traceway.StartSpan(c, "loading gc pause")
+	gcPausePerServer, err := telemetry.MetricPointRepository.GetAverageByIntervalPerServer(spanCtx, projectId, models.MetricNameGCPauseTotal, start, end, intervalMinutes, selectedServers)
 	if err != nil {
 		span.End()
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading gcPausePerServer: %w", err))

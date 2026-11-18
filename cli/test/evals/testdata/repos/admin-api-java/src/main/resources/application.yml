@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: admin-api
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/ledgerly}
+    hikari:
+      maximum-pool-size: 20
+  flyway:
+    locations: classpath:db/migration
+server:
+  port: 8080

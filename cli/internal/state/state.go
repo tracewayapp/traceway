@@ -19,7 +19,9 @@ type State struct {
 }
 
 // Credential kinds stored on ProfileState.CredentialKind. An empty value is
-// treated as a legacy password login (non-refreshable).
+// treated as a legacy password login (non-refreshable). KindDevice is any
+// refreshable token set: a device login, or a password login on a server
+// that issues agent scopes.
 const (
 	KindPassword = "password"
 	KindDevice   = "device"

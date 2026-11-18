@@ -17,8 +17,12 @@ if [[ ! $pinned =~ ^[0-9]+$ ]]; then
 	exit 1
 fi
 
+# The eval harness's sandbox image (cli/test/evals) is built locally and in
+# the CLI Evals workflow, not by release-traceway.yml, but it follows .nvmrc too.
+files=(Dockerfile Dockerfile.minimal Dockerfile.sqlite Dockerfile.duckdb Dockerfile.browser cli/test/evals/testdata/sandbox-image/Dockerfile)
+
 status=0
-for f in Dockerfile Dockerfile.minimal Dockerfile.sqlite Dockerfile.duckdb Dockerfile.browser; do
+for f in "${files[@]}"; do
 	found=$(sed -n 's/^ARG NODE_VERSION=\([0-9]*\).*/\1/p' "$f")
 	if [[ -z $found ]]; then
 		echo "check-node-pins: $f has no 'ARG NODE_VERSION=' default" >&2
@@ -30,7 +34,7 @@ for f in Dockerfile Dockerfile.minimal Dockerfile.sqlite Dockerfile.duckdb Docke
 done
 
 # A literal node: tag left behind would silently ignore both .nvmrc and the ARG.
-if literal=$(grep -rnE '^FROM .*node:[0-9]' Dockerfile Dockerfile.minimal Dockerfile.sqlite Dockerfile.duckdb Dockerfile.browser); then
+if literal=$(grep -nE '^FROM .*node:[0-9]' "${files[@]}"); then
 	echo "check-node-pins: hardcoded node tag, use \${NODE_VERSION}:" >&2
 	echo "$literal" >&2
 	status=1

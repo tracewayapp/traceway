@@ -1,6 +1,7 @@
 package retention
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,7 +44,7 @@ func TestRunRecordingDiskCleanup_DeletesOldKeepsFresh(t *testing.T) {
 	mustChtime(t, oldFile, aged)
 	mustChtime(t, nestedOld, aged)
 
-	runDirAgeCleanup(dir, 30)
+	runDirAgeCleanup(context.Background(), dir, 30)
 
 	assertNotExists(t, oldFile)
 	assertExists(t, freshFile)
@@ -66,7 +67,7 @@ func TestRunRecordingDiskCleanup_PrunesEmptyDirsKeepsRoot(t *testing.T) {
 	mustChtime(t, emptyAfter, aged)
 	mustChtime(t, mixedOld, aged)
 
-	runDirAgeCleanup(dir, 30)
+	runDirAgeCleanup(context.Background(), dir, 30)
 
 	assertExists(t, dir)
 	assertNotExists(t, filepath.Join(dir, "project-empty"))
@@ -78,7 +79,7 @@ func TestRunRecordingDiskCleanup_NoOpOnMissingDir(t *testing.T) {
 	parent := t.TempDir()
 	missing := filepath.Join(parent, "does-not-exist")
 
-	runDirAgeCleanup(missing, 30)
+	runDirAgeCleanup(context.Background(), missing, 30)
 
 	if _, err := os.Stat(missing); !os.IsNotExist(err) {
 		t.Fatalf("expected missing dir to remain absent, got err=%v", err)
@@ -93,7 +94,7 @@ func TestRunRecordingDiskCleanup_RefusesPathThatIsAFile(t *testing.T) {
 	aged := time.Now().Add(-40 * 24 * time.Hour)
 	mustChtime(t, filePath, aged)
 
-	runDirAgeCleanup(filePath, 30)
+	runDirAgeCleanup(context.Background(), filePath, 30)
 
 	assertExists(t, filePath)
 }
@@ -110,7 +111,7 @@ func TestRunRecordingDiskCleanup_KeepsAllWhenNoneAreOld(t *testing.T) {
 		mustWriteFile(t, f, "fresh")
 	}
 
-	runDirAgeCleanup(dir, 30)
+	runDirAgeCleanup(context.Background(), dir, 30)
 
 	for _, f := range files {
 		assertExists(t, f)

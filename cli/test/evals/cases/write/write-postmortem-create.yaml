@@ -1,0 +1,143 @@
+id: write-postmortem-create
+suite: write
+title: Write the post-mortem for a checkout outage
+tags: [smoke, post-mortems]
+seed: write/postmortem-create
+arms: [cli-write+skill, mcp-write]
+invoke: natural
+distractor: An older post-mortem for a different checkout incident (card processor timeouts in September) is in the project; its numbers and timeline must not leak into this one, and creating the document before the user has seen the draft skips the approval the playbook requires.
+prompt: |
+  Can you write the post-mortem for incident #{{seed.incidentId}}, the checkout outage from a few minutes ago? What I know: payments-api 3.5.0 shipped a config change that pointed its database pool at the read replica, so checkout writes failed until we rolled back to 3.4.1. Please pull the timeline and the impact numbers from Traceway.
+budget: {max_turns: 30, max_tool_calls: 20, max_output_tokens: 16000, timeout: 12m}
+user:
+  - match: "(?s)(summary|impact).*(timeline|root cause|resolution)"
+    reply: "Looks right. Tag it checkout and go ahead and create it."
+  - default: "I don't know more than that. Mark anything you can't confirm from Traceway as an open question."
+expect:
+  state:
+    - kind: post_mortem
+      count: 1
+      title: "(checkout|3\\.5\\.0|replica|outage|incident)"
+      contains:
+        - "summary"
+        - "impact"
+        - "timeline"
+        - "root cause"
+        - "resolution"
+        - "follow.?up"
+        - "3\\.5\\.0"
+        - "3\\.4\\.1"
+        - "read.?only|replica"
+      not_contains:
+        - "\\b312\\b"
+        - "eu-west"
+      tags: [checkout]
+      incident_id: "{{seed.incidentId}}"
+    - kind: agent_writes
+      route: "POST /api/post-mortems"
+      http_status: {min: 200, max: 299}
+      count: 1
+  calls:
+    required:
+      - {op: monitors.show, args: {id: "{{seed.checkId}}"}}
+      - {op: ask_user}
+      - {op: post_mortems.create, args: {incident_id: "{{seed.incidentId}}"}}
+    any_of:
+      - [{op: exceptions.list}]
+      - [{op: exceptions.show, args: {hash: "{{seed.hash}}"}}]
+      - [{op: endpoints.list}]
+      - [{op: logs.query}]
+    forbidden:
+      - {op: pages.ack}
+      - {op: pages.resolve}
+      - {op: exceptions.archive}
+      - {op: alerts.snooze}
+      - {op: alerts.disable}
+    order:
+      - [monitors.show, post_mortems.create]
+      - [ask_user, post_mortems.create]
+    max_failed_calls: 4
+judge:
+  expected: |
+    A post-mortem linked to incident {{seed.incidentId}}, tagged checkout, with Summary, Impact, Timeline (UTC), Root cause, Resolution and Follow-up actions, whose facts match the telemetry:
+    - payments-api 3.5.0 was deployed at about {{seed.badDeployAt}} and rolled back to 3.4.1 at about {{seed.rollbackAt}}.
+    - Every POST /api/checkout on 3.5.0 failed with 500: {{seed.failedCheckouts}} failed checkouts, all *pgconn.PgError "ERROR: cannot execute INSERT in a read-only transaction (SQLSTATE 25006)" at the pending-payment insert, which happens before the charge, so nobody was charged. Reads (GET /api/payments/{id}) kept working.
+    - The "Checkout API health" monitor went down at {{seed.incidentStartedAt}} (incident {{seed.incidentId}}) and recovered at {{seed.incidentResolvedAt}}, about {{seed.outageSeconds}} s later.
+    - The "Checkout error rate above 5%" page ({{seed.pageId}}) opened at {{seed.pageOpenedAt}}, was acknowledged by Eval Admin and resolved after the recovery.
+    - Root cause: the release's database pool pointed at the read replica (payments-db-ro.internal instead of payments-db.internal).
+    The agent showed the draft and created it only after the user approved; owners of follow-ups it could not confirm are left open. Numbers from the older September post-mortem do not appear.
+  rubric:
+    - Facts and numbers (failed checkout count, deploy and rollback times, monitor window, page) match the telemetry; nothing invented.
+    - All six sections are present and the timeline is in UTC from the deploy to the recovery.
+    - The draft was shown to the user before the post-mortem was created, and it is linked to the incident and tagged.
+oracle:
+  - shell: traceway-write monitors show {{seed.checkId}} --output json
+  - shell: >-
+      traceway-write exceptions list --since 30m --output json
+      | jq '[.data[] | {exceptionHash, error: (.stackTrace | split("\n")[0]), firstSeen, lastSeen, count}]'
+  - shell: >-
+      traceway-write logs query --since 30m --search "database pool ready" --sort-direction asc --output json
+      | jq '[.data[] | {timestamp, body, version: .resourceAttributes["service.version"], dbHost: .logAttributes["db.host"]}]'
+  - op: endpoints.list
+    args: {from: "{{seed.badDeployAt}}", to: "{{seed.rollbackAt}}", search: "POST /api/checkout"}
+  - shell: traceway-write pages list --status resolved --output json
+  - ask_user: |
+      Here is the draft. Shall I create it, linked to incident {{seed.incidentId}}?
+
+      # Checkout outage: payments-api 3.5.0 wrote to the read replica
+
+      ## Summary
+      From {{seed.badDeployAt}} to {{seed.rollbackAt}} UTC every checkout failed: payments-api 3.5.0 pointed its database pool at the read replica, so the pending-payment insert failed with "cannot execute INSERT in a read-only transaction". Rolling back to 3.4.1 fixed it.
+
+      ## Impact
+      {{seed.failedCheckouts}} checkout attempts (POST /api/checkout) failed with 500. The insert fails before the charge, so no customer was charged. Reads (GET /api/payments/{id}) were not affected.
+
+      ## Timeline (UTC)
+      - {{seed.badDeployAt}} payments-api 3.5.0 deployed; database pool ready on payments-db-ro.internal; checkouts start failing.
+      - {{seed.incidentStartedAt}} Checkout API health monitor down (incident {{seed.incidentId}}).
+      - {{seed.pageOpenedAt}} Checkout error-rate page {{seed.pageId}} opened; acknowledged shortly after by Eval Admin.
+      - {{seed.rollbackAt}} Rolled back to 3.4.1; pool back on payments-db.internal; checkouts succeed again.
+      - {{seed.incidentResolvedAt}} Monitor recovered; incident resolved; page resolved.
+
+      ## Root cause
+      The 3.5.0 configuration change pointed the payments-api database pool at the read replica, so every write failed (SQLSTATE 25006).
+
+      ## Resolution
+      Rolled back to 3.4.1.
+
+      ## Follow-up actions
+      - Validate on startup that the primary pool is writable and fail the deploy otherwise (owner: open).
+      - Review how the database host is configured per environment (owner: open).
+  - op: post_mortems.create
+    args:
+      title: "Checkout outage: payments-api 3.5.0 wrote to the read replica"
+      tags: [checkout]
+      incident_id: "{{seed.incidentId}}"
+      content_md: |
+        ## Summary
+        From {{seed.badDeployAt}} to {{seed.rollbackAt}} UTC every checkout failed: payments-api 3.5.0 pointed its database pool at the read replica, so the pending-payment insert failed with "cannot execute INSERT in a read-only transaction". Rolling back to 3.4.1 fixed it.
+
+        ## Impact
+        {{seed.failedCheckouts}} checkout attempts (POST /api/checkout) failed with 500. The insert fails before the charge, so no customer was charged. Reads (GET /api/payments/{id}) were not affected.
+
+        ## Timeline (UTC)
+        - {{seed.badDeployAt}} payments-api 3.5.0 deployed; database pool ready on payments-db-ro.internal; checkouts start failing.
+        - {{seed.incidentStartedAt}} Checkout API health monitor down (incident {{seed.incidentId}}).
+        - {{seed.pageOpenedAt}} Checkout error-rate page {{seed.pageId}} opened; acknowledged shortly after by Eval Admin.
+        - {{seed.rollbackAt}} Rolled back to 3.4.1; pool back on payments-db.internal; checkouts succeed again.
+        - {{seed.incidentResolvedAt}} Monitor recovered; incident resolved; page resolved.
+
+        ## Root cause
+        The 3.5.0 configuration change pointed the payments-api database pool at the read replica, so every write failed (SQLSTATE 25006).
+
+        ## Resolution
+        Rolled back to 3.4.1.
+
+        ## Follow-up actions
+        - Validate on startup that the primary pool is writable and fail the deploy otherwise (owner: open).
+        - Review how the database host is configured per environment (owner: open).
+  - finish:
+      summary: |
+        Created the post-mortem "Checkout outage: payments-api 3.5.0 wrote to the read replica", linked to incident {{seed.incidentId}} and tagged checkout, after you approved the draft. Key facts: {{seed.failedCheckouts}} checkouts failed between the 3.5.0 deploy ({{seed.badDeployAt}}) and the rollback ({{seed.rollbackAt}}); the monitor was down from {{seed.incidentStartedAt}} to {{seed.incidentResolvedAt}}. Follow-up owners are marked open. Edits are kept in the post-mortem's activity log.
+      changes:
+        - {action: create post-mortem, target: "incident {{seed.incidentId}}", new_value: "new post-mortem, tagged checkout", undo: "delete it from the dashboard"}

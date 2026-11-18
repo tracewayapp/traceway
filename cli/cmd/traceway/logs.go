@@ -5,8 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 var (
@@ -55,7 +56,7 @@ func runLogsQuery(cmd *cobra.Command, _ []string) error {
 	}
 	if err := validatePaginationFlags(cmd); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			paginationHint("traceway logs query"))
+			paginationHint(appdir.Binary+" logs query"))
 	}
 	page := resolvePagination(cmd)
 	service, _ := cmd.Flags().GetString("service")
@@ -65,13 +66,13 @@ func runLogsQuery(cmd *cobra.Command, _ []string) error {
 	searchType, _ := cmd.Flags().GetString("search-type")
 	if err := validateEnumFlag("--search-type", searchType, logsSearchTypes); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint("traceway logs query", "--search-type", logsSearchTypes))
+			enumFlagHint(appdir.Binary+" logs query", "--search-type", logsSearchTypes))
 	}
 	orderBy, _ := cmd.Flags().GetString("order-by")
 	sortDir, _ := cmd.Flags().GetString("sort-direction")
 	if err := validateEnumFlag("--sort-direction", sortDir, sortDirections); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint("traceway logs query", "--sort-direction", sortDirections))
+			enumFlagHint(appdir.Binary+" logs query", "--sort-direction", sortDirections))
 	}
 
 	c := sess.Client()

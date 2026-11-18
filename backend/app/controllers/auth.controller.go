@@ -2,17 +2,18 @@ package controllers
 
 import (
 	"database/sql"
-	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/authserver"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 var PostRegistrationHooks []func(tx *sql.Tx, org *models.Organization, user *models.User) error
@@ -62,7 +63,22 @@ func (a authController) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := services.GenerateToken(user.Id, user.Email)
+	response := &models.LoginResponse{User: user.ToResponse()}
+	switch request.Scope {
+	case "":
+		response.Token, err = services.GenerateToken(user.Id, user.Email)
+	case models.ScopeRead, models.ScopeWrite:
+		// An agent login gets the device flow's short access token and a
+		// refresh family, so logout revokes it like any CLI session.
+		var set *models.TokenSetResponse
+		set, err = authserver.IssueTokenSet(tx, user.Id, user.Email, passwordLoginClientID(request.Scope), request.Scope)
+		if err == nil {
+			response.Token, response.RefreshToken, response.ExpiresIn = set.AccessToken, set.RefreshToken, set.ExpiresIn
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown scope"})
+		return
+	}
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
@@ -80,12 +96,16 @@ func (a authController) Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, &models.LoginResponse{
-		Token:         token,
-		User:          user.ToResponse(),
-		Projects:      projects,
-		Organizations: organizations,
-	})
+	response.Projects = projects
+	response.Organizations = organizations
+	c.JSON(http.StatusOK, response)
+}
+
+func passwordLoginClientID(scope string) string {
+	if scope == models.ScopeWrite {
+		return "traceway-cli-write"
+	}
+	return "traceway-cli"
 }
 
 func (a authController) Register(c *gin.Context) {

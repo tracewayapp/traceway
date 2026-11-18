@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'v3.3.2: cache product pages for five minutes'
+  age: 520h
+  author: Ines Duarte <ines@example.com>
+head:
+  message: 'v3.4.0: recommendations from similar-items-v3 with a tighter timeout'
+  age: 9h25m
+  author: Kwame Mensah <kwame@example.com>

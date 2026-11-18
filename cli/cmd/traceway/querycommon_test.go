@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
 )
 
 // newTestCmd returns a minimal cobra command pre-wired with the global flags

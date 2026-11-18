@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  absent:
+  - migrations/0012_products_supplier_payload.sql
+  message: 'catalog: grids, product pages, search and the supplier import'
+  age: 4100h
+head:
+  message: 'importer: keep the supplier''s raw record on each product (supplier_payload)'
+  age: 245h

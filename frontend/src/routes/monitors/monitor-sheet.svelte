@@ -11,6 +11,7 @@
 	import { CodeEditor } from '$lib/components/ui/code-editor';
 	import KeyValueRows from '$lib/components/synthetics/key-value-rows.svelte';
 	import { underlineTabTriggerClass, underlineTabListClass } from '$lib/utils/tabs';
+	import { REPLAY_BLOCK_CLASS } from '$lib/utils/self-monitoring';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import type { SyntheticCheck, CheckConfig, CheckType } from '$lib/state/monitors.svelte';
 	import { Check, Plus } from '@lucide/svelte';
@@ -432,6 +433,7 @@ test('page loads', async ({ page }) => {
 						valuePlaceholder="Value"
 						addLabel="Add Header"
 						disabled={loading}
+						secretValues
 					/>
 				{:else if requestTab === 'auth'}
 					<div class="space-y-3">
@@ -484,7 +486,7 @@ test('page loads', async ({ page }) => {
 								spellcheck="false"
 								rows="6"
 								placeholder={'{\n  "example": true\n}'}
-								class="w-full resize-y rounded-md border border-input bg-transparent p-3 font-mono text-xs shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+								class="w-full resize-y rounded-md border border-input bg-transparent p-3 font-mono text-xs shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none {REPLAY_BLOCK_CLASS}"
 								disabled={loading}
 							></textarea>
 							<div class="flex items-center gap-2">
@@ -644,7 +646,12 @@ test('page loads', async ({ page }) => {
 			{:else}
 				<div class="space-y-2">
 					<Label>Playwright test script</Label>
-					<CodeEditor bind:value={browserScript} readOnly={loading} minHeight="300px" />
+					<CodeEditor
+						bind:value={browserScript}
+						readOnly={loading}
+						minHeight="300px"
+						class={REPLAY_BLOCK_CLASS}
+					/>
 					<p class="text-xs text-muted-foreground">
 						A full @playwright/test spec. It runs in headless Chromium on the server (the :browser
 						image) or on a connected runner.
@@ -658,6 +665,7 @@ test('page loads', async ({ page }) => {
 						valuePlaceholder="Value"
 						addLabel="Add Variable"
 						disabled={loading}
+						secretValues
 					/>
 				</div>
 			{/if}

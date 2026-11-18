@@ -10,15 +10,16 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	dashboardsvc "github.com/tracewayapp/traceway/backend/app/services/dashboards"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
+	dashboardsvc "github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type dashboardTemplateController struct{}
@@ -260,6 +261,10 @@ func (c *dashboardTemplateController) Install(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, dashboardListItem(dashboard))
 }
 
+// mobileFrameworks get the Mobile Performance template. React Native is a mobile app
+// although its SDK is JavaScript.
+var mobileFrameworks = map[string]bool{"react-native": true, "flutter": true, "ios": true, "android": true}
+
 func defaultTemplateKeysForFramework(framework string) []string {
 	goFrameworks := map[string]bool{
 		"gin": true, "fiber": true, "chi": true,
@@ -270,6 +275,10 @@ func defaultTemplateKeysForFramework(framework string) []string {
 		return []string{"traceway-otel-agent"}
 	case goFrameworks[framework]:
 		return []string{"golang"}
+	case sdkconfig.IsBrowserFramework(framework):
+		return []string{"browser-performance"}
+	case mobileFrameworks[framework]:
+		return []string{"mobile-performance"}
 	default:
 		return nil
 	}

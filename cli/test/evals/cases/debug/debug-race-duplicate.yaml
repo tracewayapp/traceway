@@ -1,0 +1,84 @@
+id: debug-race-duplicate
+suite: debug
+title: Checkout shows an error although the order went through
+tags: [node, express, concurrency]
+seed: debug/race-duplicate
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: A burst of a few minutes of "Connection terminated due to connection timeout" on GET /api/orders/:orderId three days ago looks like a database problem, but it stopped by itself and is not on the checkout route.
+workspace: {repo: checkout-api-node}
+prompt: |
+  Customers keep telling support that checkout showed "Something went wrong" even though their order went through and they got the confirmation e-mail. Can you look into it and fix it?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I don't know more than that. Please fix it."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    category: race_or_duplicate
+    culprit: {file: src/orders/service.js, symbol: placeOrder, line: 20}
+    needs_instrumentation: false
+    mentions_all: ["twice|double|duplicate (submit|request|post)|second (submit|request)|resubmit|same cart", "idempot|existing order|already (exists|placed|created)|on conflict|23505"]
+  grounding:
+    - "orders_cart_id_key"
+  calls:
+    required:
+      - {op: logs.query}
+    any_of:
+      - [{op: exceptions.show, args: {hash: "{{seed.hash}}"}}]
+      - [{op: exceptions.list}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [logs.query, write_file]
+      - [logs.query, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-race-duplicate
+    command: node --test
+    gating: true
+judge:
+  expected: >-
+    POST /api/orders fails with the unique violation orders_cart_id_key (pg code 23505) at the order INSERT in placeOrder
+    (src/orders/service.js:20). Each failing request has a twin: the same cart (cart.id), the same browser, started a
+    moment earlier, which created the order, charged the card, queued the e-mail and logged "order ... placed for cart
+    ..." shortly after the duplicate failed; the duplicate submit arrives during the charge and its 500 is what the
+    shopper sees. The fix makes placing an
+    order idempotent on the cart (the cart id as the idempotency key): on the unique violation answer the existing order
+    without charging again. Disabling the button in the frontend alone does not cover client retries.
+  rubric:
+    - Shows that each failure is a second submit of a cart that already became an order (same cart.id, earlier successful request and log), not a database fault.
+    - Makes the order creation idempotent per cart so the duplicate gets the existing order and the card is charged once; a check-then-insert alone is still racy.
+    - Leaves the unrelated connection-timeout burst from three days ago out of the fix.
+oracle:
+  - shell: >-
+      traceway exceptions list --since 7d --order-by count --output json
+      | jq '[.data[] | {hash: .exceptionHash, count, firstSeen, lastSeen, top: (.stackTrace | split("\n")[0])}]'
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 10 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}), latest: (.occurrences | sort_by(.recordedAt) | last | {recordedAt, traceId, attributes}), relatedEntity}'
+  - shell: >-
+      traceway logs query --since 24h --service checkout-api --search {{seed.latest.cart}} --output json
+      | jq '[.data[] | {timestamp, severityText, body, traceId}]'
+  - shell: >-
+      traceway logs query --trace-id {{seed.latest.traceId}} --since 7d --output json
+      | jq '[.data[] | {timestamp, severityText, body}]'
+  - read_file: src/orders/service.js
+  - write_file: {path: src/orders/service.js, from: oracle/debug-race-duplicate/service.js}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      category: race_or_duplicate
+      culprit: {file: src/orders/service.js, symbol: placeOrder, line: 20}
+      evidence:
+        - {call_id: c01, claim: "the checkout's only live group is the orders_cart_id_key unique violation; the connection-timeout group is a short burst three days ago on another route"}
+        - {call_id: c02, claim: "duplicate key value violates unique constraint orders_cart_id_key at the INSERT in placeOrder (service.js:20), on POST /api/orders"}
+        - {call_id: c03, claim: "the same cart became an order in another request (its own trace), which logged 'order ... placed for cart ...' shortly after the failing request: that first submit was still charging the card when the duplicate arrived"}
+        - {call_id: c04, claim: "the failing request itself logged only the unique violation and its 500"}
+        - {call_id: c05, claim: "placeOrder inserts unconditionally, so a second submit of a cart fails instead of returning its order"}
+      fix_summary: placeOrder treats the cart id as the idempotency key; on the orders_cart_id_key violation it returns the order the first submit created, without charging again.
+      files_changed: [src/orders/service.js]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The "Something went wrong" page is the answer to a second submit of the same cart. Each failing POST /api/orders hits the unique constraint orders_cart_id_key (duplicate key value, pg code 23505) at the order INSERT in placeOrder (src/orders/service.js:20). The same cart, from the same browser, was submitted a moment earlier: that first request inserted the order and was still charging the card when the duplicate (a double click, or a phone resending a slow request) arrived; it then queued the confirmation e-mail and logged "order ... placed for cart ..." shortly after the duplicate had failed. The duplicate's 500 is what the shopper sees. I made placeOrder idempotent on the cart: on that unique violation it returns the existing order, without charging again. The connection-timeout errors from three days ago are a separate, short database blip on GET /api/orders/:orderId.

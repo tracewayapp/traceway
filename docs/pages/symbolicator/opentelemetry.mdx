@@ -16,7 +16,7 @@ The same processor also auto-routes non-symbolic Dart AOT traces and stripped iO
 
 ## Building a collector with the processor
 
-The processor is a public package of the published `github.com/tracewayapp/traceway/backend` module, exposing the standard `NewFactory()` entry point, so it plugs into the [OpenTelemetry Collector Builder](https://opentelemetry.io/docs/collector/custom-collector/) like any other component. Because the package is not at the module root, the manifest entry carries an `import` line alongside `gomod`.
+The processor is a public package of the published `github.com/tracewayapp/traceway/backend/v2` module, exposing the standard `NewFactory()` entry point, so it plugs into the [OpenTelemetry Collector Builder](https://opentelemetry.io/docs/collector/custom-collector/) like any other component. Because the package is not at the module root, the manifest entry carries an `import` line alongside `gomod`.
 
 The repo's [`benchmarks/processor`](https://github.com/tracewayapp/traceway/tree/main/benchmarks/processor) is a complete, runnable example of all of this: a builder manifest, a collector config, and a `run-local.sh` that builds the collector and drives load through it. The steps below mirror it.
 
@@ -45,19 +45,21 @@ receivers:
 
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.154.0
-  - gomod: github.com/tracewayapp/traceway/backend v1.8.0
-    import: github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor
+  - gomod: github.com/tracewayapp/traceway/backend/v2 v2.0.11
+    import: github.com/tracewayapp/traceway/backend/v2/app/symbolicator/otelprocessor
 
 exporters:
   - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.154.0
 ```
 
 <Callout type="info">
-  The processor first ships in `v1.8.0`; use that tag or any newer one, and keep
-  the collector component versions aligned as OCB manifests require. The
-  benchmark manifest adds a `replaces: github.com/tracewayapp/traceway/backend =>
-  ../../../backend` line because it builds against the working tree; drop it when
-  building against the published tag.
+  The processor first shipped in `v1.8.0` under the module path
+  `github.com/tracewayapp/traceway/backend`. From `v2.0.11` on the path ends in
+  `/v2`, as Go requires for a 2.x module, so name `backend/v2` with that tag or
+  any newer one, and keep the collector component versions aligned as OCB
+  manifests require. The benchmark manifest adds `replaces:` lines for
+  `github.com/tracewayapp/traceway/backend/v2` and `cli/v2` because it builds
+  against the working tree; drop them when building against the published tag.
 </Callout>
 
 ### Build it
@@ -131,7 +133,7 @@ For an end-to-end loop (build the collector, generate a corpus, drive load, samp
 When you assemble a collector in Go instead of using the builder, register the factory like any other processor factory:
 
 ```go
-import "github.com/tracewayapp/traceway/backend/app/symbolicator/otelprocessor"
+import "github.com/tracewayapp/traceway/backend/v2/app/symbolicator/otelprocessor"
 
 factory := otelprocessor.NewFactory()
 factories.Processors[factory.Type()] = factory

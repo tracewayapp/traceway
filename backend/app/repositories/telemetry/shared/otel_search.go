@@ -33,6 +33,9 @@ type OtelSearchDialect struct {
 	StartOrder  string
 	ReadSetting string
 	WinnerOrder string
+	Bucket      func(column string, seconds int) string
+	Count       string
+	CountIf     func(condition string) string
 }
 
 var otelSearchOrders = map[string]string{

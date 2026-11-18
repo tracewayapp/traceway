@@ -2,13 +2,16 @@ package controllers
 
 import (
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/outbox"
-	"github.com/tracewayapp/traceway/backend/app/synthetics"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/slo"
+	"github.com/tracewayapp/traceway/backend/v2/app/synthetics"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 type healthDeepController struct{}
@@ -41,10 +44,12 @@ type HealthDeepResponse struct {
 	InsertFailures   uint64            `json:"insertFailures"`
 	IngestRejected   uint64            `json:"ingestRejected"`
 	// Spans whose source start was missing or unrepresentable, so their partition time is the ingest time.
-	SpanPartitionTimeFallbacks uint64                   `json:"spanPartitionTimeFallbacks"`
-	Engine                     *db.TelemetryEngineStats `json:"engine,omitempty"`
-	Outbox                     *outbox.HealthStats      `json:"outbox,omitempty"`
-	Synthetics                 *synthetics.HealthStats  `json:"synthetics,omitempty"`
+	SpanPartitionTimeFallbacks uint64                     `json:"spanPartitionTimeFallbacks"`
+	Engine                     *db.TelemetryEngineStats   `json:"engine,omitempty"`
+	Outbox                     *outbox.HealthStats        `json:"outbox,omitempty"`
+	Synthetics                 *synthetics.HealthStats    `json:"synthetics,omitempty"`
+	SLO                        *slo.HealthStats           `json:"slo,omitempty"`
+	ClientMetrics              *clientmetrics.HealthStats `json:"clientMetrics,omitempty"`
 }
 
 // 503 means the configured telemetry backend is down. On the embedded
@@ -64,16 +69,23 @@ func (h healthDeepController) Get(c *gin.Context) {
 		resp.Engine = &engine
 	}
 	// Best-effort: health must not 500 because the main DB hiccuped.
-	if outboxStats, err := outbox.HealthSnapshot(); err == nil {
+	if outboxStats, err := outbox.HealthSnapshot(c); err == nil {
 		resp.Outbox = outboxStats
 	} else {
 		traceway.CaptureException(fmt.Errorf("failed to load outbox health: %w", err))
 	}
-	if syntheticsStats, err := synthetics.HealthSnapshot(); err == nil {
+	if syntheticsStats, err := synthetics.HealthSnapshot(c); err == nil {
 		resp.Synthetics = syntheticsStats
 	} else {
 		traceway.CaptureException(fmt.Errorf("failed to load synthetics health: %w", err))
 	}
+	sloStats, err := slo.HealthSnapshot(c.Request.Context())
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to load slo health: %w", err))
+	}
+	resp.SLO = sloStats
+	clientMetricsStats := services.ClientMetrics().Snapshot()
+	resp.ClientMetrics = &clientMetricsStats
 
 	if resp.TelemetryBackend == "clickhouse" && !resp.CHReachable {
 		c.JSON(http.StatusServiceUnavailable, resp)

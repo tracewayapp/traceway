@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import Link from "next/link";
 import { Eyebrow } from "@/components/eyebrow";
 
 export function BlogSubscribe() {
@@ -80,6 +81,20 @@ export function BlogSubscribe() {
             {submitting ? "Subscribing…" : "Subscribe"}
           </button>
         </form>
+      )}
+
+      {status !== "success" && (
+        <p
+          className="mt-3 text-[12px]"
+          style={{ color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}
+        >
+          We only use your address to send you new posts. Unsubscribe any time
+          by replying to one. See our{" "}
+          <Link href="/privacy-policy" className="underline underline-offset-4">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       )}
 
       {status === "error" && (

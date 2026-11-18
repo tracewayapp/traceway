@@ -12,8 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
 )
 
 type memStore struct{ data map[string][]byte }
@@ -83,7 +83,7 @@ func TestSymbolicateRecordingErrorLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := symbolicateRecordingErrorLogs(newTestGinContext(), projectId, raw)
+	out := symbolicateRecordingErrorLogs(newTestGinContext(), projectId, raw, nil)
 
 	var got []map[string]any
 	if err := json.Unmarshal(out, &got); err != nil {
@@ -126,7 +126,7 @@ func TestSymbolicateRecordingErrorLogsLeavesUnresolvableUntouched(t *testing.T) 
 	logs := []map[string]any{{"type": "log", "level": "error", "message": original}}
 	raw, _ := json.Marshal(logs)
 
-	out := symbolicateRecordingErrorLogs(newTestGinContext(), projectId, raw)
+	out := symbolicateRecordingErrorLogs(newTestGinContext(), projectId, raw, nil)
 
 	var got []map[string]any
 	if err := json.Unmarshal(out, &got); err != nil {

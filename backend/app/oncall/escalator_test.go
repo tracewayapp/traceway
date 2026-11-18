@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/notifications"
-	"github.com/tracewayapp/traceway/backend/app/outbox"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/notifications"
+	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
 )
 
 type escalatorFixture struct {
@@ -89,7 +89,7 @@ func createPolicy(t *testing.T, orgId int, definition string) int {
 
 func openTestPageForPolicy(t *testing.T, fixture *escalatorFixture, policyId int, dedupKey string) *models.Page {
 	t.Helper()
-	if _, err := openPage(openPageParams{
+	if _, err := openPage(context.Background(), openPageParams{
 		PolicyId:  policyId,
 		ProjectId: fixture.ProjectId,
 		RuleName:  "Test rule",
@@ -575,7 +575,7 @@ func TestOpenPageRequiresMatchingOrg(t *testing.T) {
 	_ = otherOrgId
 
 	policyId := createPolicy(t, fixture.OrgId, twoStepPolicy(fixture.Alice, fixture.Bob))
-	_, err = openPage(openPageParams{
+	_, err = openPage(context.Background(), openPageParams{
 		PolicyId:  policyId,
 		ProjectId: otherProject,
 		RuleName:  "r",

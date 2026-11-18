@@ -33,23 +33,29 @@ func (a *SlackAdapter) Send(ctx context.Context, msg Message) error {
 	case SeverityCritical:
 		color = "#F44336"
 	}
+	if msg.Recovered {
+		color = "#4CAF50"
+	}
 
 	username := a.Username
 	if username == "" {
 		username = "Traceway"
 	}
 
+	attachment := map[string]interface{}{
+		"color":  color,
+		"title":  msg.Subject,
+		"text":   msg.Body,
+		"footer": "Traceway Alerts",
+		"ts":     time.Now().Unix(),
+	}
+	if isAbsoluteURL(msg.URL) {
+		attachment["title_link"] = msg.URL
+	}
+
 	payload := map[string]interface{}{
-		"username": username,
-		"attachments": []map[string]interface{}{
-			{
-				"color":  color,
-				"title":  msg.Subject,
-				"text":   msg.Body,
-				"footer": "Traceway Alerts",
-				"ts":     time.Now().Unix(),
-			},
-		},
+		"username":    username,
+		"attachments": []map[string]interface{}{attachment},
 	}
 
 	if a.Channel != "" {

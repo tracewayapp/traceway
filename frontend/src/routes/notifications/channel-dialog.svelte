@@ -11,6 +11,7 @@
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import type { NotificationChannelConfig } from '$lib/types/notifications';
+	import { REPLAY_BLOCK_CLASS } from '$lib/utils/self-monitoring';
 
 	interface NotificationChannel {
 		id: number;
@@ -371,6 +372,7 @@
 						id="webhook-url"
 						bind:value={webhookUrl}
 						placeholder="https://example.com/webhook"
+						class={REPLAY_BLOCK_CLASS}
 						required
 					/>
 				</div>
@@ -388,14 +390,23 @@
 				</div>
 				<div class="space-y-2">
 					<Label for="webhook-secret">Secret (optional)</Label>
-					<Input id="webhook-secret" bind:value={webhookSecret} placeholder="HMAC signing secret" />
+					<Input
+						id="webhook-secret"
+						bind:value={webhookSecret}
+						placeholder="HMAC signing secret"
+						class={REPLAY_BLOCK_CLASS}
+					/>
 				</div>
 				<div class="space-y-2">
 					<Label>Headers (optional)</Label>
 					{#each webhookHeaders as header, index (index)}
 						<div class="flex gap-2">
 							<Input bind:value={header.key} placeholder="Header name" class="flex-1" />
-							<Input bind:value={header.value} placeholder="Value" class="flex-1" />
+							<Input
+								bind:value={header.value}
+								placeholder="Value"
+								class="flex-1 {REPLAY_BLOCK_CLASS}"
+							/>
 							<Button
 								variant="ghost"
 								size="icon"
@@ -417,6 +428,7 @@
 						id="slack-url"
 						bind:value={slackWebhookUrl}
 						placeholder="https://hooks.slack.com/services/..."
+						class={REPLAY_BLOCK_CLASS}
 						required
 					/>
 				</div>
@@ -458,6 +470,7 @@
 						id="po-user-key"
 						bind:value={pushoverUserKey}
 						placeholder="Your Pushover user key"
+						class={REPLAY_BLOCK_CLASS}
 						required
 					/>
 				</div>

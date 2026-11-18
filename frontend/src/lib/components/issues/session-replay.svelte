@@ -166,7 +166,7 @@
 
 		const width = Math.round(container.clientWidth * 0.75);
 
-		const chartColor = getComputedStyle(container).getPropertyValue('--chart-1').trim();
+		const accentColor = getComputedStyle(container).getPropertyValue('--brand').trim();
 
 		player = new rrwebPlayer({
 			target: container,
@@ -176,7 +176,7 @@
 				height: getPlayerHeight(width),
 				autoPlay: false,
 				mouseTail: {
-					strokeStyle: chartColor
+					strokeStyle: accentColor
 				}
 			}
 		});
@@ -370,7 +370,7 @@
 
 	/* Progress fill */
 	.player-wrapper :global(.rr-progress__step) {
-		background: var(--chart-1) !important;
+		background: var(--brand) !important;
 		border-radius: 3px !important;
 	}
 
@@ -383,7 +383,7 @@
 	.player-wrapper :global(.rr-progress__handler) {
 		width: 14px !important;
 		height: 14px !important;
-		background: var(--chart-1) !important;
+		background: var(--brand) !important;
 		border-radius: 50% !important;
 		top: 50% !important;
 	}
@@ -402,11 +402,11 @@
 	}
 
 	.player-wrapper :global(.rr-controller__btns button.active) {
-		background: var(--chart-1) !important;
+		background: var(--brand) !important;
 	}
 
 	.player-wrapper :global(.rr-controller__btns button:active) {
-		background: var(--chart-1) !important;
+		background: var(--brand) !important;
 		opacity: 0.8;
 	}
 
@@ -416,7 +416,7 @@
 	}
 
 	.player-wrapper :global(.switch input[type='checkbox']:checked + label:before) {
-		background: var(--chart-1) !important;
+		background: var(--brand) !important;
 	}
 
 	/* Replayer wrapper */
@@ -425,7 +425,7 @@
 	}
 
 	.player-wrapper :global(.replayer-wrapper.touch-active) {
-		border-color: var(--chart-1) !important;
+		border-color: var(--brand) !important;
 	}
 
 	/* Mouse cursor */
@@ -514,14 +514,14 @@
 		position: absolute;
 		left: 0;
 		top: 0;
-		background: var(--chart-1);
+		background: var(--brand);
 		border-radius: 3px;
 	}
 
 	.fv-progress__handler {
 		width: 14px;
 		height: 14px;
-		background: var(--chart-1);
+		background: var(--brand);
 		border-radius: 50%;
 		position: absolute;
 		top: 50%;
@@ -560,12 +560,12 @@
 	}
 
 	.fv-controller__btns button.active {
-		background: var(--chart-1);
+		background: var(--brand);
 		color: #fff;
 	}
 
 	.fv-controller__btns button:active {
-		background: var(--chart-1);
+		background: var(--brand);
 		opacity: 0.8;
 	}
 </style>

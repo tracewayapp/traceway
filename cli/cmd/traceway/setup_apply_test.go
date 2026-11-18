@@ -22,7 +22,7 @@ func newSetupTestServer(t *testing.T, approveAfterPolls int32) *httptest.Server 
 	backendToken := "tok_backend-secret"
 	webToken := "tok_web-secret"
 
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+testSetupToken {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
@@ -188,7 +188,7 @@ func TestSetupApplyURLFlagOverridesPlan(t *testing.T) {
 
 func TestSetupApplyRejection(t *testing.T) {
 	setupTestEnvIsolation(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "GET /api/setup/session":
 			_ = json.NewEncoder(w).Encode(map[string]any{"organizationId": 1, "organizationName": "Acme", "email": "a@b.c", "backendUrl": "x", "projects": []any{}})
@@ -218,7 +218,7 @@ func TestSetupApplyRejection(t *testing.T) {
 
 func TestSetupApplyInvalidToken(t *testing.T) {
 	setupTestEnvIsolation(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer server.Close()
@@ -258,7 +258,7 @@ func TestSetupApplyApprovalTimeout(t *testing.T) {
 
 func TestSetupApplyFailsWhenApprovedProjectIsMissing(t *testing.T) {
 	setupTestEnvIsolation(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "GET /api/setup/session":
 			_ = json.NewEncoder(w).Encode(map[string]any{"organizationId": 1, "organizationName": "Acme", "email": "a@b.c", "backendUrl": "x", "projects": []any{}})

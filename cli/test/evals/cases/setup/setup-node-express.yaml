@@ -1,0 +1,79 @@
+id: setup-node-express
+suite: setup
+title: Instrument an ES-module Express API until its routes show up in Traceway
+tags: [node, express]
+seed: setup/node-express
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: orders-express}
+setup:
+  path: fast
+  token: ingest
+  env:
+    TRACEWAY_URL: "@url"
+    TRACEWAY_TOKEN: "@token:orders-api"
+    PORT: "@port"
+  # The image runs npm install --omit=dev, so the app starts without dev
+  # dependencies here too.
+  verify:
+    build: npm install --no-audit --no-fund --loglevel=error && npm test && npm prune --omit=dev --no-audit --no-fund --loglevel=error
+    start: npm start
+    hit: [/api/orders, /api/orders/1001, /api/orders/1002, /api/orders/1003]
+    env_files: [.env]
+prompt: |
+  Can you hook orders-api up to Traceway? We self-host it at {{env.url}} and the "orders-api" project already exists there. The project's ingest token is in TRACEWAY_TOKEN and the instance URL in TRACEWAY_URL, both on this machine and in the production env file. Production starts the container with `npm start`. When you're done, the API's requests should show up in that project.
+budget: {max_turns: 45, max_tool_calls: 40, max_output_tokens: 20000, timeout: 20m}
+user:
+  - match: "(?i)service.?name|call (it|the service)"
+    reply: "Call it orders-api."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    - kind: file
+      path: package.json
+      contains: ["@opentelemetry/(sdk-node|sdk-trace-node)", "@opentelemetry/exporter-trace-otlp-(http|proto)"]
+      not_contains: ["exporter-trace-otlp-grpc"]
+    - kind: file
+      path: "**/*"
+      contains: ["/api/otel", "TRACEWAY_TOKEN", "service\\.name|serviceName|SERVICE_NAME"]
+    - kind: no_token_literal
+    - kind: no_token_printed
+    - kind: endpoint_seen
+      endpoint: "GET /api/orders"
+    - kind: endpoint_seen
+      endpoint: "GET /api/orders/:id"
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: The agent installs the Node OpenTelemetry SDK with the OTLP/HTTP exporters and auto-instrumentations, creates an instrumentation.mjs that registers the ESM loader hook before starting the SDK (the app is "type":"module", so without the hook Express is not patched and no http.route is recorded), exports to $TRACEWAY_URL/api/otel/v1/* with the bearer token from TRACEWAY_TOKEN, sets service.name, and changes the start script to node --import ./instrumentation.mjs server.js so production loads it.
+  rubric:
+    - Reads the token and instance URL from the environment and never prints or hard-codes the token.
+    - Registers the ESM loader hook (or otherwise makes Express report the route pattern GET /api/orders/:id rather than one row per URL).
+    - Loads the instrumentation from the production start command (npm start), not only in an ad-hoc local command.
+    - Sets service.name and keeps the tests passing.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: package.json
+  - read_file: server.js
+  - shell: npm install --no-audit --no-fund @opentelemetry/sdk-node@0.223.0 @opentelemetry/auto-instrumentations-node@0.81.2 @opentelemetry/instrumentation@0.223.0 @opentelemetry/api@1.9.1 @opentelemetry/sdk-metrics@2.12.0 @opentelemetry/exporter-trace-otlp-http@0.223.0 @opentelemetry/exporter-metrics-otlp-http@0.223.0
+  - write_file: {path: instrumentation.mjs, from: oracle/setup-node-express/instrumentation.mjs}
+  - edit_file: {path: package.json, old: "\"start\": \"node server.js\"", new: "\"start\": \"node --import ./instrumentation.mjs server.js\""}
+  - shell: |
+      npm test 2>&1 | grep -E '(tests|pass|fail) [0-9]+$'
+      log=$(mktemp)
+      node --import ./instrumentation.mjs server.js > "$log" 2>&1 &
+      pid=$!
+      sleep 3
+      for id in 1001 1002 1003; do curl -s -o /dev/null -w "GET /api/orders/$id -> %{http_code}\n" "http://127.0.0.1:$PORT/api/orders/$id"; done
+      kill $pid; wait $pid
+      cat "$log"
+  - finish:
+      summary: |
+        orders-api now exports traces and metrics to Traceway over OTLP/HTTP. instrumentation.mjs registers the ESM loader hook (the app is an ES module, so without it Express is never patched and every URL would become its own endpoint), then starts the Node SDK with exporters to $TRACEWAY_URL/api/otel/v1/traces and /v1/metrics, the bearer token read from $TRACEWAY_TOKEN, and service.name orders-api. npm start now runs node --import ./instrumentation.mjs server.js, so the production container loads it too. Tests pass; a local run answered 200 on /api/orders/1001-1003. In Traceway, open /endpoints for the last 15 minutes: GET /api/orders/:id should be one row.
+      changes:
+        - {action: add OpenTelemetry bootstrap, target: instrumentation.mjs, new_value: OTLP/HTTP exporters to Traceway}
+        - {action: preload the instrumentation in the start script, target: package.json, new_value: "node --import ./instrumentation.mjs server.js"}
+        - {action: add OpenTelemetry dependencies, target: package.json}

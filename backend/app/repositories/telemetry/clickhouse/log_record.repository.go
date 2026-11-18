@@ -334,7 +334,7 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		default:
 			// Prefer hasToken() for single-word searches — it actually uses the
 			// tokenbf_v1 index on body. Fall back to ILIKE when the term is not
-			// a single alphanumeric token (multi-word, punctuation, etc.).
+			// a single alphanumeric token (multi-word, punctuation, underscores, etc.).
 			if isSingleToken(params.Search) {
 				clauses = append(clauses, "hasToken(body, ?)")
 				args = append(args, params.Search)
@@ -361,14 +361,16 @@ func attrColumn(scope string) string {
 	}
 }
 
-// isSingleToken reports whether s is a single alphanumeric/underscore token —
-// the only shape that tokenbf_v1 on body can accelerate via hasToken().
+// isSingleToken reports whether s is a single ASCII alphanumeric token, the
+// only shape hasToken() accepts: it treats every other ASCII character,
+// underscore included, as a separator and fails the query (code 36) on a
+// needle that contains one.
 func isSingleToken(s string) bool {
 	if s == "" {
 		return false
 	}
 	for _, r := range s {
-		if !(r == '_' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
 			return false
 		}
 	}

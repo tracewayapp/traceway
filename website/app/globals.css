@@ -52,10 +52,11 @@
   --blue-bright: oklch(0.707 0.165 254.624);
   --blue-deep: oklch(0.546 0.245 262.881);
 
-  /* Fonts (populated by next/font in layout.tsx) */
-  --font-display: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
-  --font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Fonts are self-hosted through @fontsource (imported in layout.tsx): fetching
+     them from Google Fonts at build time made the deploy depend on its response. */
+  --font-display: "JetBrains Mono Variable", "IBM Plex Mono", ui-monospace, monospace;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-body: "Inter Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
 
   /* Radius */
   --radius: 6px;

@@ -1,0 +1,82 @@
+id: perf-db-over-fetching
+suite: perf
+title: The category grid got slow when products gained a large column
+tags: [database, node, express]
+seed: perf/db-over-fetching
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: JSON encoding (a teammate's guess). The response is 48 small product cards encoded in about 2ms after the query, and CPU rose only a few points; the time is in the SELECT * span, which returns the same 48 rows as before release 4.8.0 but now includes the large supplier_payload column. Search reads the same table and 48 rows with an explicit column list and stays fast.
+workspace: {repo: catalog-api-node}
+prompt: |
+  /traceway perf GET /api/categories/:categoryId/products
+  Category pages got slow about ten days ago and never recovered: the product grid API went from around 15ms to around 400ms, and the API's memory went up as well. The listing code hasn't changed in months. Someone on the team wants to swap res.json for a faster JSON serializer. Is that the right fix, or is something else going on?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: over_fetching
+    not: [cpu_bound_serialization, large_request_response_payloads, missing_or_unused_index, no_pagination_unbounded_result_set, select_n_plus_1, expensive_join_or_aggregation, cpu_saturation]
+    locus: {endpoint: "GET /api/categories/:categoryId/products", span_contains: "products"}
+  grounding:
+    - "SELECT * FROM products WHERE category_id = $1"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.chart}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.chart}]
+      - [{op: endpoints.show, args: {recorded_at: present}}, {op: endpoints.list, args: {from: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}, {op: endpoints.list, args: {from: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, traces.show]
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Over-fetching. The grid runs SELECT * FROM products ... LIMIT 48. Release 4.8.0 (about ten days ago) added products.supplier_payload, the supplier's raw record (~120KB a row), and the importer filled it over the next day and a half; the query still returns 48 rows, but its span went from ~12ms to ~400ms and Node heap and host memory rose in step. GET /api/search reads the same table and 48 rows with an explicit column list and stays at ~13ms. The response is 48 small cards; encoding takes ~2ms and CPU rose only a few points, so a faster serializer would not help. Fix by selecting only the card columns (id, name, slug, price_cents, currency, thumbnail_url) in categoryProducts (and an explicit list on the product page).
+  rubric:
+    - Puts the time in the SELECT * products span (same 48 rows, much wider rows) and ties the onset to the 4.8.0 release that added supplier_payload, not to a change in the listing code.
+    - Rules out JSON encoding (a few ms after the query, small response, CPU only slightly up) and contrasts with the fast explicit-column search query.
+    - Proposes an explicit column list for the grid (and the product page) instead of SELECT *.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 10 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6), p95_ms: (.p95Duration / 1e6)}]'
+  - shell: >-
+      traceway logs query --since 6h --search /api/categories/ --page-size 5 --output json
+      | jq '{data: [.data[] | {traceId, timestamp, body}]}'
+  - shell: >-
+      traceway traces show {{calls.c02.data.0.traceId}} --recorded-at {{calls.c02.data.0.timestamp}} --output json
+      | jq '[.nodes[] | {endpoint: .endpoint.endpoint, id: .endpoint.id, recordedAt: .endpoint.recordedAt, version: .endpoint.appVersion, ms: (.endpoint.duration / 1e6),
+      spans: [.spans[] | {name, start: .startTime, ms: (.duration / 1e6), query: .attributes["db.query.text"], rows: .attributes["db.response.returned_rows"]}]}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p50 --since 14d --interval-minutes 1440 --output json
+      | jq '[.series[] | select(.endpoint == "GET /api/categories/:categoryId/products" or .endpoint == "GET /api/search") | {endpoint, t: .timestamp, p50_ms: .value}]'
+  - shell: traceway metrics query --name system.memory.utilization --tag state=used --aggregation max --since 14d --interval-minutes 1440 --output json
+  - shell: traceway metrics query --name system.cpu.utilization --aggregation max --group-by state --since 24h --interval-minutes 360 --output json
+  - shell: git log --format='%h %ad %s' --date=iso --stat -3
+  - read_file: src/catalog/queries.js
+  - read_file: migrations/0012_products_supplier_payload.sql
+  - submit:
+      checklist_item: over_fetching
+      category: database
+      locus: {endpoint: "GET /api/categories/:categoryId/products", span: "SELECT * FROM products WHERE category_id = $1 AND is_active = true ORDER BY sort_rank DESC LIMIT 48", service: catalog-api}
+      onset: "{{seed.deployAt}}"
+      evidence:
+        - {call_id: c01, claim: "the grid endpoint's p50 is around 400ms while GET /api/search, which reads the same products table, is around 13ms"}
+        - {call_id: c03, claim: "almost all of the request is the SELECT * FROM products span, which returns 48 rows; encoding the response after it takes about 2ms"}
+        - {call_id: c04, claim: "the grid went from ~15ms to ~400ms over a day and a half starting at the 4.8.0 release, while search stayed flat"}
+        - {call_id: c05, claim: "host memory rose by the same step"}
+        - {call_id: c06, claim: "CPU is around 30%, not saturated, so serialization CPU is not the limit"}
+        - {call_id: c09, claim: "4.8.0 added products.supplier_payload, the supplier's raw record, which SELECT * now reads for every grid row"}
+      ruled_out:
+        - {checklist_item: cpu_bound_serialization, call_id: c03, reason: "encoding the 48 cards takes ~2ms; the query span is the cost"}
+        - {checklist_item: no_pagination_unbounded_result_set, call_id: c03, reason: "the query is LIMIT 48 and returns 48 rows, as before"}
+        - {checklist_item: missing_or_unused_index, call_id: c04, reason: "search on the same table is fast and the step lines up with the new column, not with table growth"}
+      fix: Select only the card columns in categoryProducts (id, name, slug, price_cents, currency, thumbnail_url) and use an explicit list on the product page, so supplier_payload is never read for listings. A faster JSON serializer would not change anything.
+      confidence: high
+      report: |
+        The grid is slow because its query over-fetches. categoryProducts runs SELECT * FROM products ... LIMIT 48. Release 4.8.0 added products.supplier_payload (the supplier's raw record) and the importer filled it over the next day and a half; the query still returns 48 rows, but each row now carries that payload, so the span went from ~12ms to ~400ms and memory went up with it. GET /api/search reads the same table and 48 rows with an explicit column list and stays at ~13ms. Encoding the response takes about 2ms and CPU is near 30%, so swapping res.json would not help. Fix: have categoryProducts select only the card columns (id, name, slug, price_cents, currency, thumbnail_url), and give the product page an explicit column list too.

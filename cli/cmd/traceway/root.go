@@ -2,6 +2,8 @@ package main
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
 )
 
 // Global flag values, populated by Cobra at flag-parse time.
@@ -15,8 +17,8 @@ var (
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "traceway",
-		Short:         "CLI for the Traceway observability platform",
+		Use:           appdir.Binary,
+		Short:         editionShort,
 		Version:       version,
 		SilenceUsage:  true, // we render our own error envelopes
 		SilenceErrors: true,
@@ -41,9 +43,15 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newAiTracesCmd())
 	cmd.AddCommand(newSessionsCmd())
 	cmd.AddCommand(newTracesCmd())
-	cmd.AddCommand(newMetricsCmd())
+	cmd.AddCommand(newMetricsCmd(), newDashboardsCmd())
+	cmd.AddCommand(newPagesCmd())
+	cmd.AddCommand(newAlertsCmd())
+	cmd.AddCommand(newOpampCmd())
+	cmd.AddCommand(newMonitorsCmd())
+	cmd.AddCommand(newPostMortemsCmd())
 	cmd.AddCommand(newMcpCmd())
 	cmd.AddCommand(newVersionCmd())
+	addWriteCommands(cmd)
 
 	return cmd
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	colprofilespb "go.opentelemetry.io/proto/otlp/collector/profiles/v1development"
@@ -21,7 +21,7 @@ import (
 
 const maxBodySize = 10 * 1024 * 1024 // 10MB
 
-var errBodyTooLarge = errors.New("request body exceeds the 10MB limit")
+var errBodyTooLarge = errors.New("request body exceeds the size limit")
 
 const (
 	otlpBodyIdle  = 20 * time.Second
@@ -29,6 +29,11 @@ const (
 )
 
 func readBody(c *gin.Context) ([]byte, error) {
+	return readBodyUpTo(c, maxBodySize)
+}
+
+// readBodyUpTo bounds both the raw and the decompressed body, so gzip cannot raise the limit.
+func readBodyUpTo(c *gin.Context, maxBodySize int64) ([]byte, error) {
 	middleware.GuardBodyRead(c, otlpBodyIdle, otlpBodyTotal)
 
 	raw := http.MaxBytesReader(c.Writer, c.Request.Body, maxBodySize)
@@ -52,7 +57,7 @@ func readBody(c *gin.Context) ([]byte, error) {
 		}
 		return nil, err
 	}
-	if len(body) > maxBodySize {
+	if int64(len(body)) > maxBodySize {
 		return nil, errBodyTooLarge
 	}
 	return body, nil
@@ -87,15 +92,19 @@ func decodeTraceRequest(c *gin.Context) (*coltracepb.ExportTraceServiceRequest, 
 			return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 		}
 	} else {
-		if err := protojson.Unmarshal(body, req); err != nil {
+		normalized, err := normalizeOTLPJSON(body, req.ProtoReflect().Descriptor())
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to decode OTLP JSON: %w", err)
+		}
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(normalized, req); err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
 	}
 	return req, len(body), nil
 }
 
-func decodeMetricsRequest(c *gin.Context) (*colmetricspb.ExportMetricsServiceRequest, int, error) {
-	body, err := readBody(c)
+func decodeMetricsRequest(c *gin.Context, maxBytes int64) (*colmetricspb.ExportMetricsServiceRequest, int, error) {
+	body, err := readBodyUpTo(c, maxBytes)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -105,15 +114,25 @@ func decodeMetricsRequest(c *gin.Context) (*colmetricspb.ExportMetricsServiceReq
 			return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 		}
 	} else {
-		if err := protojson.Unmarshal(body, req); err != nil {
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, req); err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
 	}
 	return req, len(body), nil
 }
 
-func writeTraceResponse(c *gin.Context) {
+func writeTraceResponse(c *gin.Context, invalidIDs, notStored int64) {
 	resp := &coltracepb.ExportTraceServiceResponse{}
+	if invalidIDs+notStored > 0 {
+		var reasons []string
+		if invalidIDs > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d spans need valid non-zero trace and span IDs", invalidIDs))
+		}
+		if notStored > 0 {
+			reasons = append(reasons, fmt.Sprintf("%d spans could not be stored", notStored))
+		}
+		resp.PartialSuccess = &coltracepb.ExportTracePartialSuccess{RejectedSpans: invalidIDs + notStored, ErrorMessage: strings.Join(reasons, "; ")}
+	}
 	if isProtobuf(c) {
 		data, _ := proto.Marshal(resp)
 		c.Data(http.StatusOK, "application/x-protobuf", data)
@@ -143,7 +162,7 @@ func decodeProfilesPayload(c *gin.Context) ([]byte, int, error) {
 		return body, len(body), nil
 	}
 	req := &colprofilespb.ExportProfilesServiceRequest{}
-	if err := protojson.Unmarshal(body, req); err != nil {
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, req); err != nil {
 		return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 	binary, err := proto.Marshal(req)
@@ -175,15 +194,22 @@ func decodeLogsRequest(c *gin.Context) (*collogspb.ExportLogsServiceRequest, int
 			return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 		}
 	} else {
-		if err := protojson.Unmarshal(body, req); err != nil {
+		normalized, err := normalizeOTLPJSON(body, req.ProtoReflect().Descriptor())
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to decode OTLP JSON: %w", err)
+		}
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(normalized, req); err != nil {
 			return nil, 0, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
 	}
 	return req, len(body), nil
 }
 
-func writeLogsResponse(c *gin.Context) {
+func writeLogsResponse(c *gin.Context, dropped int) {
 	resp := &collogspb.ExportLogsServiceResponse{}
+	if dropped > 0 {
+		resp.PartialSuccess = &collogspb.ExportLogsPartialSuccess{RejectedLogRecords: int64(dropped), ErrorMessage: "Client log rate limit exceeded; excess records discarded"}
+	}
 	if isProtobuf(c) {
 		data, _ := proto.Marshal(resp)
 		c.Data(http.StatusOK, "application/x-protobuf", data)

@@ -1,6 +1,5 @@
 exception.appVersion: string
 exception.attributes: null
-exception.distributedTraceId: string
 exception.exceptionHash: string
 exception.id: string
 exception.isMessage: bool
@@ -8,7 +7,15 @@ exception.projectId: string
 exception.recordedAt: string
 exception.serverName: string
 exception.sessionId: string
+exception.spanId: string
 exception.stackTrace: string
 exception.traceId: string
 exception.traceType: string
+relatedEntity.duration: number
+relatedEntity.id: string
+relatedEntity.name: string
+relatedEntity.recordedAt: string
+relatedEntity.statusCode: number
+relatedEntity.traceId: string
+relatedEntity.traceType: string
 sessionId: string

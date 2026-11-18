@@ -1,0 +1,42 @@
+name: Plugin Scanner
+
+# HOL plugin scanner over the whole repo, which is what the `tw` Claude plugin
+# installs (.claude-plugin/marketplace.json sources "./"). awesome-ai-plugins
+# counts this workflow as maintained scanner CI only while it triggers on push
+# or pull_request and uses hashgraph-online/ai-plugin-scanner-action.
+#
+# Both actions are SHA-pinned, unlike the rest of this repo: the scanner scores
+# unpinned actions down, and its own guide pins them this way.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scan:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'ci'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan
+        uses: hashgraph-online/ai-plugin-scanner-action@9b169fc65d09b24726b66d70b3563ab563158b58 # v1.2.816
+        with:
+          plugin_dir: "."
+          config: ".plugin-scanner.toml"
+          trust_repository_policy: "true"
+          min_score: 80
+          fail_on_severity: high

@@ -428,7 +428,7 @@ export default function FlutterSessionReplayPage() {
                   Blog post →
                 </Link>
                 <Link
-                  href="/privacy-policy"
+                  href="/dpa"
                   className="inline-flex items-center gap-1.5 hover:text-[color:var(--a2)]"
                   style={{ color: "var(--fg-1)", fontFamily: "var(--font-mono)" }}
                 >

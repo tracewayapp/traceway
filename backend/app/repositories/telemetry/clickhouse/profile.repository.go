@@ -6,14 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	"sort"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/profiling"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/profiling"
 )
 
 type profileRepository struct{}
@@ -24,7 +24,7 @@ func (r *profileRepository) InsertStacksAsync(ctx context.Context, stacks []mode
 	if len(stacks) == 0 {
 		return nil
 	}
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
+	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(ctx),
 		"INSERT INTO profiling_stacks (project_id, service_name, stack_hash, stack, last_seen)")
 	if err != nil {
 		return err
@@ -41,7 +41,7 @@ func (r *profileRepository) InsertSamplesAsync(ctx context.Context, samples []mo
 	if len(samples) == 0 {
 		return nil
 	}
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
+	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(ctx),
 		"INSERT INTO profiling_samples (project_id, profile_id, service_name, type, unit, is_gauge, start_time, end_time, stack_hash, value, labels, server_name, app_version, trace_id, span_id)")
 	if err != nil {
 		return err
@@ -72,8 +72,8 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 	if len(profiles) == 0 {
 		return nil
 	}
-	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(),
-		"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, unit, is_gauge, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id, distributed_trace_id)")
+	batch, err := chdb.Conn.PrepareBatch(chdb.BatchCtx(ctx),
+		"INSERT INTO profiles (id, project_id, recorded_at, duration, service_name, profile_type, unit, is_gauge, sample_count, total_value, server_name, app_version, attributes, storage_key, trace_id, span_id)")
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (r *profileRepository) InsertProfilesAsync(ctx context.Context, profiles []
 		if err := batch.Append(
 			p.Id, p.ProjectId, p.RecordedAt, int64(p.Duration), p.ServiceName, p.ProfileType, p.Unit, boolToUInt8(p.IsGauge),
 			p.SampleCount, p.TotalValue, p.ServerName, p.AppVersion, attributesJSON, p.StorageKey,
-			p.TraceId, p.SpanId, p.DistributedTraceId,
+			p.TraceId, p.SpanId,
 		); err != nil {
 			return err
 		}

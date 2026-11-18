@@ -1,0 +1,15 @@
+# catalog-api settings, deployed with the code.
+
+[database]
+pool_size = 10
+pool_timeout_seconds = 5
+
+[recommendations]
+enabled = true
+base_url = "http://recommendations.internal:8080"
+model = "similar-items-v3"
+timeout_ms = "800"
+max_items = 12
+
+[cache]
+product_ttl_seconds = 300

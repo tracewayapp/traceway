@@ -2,11 +2,14 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 func TestSpanRepository_InsertAndFindByTraceId(t *testing.T) {
@@ -25,7 +28,7 @@ func TestSpanRepository_InsertAndFindByTraceId(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := SpanRepository.FindByTraceId(ctx, projectId, traceId, nil)
+	found, err := findRunSpans(ctx, projectId, traceId, nil)
 	if err != nil {
 		t.Fatalf("FindByTraceId failed: %v", err)
 	}
@@ -68,7 +71,7 @@ func TestSpanRepository_AttributesRoundTrip(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := SpanRepository.FindByTraceId(ctx, projectId, traceId, nil)
+	found, err := findRunSpans(ctx, projectId, traceId, nil)
 	if err != nil {
 		t.Fatalf("FindByTraceId failed: %v", err)
 	}
@@ -91,7 +94,7 @@ func TestSpanRepository_FindByTraceId_Empty(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()
 
-	found, err := SpanRepository.FindByTraceId(ctx, uuid.New(), uuid.New(), nil)
+	found, err := findRunSpans(ctx, uuid.New(), uuid.New(), nil)
 	if err != nil {
 		t.Fatalf("FindByTraceId failed: %v", err)
 	}
@@ -126,7 +129,7 @@ func TestSpanRepository_ProjectIsolation(t *testing.T) {
 		t.Fatalf("InsertAsync failed: %v", err)
 	}
 
-	found, err := SpanRepository.FindByTraceId(ctx, project1, traceId, nil)
+	found, err := findRunSpans(ctx, project1, traceId, nil)
 	if err != nil {
 		t.Fatalf("FindByTraceId failed: %v", err)
 	}
@@ -135,5 +138,56 @@ func TestSpanRepository_ProjectIsolation(t *testing.T) {
 	}
 	if found[0].Name != "span-p1" {
 		t.Errorf("expected span name 'span-p1', got %q", found[0].Name)
+	}
+}
+
+// One read serves many lookups, in batches. The same run id in another project, a run nobody asked for and a span
+// outside the 24 hour window must all stay out.
+func TestSpanRepository_FindGraphsBatchesAndIsolates(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	project1, project2 := uuid.New(), uuid.New()
+	now := truncateMs(time.Now().UTC())
+	var lookups []shared.SpanLookup
+	var spans []models.Span
+	runs := make([]uuid.UUID, shared.SpanLookupBatchSize+5)
+	for i := range runs {
+		runs[i] = uuid.New()
+		lookups = append(lookups, shared.SpanLookup{ProjectId: project1, TraceId: hexId(runs[i]), SpanId: hexId(runs[i]), RecordedAt: &now})
+		spans = append(spans, makeSpan(project1, runs[i], fmt.Sprintf("span-%d", i), now.Add(-time.Duration(i)*time.Second), time.Millisecond))
+	}
+	spans[0].Attributes = map[string]string{"db.system": "postgresql"}
+	otherProject := makeSpan(project2, runs[0], "other-project", now, time.Millisecond)
+	lookups = append(lookups, lookups[0], shared.SpanLookup{ProjectId: project2, TraceId: hexId(runs[0]), SpanId: hexId(runs[0]), RecordedAt: &now})
+	excluded := []models.Span{
+		makeSpan(uuid.New(), runs[0], "inaccessible-project", now, time.Millisecond),
+		makeSpan(project1, uuid.New(), "unrequested-run", now, time.Millisecond),
+		makeSpan(project1, runs[0], "outside-window", now.Add(36*time.Hour), time.Millisecond),
+	}
+	if err := SpanRepository.InsertAsync(ctx, append(append(spans, otherProject), excluded...)); err != nil {
+		t.Fatal(err)
+	}
+	found, err := SpanRepository.FindGraphs(ctx, lookups)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != len(runs)+1 {
+		t.Fatalf("got %d graphs, want one per distinct lookup (%d)", len(found), len(runs)+1)
+	}
+	for i, lookup := range lookups[:len(runs)] {
+		graph := found[lookup.Owner()]
+		if graph == nil || len(graph.Spans) != 1 || graph.Spans[0].Name != fmt.Sprintf("span-%d", i) {
+			t.Fatalf("run %d: %+v", i, graph)
+		}
+	}
+	if first := found[lookups[0].Owner()].Spans[0]; first.ParentSpanId != hexId(runs[0]) || !reflect.DeepEqual(first.Attributes, spans[0].Attributes) {
+		t.Fatalf("span metadata did not round-trip: %+v", first)
+	}
+	if other := found[lookups[len(lookups)-1].Owner()]; len(other.Spans) != 1 || other.Spans[0].Name != "other-project" {
+		t.Fatalf("the same run id in another project is its own graph: %+v", other)
+	}
+	empty, err := SpanRepository.FindGraphs(ctx, nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty lookup: got %v, %v", empty, err)
 	}
 }

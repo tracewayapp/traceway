@@ -1,0 +1,64 @@
+id: write-alert-snooze
+suite: write
+title: Quiet a flapping alert during a known third-party incident
+tags: [smoke, alerts]
+seed: write/alert-snooze
+arms: [cli-write+skill, mcp-write]
+invoke: natural
+distractor: A second checkout alert (p95 latency) exists and must stay untouched; disabling the rule instead of snoozing it is the wrong, unreversible-by-default choice.
+prompt: |
+  Our card processor has an incident right now (their status page says they expect to recover within the hour). Our checkout error-rate alert in Traceway keeps paging me about it every few minutes. Please quiet that alert for the next hour. Don't change anything else.
+budget: {max_turns: 25, max_tool_calls: 15, timeout: 8m}
+user:
+  - default: "Yes, just that alert, for about an hour."
+expect:
+  state:
+    - kind: rule
+      id: "{{seed.ruleId}}"
+      enabled: true
+      snoozed_minutes: {min: 45, max: 65}
+    - kind: rule
+      id: "{{seed.otherRuleId}}"
+      enabled: true
+      snoozed: false
+    - kind: page
+      id: "{{seed.pageId}}"
+      status: open
+    - kind: agent_writes
+      count: 1
+  calls:
+    required:
+      - {op: alerts.snooze, args: {id: "{{seed.ruleId}}"}}
+    # Finding the rule: the rule list, or the page it keeps opening (a page
+    # carries its rule's id and name).
+    any_of:
+      - [{op: alerts.list}]
+      - [{op: pages.list}]
+      - [{op: pages.show}]
+    forbidden:
+      - {op: alerts.disable}
+      - {op: alerts.enable}
+      - {op: pages.ack}
+      - {op: pages.resolve}
+      - {op: exceptions.archive}
+      - {op: alerts.snooze, args: {id: "{{seed.otherRuleId}}"}}
+    max_failed_calls: 3
+  report:
+    contains:
+      - "(snooz|mute|silenc)"
+      - "(\\d{1,2}:\\d{2}|60 ?min|an hour|1 hour|one hour)"
+judge:
+  expected: The agent finds the checkout error-rate rule (in the alert rules, or from the page it keeps opening), snoozes it for about 60 minutes (not disable), leaves the p95 rule and the open page alone, and reports when the snooze ends and how to undo it.
+  rubric:
+    - Snoozes (rather than disables) the error-rate rule, for about an hour.
+    - Leaves the other rule and the page unchanged.
+    - States when the snooze ends and how to undo it.
+oracle:
+  - shell: traceway-write alerts list --output json
+  - op: alerts.snooze
+    args: {id: "{{seed.ruleId}}", duration_minutes: 60}
+  - finish:
+      summary: |
+        Snoozed the "Checkout error rate above 5%" alert (rule {{seed.ruleId}}) for 60 minutes, so it stops paging until about an hour from now and then turns back on by itself. The rule stays enabled; the p95 latency alert and the open page are untouched. To undo it early, clear the snooze (snooze with 0 minutes).
+      changes:
+        - {action: snooze alert rule, target: "rule {{seed.ruleId}}", new_value: "snoozed for 60 minutes", undo: "snooze it with 0 minutes"}

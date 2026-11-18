@@ -38,6 +38,9 @@ export type NotificationRuleConfig = {
 	thresholdValue?: number;
 	aggregation?: string;
 	tags?: Record<string, string>;
+	groupBy?: string[];
+	minCount?: number;
+	goodThreshold?: number;
 	dataType?: string;
 	silenceMinutes?: number;
 	thresholdCount?: number;
@@ -49,4 +52,9 @@ export type NotificationRuleConfig = {
 	traceName?: string;
 	thresholdCost?: number;
 	terms?: string[];
+	sloId?: number;
+	longWindowMinutes?: number;
+	shortWindowMinutes?: number;
+	burnRateThreshold?: number;
+	consumedPercent?: number;
 };

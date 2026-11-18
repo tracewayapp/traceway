@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -11,7 +10,7 @@ import (
 func TestEndpointsShow_postsRecordedAtAndRendersJSON(t *testing.T) {
 	var gotPath string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		_, _ = w.Write([]byte(`{"endpoint":{"id":"00000000-0000-0000-0000-000000000002","endpoint":"GET /x","recordedAt":"2026-06-23T14:30:00Z"},"spans":[],"hasSpans":false,"messages":[]}`))
@@ -37,7 +36,7 @@ func TestEndpointsShow_postsRecordedAtAndRendersJSON(t *testing.T) {
 }
 
 func TestEndpointsShow_missingRecordedAt_writesUsageEnvelope(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called when --recorded-at is missing")
 	}))
 	defer srv.Close()
@@ -54,7 +53,7 @@ func TestEndpointsShow_missingRecordedAt_writesUsageEnvelope(t *testing.T) {
 }
 
 func TestEndpointsShow_badTimestamp_writesInvalidTimestampEnvelope(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called when --recorded-at is malformed")
 	}))
 	defer srv.Close()
@@ -71,7 +70,7 @@ func TestEndpointsShow_badTimestamp_writesInvalidTimestampEnvelope(t *testing.T)
 }
 
 func TestEndpointsShow_badUUID_writesUsageEnvelope(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called for a bad UUID")
 	}))
 	defer srv.Close()
@@ -90,7 +89,7 @@ func TestEndpointsShow_badUUID_writesUsageEnvelope(t *testing.T) {
 func TestExceptionsOccurrence_postsRecordedAt(t *testing.T) {
 	var gotPath string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		_, _ = w.Write([]byte(`{"exception":{"id":"00000000-0000-0000-0000-000000000001","exceptionHash":"abc","stackTrace":"boom","recordedAt":"2026-06-23T14:30:00Z"},"sessionId":"00000000-0000-0000-0000-0000000000aa"}`))
@@ -115,17 +114,41 @@ func TestExceptionsOccurrence_postsRecordedAt(t *testing.T) {
 	}
 }
 
+func TestExceptionsOccurrence_rendersTraceAndRelatedEntity(t *testing.T) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"exception":{"id":"00000000-0000-0000-0000-000000000001","exceptionHash":"abc","stackTrace":"boom","recordedAt":"2026-06-23T14:30:00Z","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"00f067aa0ba902b7"},"relatedEntity":{"traceType":"endpoint","id":"00000000-0000-0000-0000-0000000000d1","name":"GET /x","statusCode":500,"duration":1000000,"recordedAt":"2026-06-23T14:29:59.5Z","traceId":"0af7651916cd43dd8448eb211c80319c"}}`))
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+
+	stdout, _, err := runCmd(t, "", "exceptions", "occurrence",
+		"00000000-0000-0000-0000-000000000001",
+		"--recorded-at", "2026-06-23T14:30:00Z", "--output", "table")
+	if err != nil {
+		t.Fatalf("exceptions occurrence: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"TRACE ID:     0af7651916cd43dd8448eb211c80319c",
+		"RELATED:      endpoint GET /x (00000000-0000-0000-0000-0000000000d1, recorded 2026-06-23T14:29:59.5Z)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
 func TestTracesShow_rendersNodesAndNoProjectId(t *testing.T) {
 	var gotRawQuery string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotRawQuery = r.URL.RawQuery
-		_, _ = w.Write([]byte(`{"distributedTraceId":"00000000-0000-0000-0000-000000000006","nodes":[{"projectName":"api","traceType":"endpoint","endpoint":{"id":"00000000-0000-0000-0000-0000000000d1","endpoint":"GET /x"},"spans":[]}]}`))
+		_, _ = w.Write([]byte(`{"traceId":"0af7651916cd43dd8448eb211c80319c","nodes":[{"projectName":"api","traceType":"endpoint","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331","endpoint":{"id":"00000000-0000-0000-0000-0000000000d1","endpoint":"GET /x","traceId":"0af7651916cd43dd8448eb211c80319c","spanId":"b7ad6b7169203331"},"spans":[],"spanGraphStatus":{"state":"partial","reasons":["row_limit"]}}]}`))
 	}))
 	defer srv.Close()
 	seedSessionFor(t, srv.URL)
 
 	stdout, _, err := runCmd(t, "", "traces", "show",
-		"00000000-0000-0000-0000-000000000006",
+		"0af7651916cd43dd8448eb211c80319c",
 		"--recorded-at", "2026-06-23T14:30:00Z", "--output", "table")
 	if err != nil {
 		t.Fatalf("traces show: %v", err)
@@ -134,14 +157,33 @@ func TestTracesShow_rendersNodesAndNoProjectId(t *testing.T) {
 		t.Errorf("traces show must not send a query string, got %q", gotRawQuery)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "GET /x") || !strings.Contains(out, "endpoint") {
-		t.Errorf("expected node row in table: %s", out)
+	if !strings.Contains(out, "GRAPH") || !strings.Contains(out, "partial") || !strings.Contains(out, "GET /x") || !strings.Contains(out, "endpoint") || !strings.Contains(out, "0af7651916cd43dd8448eb211c80319c") {
+		t.Errorf("expected trace id and node row in table: %s", out)
+	}
+}
+
+func TestTracesShow_acceptsHexOrUUIDTraceId(t *testing.T) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"traceId":"0af7651916cd43dd8448eb211c80319c","nodes":[]}`))
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+
+	for _, id := range []string{"0af7651916cd43dd8448eb211c80319c", "0af76519-16cd-43dd-8448-eb211c80319c"} {
+		if _, _, err := runCmd(t, "", "traces", "show", id, "--recorded-at", "2026-06-23T14:30:00Z"); err != nil {
+			t.Errorf("trace id %q must be accepted: %v", id, err)
+		}
+	}
+	for _, id := range []string{"b7ad6b7169203331", "not-a-trace-id"} {
+		if _, _, err := runCmd(t, "", "traces", "show", id, "--recorded-at", "2026-06-23T14:30:00Z"); err == nil {
+			t.Errorf("trace id %q must be rejected", id)
+		}
 	}
 }
 
 func TestSessionsShow_postsStartedAt(t *testing.T) {
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		_, _ = w.Write([]byte(`{"session":{"id":"00000000-0000-0000-0000-000000000005","startedAt":"2026-06-23T14:30:00Z"},"exceptions":[]}`))
 	}))
@@ -162,7 +204,7 @@ func TestSessionsShow_postsStartedAt(t *testing.T) {
 func TestTasksShow_postsRecordedAtAndRendersTable(t *testing.T) {
 	var gotPath string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		_, _ = w.Write([]byte(`{"task":{"id":"00000000-0000-0000-0000-000000000003","taskName":"nightly","recordedAt":"2026-06-23T14:30:00Z","duration":1500000000},"spans":[{"id":"00000000-0000-0000-0000-0000000000b1","name":"db.query","startTime":"2026-06-23T14:30:00Z","duration":50000000}],"hasSpans":true,"exception":{"exceptionHash":"deadbeef","stackTrace":"boom\nat foo"},"messages":[]}`))
@@ -191,7 +233,7 @@ func TestTasksShow_postsRecordedAtAndRendersTable(t *testing.T) {
 }
 
 func TestTasksShow_missingRecordedAt_writesUsageEnvelope(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called when --recorded-at is missing")
 	}))
 	defer srv.Close()
@@ -210,7 +252,7 @@ func TestTasksShow_missingRecordedAt_writesUsageEnvelope(t *testing.T) {
 func TestAiTracesShow_postsRecordedAtAndRendersTable(t *testing.T) {
 	var gotPath string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		_, _ = w.Write([]byte(`{"aiTrace":{"id":"00000000-0000-0000-0000-000000000004","traceName":"chat","model":"claude","provider":"anthropic","operation":"messages","inputTokens":100,"outputTokens":50,"totalTokens":150,"totalCost":0.0123,"recordedAt":"2026-06-23T14:30:00Z","duration":2000000000},"conversation":[{"role":"user"}]}`))
@@ -239,7 +281,7 @@ func TestAiTracesShow_postsRecordedAtAndRendersTable(t *testing.T) {
 }
 
 func TestAiTracesShow_missingRecordedAt_writesUsageEnvelope(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called when --recorded-at is missing")
 	}))
 	defer srv.Close()

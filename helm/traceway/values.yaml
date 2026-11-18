@@ -1,10 +1,10 @@
-# More than one replica needs variant=minimal with shared databases; the sqlite variant keeps its databases as local files.
+# More than one replica needs variant=minimal with shared databases; the sqlite and duckdb variants keep their databases as local files.
 replicaCount: 1
 
 image:
   repository: ghcr.io/tracewayapp/traceway
   pullPolicy: IfNotPresent
-  # Overrides the image tag. Defaults to "<appVersion>-minimal" (or "<appVersion>-sqlite" when variant=sqlite).
+  # Overrides the image tag. Defaults to "v<appVersion>-<variant>", or "v<appVersion>" when variant=full.
   tag: ""
 
 imagePullSecrets: []
@@ -70,6 +70,7 @@ affinity: {}
 
 # Deployment variant:
 #   "minimal" — external ClickHouse + PostgreSQL (recommended for production)
+#   "duckdb"  — embedded SQLite main DB + DuckDB telemetry, no external databases (recommended single-pod setup)
 #   "sqlite"  — embedded SQLite, no external databases required
 #   "full"    — all-in-one image with bundled ClickHouse + PostgreSQL (supervisord)
 variant: minimal
@@ -121,6 +122,24 @@ postgres:
 sqlite:
   path: "/data/traceway.db"
   retentionDays: "30"
+  # Telemetry page cache in MB, per connection. The caches can take up to 8x
+  # this value, so with a memory limit set it to the limit in MB divided by 32
+  # (32 for 1Gi). Empty keeps the backend default of 512.
+  cacheSizeMB: ""
+
+# DuckDB configuration — only used when variant=duckdb. The main SQLite DB lives
+# at path and the telemetry store next to it (traceway_telemetry.duckdb).
+duckdb:
+  path: "/data/traceway.db"
+  retentionDays: "30"
+  # Memory budget for the telemetry engine, e.g. "2GB". Empty lets DuckDB take
+  # about 80% of the node's RAM, so with a memory limit set it to roughly half
+  # the limit.
+  memoryLimit: ""
+  # Caps the engine's threads, e.g. "4". Empty uses every core of the node.
+  threads: ""
+  # WAL size that triggers a checkpoint, e.g. "256MB". Empty keeps DuckDB's 16MB.
+  checkpointThreshold: ""
 
 # Session recording storage
 storage:
@@ -176,7 +195,7 @@ oidc:
 disablePasswordLogin: "false"
 
 # Persistent volume for local session recordings and/or SQLite data.
-# Strongly recommended when variant=sqlite or storage.type=local.
+# Strongly recommended when variant=sqlite, variant=duckdb or storage.type=local.
 persistence:
   enabled: false
   storageClass: ""

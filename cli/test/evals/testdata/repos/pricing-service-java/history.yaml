@@ -1,0 +1,21 @@
+commits:
+- dir: .history/01
+  message: '2.14.0: quote API with percent-off promotions'
+  age: 260h
+  author: Priya Raman <priya@example.com>
+- dir: .history/02
+  message: '2.14.1: round JPY prices to whole yen'
+  age: 216h30m
+  author: Tom Becker <tom@example.com>
+- dir: .history/03
+  message: '2.15.0: bundle discounts'
+  age: 145h
+  author: Priya Raman <priya@example.com>
+- dir: .history/04
+  message: '2.15.1: bump Spring Boot to 3.5.6'
+  age: 48h20m
+  author: Tom Becker <tom@example.com>
+head:
+  message: '2.16.0: rewrite the promotion rules engine (priorities, stacking, exclusive rules)'
+  age: 3h15m
+  author: Priya Raman <priya@example.com>

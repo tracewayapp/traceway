@@ -1,3 +1,6 @@
+{{- if not (has .Values.variant (list "minimal" "sqlite" "duckdb" "full")) }}
+{{- fail (printf "variant must be one of minimal, sqlite, duckdb or full, got %q" .Values.variant) }}
+{{- end }}
 {{- if and .Values.ingress.enabled (not .Values.app.trustedProxies) (not .Values.app.trustedProxyHeader) }}
 {{- fail "set app.trustedProxies or app.trustedProxyHeader when ingress.enabled=true so clients do not share the ingress controller's rate-limit bucket" }}
 {{- end }}
@@ -14,6 +17,24 @@ data:
   DB_TYPE: "sqlite"
   SQLITE_PATH: {{ .Values.sqlite.path | quote }}
   SQLITE_RETENTION_DAYS: {{ .Values.sqlite.retentionDays | quote }}
+  {{- if .Values.sqlite.cacheSizeMB }}
+  SQLITE_CACHE_SIZE_MB: {{ .Values.sqlite.cacheSizeMB | quote }}
+  {{- end }}
+  {{- end }}
+
+  {{- if eq .Values.variant "duckdb" }}
+  DB_TYPE: "sqlite"
+  SQLITE_PATH: {{ .Values.duckdb.path | quote }}
+  DUCKDB_RETENTION_DAYS: {{ .Values.duckdb.retentionDays | quote }}
+  {{- if .Values.duckdb.memoryLimit }}
+  DUCKDB_MEMORY_LIMIT: {{ .Values.duckdb.memoryLimit | quote }}
+  {{- end }}
+  {{- if .Values.duckdb.threads }}
+  DUCKDB_THREADS: {{ .Values.duckdb.threads | quote }}
+  {{- end }}
+  {{- if .Values.duckdb.checkpointThreshold }}
+  DUCKDB_CHECKPOINT_THRESHOLD: {{ .Values.duckdb.checkpointThreshold | quote }}
+  {{- end }}
   {{- end }}
 
   {{- if eq .Values.variant "minimal" }}

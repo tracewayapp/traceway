@@ -32,20 +32,20 @@ Traceway turns OTel spans into five distinct concepts, each with its own dashboa
 
 For every incoming span, Traceway applies these rules in order:
 
-1. **Endpoint**: `SpanKind` is `SERVER` or `INTERNAL`, the span has at least one HTTP attribute (`http.request.method`, `http.method`, `http.route`, or `url.path`), AND it is either a root span (no parent) or its parent span is not present in the same export batch (cross-process tracing, e.g. behind a proxy that injects `traceparent`). See the carve-out below.
+1. **Endpoint**: `SERVER` with HTTP attributes and no observed local HTTP SERVER ancestor before a remote/CLIENT/PRODUCER boundary; alternatively a root `INTERNAL` span with HTTP attributes. A missing parent cannot establish an HTTP ancestor. HTTP attributes are `http.request.method`, `http.method`, `http.route`, or `url.path`. See the carve-out below.
 2. **Task**: `SpanKind` is `CONSUMER`. This applies to ANY consumer span, root or not.
 3. **Task**: a root `INTERNAL` span with a `console.command` attribute (CLI command instrumentation, e.g. Laravel/Symfony console).
 4. **AI Trace**: the span has any attribute starting with `gen_ai.`.
-5. **Child span**: anything else with a parent, stored as a generic span and attached to the nearest promoted ancestor (Endpoint/Task/AI Trace) by walking up the parent chain.
-6. **Dropped**: anything else that is a root span. A root span that matches none of the rules above is silently discarded: no entity row, no span row. One exception: if the span carries an exception signal (an `exception` event or `exception.*` attributes), the exception is still captured as an Issue, linked by the raw OTel trace ID. Only the span itself is lost.
+5. **Span only**: anything else. The span is stored with the trace id, span id and parent span id it arrived with, and that is all. It shows in the waterfall of whichever Endpoint, Task or AI Trace sits above it in its trace, which Traceway works out when the page is opened, not at ingest. So the order spans arrive in does not matter.
+6. **No page of its own**: a root span that matches none of the rules above gets no Endpoint, Task or AI Trace row. The span itself is still stored, and you can find it in the span explorer. If it carries an exception signal (an `exception` event or `exception.*` attributes), the exception becomes an Issue that records the span's trace id and span id.
 
 One carve-out is checked before all six rules: an `INTERNAL` span carrying `exception.*` **attributes** (`exception.type`, `exception.message` or `exception.stacktrace` set as span attributes, not as an `exception` event) is never promoted to anything. Not an Endpoint, not an AI Trace, not a `console.command` Task. The reason is browser SDKs (e.g. Honeycomb's), which stamp page context like `url.path` onto their zero-duration error spans, and those must become Issues, not endpoints. The consequence beyond browsers: do not set `exception.*` attributes on an `INTERNAL` span you also want promoted, or you lose the entity row and keep only the Issue. An agent that stamps `exception.type` onto its own `INTERNAL` `gen_ai.*` span loses the AI Trace row this way and gets only an Issue. Record the error as an `exception` event instead (`span.recordException(error)`), which does not suppress promotion.
 
-A note on "the same export batch": Traceway resolves parents inside one `ResourceSpans` block, not across the whole request. Spans from one service normally share a Resource and land in one block, so this is invisible. But if an exporter splits a trace across Resource blocks, the children in the other block are treated as cross-process. They link by raw OTel trace ID, and a `SERVER`/`INTERNAL` child carrying HTTP attributes is promoted to a second Endpoint.
+A note on export batches: ingest looks at one span at a time. The one check that looks further is the nested server span rule (a `SERVER` span under another local `SERVER` span is one request, not two), and it only sees the spans of the same `ResourceSpans` block. When a parent is absent its kind is unknown, even when flags say it is local, so the HTTP SERVER span is counted as an entry point. Separately exported nested servers can therefore create extra projections.
 
-The consequences of rule 6 are the most common integration bug: a custom root span created with `tracer.startActiveSpan("my-job")` and default `SpanKind.INTERNAL` produces nothing on the Endpoints or Tasks pages (errors recorded on it do still reach Issues, but with no Endpoint/Task to link back to). Background work must use `SpanKind.CONSUMER` (see Tasks below).
+The consequences of rule 6 are the most common integration bug: a custom root span created with `tracer.startActiveSpan("my-job")` and default `SpanKind.INTERNAL` produces nothing on the Endpoints or Tasks pages. It is only visible in the span explorer, and errors recorded on it reach Issues with no Endpoint or Task to link back to. Background work must use `SpanKind.CONSUMER` (see Tasks below).
 
-One project-level gate sits above all of these rules: a project whose framework is one of the five browser SDK types (`react`, `svelte`, `vuejs`, `jquery`, `react-native`) never promotes OTel spans to Endpoints/Tasks/AI Traces, and stores no child span rows either. Only exceptions are extracted. Server-side JS frameworks (`nextjs`, `nestjs`, `express`, `remix`) and the mobile frameworks (`ios`, `android`, `flutter`) are NOT gated. Backend OTel exporters must point at a backend-framework project token.
+One project-level gate sits above all of these rules: a project whose framework is one of the five browser SDK types (`react`, `svelte`, `vuejs`, `jquery`, `react-native`) never promotes OTel spans to Endpoints/Tasks/AI Traces. Its spans are still stored and show in the span explorer, and its exceptions become Issues. Server-side JS frameworks (`nextjs`, `nestjs`, `express`, `remix`) and the mobile frameworks (`ios`, `android`, `flutter`) are NOT gated. Backend OTel exporters must point at a backend-framework project token.
 
 ## Endpoints: Name and Route Parameters
 
@@ -131,8 +131,8 @@ Quirks:
 
 - **The span name IS the task name, and Traceway groups tasks by name.** Use a stable identifier like `cleanup-expired-sessions` or `process-email-queue`. Never put job IDs, timestamps, or user IDs in the span name. Each unique name becomes a separate task group.
 - **Every `CONSUMER` span becomes a Task, even non-root ones.** If a queue library's auto-instrumentation already emits `CONSUMER` spans (e.g. Kafka/RabbitMQ consumers, Symfony Messenger), do NOT wrap them in another `CONSUMER` span. You'd get duplicate Task entries.
-- A root span with `SpanKind.INTERNAL` (the default!) is **dropped silently**. This is the most common reason "my cron job doesn't show up". The kind must be `CONSUMER`. (An exception recorded on the dropped span still reaches Issues, but the task run itself is lost: name, duration, history.)
-- **Tasks are timestamped when they finish, endpoints when they start.** A task run lands in the time bucket of its end time, so a nightly job triggered at 01:00 and finishing at 03:00 shows up at 03:00. Widen the time range when a long-running job seems missing.
+- A root span with `SpanKind.INTERNAL` (the default!) is **stored as a span without a Task projection**. This is the most common reason "my cron job doesn't show up". The kind must be `CONSUMER`. (An exception recorded on the dropped span still reaches Issues, but there is no task-specific aggregation; span name and duration remain available in the explorer.)
+- **Tasks and endpoints are timestamped when they start in V2.** A job starting at 01:00 and finishing at 03:00 appears at 01:00. Widen the time range when a long-running job seems missing.
 - Per-job context (job ID, batch size) belongs in span **attributes**, where it shows on the task detail page without affecting grouping.
 
 ## Database Queries and Child Spans
@@ -142,9 +142,9 @@ Work inside an endpoint or task (DB queries, cache hits, outgoing HTTP calls, cu
 How Traceway handles them:
 
 - **The span name is replaced by the SQL text when present**: if the span has `db.query.text` (current semconv) or `db.statement` (old semconv), that value is displayed instead of the span name. So a `pg.query` span carrying `db.statement = "SELECT * FROM users WHERE id = $1"` shows the query itself in the waterfall. This is what makes auto-instrumented DB clients (`pg`, `mysql2`, `mongodb`, `ioredis`, Prisma via `@prisma/instrumentation`) useful out of the box.
-- **Child spans attach to the nearest promoted ancestor.** The parent chain is walked until an Endpoint/Task/AI Trace is found. This means DB spans must be created **inside the active context** of the request/task span (`startActiveSpan`, or the framework middleware's context). A DB span created outside any active context becomes a root `INTERNAL` span, which is dropped.
-- **A promoted span is never also a child span.** Once a span becomes an Endpoint, Task or AI Trace it leaves the waterfall of whatever contains it, and its own children re-root under it. So a `CONSUMER` span created inside a request handler (an inline queue publish, a Symfony Messenger sync dispatch) disappears from that endpoint's Spans tab and shows up on the Tasks page instead, with its sub-spans attached to the Task. If you want the work to stay in the request waterfall, use a plain child span (default `INTERNAL`), not `CONSUMER`.
-- Spans whose parent lives in another process/batch and never resolves to a promoted entity are kept but linked by the raw OTel trace ID instead.
+- **A waterfall is the spans below the entry point.** An Endpoint, Task or AI Trace page shows every span of its trace that sits below its own span, in the same project. This means DB spans must be created **inside the active context** of the request/task span (`startActiveSpan`, or the framework middleware's context). A DB span created outside any active context becomes a root `INTERNAL` span of a trace of its own, and no page shows it except the span explorer.
+- **A promoted span stays in its trace.** A span that becomes an Endpoint, Task or AI Trace is still an ordinary span of its trace. So a `CONSUMER` span created inside an HTTP request gets its own Task page, and it also appears, with its children, in the waterfall of the Endpoint that started it when both report to the same project. Across projects each page shows its own project's spans, and the Distributed Trace card links the pages.
+- A span whose parent never arrives (a collector dropped it, say) is shown on the page of the trace's root entry point, marked "Parent span is unavailable". It takes its proper place as soon as the parent is stored.
 - For databases without auto-instrumentation (e.g. SQLite), create a manual child span and set `db.system` + `db.statement` attributes so it renders like the auto-instrumented ones.
 
 ## Issues: Exceptions
@@ -169,15 +169,15 @@ An `exception.type: exception.message` header is prepended unless the stack trac
 
 Quirks:
 
-- **Exceptions survive span-dropping, but their context doesn't.** An exception recorded on an unpromoted root span (see classification rule 6) still becomes an Issue, but there is no Endpoint/Task for it to link to. The occurrence carries only the raw trace ID. Such an occurrence is stored with trace type `task`, which is why orphaned errors look task-shaped in the UI. Record exceptions on spans that live inside an Endpoint/Task, or fix the span kind, so Issues stay correlated with the request or job that raised them.
-- **`exception.stacktrace` is stripped from every stored attribute map.** The raw blob lives in the Issue's stack trace field only, never duplicated onto the endpoint, task, span or exception rows. Don't re-add it under another key. For JS and Android telemetry the exception's attribute map additionally carries `telemetry.sdk.language`, copied down from the Resource.
+- **An exception without an entry point has nothing to link to.** An exception recorded on a root span that matched no rule (see classification rule 6) still becomes an Issue, but there is no Endpoint or Task above it. The occurrence shows the trace id, and the span is in the span explorer, but the Related Endpoint section is empty. An exception on any span below an Endpoint or Task is linked to it, even when the two arrived in different exports.
+- **`exception.stacktrace` is stripped from every stored attribute map.** The readable attribute maps omit the blob; the Issue keeps the symbolicated stack trace, while the preserved OTLP payload also retains the original source stack trace. Don't re-add it under another key. For JS and Android telemetry the exception's attribute map additionally carries `telemetry.sdk.language`, copied down from the Resource.
 - **Grouping is automatic.** Before hashing (SHA-256, truncated to 16 hex chars), Traceway normalizes the stack trace: error messages are stripped (only the error type is kept, including on `Caused by:` lines), JS function-name lines collapse to `<fn>`, URL origins are removed so the same bundle served from different hosts or CDNs groups together, absolute paths reduce to `filename:line`, column numbers are dropped from frames on line 2 or later (the column survives only on line 1, where minified bundles put everything and it is the only thing telling frames apart), dependency version suffixes (`@v1.2.3`) are removed, and runtime values are replaced with placeholders: hex addresses -> `<hex>`, UUIDs -> `<uuid>`, standalone numbers of 5+ digits -> `<id>` (never a number preceded by `:`, so `handler.go:123456` line numbers stay significant), emails -> `<email>`, IPs -> `<ip>`, goroutine IDs -> `goroutine <n>`. JVM frames additionally lose their line numbers (`(Foo.java:123)` -> `(Foo.java)`, same for `.kt` and `.scala`) and `... N more` becomes `... more`. The same logical error therefore groups into one Issue even when runtime values differ, so don't try to pre-group errors client-side.
 - **JS projects get source-map symbolication, once the project has a source-map token.** Symbolication is triggered when the `telemetry.sdk.language` resource attribute is a JS value (`nodejs`, `webjs`, `javascript` or `typescript`, all set automatically by OTel SDKs), or when the instrumentation scope name is npm-scoped (`@scope/pkg`) or `next.js`. It is a silent no-op until the project has a source-map token: the trace is canonicalized and stored unresolved, with no error and no warning, and uploaded maps are never consulted. Only iOS projects get a token automatically, so for an OpenTelemetry project generate one with `POST /api/projects/source-map-token` first. Minified frames are resolved server-side **before** grouping, so uploading source maps improves grouping too.
 - **Source maps are matched by filename (and debug ID when embedded), not by version.** Upload via `POST /api/sourcemaps/upload` (multipart `files` field, `.map`/`.js`/`.cjs`/`.mjs`, max 50 MB per file) using a token from `POST /api/projects/source-map-token`. A frame referencing `app.min.js` resolves against the uploaded `app.min.js.map` by name. Keep bundle filenames unique per release (content hashes do this) or rely on debug IDs.
 
 ## Metrics
 
-OTLP metrics sent to `/api/otel/v1/metrics` are stored under their **original names**. There is no renaming or namespacing. Every incoming metric is auto-registered (name, unit, type) in the metric registry, becomes discoverable in the dashboard's metric explorer, and can be charted in custom widgets or queried via `traceway metrics query --name <name>`.
+OTLP metrics sent to `/api/otel/v1/metrics` are stored under their **original names**. There is no renaming or namespacing. For backend projects, each supported incoming metric is auto-registered (name, unit, type) in the metric registry, becomes discoverable in the dashboard's metric explorer, and can be charted in custom widgets or queried via `traceway metrics query --name <name>`.
 
 Conversion rules per OTLP metric type:
 
@@ -186,13 +186,15 @@ Conversion rules per OTLP metric type:
 | Gauge | `<name>`, value as-is | `gauge` |
 | Sum (monotonic) | `<name>`, value as-is | `counter` |
 | Sum (non-monotonic) | `<name>`, value as-is | `gauge` |
-| Histogram | `<name>.count` always; `<name>.avg` (sum/count per export) only when the data point has a non-zero count and a sum | `gauge` for `.avg` (keeps the source unit) + `counter` for `.count` (unit forced to `count`) |
-| ExponentialHistogram, Summary | **silently dropped** | - |
+| Histogram | Mergeable distribution; also `<name>.count` and `<name>.avg` when count and sum allow | Distribution plus legacy count/average series |
+| ExponentialHistogram | Mergeable distribution | Distribution |
+| Summary | Dropped | - |
 
 Quirks:
 
-- **Histograms lose their buckets.** Only the average and count survive. You cannot compute true percentiles from an OTLP histogram in Traceway. An idle export interval (count 0) writes only the `.count` series, so `<name>.avg` has gaps rather than zeros.
-- **No percentile aggregations on metrics at all.** Metric queries support `avg`, `sum`, `count`, `min`, `max` and `last` only; anything else silently falls back to `avg`. `last` is special: it always reads the raw table, so it only works inside the 7-day raw retention window. Latency percentiles (P50/P95/P99) exist for Endpoints and Tasks because those are computed from raw span durations. If you need percentiles on a measurement, model it as a span, not a metric.
+- **Histogram buckets are retained.** Current servers compute p50/p75/p90/p95/p99 and good ratios from merged distributions. Point metrics cannot supply percentiles. Merge full-window buckets before calculating a headline percentile, never average per-bucket percentiles. CLI/MCP expose only part of this contract; read [rum.md](rum.md).
+- **Temporality matters.** Use delta for application metrics. Backend cumulative histograms are differenced using per-instance memory; behind a multi-instance load balancer, prefer delta or exporter affinity to avoid overlapping counts. Cumulative counter points need `rate`; delta counters need `sum` for totals. The legacy histogram `.avg`/`.count` series are not a substitute for distribution percentiles.
+- **Client projects have a separate path.** Browser SDK 2.1+ sends bounded catalog/custom delta histograms and sums, with route/release/environment/device dimensions. Arbitrary gauges and cumulative series are dropped. SDK 2.0 event-derived metrics cover only uploaded events. Mobile `app.*` metrics are accepted but not yet emitted by shipped mobile SDKs. See [rum.md](rum.md) for limits and verification.
 - **Tags come from data-point attributes plus a small resource allowlist.** Resource attributes are not copied onto metric points, with these exceptions. `service.name` becomes the `server_name` tag (and overwrites a data-point attribute of that name). The fixed allowlist retains host/platform metadata (`host.name`, `host.id`, `host.arch`, `os.type`, `os.description`, cloud provider/region/availability zone) and grouping identity for processes, containers, Kubernetes (`k8s.cluster.name`, pod, namespace, node, deployment, container), and PostgreSQL databases. Every other resource attribute (`deployment.environment`, for example) is dropped. A data-point attribute wins over the resource value when both use the same key. Any other per-series dimension must be a data-point attribute, and keep its cardinality low.
 - **Raw metric points expire after 7 days** (ClickHouse TTL). Queries over wider ranges read pre-aggregated rollups instead (1-minute rollups are kept 30 days, 1-hour rollups 1 year, 1-day rollups indefinitely), so older metrics lose granularity rather than disappearing.
 
@@ -244,7 +246,6 @@ Traceway recognizes these non-standard span attributes:
 | Attribute | Type | Purpose |
 |---|---|---|
 | `traceway.is_stream` | boolean | Mark an endpoint span as streaming (SSE/long-poll) so its duration is excluded from latency percentiles. |
-| `traceway.distributed_trace_id` | string (UUID) | Override the distributed trace ID used to link entities across services. Rarely needed. The OTel trace ID is used by default. |
 
 ## Verification Checklist
 
@@ -264,3 +265,7 @@ traceway exceptions list --since 1h
 traceway logs query --since 1h --min-severity 17
 traceway metrics query --name <metric-name> --since 1h
 ```
+
+Canonical span storage is subject to permission and healthcheck filtering and rejected-row handling. Graphs are limited by authorized projects, a lookup time window, row count and UTF-8 attribute byte budgets; arrival order does not remove those limits.
+
+Browser/server correlation uses standard W3C trace context and the same `traceId`. Span links retain their target trace and span IDs without merging traces.

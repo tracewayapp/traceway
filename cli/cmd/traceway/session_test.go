@@ -3,11 +3,10 @@ package main
 import (
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	"github.com/tracewayapp/traceway/cli/internal/config"
-	"github.com/tracewayapp/traceway/cli/internal/state"
+	"github.com/tracewayapp/traceway/cli/v2/internal/config"
+	"github.com/tracewayapp/traceway/cli/v2/internal/state"
 )
 
 func TestLoadSession_happyPath(t *testing.T) {
@@ -126,7 +125,7 @@ func TestLoadSession_missingProject_returnsNoProject(t *testing.T) {
 // Sanity-check: a session built against an httptest server and an HTTP probe
 // works end-to-end (smoke for caller patterns).
 func TestLoadSession_pointsAtRealServer(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(204)
 	}))
 	defer srv.Close()

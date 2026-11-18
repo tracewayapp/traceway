@@ -1,0 +1,99 @@
+id: debug-insufficient-evidence
+suite: debug
+title: A rare export 500 whose cause the telemetry cannot show
+tags: [smoke, go, instrumentation]
+seed: debug/insufficient-evidence
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: Large xlsx renders look like a plausible cause, but the failures are spread over csv, xlsx and json and over small and large reports alike; nothing in the data singles out render or the uninstrumented credential fetch inside blob.Put.
+workspace: {repo: reports-api-go}
+prompt: |
+  /traceway debug {{seed.hash}}
+  A few report exports fail every day with a 500. It's not many, but customers notice. Find the cause and fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - match: "(?i)instrument|log|span|attribute|deploy"
+    reply: "Yes, go ahead; we can deploy a change today."
+  - default: "I don't know more than that. Do what you think is right."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    culprit: {file: internal/export/exporter.go, symbol: Export}
+    needs_instrumentation: true
+    mentions_all: ["can ?not|can't|unable to|not enough|insufficient|no way to|(doesn't|does not|don't|do not) (say|show|tell|record|know)|impossible to|no evidence"]
+  grounding:
+    - "report export failed"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.show, write_file]
+      - [exceptions.show, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-insufficient-evidence
+    command: go test ./...
+    gating: true
+    must_change: [internal/export/exporter.go]
+    must_not_change: [internal/export/render.go]
+judge:
+  expected: >-
+    The group is the bare sentinel "report export failed", recorded by httpx.Error from the export handler. Export
+    (internal/export/exporter.go) returns that sentinel from four steps (load rows, render, upload, sign) and drops every
+    cause. Failing traces show the rows query succeeding and the storage PUT never starting, which leaves render and the
+    uninstrumented credential fetch inside blob.Put (signing runs after the upload), and nothing says which one failed or
+    why. Failures are spread over every format and report size, so nothing singles one out, and nothing was deployed in
+    the window. The right outcome is needs_instrumentation:
+    keep the behaviour, make the next failure explain itself (wrap the cause into the returned error so the handler
+    records it, and/or an ERROR slog record with the step, report id, format and row count inside the request context),
+    and say exactly what to query when it fires again.
+  rubric:
+    - States plainly that the telemetry cannot determine which step fails or why, citing the bare message and the trace that stops after the rows query.
+    - Rules out the big-xlsx hypothesis from the data (formats and sizes of the failing occurrences) instead of shipping a speculative change to render or the storage client.
+    - Adds instrumentation in Export that preserves behaviour (still ErrExportFailed, no retries, no client-visible detail) and tells the user the exact query to run on the next failure.
+oracle:
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 30 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}),
+      formats: ([.occurrences[].attributes["report.format"]] | group_by(.) | map({format: .[0], n: length})),
+      versions: ([.occurrences[].appVersion] | unique), relatedEntity}'
+  - shell: >-
+      traceway endpoints show {{calls.c01.relatedEntity.id}} --recorded-at {{calls.c01.relatedEntity.recordedAt}} --output json
+      | jq '{request: (.endpoint | {endpoint, duration, statusCode, attributes}), spans: [.spans[] | {name, ms: (.duration / 1e6), rows: .attributes["db.response.returned_rows"]}]}'
+  - shell: >-
+      traceway logs query --trace-id {{calls.c01.relatedEntity.traceId}} --since 7d --output json
+      | jq '[.data[] | {timestamp, severityText, body}]'
+  - shell: >-
+      traceway endpoints list --since 7d --search export --output json
+      | jq '[.data[] | {endpoint, count, p50ms: (.p50Duration / 1e6), p95ms: (.p95Duration / 1e6)}]'
+  - read_file: internal/export/exporter.go
+  - read_file: internal/blob/blob.go
+  - write_file: {path: internal/export/exporter.go, from: oracle/debug-insufficient-evidence/exporter.go}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      category: unknown
+      culprit: {file: internal/export/exporter.go, symbol: Export, line: 45}
+      evidence:
+        - {call_id: c01, claim: "the group is the bare message 'report export failed' from the export handler; the failing occurrences cover csv, xlsx and json alike, all on 2.11.0"}
+        - {call_id: c02, claim: "in a failing request the rows query succeeds and the storage PUT never starts; nothing records which step failed"}
+        - {call_id: c03, claim: "the trace has no log line beyond the access log"}
+        - {call_id: c05, claim: "Export returns the same sentinel from rows, render, upload and signing, dropping the cause"}
+        - {call_id: c06, claim: "blob.Put fetches credentials through an uninstrumented client before the PUT, another step that leaves no span"}
+      fix_summary: >-
+        No behaviour change: Export now wraps the cause and the failed step into the returned error (still ErrExportFailed, which
+        the handler records on the span, still a plain 500 for the client) and writes an ERROR slog record with the step,
+        report id, format and row count inside the request context.
+      files_changed: [internal/export/exporter.go]
+      needs_instrumentation: true
+      confidence: medium
+      report: |
+        I cannot tell from the telemetry why these exports fail, so I did not change the export logic. The issue is the bare message "report export failed": Export (internal/export/exporter.go) returns that sentinel from four steps (loading rows, rendering, uploading, signing the URL) and drops the cause. In the failing request the rows query succeeds and the storage PUT never starts, so the failure is in rendering or in the credential fetch inside blob.Put, which uses an uninstrumented client and leaves no span (signing only runs after the upload). The failures are spread over csv, xlsx and json, so "big xlsx renders" is not supported by the data, and every occurrence is on 2.11.0, so nothing was deployed in the window.
+        What I changed: Export now wraps the failed step and its cause into the error (still errors.Is ErrExportFailed, still a plain 500 for the client) and logs "report export step failed" at ERROR with step, report_id, format, rows/bytes and err, inside the request context. After this ships, the next failure will say what happened:
+          traceway exceptions show {{seed.hash}} --output json | jq '.occurrences | sort_by(.recordedAt) | last | .stackTrace | split("\n")[0]'
+          traceway logs query --since 24h --min-severity 17 --search "report export step failed"

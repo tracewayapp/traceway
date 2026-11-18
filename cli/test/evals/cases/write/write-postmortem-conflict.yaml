@@ -1,0 +1,62 @@
+id: write-postmortem-conflict
+suite: write
+title: Add a follow-up to a post-mortem a teammate is editing
+tags: [post-mortems]
+seed: write/postmortem-conflict
+arms: [cli-write+skill, mcp-write]
+invoke: natural
+distractor: A teammate adds a timeline entry right after the agent reads the document; replacing the body without expected_updated_at (or retrying the stale body after the 409) silently drops their edit.
+prompt: |
+  Please add a follow-up action to post-mortem #{{seed.postMortemId}}: put a circuit breaker around the card processor client so checkout fails fast while the processor is degraded, owner Sam. Leave the rest of the document as it is.
+budget: {max_turns: 25, max_tool_calls: 15, timeout: 8m}
+user:
+  - default: "Just that one follow-up, please. Keep whatever else is in there."
+hooks:
+  - after: {op: post_mortems.show, args: {id: "{{seed.postMortemId}}"}}
+    action: edit_post_mortem
+    args: {id: "{{seed.postMortemId}}", insert_after: "{{seed.teammateAnchor}}", text: "{{seed.teammateLine}}"}
+expect:
+  state:
+    - kind: post_mortem
+      id: "{{seed.postMortemId}}"
+      contains:
+        - "circuit breaker"
+        - "Sam"
+        - "INC-20931"
+        - "## Summary"
+        - "Ask the processor for their incident report"
+        - "About 540 checkout attempts failed"
+        - "rolled back a faulty load balancer change"
+      not_contains:
+        - "circuit breaker.*circuit breaker"
+    - kind: agent_writes
+      route: "PUT /api/post-mortems"
+      http_status: {min: 200, max: 299}
+      count: 1
+  calls:
+    required:
+      - {op: post_mortems.show, args: {id: "{{seed.postMortemId}}"}}
+      - {op: post_mortems.update, ok: true, args: {id: "{{seed.postMortemId}}", expected_updated_at: present}}
+    forbidden:
+      - {op: post_mortems.create}
+    order:
+      - [post_mortems.show, post_mortems.update]
+    max_failed_calls: 3
+judge:
+  expected: The agent reads post-mortem {{seed.postMortemId}} and writes the revised body with the new follow-up, passing the updatedAt of the read the body is based on as expected_updated_at. A teammate adds a timeline entry (INC-20931) right after the agent's first read, so an update based on that read gets a 409; the agent then reads the document again, reapplies only its follow-up on top of the teammate's version and saves it. An agent that read the document again before writing, or read and wrote in one call, sees no conflict, which is fine. The final document keeps the teammate's line and everything else, plus the new follow-up. After a conflict, it tells the user someone else had edited it and that both changes are in.
+  rubric:
+    - Sends expected_updated_at with the full-body update instead of overwriting blindly.
+    - On a conflict, re-reads and reapplies the follow-up on the current version, keeping the teammate's edit, instead of retrying the stale body.
+    - Tells the user what the document now contains, and about the concurrent edit if it hit one.
+oracle:
+  - shell: traceway-write post-mortems show {{seed.postMortemId}} --output json
+  - op: post_mortems.update
+    args: {id: "{{seed.postMortemId}}", content_md: "{{seed.staleContent}}", expected_updated_at: "{{last.updatedAt}}"}
+  - shell: traceway-write post-mortems show {{seed.postMortemId}} --output json
+  - op: post_mortems.update
+    args: {id: "{{seed.postMortemId}}", content_md: "{{seed.finalContent}}", expected_updated_at: "{{last.updatedAt}}"}
+  - finish:
+      summary: |
+        Added the follow-up "Add a circuit breaker around the card processor client so checkout fails fast while the processor is degraded (owner: Sam)" to post-mortem {{seed.postMortemId}}. My first save was refused with a conflict: someone had just added a timeline entry (Priya's note about the processor's incident INC-20931). I re-read the document and added the follow-up on top of their version, so both changes are in and nothing else changed. The edit is in the post-mortem's activity log.
+      changes:
+        - {action: update post-mortem, target: "post-mortem {{seed.postMortemId}}", new_value: "new follow-up action (circuit breaker, owner Sam)", undo: "remove the line in another update; the activity log keeps the history"}

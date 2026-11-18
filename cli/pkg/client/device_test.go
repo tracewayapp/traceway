@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 )
 
 func TestDeviceAuthorize_success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/auth/device/authorize" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -40,7 +39,7 @@ func TestPollDeviceToken_states(t *testing.T) {
 		{`{"error":"expired_token"}`, ErrExpiredToken},
 	}
 	for _, tc := range cases {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(tc.body))
 		}))
@@ -54,7 +53,7 @@ func TestPollDeviceToken_states(t *testing.T) {
 }
 
 func TestPollDeviceToken_success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","token_type":"Bearer","expires_in":900,"email":"a@b.com"}`))
 	}))
 	defer srv.Close()
@@ -70,7 +69,7 @@ func TestPollDeviceToken_success(t *testing.T) {
 }
 
 func TestRefresh_success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/auth/token" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -94,7 +93,7 @@ func TestRefresh_success(t *testing.T) {
 }
 
 func TestRefresh_invalidGrant(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
 	}))
@@ -109,7 +108,7 @@ func TestRefresh_invalidGrant(t *testing.T) {
 
 func TestDo_refreshOn401_retriesOnce(t *testing.T) {
 	var calls int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := atomic.AddInt32(&calls, 1)
 		auth := r.Header.Get("Authorization")
 		if n == 1 {
@@ -143,7 +142,7 @@ func TestDo_refreshOn401_retriesOnce(t *testing.T) {
 }
 
 func TestDo_refreshInvalidGrant_returnsUnauthorized(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()
@@ -158,7 +157,7 @@ func TestDo_refreshInvalidGrant_returnsUnauthorized(t *testing.T) {
 }
 
 func TestDo_refreshFails_surfacesRefreshError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()

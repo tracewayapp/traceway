@@ -42,3 +42,5 @@
 /client/fasthttp-middleware/*  /client/otel  301
 /client/http-middleware        /client/otel  301
 /client/http-middleware/*      /client/otel  301
+/protocol                      /client/otel  301
+/protocol/*                    /client/otel  301

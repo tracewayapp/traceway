@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/outbox"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional/shared"
 )
 
 func TestResolveUrgencyMatrix(t *testing.T) {
@@ -366,7 +366,7 @@ func TestLowUrgencyPageRunsLowChain(t *testing.T) {
 
 	// warning severity + auto urgency -> low chain (email), not sms.
 	policyId := createPolicy(t, fixture.OrgId, singleStepPolicy(fixture.Alice))
-	if _, err := openPage(openPageParams{
+	if _, err := openPage(context.Background(), openPageParams{
 		PolicyId: policyId, ProjectId: fixture.ProjectId, RuleName: "r", RuleType: "new_error",
 		Subject: "warn", Severity: "warning", DedupKey: "chain4|/issues/w",
 	}); err != nil {

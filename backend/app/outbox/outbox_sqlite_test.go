@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 func setupOutboxDB(t *testing.T) {
@@ -338,7 +338,7 @@ func TestLastEnqueuedPerRuleAndHealthAndPrune(t *testing.T) {
 		t.Errorf("expected rule %d in seeding map, got %v", ruleId, last)
 	}
 
-	stats, err := HealthSnapshot()
+	stats, err := HealthSnapshot(context.Background())
 	if err != nil {
 		t.Fatalf("health: %v", err)
 	}

@@ -2,6 +2,9 @@
 	import * as Table from '$lib/components/ui/table';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import { resolveHref } from '$lib/utils/links';
+	import { spanTraceHref } from '$lib/utils/span-explorer';
+	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import type {
 		SessionActionEvent,
 		SessionNetworkEvent,
@@ -76,6 +79,14 @@
 		}
 	}
 
+	function traceHref(a: SessionActionEvent): string | undefined {
+		if (a.type !== 'network' || !a.traceId) return undefined;
+		return spanTraceHref(
+			{ traceId: a.traceId, spanId: a.spanId ?? '', recordedAt: a.timestamp },
+			{ focusSpan: true }
+		);
+	}
+
 	const activeIndex = $derived.by(() => {
 		if (currentTimeMs == null) return -1;
 		let last = -1;
@@ -128,6 +139,7 @@
 				<TableEmptyState colspan={3} message="No actions captured for this session." />
 			{:else}
 				{#each actions as entry, i (i)}
+					{@const href = traceHref(entry)}
 					<Table.Row
 						onclick={() => onSeek?.(offsetMs(entry.timestamp))}
 						class="cursor-pointer {i === activeIndex
@@ -140,8 +152,21 @@
 						<Table.Cell class="font-mono text-xs uppercase {typeColor(entry.type)}">
 							{entry.type}
 						</Table.Cell>
-						<Table.Cell class="max-w-[600px] truncate font-mono text-xs" title={summary(entry)}>
-							{summary(entry)}
+						<Table.Cell class="max-w-[600px] font-mono text-xs" title={summary(entry)}>
+							<div class="flex items-center gap-2">
+								<span class="truncate">{summary(entry)}</span>
+								{#if href}
+									<a
+										class="ml-auto inline-flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground"
+										title="Open the request's trace"
+										onclick={(e) => e.stopPropagation()}
+										{...{ href: resolveHref(href) }}
+									>
+										<Waypoints class="size-3.5" />
+										Trace
+									</a>
+								{/if}
+							</div>
 						</Table.Cell>
 					</Table.Row>
 				{/each}

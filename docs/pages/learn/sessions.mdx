@@ -1,8 +1,10 @@
-# Sessions
+# Sessions & Replay
 
-A **session** is a full recording of one user's interactions with a browser app, typically the lifetime of an open tab. Where an [Issue](/learn/issues) shows you a single moment that something broke, a session shows you the entire journey: what the user clicked, navigated to, scrolled past, and saw on screen, with the same console logs and network calls layered on top.
+Sessions and replay are the investigation layer of [Real User Monitoring (RUM)](/learn/rum). Start with frontend performance across your users, then open a slow-session exemplar or an issue to investigate an individual experience. Metrics do not require every session to have a replay; recording depends on your SDK and Data Collection settings.
 
-Sessions are a browser-only concept. They're emitted by the JavaScript SDK and its framework wrappers (React, Vue, Svelte, jQuery) when **always-on session recording** is enabled. Backend and mobile SDKs do not produce sessions.
+A **session** groups one visit to a browser app, typically the lifetime of an open tab. Its metadata, events and errors can exist without an uploaded replay. Where an [Issue](/learn/issues) shows you a single moment that something broke, a session helps you investigate the journey: what the user clicked, navigated to, scrolled past, and saw on screen, with the same console logs and network calls layered on top.
+
+Sessions are a browser-only concept, emitted by the JavaScript SDK and its framework wrappers (React, Vue, Svelte, jQuery). The stable 1.x SDK emits them only when **always-on session recording** is enabled (`recordAllSessions: true`). The 2.x SDK (beta) reports every session unless `sessions: false` is set, and keeps the replay on the device until an error, a trigger or a capture asks for it (see [Remote SDK Config](/learn/remote-config)). Backend and mobile SDKs do not produce sessions.
 
 ## Sessions vs. Exception Clips
 
@@ -12,8 +14,8 @@ A session is the larger envelope around those moments:
 
 | | Exception Clip | Session |
 |---|---|---|
-| Default behaviour | On (rolling window flushed with each captured exception) | Off (opt in with `recordAllSessions: true`) |
-| Scope | Last ~10 s before an exception | Entire tab lifetime, capped at 60 min |
+| Default behaviour | On (rolling window flushed with each captured exception) | 1.x: off (opt in with `recordAllSessions: true`). 2.x: the session is reported, its full replay is uploaded only with `recordAllSessions: true` or a remote config rule |
+| Scope | The seconds before an exception: about 10 s with 1.x, 30 s with 2.x | Entire tab lifetime, capped at 60 min |
 | Storage | One file per exception | One file per ~30 s segment, many per session |
 | When uploaded | At exception capture | Continuously, every segment rotation |
 | Where surfaced | Inline on the issue page | Sessions list + dedicated detail page; linked from issues |
@@ -22,7 +24,7 @@ Both can coexist: an exception fired during an always-on session gets its inline
 
 ## What a Session Records
 
-The recording uses [rrweb](https://github.com/rrweb-io/rrweb) to capture DOM mutations, input events, mouse movement, and viewport changes. Replay is a faithful reconstruction: text, layout, scrolling, hover states, even mouse trails. Privacy markers (`rr-mask`, `rr-block`, `rr-ignore`) work the same way they do for exception clips. See [Session Replay in the JS SDK guide](/client/js-sdk/session-replay#privacy--masking) for the full masking reference.
+The recording uses [rrweb](https://github.com/rrweb-io/rrweb) to capture DOM mutations, input events, mouse movement, and viewport changes. Replay is a faithful reconstruction: text, layout, scrolling, hover states, even mouse trails. Privacy markers (`rr-mask`, `rr-block`, `rr-ignore`) work the same way they do for exception clips. See [Session Replay in the JS SDK guide](/client/js-sdk/v1/session-replay#privacy--masking) for the full masking reference.
 
 Alongside the rrweb stream, each segment carries:
 
@@ -31,26 +33,30 @@ Alongside the rrweb stream, each segment carries:
 
 The dashboard's session detail page renders these as separate tabs below the player, scrub-synced to the replay timeline.
 
+With the OpenTelemetry-based SDK, `@tracewayapp/frontend` 2.x (in beta), segments carry the recording only. Console lines, navigation, clicks and app events are stored as log records and requests as spans, tagged with the session id, and the session page reads them from there; which of them leave the browser is set per signal by [Remote SDK Config](/learn/remote-config).
+
 ## Session Lifecycle
 
-A session begins automatically when the SDK initializes with `recordAllSessions: true` (or when the page is restored from the bfcache after a back/forward navigation; a fresh `sessionId` is generated each time).
+With the 1.x SDK, a session begins automatically when the SDK initializes with `recordAllSessions: true` (or when the page is restored from the bfcache after a back/forward navigation; a fresh `sessionId` is generated each time).
+
+With the 2.x SDK, a session begins whenever the SDK initializes, `recordAllSessions` or not, unless `sessions: false` is set. The session is kept per tab: a page load in the same tab continues it while it is within the inactivity timeout and the maximum duration below, and starts a new one otherwise.
 
 It ends on the first of:
 
 | Trigger | When | Behaviour |
 |---|---|---|
-| **Inactivity timeout** | 15 minutes since the last DOM event rrweb observed | Session is closed; subsequent activity opens a new one |
+| **Inactivity timeout** | 15 minutes without user activity (1.x: the last DOM event rrweb observed; 2.x: the last pointer, key, scroll or touch event) | Session is closed; subsequent activity opens a new one |
 | **Maximum duration** | 60 minutes from session start | Hard cap regardless of activity |
 | **Page unload** | `pagehide` fires (close tab, hard refresh, navigate away) | Final segment is drained, closing payload sent via `fetch keepalive` |
 
-If a session ends without an explicit close (e.g. the browser is force-quit before `pagehide` runs, or the closing flush is dropped), its `ended_at` stays NULL on the backend and the dashboard renders the duration as **Abandoned** once the row has been quiet for ≥ 15 min.
+The closing payload is not guaranteed to arrive: the browser can be force-quit before `pagehide` runs, mobile browsers freeze background tabs without firing it, and the flush itself can be dropped. The backend therefore does not depend on it. Once no replay segment has arrived for 15 minutes, the session ends at the time of its last recorded segment. A close reported more than 15 minutes after the last segment, which is what the inactivity timer sends from a tab that sat frozen in the background, is replaced the same way, so the duration reflects activity rather than time the tab spent unattended. Replay segments recorded more than 65 minutes after a session started (the 60 minute cap plus slack for a late timer) are not part of it: browser SDK versions up to 1.2.0 kept uploading segments under an ended session for as long as the tab stayed open, and those sessions end at their last recorded activity within the first 65 minutes. A session with no recorded segments and no close is shown as **No recording**.
 
 ## Attributes
 
 Every session ships with a context map. Three layers contribute:
 
 1. **Auto-collected defaults**: the SDK stamps `url`, `path`, `referrer`, `userAgent`, `language`, `platform`, `viewport`, `screen`, and `timezone` from `window` / `navigator`. The backend additionally stamps `client.ip` from the request.
-2. **Global scope**: anything set via `setAttribute("userId", "u_42")` / `setAttributes({ tenant: "acme" })` on the SDK. These flow through every subsequent session, exception, and segment update.
+2. **Global scope**: anything set via `setAttribute("userId", "u_42")` / `setAttributes({ tenant: "acme" })` on the SDK. These refresh the open session and flow through subsequent sessions and exceptions. You can also pass `attributes` at initialization.
 3. **Per-call attributes**: `captureExceptionWithAttributes(err, { … })` for exceptions only.
 
 Layering: defaults → global scope → per-call. Higher layers win on key collision.
@@ -67,16 +73,36 @@ See the framework-specific guides for the API:
 
 The Sessions page in the dashboard accepts:
 
-- **Search by session ID**: paste a UUID for an exact match.
-- **Attribute filters**: add `key=value` filters (e.g. `userId=u_42`, `tenant=acme`, `experiment.cart_redesign=variant_b`). Filters AND together; values are exact match.
+- **Search**: paste a full session UUID for an exact match, or search a partial session ID, IP address, or attribute value (such as a user ID or email). Text search ignores case.
+- **Attribute filters**: click **Add filter** or an attribute on a session row. Choose **Equals**, **Not equals**, **Contains**, or **Not contains**. Equals is case-sensitive; Contains ignores case and treats characters such as `%` literally. Excluded filters also include sessions without that attribute.
+- **Filter chips**: click a chip to edit it or its × to remove it. All filters and the search combine with AND. Filters are stored in the URL for sharing and back/forward navigation.
 
-Attribute filters are backed by a Map column with bloom-filter indexes on keys and values, so they stay fast even as the table grows.
+For example, attach identity in your browser app:
+
+```javascript
+import { init, setAttributes, clearAttributes } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  recordAllSessions: true,
+  attributes: { tenant: "acme" },
+});
+
+// After login:
+setAttributes({ userId: "u_42", email: "alice@example.com" });
+
+// On logout:
+clearAttributes();
+```
+
+Then add `userId=u_42` to find that user's sessions, or combine `tenant=acme` with `email~=example.com`. Attribute values must be strings. Changes replace the current session's context; `clearAttributes()` removes app-defined values while retaining browser defaults.
+
+Older SDKs that omit session attributes remain supported.
 
 ## Sessions and Issues
 
 Every exception captured inside an always-on session is stamped with the parent `sessionId`. From the dashboard:
 
-- The **issue detail page** keeps showing the inline 10 s clip but renders a "View full session →" button when a session id is present.
+- The **issue detail page** keeps showing the inline clip but renders a "View full session →" button when a session id is present.
 - The **session detail page** renders a table of every exception that fired during that session, each linked back to its issue.
 
 This stitching is independent of whether the exception was caught by your code or by the SDK's global handlers.
@@ -93,6 +119,10 @@ For most apps, recording a sample of sessions (or only premium-tier users, etc.)
 
 ## Next Steps
 
-- [Session Replay in the JS SDK](/client/js-sdk/session-replay): privacy masking, segment rotation, and the wire format.
+- [Session Replay in the JS SDK](/client/js-sdk/v1/session-replay): privacy masking, segment rotation, and the wire format (1.x). The 2.x SDK (beta) is on [Session Replay](/client/js-sdk/session-replay).
 - [Issues](/learn/issues): how exceptions are grouped and what an issue page shows.
 - [Attributes](/learn/attributes): the broader attribute model that backs sessions, exceptions, traces, and tasks.
+
+## Record specific user journeys
+
+Build click, hover, navigation and log sequences through the [recording trigger editor](/learn/remote-config/trigger-sequences). A completed sequence requests replay and adds a filterable reason to the session. Multiple triggers can explain the same recording, and their historical names and sequences remain available after a rule changes.

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
 )
 
 const minImpactThreshold = 0.25
@@ -114,7 +114,7 @@ func evaluateImpactScore(ctx context.Context, rule *models.NotificationRule, pro
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 
 	var messages []Message
 	for ep, data := range currentSet {

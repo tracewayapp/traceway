@@ -1,6 +1,6 @@
 ---
 name: traceway
-description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue <hash|url|title>", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
+description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, investigate browser RUM and release regressions, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue HASH", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
 ---
 <!-- GENERATED FILE: assembled from cli/pkg/mcpserver/knowledge by cli/tools/skillgen. Edit the chunks there and run just gen-skills in cli/. -->
 
@@ -18,6 +18,8 @@ Drive a Traceway instance from the terminal with the `traceway` CLI. The first w
 
 > The CLI is under active development. If a flag documented here does not appear in `traceway <command> --help`, trust the binary.
 > If a `traceway` MCP server is connected, prefer its tools over shelling out to the CLI: they wrap the same API with the same semantics, and this skill's knowledge is available as its resources. The server is this same binary (`traceway mcp`).
+> This skill only reads. To change anything (archive issues, acknowledge or resolve pages, snooze alerts, run monitors, write post-mortems, create or change SLOs, change remote SDK config rules), the user installs the separate `traceway-write` CLI and the `traceway-write` skill.
+> When the user asks how a part of Traceway works (schedules, escalation, status pages, alert rules, impact score and the rest), use the `traceway-learn` skill. It is the full product guide.
 
 {{include "ground-rules.md"}}
 
@@ -96,9 +98,13 @@ The selected project is used implicitly by all subsequent commands.
 
 {{include "performance-flow.md"}}
 
+## Browser RUM investigations
+
+For Web Vitals, frontend release regressions, affected users or slow browser journeys, read [rum.md](rum.md) first. It covers distributions, segments, SLOs, session exemplars and the current CLI/MCP limitations. Do not route a browser experience question solely through backend endpoint latency.
+
 ## Flow: Query
 
-For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "show errors for service X"), use the read commands directly. A request specifically about latency or slowness routes to the Performance flow above.
+For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "show errors for service X"), use the read commands directly. Backend latency or slowness routes to the Performance flow above; browser experience routes to the RUM reference.
 
 ### Command reference
 
@@ -108,7 +114,6 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway exceptions list` | Grouped exceptions; `--search`, `--search-type text\|regex`, `--order-by lastSeen\|firstSeen\|count`, `--include-archived` |
 | `traceway exceptions show <hash>` | One group: full stack trace + occurrences |
 | `traceway exceptions occurrence <id> --recorded-at <t>` | One occurrence by id (fast): full detail + `sessionId` + recording |
-| `traceway exceptions archive/unarchive <hash>...` | Mutating; explicit user request + `--yes` only |
 | `traceway logs query` | Logs; `--search` (`--search-type body\|attribute`), `--service`, `--min-severity <n>`, `--trace-id` |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 and counts; `--search`, `--order-by impact\|count\|p95\|lastSeen` |
 | `traceway endpoints chart` | Latency over time for the top endpoints; `--metric-type total_time\|p50\|p95\|p99`, `--interval-minutes`. Use to find when latency changed |
@@ -119,10 +124,19 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway sessions show <id> --started-at <t>` | One session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | Distributed trace: every service node sharing the id |
 | `traceway metrics query --name <metric>` | Time series; `--aggregation`, `--tag`, `--group-by`, `--interval-minutes` |
+| `traceway pages list` / `pages show <id>` | On-call pages; `--status active\|open\|acknowledged\|resolved` |
+| `traceway alerts list` | Alert rules: type, enabled, snoozed until |
+| `traceway monitors list` / `monitors show <id>` | Uptime monitors, their status and incidents |
+| `traceway slos list` / `slos show <id>` | Service level objectives: definition, `status` (`ok`, `breached`, `no_data`), `currentSli` (percent), `budgetRemaining`, `burnRate1h`/`burnRate6h`; a disabled SLO is paused; `show` adds the alert rules that read the SLO |
+| `traceway slos series <id> --file range.json` | `good` and `total` per bucket for `{"fromDate", "toDate"}` (RFC 3339, at most 91 days, optional `intervalMinutes`) |
+| `traceway slos preview --file slo.json` | What an SLO definition `{"sliKind", "sliConfig"}` would measure over the last 24h (`good`, `total`, `sli`), without saving |
+| `traceway post-mortems list` / `post-mortems show <id>` | Post-mortem documents; `--search`, `--tag` |
+| `traceway opamp rules list` | Browser projects only: the remote SDK config (OpAMP) rules in order, with conditions, settings and `updatedAt`. Later matching rules win |
+| `traceway opamp preview --file client.json` | The settings document the saved rules give a client described by `{"attributes":{...},"instanceUid":"..."}` (`--file -` reads stdin): matched rules and captures, plan limits applied, config hash. Not proof that a browser applied it |
 | `traceway profiles {list,use}`, `login`, `logout`, `version` | Profile and session management |
 
 The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above.
 
-Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list/discover`.
+Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list`. Metric discovery is available as `metrics discover`.
 
 {{include "query-recipes.md"}}

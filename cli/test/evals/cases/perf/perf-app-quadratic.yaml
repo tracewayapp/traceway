@@ -1,0 +1,77 @@
+id: perf-app-quadratic
+suite: perf
+title: Quotes for large carts take seconds while small carts are instant
+tags: [application, python]
+seed: perf/app-quadratic
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: Large carts look like a memory problem (big in-memory work per request), but process RSS and host memory are flat, and the time is in-process compute in apply_promotions that grows with the square of cart.items (~20ms at 40 items, ~0.3s at 170, over a second at 330+) while both queries stay under ~10ms.
+workspace: {repo: pricing-service-py}
+prompt: |
+  /traceway perf POST /api/quotes
+  Some quote requests at checkout take more than a second, mostly from wholesale accounts, while the rest come back instantly. As far as I know nothing changed on our side. What's causing it and how do we fix it?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: inefficient_algorithm_o_n2_hot_path
+    not: [unbounded_in_memory_work_large_allocations, cpu_bound_serialization, missing_or_unused_index, cpu_saturation]
+    locus: {endpoint: "POST /api/quotes", span_contains: "apply_promotions"}
+  grounding:
+    - "apply_promotions"
+    - "cart.items"
+  calls:
+    required:
+      - {op: endpoints.list}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [endpoints.list, endpoints.show]
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: Inefficient algorithm (O(n^2) hot path). POST /api/quotes has a low p50 (~12ms) and a p99 around a second. In every trace the two queries take a few ms and nearly all the time is the apply_promotions compute span, whose duration grows with the square of the root span's cart.items attribute (~20ms at 40 items, ~0.3s at 170, 1.2s+ at 330). apply_promotions sums the quantity of every other line in the cart for every line (and rebuilds the SKU list per bundle check), so pricing is quadratic in cart size. Memory is flat and nothing was deployed. Fix - compute the per-family totals and the SKU set once (Counter/set) and index promotions by family and SKU, making it linear.
+  rubric:
+    - Compares several traces and shows that apply_promotions time grows superlinearly (roughly quadratically) with cart.items while the DB spans stay small.
+    - Rules out a database cause (fast, constant queries) and memory pressure or large allocations (flat RSS).
+    - Points at the nested scan in apply_promotions and proposes precomputing family totals and the SKU set once so the pass is linear.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 8 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round)}]'
+  - shell: traceway logs query --since 12h --search /api/quotes --page-size 20 --output json | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway endpoints show {{seed.bigQuote.id}} --recorded-at {{seed.bigQuote.recordedAt}} --output json
+      | jq '{cart_items: .endpoint.attributes["cart.items"], total_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: ((.duration/1e5|round)/10)}]}'
+  - shell: >-
+      traceway endpoints show {{seed.midQuote.id}} --recorded-at {{seed.midQuote.recordedAt}} --output json
+      | jq '{cart_items: .endpoint.attributes["cart.items"], total_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: ((.duration/1e5|round)/10)}]}'
+  - shell: >-
+      traceway endpoints show {{seed.smallQuote.id}} --recorded-at {{seed.smallQuote.recordedAt}} --output json
+      | jq '{cart_items: .endpoint.attributes["cart.items"], total_ms: (.endpoint.duration/1e6|round), spans: [.spans[] | {name, ms: ((.duration/1e5|round)/10)}]}'
+  - shell: >-
+      traceway metrics query --name process.runtime.cpython.memory --aggregation max --group-by type --since 24h --interval-minutes 360 --output json
+      | jq '.results[0].series | map_values(map(.value / 1e6 | round))'
+  - read_file: app/pricing/promotions.py
+  - submit:
+      checklist_item: inefficient_algorithm_o_n2_hot_path
+      category: application
+      locus: {endpoint: "POST /api/quotes", span: "apply_promotions", service: pricing-service}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "POST /api/quotes has a ~12ms p50 but a p99 around a second: a minority of requests are slow"}
+        - {call_id: c03, claim: "the largest cart spends over a second in apply_promotions; both queries take under 10ms"}
+        - {call_id: c04, claim: "a cart with about half as many items spends roughly a quarter of that time in apply_promotions"}
+        - {call_id: c05, claim: "a cart of a few dozen items spends under 30ms in apply_promotions: the cost grows with the square of cart.items"}
+        - {call_id: c06, claim: "process RSS is flat, so this is not memory growth"}
+      ruled_out:
+        - {checklist_item: unbounded_in_memory_work_large_allocations, call_id: c06, reason: "flat RSS; the time is compute that scales with the square of the item count"}
+        - {checklist_item: missing_or_unused_index, call_id: c03, reason: "the price and promotion queries take under 10ms even for the largest cart"}
+      fix: In apply_promotions, compute per-family quantities with a Counter and the cart's SKUs as a set once, and index the promotions by family and SKU, so each line is priced in constant time and the pass is linear in the cart size.
+      confidence: high
+      report: |
+        Quote latency grows with the square of the cart size. In the traces I compared, the price and promotion queries take a few milliseconds regardless of size, and nearly all the time is the apply_promotions span: ~27ms for a 47-item cart, ~0.3s at 169 items and ~1.26s at 332. apply_promotions (app/pricing/promotions.py) sums the quantity of every line of the cart for every line, and rebuilds the cart's SKU list for each bundle check, so the work is O(n^2) in the number of lines; wholesale carts are the large ones. Memory is flat and nothing was deployed. Fix: in apply_promotions, build the family totals (a Counter), the cart's SKU set and a promotion index by family and SKU once before the loop, which keeps the same discounts and makes the pass linear.

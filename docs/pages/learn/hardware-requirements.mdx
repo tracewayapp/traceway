@@ -6,7 +6,7 @@ How much CPU, RAM, and disk Traceway needs depends almost entirely on **which st
 
 There are three shapes:
 
-- **SQLite mode** (single binary, zero external dependencies). The whole stack is one process. This is the lightweight option.
+- **SQLite mode** (single binary, zero external dependencies). The whole stack is one process. This is the lightweight option, as long as `SQLITE_CACHE_SIZE_MB` is set to fit the host. For a single container we recommend DuckDB mode.
 - **DuckDB mode** (`telemetry_duckdb` build tag, CGO required). Still a single container with zero external dependencies, but the telemetry store is DuckDB's columnar engine, which holds 10 to 100 times more queryable rows than SQLite on the same box. The catch: DuckDB sizes itself from host RAM, so memory-capped containers must set `DUCKDB_MEMORY_LIMIT`.
 - **ClickHouse + PostgreSQL mode** (`transactional_pg telemetry_ch` build tags). ClickHouse is built to use a lot of RAM for caches and merges, so this is the heavier option that scales much further. It is also the only mode that supports running more than one backend instance; see [Running more than one instance](/server/minimal#running-more-than-one-instance).
 
@@ -14,7 +14,7 @@ There are three shapes:
 
 | Deployment | Minimum to start | Comfortable | Notes |
 |------------|------------------|-------------|-------|
-| **SQLite** (single binary) | 1 vCPU, 512 MB RAM | 2 vCPU, 1 to 2 GB RAM | The backend process idles at ~30 MB RSS. Memory grows with the SQLite page cache and source map cache, both capped. |
+| **SQLite** (single binary) | 1 vCPU, 512 MB RAM, `SQLITE_CACHE_SIZE_MB` set | 2 vCPU, 1 to 2 GB RAM, `SQLITE_CACHE_SIZE_MB` set | The backend process idles at ~30 MB RSS. Memory grows with the SQLite page cache and source map cache. The page cache default suits a 16 GB host and can take up to 4 GB, so set `SQLITE_CACHE_SIZE_MB` on anything smaller or the backend gets OOM-killed. |
 | **DuckDB** (single container) | 2 vCPU, 2 GB RAM, `DUCKDB_MEMORY_LIMIT` set | 2 to 4 vCPU, 4 to 8 GB RAM | DuckDB auto-tunes to ~80% of what it thinks is host RAM. In a memory-capped container it reads the host, not the cgroup, so set `DUCKDB_MEMORY_LIMIT` explicitly or the backend gets OOM-killed under ingest. |
 | **ClickHouse + PostgreSQL** | 2 vCPU, 4 GB RAM | 4 vCPU, 8 GB+ RAM | ClickHouse is the floor here, not Traceway. It claims up to 80% of host RAM by design. |
 
@@ -34,19 +34,25 @@ So the intuition that "it's about 100 MB" is, if anything, conservative for an i
 
 What consumes memory under real traffic:
 
-1. **The SQLite page cache** (SQLite mode only), capped at ~512 MB.
+1. **The SQLite page cache** (SQLite mode only). `SQLITE_CACHE_SIZE_MB` sizes it per connection, there are up to 4 connections, and each megabyte costs about two. The default of 512 allows up to 4 GB.
 2. **The source map cache**, capped at 500 MB in memory by default, and only filled if you upload source maps.
 3. **Per-request conversion work**: decoding OTLP/JSON payloads and hashing, proportional to your ingest rate. This is CPU, not retained memory.
 
-None of these are committed up front. A box with no source maps and light ingest stays near the idle floor.
+None of these are committed up front. The page cache is the one that fills on its own: the retention pass at startup reads through the telemetry file, so one connection's cache is full within seconds once the file is larger than the cache.
 
 ## SQLite mode (the small one)
 
 The [SQLite deployment](/server/sqlite) is one Alpine container, one process, two SQLite files, and a folder for blobs. No Postgres, no ClickHouse.
 
-A **1 vCPU / 512 MB** box is enough to stand it up and run a small project. **2 vCPU / 1 to 2 GB** is comfortable for a real workload and leaves headroom for the caches.
+A **1 vCPU / 512 MB** box is enough to stand it up and run a small project. **2 vCPU / 1 to 2 GB** is comfortable for a real workload. Both need `SQLITE_CACHE_SIZE_MB` set.
 
-The telemetry database is tuned for append-heavy writes and will grow its page cache up to ~512 MB under sustained ingest (`cache_size(-524288)`), with a 1 GB memory-mapped read window on top. On a small box you do not need to touch this. The cache is a ceiling, not a reservation, and SQLite only grows it as the working set demands.
+The telemetry database keeps a page cache per connection, sized by `SQLITE_CACHE_SIZE_MB` (default 512). Up to 4 connections are open and the driver uses about two megabytes of memory per megabyte of cache, so the caches can take up to 8 times the value: 4 GB at the default. Each cache fills as its connection reads or writes and is then kept, so the default is only safe on a host with 16 GB or more. On a small box, set the value to the container's memory in MB divided by 32: `16` for 512 MB, `32` for 1 GB, `64` for 2 GB. The [SQLite page](/server/sqlite#memory-sizing) has the full table.
+
+There is also a 1 GB memory-mapped read window. It is backed by the database file, so the kernel can reclaim it under pressure and it does not need to fit in the budget.
+
+<Callout type="warning">
+  For a single container we recommend [DuckDB mode](#duckdb-mode-the-small-one-that-reads-big) below. SQLite telemetry is fine for trying Traceway out or for a small instance, but we are not planning major work on it.
+</Callout>
 
 We benchmark the single-binary SQLite build on dedicated Hetzner CCX instances, from **CCX13 (2 vCPU / 8 GB)** up to **CCX43 (16 vCPU / 64 GB)**. Even the small tiers sustain tens of thousands of OTLP data points per second over OTLP/HTTP before write latency starts to climb, which is far more headroom than most self-hosted projects need.
 
@@ -61,7 +67,7 @@ We benchmark the single-binary SQLite build on dedicated Hetzner CCX instances, 
 
 ### Disk
 
-SQLite stores telemetry on local disk, so disk is the resource to watch, not RAM. Size it for your retention window. Telemetry rows are pruned by a background worker (`SQLITE_RETENTION_DAYS`, default 30); see [Data retention on the SQLite page](/server/sqlite#configuration). Blob storage (source maps, session recordings, AI traces) lives under the same `/data` volume unless you offload it to S3.
+SQLite stores telemetry on local disk, so disk is the other resource to watch. Size it for your retention window. Telemetry rows are pruned by a background worker (`SQLITE_RETENTION_DAYS`, default 30); see [Data retention on the SQLite page](/server/sqlite#configuration). Blob storage (source maps, session recordings, AI traces) lives under the same `/data` volume unless you offload it to S3.
 
 ## DuckDB mode (the small one that reads big)
 
@@ -100,11 +106,11 @@ If you are sizing a small box, these are the knobs that matter. Every one has a 
 |--------|---------|-----------|-----------------|
 | Source map cache (in memory) | 500 MB cap, 200 resolvers | `SOURCEMAP_CACHE_MAX_BYTES_MB`, `SOURCEMAP_CACHE_MAX_ENTRIES` | JS/TS projects that upload source maps. On a 1 to 2 GB box, set the cap to `100`. |
 | Source map cache (disk tier) | off | `SOURCEMAP_CACHE_TYPE=disk`, `SOURCEMAP_DISK_CACHE_MAX_MB` (2048) | Many active maps, or multiple backend instances. Moves `.tw` resolvers to memory-mapped files. |
-| SQLite page cache | ~512 MB cap | `cache_size` pragma | SQLite mode under sustained ingest. A ceiling, grown on demand. |
+| SQLite page cache | 512 MB per connection, up to 4 connections, about twice that in real memory | `SQLITE_CACHE_SIZE_MB` | SQLite mode. Set it on any host under 16 GB, to the container's memory in MB divided by 32. See [Memory sizing](/server/sqlite#memory-sizing). |
 | DuckDB memory budget | ~80% of host RAM | `DUCKDB_MEMORY_LIMIT`, `DUCKDB_THREADS` | DuckDB mode. Mandatory in memory-capped containers - DuckDB sizes itself from the host, not the cgroup. |
 | Session-recording uploader | 32 workers, 2048 queue | `SESSION_RECORDING_UPLOAD_WORKERS`, `SESSION_RECORDING_UPLOAD_QUEUE_SIZE` | Browser/mobile session replay. Set workers to `0` to disable entirely. |
 
-On a memory-constrained host, the single most effective change is lowering `SOURCEMAP_CACHE_MAX_BYTES_MB`. The source map cache is the largest tunable consumer, because resolving a minified stack frame means holding a built resolver in memory.
+On a memory-constrained host in SQLite mode, set `SQLITE_CACHE_SIZE_MB` first. At its default the page cache is the largest consumer, and it is the one that gets a small container OOM-killed. After that, the most effective change is lowering `SOURCEMAP_CACHE_MAX_BYTES_MB`, because resolving a minified stack frame means holding a built resolver in memory.
 
 <Callout type="info">
   Source maps are the heaviest single thing the backend keeps in memory, and the
@@ -116,8 +122,8 @@ On a memory-constrained host, the single most effective change is lowering `SOUR
 
 ## Rules of thumb
 
-- **"I want the cheapest thing that runs."** SQLite mode, 1 vCPU / 512 MB. It idles around 30 MB and the caches are capped.
-- **"Small production app, some JS source maps."** SQLite mode, 2 vCPU / 1 to 2 GB, source map cap at 100 to 250 MB.
+- **"I want the cheapest thing that runs."** SQLite mode, 1 vCPU / 512 MB, with `SQLITE_CACHE_SIZE_MB=16`. It idles around 30 MB.
+- **"Small production app, some JS source maps."** SQLite mode, 2 vCPU / 1 to 2 GB, with `SQLITE_CACHE_SIZE_MB` at 32 to 64 and the source map cap at 100 to 250 MB.
 - **"Single container, but the dashboards got slow as data grew."** DuckDB mode, 2 to 4 vCPU / 4 to 8 GB, with `DUCKDB_MEMORY_LIMIT` set to roughly half the container's RAM.
 - **"High ingest, long retention, want it to scale."** ClickHouse + PostgreSQL, 4 vCPU / 8 GB+, and size ClickHouse first.
 - **"It's getting slow."** Don't guess. Turn on [self-monitoring](/server/capacity-monitoring) and let the metrics tell you whether to scale ClickHouse, scale the backend, or buffer ingestion.

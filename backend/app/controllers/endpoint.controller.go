@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 type endpointController struct{}
@@ -30,11 +30,13 @@ type EndpointSearchRequest struct {
 }
 
 type EndpointInstancesRequest struct {
-	FromDate      time.Time        `json:"fromDate"`
-	ToDate        time.Time        `json:"toDate"`
-	OrderBy       string           `json:"orderBy"`
-	SortDirection string           `json:"sortDirection"`
-	Pagination    PaginationParams `json:"pagination"`
+	FromDate         time.Time                `json:"fromDate"`
+	ToDate           time.Time                `json:"toDate"`
+	OrderBy          string                   `json:"orderBy"`
+	SortDirection    string                   `json:"sortDirection"`
+	Search           string                   `json:"search"`
+	AttributeFilters []SessionAttributeFilter `json:"attributeFilters"`
+	Pagination       PaginationParams         `json:"pagination"`
 }
 
 type EndpointInstancesResponse struct {
@@ -81,8 +83,8 @@ func (e endpointController) FindAllEndpoints(c *gin.Context) {
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading endpoints")
-	endpoints, total, err := telemetry.EndpointRepository.FindAll(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
+	spanCtx, span := traceway.StartSpan(c, "loading endpoints")
+	endpoints, total, err := telemetry.EndpointRepository.FindAll(spanCtx, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))
@@ -119,8 +121,8 @@ func (e endpointController) FindGroupedByEndpoint(c *gin.Context) {
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading grouped endpoints")
-	stats, total, err := telemetry.EndpointRepository.FindGroupedByEndpoint(c, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter, methodFilter)
+	spanCtx, span := traceway.StartSpan(c, "loading grouped endpoints")
+	stats, total, err := telemetry.EndpointRepository.FindGroupedByEndpoint(spanCtx, projectId, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, request.RootFilter, methodFilter)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stats: %w", err))
@@ -163,8 +165,16 @@ func (e endpointController) FindByEndpoint(c *gin.Context) {
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading endpoint instances")
-	endpoints, total, err := telemetry.EndpointRepository.FindByEndpoint(c, projectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection)
+	filters := make([]telemetry.SessionAttributeFilter, 0, len(request.AttributeFilters))
+	for _, f := range request.AttributeFilters {
+		if f.Key == "" {
+			continue
+		}
+		filters = append(filters, telemetry.SessionAttributeFilter{Key: f.Key, Value: f.Value, Exclude: f.Exclude, Contains: f.Contains})
+	}
+
+	spanCtx, span := traceway.StartSpan(c, "loading endpoint instances")
+	endpoints, total, err := telemetry.EndpointRepository.FindByEndpoint(spanCtx, projectId, endpoint, request.FromDate, request.ToDate, request.Pagination.Page, request.Pagination.PageSize, request.OrderBy, request.SortDirection, request.Search, filters)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading endpoints: %w", err))
@@ -172,8 +182,8 @@ func (e endpointController) FindByEndpoint(c *gin.Context) {
 	}
 
 	// Get aggregate stats for this endpoint
-	span = traceway.StartSpan(c, "loading endpoint stats")
-	stats, err := telemetry.EndpointRepository.GetEndpointStats(c, projectId, endpoint, request.FromDate, request.ToDate)
+	spanCtx, span = traceway.StartSpan(c, "loading endpoint stats")
+	stats, err := telemetry.EndpointRepository.GetEndpointStats(spanCtx, projectId, endpoint, request.FromDate, request.ToDate)
 	span.End()
 	if err != nil {
 		// Don't fail the request if stats fail, just return nil stats
@@ -221,8 +231,8 @@ func (e endpointController) GetStackedChart(c *gin.Context) {
 		return
 	}
 
-	span := traceway.StartSpan(c, "loading stacked chart")
-	data, err := telemetry.EndpointRepository.GetEndpointStackedChart(c, projectId, request.FromDate, request.ToDate, request.IntervalMinutes, request.MetricType, request.Search, request.RootFilter, methodFilter)
+	spanCtx, span := traceway.StartSpan(c, "loading stacked chart")
+	data, err := telemetry.EndpointRepository.GetEndpointStackedChart(spanCtx, projectId, request.FromDate, request.ToDate, request.IntervalMinutes, request.MetricType, request.Search, request.RootFilter, methodFilter)
 	span.End()
 	if err != nil {
 		c.AbortWithError(500, traceway.NewStackTraceErrorf("error loading stacked chart data: %w", err))

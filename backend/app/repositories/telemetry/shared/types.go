@@ -61,6 +61,7 @@ type LogAttributeFilter struct {
 
 type LogSearchParams struct {
 	ProjectId        uuid.UUID
+	ProjectIds       []uuid.UUID
 	FromDate         time.Time
 	ToDate           time.Time
 	Search           string

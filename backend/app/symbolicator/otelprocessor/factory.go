@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/scopes"
 )
 
 const processorVersion = "0.1.0"

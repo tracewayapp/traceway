@@ -7,11 +7,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 var executedTotal uint64
@@ -44,7 +44,7 @@ func ProcessOutcome(ctx context.Context, run *models.CheckRun, claimedBy string,
 		fromStatus string
 		toStatus   string
 	}
-	result, err := db.ExecuteTransaction(func(tx *sql.Tx) (finalization, error) {
+	result, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (finalization, error) {
 		var res finalization
 		won, err := transactional.CheckRunRepository.DeleteClaimedBy(tx, run.Id, claimedBy)
 		if err != nil {

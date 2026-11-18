@@ -47,9 +47,10 @@ export default function LogsPage() {
                 Every log, <em>with its full trace attached.</em>
               </h1>
               <p className="hero-sub">
-                Stop jumping between a log viewer and a trace viewer. Search by
-                severity, service, or attribute, tail new logs live as they arrive,
-                and open the exact request that produced any log line in one click.
+                Stop jumping between a log viewer and a trace viewer. See volume by
+                severity at a glance, search by service or attribute, tail new logs
+                live as they arrive, and open the exact request that produced any
+                log line in one click.
               </p>
               <div className="hero-cta-row">
                 <Link href="https://docs.tracewayapp.com/learn/logs" className="btn btn-accent">
@@ -62,8 +63,8 @@ export default function LogsPage() {
             </div>
             <div className="mt-12 lg:mt-0 lg:flex-1">
               <Image
-                src="/images/logs-search-and-detail.png"
-                alt="Logs search with attribute filters applied"
+                src="/images/logs-overview.png"
+                alt="The Logs page, with log volume by severity charted above the list"
                 width={1600}
                 height={900}
                 priority
@@ -80,6 +81,31 @@ export default function LogsPage() {
 
       {/* WHITE BAND: feature sections render on white */}
       <div className="band-light">
+        {/* Volume chart */}
+        <section className="wrap pt-20">
+          <SectionHead
+            eyebrow="Log volume"
+            title={
+              <>
+                See the spike <em>before you read a line.</em>
+              </>
+            }
+            description="Every search opens with a bar chart of how many logs matched, stacked by severity. Hover a bar for its counts, click it or drag across a few to zoom in, and watch the chart follow every filter you add."
+          />
+          <div
+            className="rounded-[12px] overflow-hidden bg-white"
+            style={{ border: "1px solid var(--hair)", boxShadow: "0 16px 48px rgba(15, 23, 42, 0.14)" }}
+          >
+            <Image
+              src="/images/logs-volume-chart.png"
+              alt="The log volume chart, with a tooltip showing error, warning and info counts for one minute"
+              width={2684}
+              height={454}
+              className="w-full h-auto block"
+            />
+          </div>
+        </section>
+
         {/* Filtering close-ups */}
         <section className="wrap py-20">
           <SectionHead

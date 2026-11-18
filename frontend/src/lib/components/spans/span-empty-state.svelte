@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Code } from '@lucide/svelte';
-	import type { Framework } from '$lib/state/projects.svelte';
+	import { LEGACY_GO_FRAMEWORKS, type Framework } from '$lib/state/projects.svelte';
 	import Highlight from 'svelte-highlight';
 	import go from 'svelte-highlight/languages/go';
 	import { themeState } from '$lib/state/theme.svelte';
@@ -12,50 +12,37 @@
 
 	let { framework }: Props = $props();
 
-	// TODO: Replace with actual documentation URLs when docs are built
+	// Projects created for the retired Go SDK instrument with OpenTelemetry now: a span is started from the
+	// request's context with the tracer provider the setup guide registers.
 	function getCodeExample(fw: Framework): string {
 		switch (fw) {
 			case 'gin':
-				return `// In your Gin handler
+				return `// In your Gin handler (otelgin puts the request span in c.Request.Context())
 func MyHandler(c *gin.Context) {
-    // Start a span for database operation
-    span := traceway.StartSpan(c, "db.query")
+    ctx, span := otel.Tracer("my-service").Start(c.Request.Context(), "db.query")
     defer span.End()
 
-    // Your database operation here
-    result, err := db.Query("SELECT * FROM users")
-
-    // Another span for cache
-    cacheSpan := traceway.StartSpan(c, "cache.set")
-    cache.Set("users", result)
-    cacheSpan.End()
+    rows, err := db.QueryContext(ctx, "SELECT * FROM users")
+    // ...
 }`;
 			case 'fiber':
-				return `// In your Fiber handler
+				return `// In your Fiber handler (otelfiber puts the request span in c.UserContext())
 func MyHandler(c *fiber.Ctx) error {
-    // Start a span for database operation
-    span := traceway.StartSpan(c.UserContext(), "db.query")
+    ctx, span := otel.Tracer("my-service").Start(c.UserContext(), "db.query")
     defer span.End()
 
-    // Your database operation here
-    result, err := db.Query("SELECT * FROM users")
-
-    // Another span for cache
-    cacheSpan := traceway.StartSpan(c.UserContext(), "cache.set")
-    cache.Set("users", result)
-    cacheSpan.End()
-
-    return c.JSON(result)
+    rows, err := db.QueryContext(ctx, "SELECT * FROM users")
+    // ...
+    return c.JSON(rows)
 }`;
 			default:
-				return `span := traceway.StartSpan(ctx, "db.load")
-// perform your operations here
+				return `ctx, span := otel.Tracer("my-service").Start(ctx, "db.load")
+// perform your operations here with ctx
 span.End()`;
 		}
 	}
 
-	const GO_FRAMEWORKS: Framework[] = ['gin', 'fiber', 'chi', 'fasthttp', 'stdlib', 'custom'];
-	const isGoFramework = $derived(GO_FRAMEWORKS.includes(framework));
+	const isGoFramework = $derived(LEGACY_GO_FRAMEWORKS.includes(framework));
 	const codeExample = $derived(getCodeExample(framework));
 </script>
 

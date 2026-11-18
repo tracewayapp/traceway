@@ -21,13 +21,14 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 
-	tracewaybackend "github.com/tracewayapp/traceway/backend"
+	tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
 )
 
 //go:embed index.html
@@ -46,6 +47,7 @@ const (
 	appPort            = 8080
 	backendToken       = "backend-dev-token"
 	frontendToken      = "frontend-dev-token"
+	shopToken          = "shop-dev-token"
 	monitoringToken    = "monitoring-dev-token"
 	flutterToken       = "flutter-dev-token"
 	flutterUploadToken = "flutter-upload-token"
@@ -122,14 +124,14 @@ func initOtelService(ctx context.Context, serviceName, token string, extraResour
 	}, nil
 }
 
-func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, body string, attrs ...otellog.KeyValue) {
+func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, body string, attrs ...attribute.KeyValue) {
 	rec := otellog.Record{}
 	now := time.Now()
 	rec.SetTimestamp(now)
 	rec.SetObservedTimestamp(now)
 	rec.SetSeverity(sev)
 	rec.SetSeverityText(sevText)
-	rec.SetBody(otellog.StringValue(body))
+	rec.SetBody(attribute.StringValue(body))
 	if len(attrs) > 0 {
 		rec.AddAttributes(attrs...)
 	}
@@ -137,9 +139,14 @@ func (s *otelService) log(ctx context.Context, sev otellog.Severity, sevText, bo
 }
 
 func main() {
-	// ORCAROUTER_API_KEY / ORCAROUTER_MODEL (or OPENROUTER_API_KEY /
-	// OPENROUTER_MODEL) for the AI chat live in .env.
+	// ORCAROUTER_API_KEY / ORCAROUTER_MODEL (or CHEAPER_INFERENCE_API_KEY /
+	// CHEAPER_INFERENCE_MODEL, UBERLLM_API_KEY / UBERLLM_MODEL, or
+	// OPENROUTER_API_KEY / OPENROUTER_MODEL) for the AI chat live in .env.
 	_ = godotenv.Load()
+
+	if err := os.MkdirAll("storage", 0o755); err != nil {
+		panic(fmt.Errorf("create storage directory: %w", err))
+	}
 
 	go tracewaybackend.Run(
 		tracewaybackend.WithSQLitePath("./storage/traceway.db"),
@@ -147,7 +154,9 @@ func main() {
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
 		tracewaybackend.WithDefaultProject("Backend API", "opentelemetry", backendToken),
 		tracewaybackend.WithDefaultProject("jQuery Frontend", "jquery", frontendToken),
-		tracewaybackend.WithDefaultProject("Traceway Monitoring", "gin", monitoringToken),
+		// testing/shop's React storefront, when it is pointed at this instance (see README).
+		tracewaybackend.WithDefaultProject("Shoply Storefront", "react", shopToken),
+		tracewaybackend.WithDefaultProject("Traceway Monitoring", "opentelemetry", monitoringToken),
 		tracewaybackend.WithDefaultProject("Flutter App", "flutter", flutterToken),
 		tracewaybackend.WithDefaultProjectSourceMapToken("Flutter App", flutterUploadToken),
 		tracewaybackend.WithDefaultProject("iOS App", "ios", iosToken),
@@ -201,7 +210,7 @@ func main() {
 		c.Next()
 	})
 
-	router.Use(otelgin.Middleware(backendServiceName, otelgin.WithTracerProvider(backendSvc.tp)))
+	router.Use(otelgin.Middleware(backendServiceName, otelgin.WithTracerProvider(backendSvc.tp), otelgin.WithPropagators(propagation.TraceContext{})))
 
 	router.GET("/", func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
@@ -280,7 +289,7 @@ func main() {
 		cacheSpan.End()
 
 		backendSvc.log(dbCtx, otellog.SeverityWarn, "WARN", "db: query took longer than expected",
-			otellog.String("threshold_ms", "20"))
+			attribute.String("threshold_ms", "20"))
 		dbSpan.End()
 
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "handler: returning 200")
@@ -289,20 +298,16 @@ func main() {
 
 	router.GET("/api/test-distributed-logs", func(c *gin.Context) {
 		ctx := c.Request.Context()
-		dtid := uuid.New().String()
-
-		rootSpan := trace.SpanFromContext(ctx)
-		rootSpan.SetAttributes(attribute.String("traceway.distributed_trace_id", dtid))
+		traceId := trace.SpanContextFromContext(ctx).TraceID().String()
 
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "backend: received request, about to call worker",
-			otellog.String("distributed_trace_id", dtid))
+			attribute.String("trace_id", traceId))
 
-		workerCtx, workerSpan := workerSvc.tr.Start(context.Background(), "worker.process-job",
+		workerCtx, workerSpan := workerSvc.tr.Start(ctx, "worker.process-job",
 			trace.WithSpanKind(trace.SpanKindConsumer))
-		workerSpan.SetAttributes(attribute.String("traceway.distributed_trace_id", dtid))
 
 		workerSvc.log(workerCtx, otellog.SeverityInfo, "INFO", "worker: starting job",
-			otellog.String("distributed_trace_id", dtid))
+			attribute.String("trace_id", traceId))
 		time.Sleep(15 * time.Millisecond)
 		workerSvc.log(workerCtx, otellog.SeverityDebug, "DEBUG", "worker: step 1 complete")
 		time.Sleep(15 * time.Millisecond)
@@ -313,8 +318,8 @@ func main() {
 
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO", "backend: worker reported success, returning 200")
 		c.JSON(http.StatusOK, gin.H{
-			"status":             "ok",
-			"distributedTraceId": dtid,
+			"status":  "ok",
+			"traceId": traceId,
 		})
 	})
 
@@ -334,9 +339,9 @@ func main() {
 		longToken := strings.Repeat("0646a849a52752904984ab92b2a39f1c", 12)
 		attrTestSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
 			"log line with long attributes; unbroken debug context: "+longToken,
-			otellog.String("auth.token", longToken),
-			otellog.String("stack.preview", "goroutine 1 [running]:\nmain.handler(0x14000123456)\n\t/app/main.go:42 +0x1f4\nmain.process(0x14000123456)\n\t/app/worker.go:88 +0x2bc"),
-			otellog.String("payload.json", `{"user":{"id":"0646a849a52752904984ab92b2a39f1c","token":"`+longToken+`"}}`),
+			attribute.String("auth.token", longToken),
+			attribute.String("stack.preview", "goroutine 1 [running]:\nmain.handler(0x14000123456)\n\t/app/main.go:42 +0x1f4\nmain.process(0x14000123456)\n\t/app/worker.go:88 +0x2bc"),
+			attribute.String("payload.json", `{"user":{"id":"0646a849a52752904984ab92b2a39f1c","token":"`+longToken+`"}}`),
 		)
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -347,28 +352,28 @@ func main() {
 			requestId := uuid.NewString()
 			backendSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
 				"Incoming call received.ProviderClientId: {ProviderClientId}, CallerId: {CallerId}, Method: {Method}, RequestId: {RequestId}",
-				otellog.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
-				otellog.String("CallerId", "[Portal, web-6f2c, 0, rpc]"),
-				otellog.String("Method", "EnterManualMode"),
-				otellog.String("RequestId", requestId),
+				attribute.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
+				attribute.String("CallerId", "[Portal, web-6f2c, 0, rpc]"),
+				attribute.String("Method", "EnterManualMode"),
+				attribute.String("RequestId", requestId),
 			)
 			backendSvc.log(ctx, otellog.SeverityDebug, "DEBUG",
 				"Call handled successfully.ProviderClientId: {ProviderClientId},RequestId: {RequestId},Method: {MethodIdentity}",
-				otellog.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
-				otellog.String("RequestId", requestId),
-				otellog.String("MethodIdentity", "MethodIdentity { Namespace = MqttComm.Devices, Name = EnterManualMode }"),
+				attribute.String("ProviderClientId", "[Devices, dusan-macbook, 1, rpc]"),
+				attribute.String("RequestId", requestId),
+				attribute.String("MethodIdentity", "MethodIdentity { Namespace = MqttComm.Devices, Name = EnterManualMode }"),
 			)
 		}
 		// Format spec after the name + a non-string attribute value.
 		backendSvc.log(ctx, otellog.SeverityWarn, "WARN",
 			"Slow provider response.Provider: {Provider}, Elapsed: {ElapsedMs:N0}ms",
-			otellog.String("Provider", "Devices"),
-			otellog.Int("ElapsedMs", 1874),
+			attribute.String("Provider", "Devices"),
+			attribute.Int("ElapsedMs", 1874),
 		)
 		// {MaxAttempts} has no matching attribute and must render literally.
 		backendSvc.log(ctx, otellog.SeverityInfo, "INFO",
 			"Retrying delivery.Attempt: {Attempt} of {MaxAttempts}",
-			otellog.String("Attempt", "2"),
+			attribute.String("Attempt", "2"),
 		)
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -399,9 +404,9 @@ func main() {
 	fmt.Printf("  AI chat:          http://localhost:%d/chat\n", appPort)
 	fmt.Println("  Dashboard:        http://localhost:8082")
 	fmt.Println("  Login:            admin@localhost.com / admin")
-	if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
+	if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("CHEAPER_INFERENCE_API_KEY") == "" && os.Getenv("UBERLLM_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
 		fmt.Println()
-		fmt.Println("  WARNING: ORCAROUTER_API_KEY / OPENROUTER_API_KEY is not set (.env) — /chat will not work")
+		fmt.Println("  WARNING: ORCAROUTER_API_KEY / CHEAPER_INFERENCE_API_KEY / UBERLLM_API_KEY / OPENROUTER_API_KEY is not set (.env) — /chat will not work")
 	}
 	fmt.Println()
 	fmt.Println("  OTel logs test endpoints (hit with curl or browser):")

@@ -3,6 +3,9 @@ package models
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
+	// Scope turns the login into an agent credential (the CLI's password
+	// login) instead of a dashboard session.
+	Scope string `json:"scope"`
 }
 
 type UserOrganizationResponse struct {
@@ -13,7 +16,11 @@ type UserOrganizationResponse struct {
 }
 
 type LoginResponse struct {
-	Token         string                      `json:"token"`
+	Token string `json:"token"`
+	// RefreshToken and ExpiresIn are set only on a scoped login, whose Token
+	// is then a short-lived access token in a revocable refresh family.
+	RefreshToken  string                      `json:"refreshToken,omitempty"`
+	ExpiresIn     int                         `json:"expiresIn,omitempty"`
 	User          UserResponse                `json:"user"`
 	Projects      []*ProjectWithBackendUrl    `json:"projects"`
 	Organizations []*UserOrganizationResponse `json:"organizations"`

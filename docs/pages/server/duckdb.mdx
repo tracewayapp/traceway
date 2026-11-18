@@ -4,7 +4,7 @@ import { Callout } from "nextra/components";
 
 The same single-container shape as the [SQLite deployment](/server/sqlite), but with the telemetry store swapped for DuckDB's columnar engine. The main database (users, organizations, projects, notification rules) stays SQLite; endpoints, spans, exceptions, metrics, and logs go into a DuckDB file next to it. No external Postgres or ClickHouse required.
 
-Pick this over the plain SQLite image when your dashboards slow down as data grows: on the same box, DuckDB keeps the dashboard responsive at 10 to 100 times more stored telemetry rows, and columnar compression makes the telemetry file several times smaller for the same data. See [Hardware Requirements](/learn/hardware-requirements#duckdb-mode-the-small-one-that-reads-big) for sizing guidance and benchmark numbers.
+This is the single-container deployment we recommend. On the same box, DuckDB keeps the dashboard responsive at 10 to 100 times more stored telemetry rows than the plain SQLite image, and columnar compression makes the telemetry file several times smaller for the same data. See [Hardware Requirements](/learn/hardware-requirements#duckdb-mode-the-small-one-that-reads-big) for sizing guidance and benchmark numbers.
 
 <Callout type="info">
   Like the SQLite image, this one runs as a single instance: both database files live under `/data`, and a second container cannot share them or learn about the first one's writes. Running more than one backend instance needs the PostgreSQL + ClickHouse build; see [Running more than one instance](/server/minimal#running-more-than-one-instance).
@@ -51,7 +51,7 @@ Identical to the SQLite image: blobs (source maps, session recordings, AI traces
 
 ## Configuration
 
-All [SQLite deployment variables](/server/sqlite#configuration) apply unchanged (`JWT_SECRET`, `APP_BASE_URL`, `SQLITE_PATH`, `STORAGE_*`, `S3_*`, `PORTS`, `LOG_RECORDS_MAX_ROWS`, `SESSION_RECORDING_RETENTION_DAYS`). The retention worker prunes the DuckDB telemetry tables hourly and issues a `CHECKPOINT` afterwards so deleted rows are actually reclaimed from disk. It keeps 30 days by default, configurable with `DUCKDB_RETENTION_DAYS` (when that is unset, a configured `SQLITE_RETENTION_DAYS` still applies as a fallback).
+All [SQLite deployment variables](/server/sqlite#configuration) apply unchanged (`JWT_SECRET`, `APP_BASE_URL`, `SQLITE_PATH`, `STORAGE_*`, `S3_*`, `PORTS`, `LOG_RECORDS_MAX_ROWS`, `SESSION_RECORDING_RETENTION_DAYS`). The one exception is `SQLITE_CACHE_SIZE_MB`, which sizes the SQLite telemetry store and has no effect here. The retention worker prunes the DuckDB telemetry tables hourly and issues a `CHECKPOINT` afterwards so deleted rows are actually reclaimed from disk. It keeps 30 days by default, configurable with `DUCKDB_RETENTION_DAYS` (when that is unset, a configured `SQLITE_RETENTION_DAYS` still applies as a fallback).
 
 On top of those, the DuckDB build has these knobs:
 

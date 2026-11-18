@@ -1,0 +1,67 @@
+id: perf-net-no-conn-reuse
+suite: perf
+title: Store finder spends most of its time in calls to the maps provider
+tags: [network, go]
+seed: perf/net-no-conn-reuse
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: The maps provider calls are the long pole, which reads like a slow upstream, but inside every call ~80% is DNS, TCP connect and the TLS handshake on a brand-new connection (http.conn.reused=false); once the request is on the wire the provider answers in ~20ms.
+workspace: {repo: store-locator-go}
+prompt: |
+  The store finder (GET /api/stores/nearby) takes about a quarter of a second, and almost all of it is spent in the calls to our maps provider. Before we pay for their premium tier, can you check whether the provider is really the slow part, and what we could change on our side?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: no_connection_reuse
+    not: [slow_third_party_upstream_api, sequential_calls_that_could_run_in_parallel, cpu_saturation]
+    locus: {endpoint: "GET /api/stores/nearby", service: store-locator-api}
+  grounding:
+    - "http.tls"
+    - "http.conn.reused"
+  calls:
+    any_of:
+      - [{op: traces.show, args: {recorded_at: present}}]
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: No connection reuse. maps.Client.get (internal/maps/client.go) builds a new http.Client and http.Transport for every call, so neither keep-alive connections nor TLS sessions survive between calls. Every call to maps.geo.example (two per request, geocode then distance matrix) shows http.getconn with http.conn.reused=false and http.dns (~15ms), http.connect (~25ms) and http.tls (~50ms) under it; the provider itself answers ~20-25ms after http.send. Of a ~250ms request ~180-200ms is connection setup. The inventory client, which shares one transport, shows reused connections and ~0.03ms getconn. Fix by creating one transport in maps.New and reusing it (and draining bodies), which cuts the endpoint to roughly 50-60ms.
+  rubric:
+    - Breaks a provider call down with the httptrace child spans and shows the DNS/connect/TLS cost repeats on every call with http.conn.reused=false.
+    - Rules out a slow provider from the data (time from send to first byte is ~20ms) and contrasts with a reused connection elsewhere.
+    - Proposes a single long-lived http.Client/Transport in the maps client, with the expected saving.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 20 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration / 1e6 | round), p95_ms: (.p95Duration / 1e6 | round)}] | sort_by(-.p95_ms)'
+  - shell: >-
+      traceway logs query --since 6h --search /api/stores/ --page-size 20 --output json
+      | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway traces show {{seed.slowRequest.traceId}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6),
+      spans: [.spans | sort_by(.startTime)[] | {name, ms: (.duration / 1e6 * 10 | round / 10), url: .attributes["url.full"], reused: .attributes["http.conn.reused"]}]}'
+  - shell: >-
+      traceway traces show {{seed.availRequest.traceId}} --recorded-at {{seed.availRequest.recordedAt}} --output json
+      | jq '.nodes[0] | {endpoint: .endpoint.endpoint, ms: (.endpoint.duration / 1e6),
+      spans: [.spans | sort_by(.startTime)[] | {name, ms: (.duration / 1e6 * 100 | round / 100), url: .attributes["url.full"], reused: .attributes["http.conn.reused"]}]}'
+  - read_file: internal/maps/client.go
+  - submit:
+      checklist_item: no_connection_reuse
+      category: network
+      locus: {endpoint: "GET /api/stores/nearby", span: "http.getconn > http.dns / http.connect / http.tls under GET https://maps.geo.example/...", service: store-locator-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "GET /api/stores/nearby p50 ~240ms; the other store routes are fast"}
+        - {call_id: c03, claim: "both maps.geo.example calls open a new connection (http.conn.reused=false): DNS, TCP connect and TLS take roughly 100ms or more per call, while the provider's own part (from http.send to http.receive) is only a few tens of ms"}
+        - {call_id: c04, claim: "the inventory call reuses its connection (reused=true, getconn in microseconds)"}
+      ruled_out:
+        - {checklist_item: slow_third_party_upstream_api, call_id: c03, reason: "send-to-first-byte is a few tens of ms against roughly 100ms of setup per call; the provider is not slow, the connection setup is"}
+      fix: Build the http.Transport once in maps.New and reuse it for every call (keep-alive and TLS session reuse), and drain response bodies so connections return to the pool; the endpoint should drop from ~250ms to ~50-60ms.
+      confidence: high
+      report: |
+        The maps provider is not slow; we pay a fresh connection for every call. maps.Client.get (internal/maps/client.go) creates a new http.Client with a new http.Transport per request, so both calls of GET /api/stores/nearby (geocode, then distance matrix) show http.getconn with http.conn.reused=false and DNS (~15ms), TCP connect (~25ms) and the TLS handshake (~50ms) underneath. That setup is about 180-200ms of the ~250ms request; the provider answers 20-30ms after the request is sent. The inventory client, which shares a transport, reuses its connection. Fix: build the transport once in maps.New so connections and TLS sessions are reused (and drain the body); the endpoint should drop to roughly 50-60ms. The premium tier would not help.

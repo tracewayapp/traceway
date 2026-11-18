@@ -35,7 +35,7 @@ RUN npm run build
 # Built natively (no cross-compile) because CGO cross-compilation against the
 # prebuilt DuckDB libraries is impractical.
 # ==============================================================================
-FROM golang:1.26-bookworm AS backend-builder
+FROM golang:1.26.11-bookworm AS backend-builder
 
 WORKDIR /app/backend
 
@@ -46,7 +46,6 @@ COPY cli/ /app/cli/
 
 COPY --from=frontend-builder /app/frontend/build ./static/frontend/
 
-RUN go mod edit -dropreplace=go.tracewayapp.com -dropreplace=go.tracewayapp.com/tracewaygin
 RUN go mod tidy
 RUN go mod download
 
@@ -76,7 +75,7 @@ RUN npx playwright install chromium --only-shell
 # ==============================================================================
 FROM debian:bookworm-slim
 
-RUN apt-get update -o Acquire::Retries=3 -o APT::Update::Error-Mode=any && apt-get install -y --no-install-recommends ca-certificates tzdata wget libstdc++6 bubblewrap && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -o Acquire::Retries=3 -o APT::Update::Error-Mode=any && apt-get install -y --no-install-recommends ca-certificates tzdata wget libstdc++6 libatomic1 bubblewrap && rm -rf /var/lib/apt/lists/*
 
 # Node runtime + the Playwright harness + the downloaded Chromium build.
 COPY --from=playwright-builder /usr/local/bin/node /usr/local/bin/node

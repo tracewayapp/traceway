@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"io/fs"
 	"net"
 	"net/http"
@@ -12,34 +14,35 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/backfill"
-	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/controllers"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/migrations"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/monitoring"
-	"github.com/tracewayapp/traceway/backend/app/notifications"
-	"github.com/tracewayapp/traceway/backend/app/oncall"
-	"github.com/tracewayapp/traceway/backend/app/outbox"
-	"github.com/tracewayapp/traceway/backend/app/recordings"
-	"github.com/tracewayapp/traceway/backend/app/retention"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/services/mcpmount"
-	"github.com/tracewayapp/traceway/backend/app/sourcemapbackfill"
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
-	"github.com/tracewayapp/traceway/backend/app/synthetics"
-	"github.com/tracewayapp/traceway/backend/static"
+	"github.com/tracewayapp/traceway/backend/v2/app/backfill"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/migrations"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/monitoring"
+	"github.com/tracewayapp/traceway/backend/v2/app/notifications"
+	"github.com/tracewayapp/traceway/backend/v2/app/oncall"
+	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
+	"github.com/tracewayapp/traceway/backend/v2/app/recordings"
+	"github.com/tracewayapp/traceway/backend/v2/app/retention"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/mcpmount"
+	"github.com/tracewayapp/traceway/backend/v2/app/slo"
+	"github.com/tracewayapp/traceway/backend/v2/app/sourcemapbackfill"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/scopes"
+	"github.com/tracewayapp/traceway/backend/v2/app/synthetics"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/static"
 
-	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	traceway "go.tracewayapp.com"
-	tracewaygin "go.tracewayapp.com/tracewaygin"
+	otellog "go.opentelemetry.io/otel/log"
 )
 
 var PostStartupHooks []func(ctx context.Context)
@@ -61,7 +64,7 @@ func Run(opts ...Option) {
 			port = 8082
 		}
 		cfg = &config.Cfg{
-			JWTSecret:   "traceway-dev-secret-key-min-32-chars!",
+			JWTSecret:   embeddedJWTSecret(o),
 			DBType:      "sqlite",
 			SQLitePath:  o.sqlitePath,
 			StorageType: "local",
@@ -83,21 +86,19 @@ func Run(opts ...Option) {
 	}
 	config.Init(cfg)
 
+	selfMonitoringToken := startSelfMonitoring(cfg.MonitoringTracewayURL)
+
 	if err := services.InitJWT(); err != nil {
 		// A missing signing key is a configuration mistake, not a crash: print
 		// something actionable instead of burying the message under a panic
 		// stack trace. The standalone binary deliberately has no default -- a
 		// key committed to the repo would be identical in every clone.
-		fmt.Fprintln(os.Stderr, "FATAL: "+err.Error())
-		fmt.Fprintln(os.Stderr, "Generate one with: openssl rand -hex 32")
-		os.Exit(1)
+		exitOnMisconfiguration("FATAL: "+err.Error(), "Generate one with: openssl rand -hex 32")
 	}
 
 	trustedNets, proxyErr := trustedProxyNets(cfg.TrustedProxyList())
 	if proxyErr != nil {
-		fmt.Fprintln(os.Stderr, "FATAL: invalid TRUSTED_PROXIES: "+proxyErr.Error())
-		fmt.Fprintln(os.Stderr, "Use comma-separated IP addresses or CIDR ranges, for example 10.0.0.0/8,203.0.113.7")
-		os.Exit(1)
+		exitOnMisconfiguration("FATAL: invalid TRUSTED_PROXIES: "+proxyErr.Error(), "Use comma-separated IP addresses or CIDR ranges, for example 10.0.0.0/8,203.0.113.7")
 	}
 
 	err := db.Init()
@@ -127,6 +128,12 @@ func Run(opts ...Option) {
 	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
 		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
 	}
+	if err := backfill.RunBrowserDefaults(); err != nil {
+		panic(fmt.Errorf("browser defaults migration failed: %w", err))
+	}
+	if err := backfill.RunBrowserPerformanceDashboards(); err != nil {
+		panic(fmt.Errorf("Web Performance dashboard backfill failed: %w", err))
+	}
 
 	if o != nil {
 		if err := seed(o); err != nil {
@@ -137,6 +144,9 @@ func Run(opts ...Option) {
 	ctx := context.Background()
 	if err := cache.ProjectCache.Init(ctx); err != nil {
 		panic(fmt.Errorf("projects cache could not be initialized: %w", err))
+	}
+	if err := cache.SdkConfigCache.Init(ctx); err != nil {
+		panic(fmt.Errorf("SDK config cache could not be initialized: %w", err))
 	}
 	services.InitSourceMapCache(
 		parsePositiveInt(cfg.SourceMapCacheMaxEntries, 200),
@@ -182,14 +192,18 @@ func Run(opts ...Option) {
 	outbox.RegisterSender(notifications.AdapterSend)
 	outbox.RegisterTerminalHook(notifications.OnOutboxTerminal)
 	notifications.RegisterPageOpener(oncall.OpenPageFromDispatch)
+	notifications.RegisterMetricSeriesPager(oncall.ApplyMetricSeriesPage, oncall.Wake)
 	notifications.RegisterPageResolver(oncall.AutoResolveByDedupKey)
 	synthetics.RegisterNotifier(notifications.OnCheckStateChange)
 	outbox.StartDrain(ctx)
 	oncall.StartEscalator(ctx)
 	notifications.StartEvaluator(ctx)
 	synthetics.Start(ctx)
+	slo.Start(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
+	services.SetClientMetricsInstances(slo.Instances)
+	services.StartClientMetrics(ctx)
 	sourcemapbackfill.Start(ctx)
 
 	var router *gin.Engine
@@ -210,37 +224,16 @@ func Run(opts ...Option) {
 	}
 	router.Use(middleware.SecurityHeaders)
 
-	if monitoringTracewayUrl := cfg.MonitoringTracewayURL; monitoringTracewayUrl != "" {
-		twmw := tracewaygin.New(
-			monitoringTracewayUrl,
-			tracewaygin.WithOnErrorRecording(tracewaygin.RecordingQuery|tracewaygin.RecordingBody|tracewaygin.RecordingHeader|tracewaygin.RecordingUrl),
-		)
-
-		selfToken := monitoringTracewayUrl
-		if i := strings.IndexByte(selfToken, '@'); i >= 0 {
-			selfToken = selfToken[:i]
-		}
-		selfAuth := "Bearer " + selfToken
-
-		router.Use(func(c *gin.Context) {
-			if c.GetHeader("Authorization") == selfAuth {
-				c.Next()
-				return
-			}
-			// The runner poll long-polls for up to 25s; recording it would
-			// register as 25s endpoint samples and wreck self-monitoring p95.
-			if c.Request.URL.Path == "/api/runners/poll" {
-				c.Next()
-				return
-			}
-			twmw(c)
-		})
+	if selfMonitoringToken != "" {
+		router.Use(middleware.SelfMonitoring(selfMonitoringToken)...)
 
 		monitoring.StartClickHouseReporter(ctx)
 		monitoring.StartBackendReporter(ctx)
 		monitoring.StartTelemetryDBReporter(ctx)
 		monitoring.StartOutboxReporter(ctx)
 		monitoring.StartSyntheticsReporter(ctx)
+		monitoring.StartSLOReporter(ctx)
+		monitoring.StartClientMetricsReporter(ctx, func() clientmetrics.HealthStats { return services.ClientMetrics().Snapshot() })
 	}
 
 	router.GET("/health", func(c *gin.Context) {
@@ -258,11 +251,15 @@ func Run(opts ...Option) {
 	router.Match(wellKnown, "/.well-known/oauth-authorization-server", middleware.WellKnownCors, controllers.WellKnownController.AuthorizationServer)
 	router.Match(wellKnown, "/.well-known/oauth-protected-resource", middleware.WellKnownCors, controllers.WellKnownController.ProtectedResource)
 	router.Match(wellKnown, "/.well-known/oauth-protected-resource"+mcpmount.Path, middleware.WellKnownCors, controllers.WellKnownController.ProtectedResourceMCP)
+	router.Match(wellKnown, "/.well-known/oauth-protected-resource"+mcpmount.WritePath, middleware.WellKnownCors, controllers.WellKnownController.ProtectedResourceMCPWrite)
 
-	mcpHandler := mcpmount.GinHandler(router, "0.0.1")
+	mcpHandler := mcpmount.GinHandler(router, "0.0.1", false)
+	mcpWriteHandler := mcpmount.GinHandler(router, "0.0.1", true)
 	mcpMethods := []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions}
 	router.Match(mcpMethods, mcpmount.Path, middleware.MCPCors, mcpHandler)
 	router.Match(mcpMethods, mcpmount.Path+"/", middleware.MCPCors, mcpHandler)
+	router.Match(mcpMethods, mcpmount.WritePath, middleware.MCPCors, mcpWriteHandler)
+	router.Match(mcpMethods, mcpmount.WritePath+"/", middleware.MCPCors, mcpWriteHandler)
 
 	apiOnly := cfg.APIOnly == "true"
 
@@ -279,7 +276,7 @@ func Run(opts ...Option) {
 
 		if staticFS != nil {
 			router.StaticFS("/assets", http.FS(mustSubFS(staticFS, "assets")))
-			router.StaticFS("/_app", http.FS(mustSubFS(staticFS, "_app")))
+			router.Match([]string{http.MethodGet, http.MethodHead}, "/_app/*filepath", appAssetHandler(mustSubFS(staticFS, "_app")))
 			router.GET("/favicon.ico", serveStaticFile(staticFS, "favicon.ico"))
 			router.GET("/robots.txt", serveStaticFile(staticFS, "robots.txt"))
 		}
@@ -325,9 +322,41 @@ func Run(opts ...Option) {
 		}(listener)
 	}
 
-	notifySystemd()
+	notifySystemd(ctx)
 	config.Logln("Starting server on " + listeners[0].Addr().String())
 	serveHTTP(router, listeners[0])
+}
+
+// A bad connection string must not take the server down.
+func startSelfMonitoring(connectionString string) string {
+	if connectionString == "" {
+		return ""
+	}
+	token, _, err := traceway.ParseConnectionString(connectionString)
+	if err == nil {
+		_, err = traceway.Setup(context.Background(), traceway.Options{
+			ConnectionString: connectionString,
+			Version:          traceway.BuildVersion(),
+		})
+	}
+	if err != nil {
+		config.Logln("WARNING: self-monitoring is off: " + err.Error())
+		return ""
+	}
+	config.Logf("Self-monitoring enabled (service name: %s)", traceway.ServiceName())
+	return token
+}
+
+// Self-monitoring is already running when the configuration is checked, so
+// the reason for the exit is sent there before the process ends.
+func exitOnMisconfiguration(reason, hint string) {
+	fmt.Fprintln(os.Stderr, reason)
+	fmt.Fprintln(os.Stderr, hint)
+	traceway.EmitLog(context.Background(), otellog.SeverityFatal, reason)
+	flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_ = traceway.Shutdown(flushCtx)
+	cancel()
+	os.Exit(1)
 }
 
 func parsePorts(ports string) []string {
@@ -405,7 +434,7 @@ const serverReadTimeout = time.Hour
 // none of them.
 func serveHTTP(router *gin.Engine, listener net.Listener) {
 	srv := &http.Server{
-		Handler:           router,
+		Handler:           compressResponses(router),
 		ReadHeaderTimeout: 15 * time.Second,
 		ReadTimeout:       serverReadTimeout,
 		IdleTimeout:       2 * time.Minute,
@@ -443,6 +472,9 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"SMTP_FROM", &cfg.SMTPFrom},
 		{"ONCALL_POLL_SECONDS", &cfg.OncallPollSeconds},
 		{"OUTBOX_POLL_SECONDS", &cfg.OutboxPollSeconds},
+		{"SLO_POLL_SECONDS", &cfg.SLOPollSeconds},
+		{"SLO_COMPUTE_WORKERS", &cfg.SLOComputeWorkers},
+		{"SLO_COMPUTE_TIMEOUT_SECONDS", &cfg.SLOComputeTimeoutSecs},
 		{"SYNTHETICS_POLL_SECONDS", &cfg.SyntheticsPollSeconds},
 		{"SYNTHETICS_BROWSER_MODE", &cfg.SyntheticsBrowserMode},
 		{"SYNTHETICS_BROWSER_SANDBOX", &cfg.SyntheticsBrowserSandbox},
@@ -461,6 +493,11 @@ func applyEnvOverrides(cfg *config.Cfg) {
 		{"TWILIO_MESSAGING_SERVICE_SID", &cfg.TwilioMessagingServiceSID},
 		{"ALLOW_PRIVATE_NOTIFICATION_TARGETS", &cfg.AllowPrivateNotificationTargets},
 		{"REPORT_MAX_BODY_MB", &cfg.ReportMaxBodyMB},
+		{"SQLITE_CACHE_SIZE_MB", &cfg.SQLiteCacheSizeMB},
+		{"DUCKDB_MEMORY_LIMIT", &cfg.DuckDBMemoryLimit},
+		{"DUCKDB_THREADS", &cfg.DuckDBThreads},
+		{"DUCKDB_CHECKPOINT_THRESHOLD", &cfg.DuckDBCheckpointThreshold},
+		{"DUCKDB_RETENTION_DAYS", &cfg.DuckDBRetentionDays},
 		{"OAUTH_SESSION_SECRET", &cfg.OAuthSessionSecret},
 		{"GOOGLE_CLIENT_ID", &cfg.GoogleClientID},
 		{"GOOGLE_CLIENT_SECRET", &cfg.GoogleClientSecret},
@@ -503,25 +540,6 @@ func parsePositiveInt(s string, def int) int {
 		return def
 	}
 	return v
-}
-
-func notifySystemd() {
-	sent, err := daemon.SdNotify(false, daemon.SdNotifyReady)
-	if err != nil {
-		config.Logf("Failed to notify systemd: %v", err)
-	} else if sent {
-		config.Logln("Notified systemd that service is ready")
-	}
-
-	go func() {
-		defer traceway.Recover()
-
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			daemon.SdNotify(false, daemon.SdNotifyWatchdog)
-		}
-	}()
 }
 
 func mustSubFS(fsys fs.FS, dir string) fs.FS {
@@ -578,18 +596,50 @@ func createSPAHandler(staticFS fs.FS) gin.HandlerFunc {
 		}
 
 		cleanPath := strings.TrimPrefix(path, "/")
-		if cleanPath != "" {
+		isPage := cleanPath == "" || strings.HasSuffix(cleanPath, ".html")
+		if !isPage {
 			if data, err := fs.ReadFile(staticFS, cleanPath); err == nil {
-				contentType := detectContentType(cleanPath)
-				c.Data(200, contentType, data)
+				c.Data(200, detectContentType(cleanPath), data)
 				return
 			}
+		}
+
+		statusPage, err := controllers.StatusPageForHost(c, c.Request.Host)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to resolve status page host: %w", err))
+			return
+		}
+
+		if statusPage == nil && cleanPath != "" && isPage {
+			if data, err := fs.ReadFile(staticFS, cleanPath); err == nil {
+				c.Data(200, detectContentType(cleanPath), data)
+				return
+			}
+		}
+
+		if statusPage != nil && path != "/" {
+			c.Redirect(http.StatusFound, "/")
+			return
 		}
 
 		indexData, err := fs.ReadFile(staticFS, "index.html")
 		if err != nil {
 			c.JSON(404, gin.H{"error": "Not found"})
 			return
+		}
+		if statusPage != nil {
+			title := html.EscapeString(statusPage.Name + " status")
+			head := `<meta name="traceway-status-slug" content="` + html.EscapeString(statusPage.Slug) + `">` +
+				`<meta property="og:title" content="` + title + `">`
+			if statusPage.Description != "" {
+				description := html.EscapeString(statusPage.Description)
+				head += `<meta name="description" content="` + description + `">` +
+					`<meta property="og:description" content="` + description + `">`
+			}
+			indexData = bytes.Replace(indexData, []byte("<title>Traceway</title>"), []byte("<title>"+title+"</title>"), 1)
+			indexData = bytes.Replace(indexData, []byte("</head>"), []byte(head+"</head>"), 1)
+			c.Header("Content-Security-Policy", "base-uri 'self'; form-action 'self'")
+			c.Writer.Header().Del("X-Frame-Options")
 		}
 		c.Data(200, "text/html; charset=utf-8", indexData)
 	}

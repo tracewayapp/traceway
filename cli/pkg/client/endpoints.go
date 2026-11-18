@@ -32,7 +32,8 @@ type ListEndpointsRequest struct {
 	Search        string           `json:"search,omitempty"`
 }
 
-// MarshalJSON expands TimeRange into top-level fromDate/toDate.
+// MarshalJSON expands TimeRange into top-level fromDate/toDate and sends
+// OrderBy as the column name the backend sorts on.
 func (r ListEndpointsRequest) MarshalJSON() ([]byte, error) {
 	type alias ListEndpointsRequest
 	wire := struct {
@@ -40,6 +41,7 @@ func (r ListEndpointsRequest) MarshalJSON() ([]byte, error) {
 		ToDate   time.Time `json:"toDate"`
 		alias
 	}{r.TimeRange.From, r.TimeRange.To, alias(r)}
+	wire.OrderBy = orderByColumn(r.OrderBy)
 	return jsonMarshalNoHTMLEscape(wire)
 }
 
@@ -65,30 +67,88 @@ func (c *Client) ListEndpoints(ctx context.Context, projectID string, req ListEn
 // the by-id detail endpoint. EndpointStats (above) is the grouped/list shape;
 // this is the single-row shape keyed by the transaction's id.
 type Endpoint struct {
-	Id                 uuid.UUID         `json:"id"`
-	ProjectId          uuid.UUID         `json:"projectId"`
-	Endpoint           string            `json:"endpoint"`
-	Duration           time.Duration     `json:"duration"`
-	RecordedAt         time.Time         `json:"recordedAt"`
-	StatusCode         int16             `json:"statusCode"`
-	BodySize           int32             `json:"bodySize"`
-	ClientIP           string            `json:"clientIP"`
-	Attributes         map[string]string `json:"attributes"`
-	AppVersion         string            `json:"appVersion"`
-	ServerName         string            `json:"serverName"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty"`
-	SpanId             *uuid.UUID        `json:"spanId,omitempty"`
-	IsStream           bool              `json:"isStream"`
-	IsRoot             bool              `json:"isRoot"`
+	Id           uuid.UUID         `json:"id"`
+	ProjectId    uuid.UUID         `json:"projectId"`
+	Endpoint     string            `json:"endpoint"`
+	Duration     time.Duration     `json:"duration"`
+	RecordedAt   time.Time         `json:"recordedAt"`
+	StatusCode   int16             `json:"statusCode"`
+	BodySize     int32             `json:"bodySize"`
+	ClientIP     string            `json:"clientIP"`
+	Attributes   map[string]string `json:"attributes"`
+	AppVersion   string            `json:"appVersion"`
+	ServerName   string            `json:"serverName"`
+	TraceId      string            `json:"traceId"`
+	SpanId       string            `json:"spanId"`
+	ParentSpanId string            `json:"parentSpanId,omitempty"`
+	IsStream     bool              `json:"isStream"`
+	IsRoot       bool              `json:"isRoot"`
+}
+
+// ListEndpointRequestsRequest is the body for POST /api/endpoints/endpoint:
+// the individual requests of one endpoint, the ids endpoints show takes.
+type ListEndpointRequestsRequest struct {
+	TimeRange     TimeRange        `json:"-"`
+	Pagination    PaginationParams `json:"pagination"`
+	OrderBy       string           `json:"orderBy,omitempty"`
+	SortDirection string           `json:"sortDirection,omitempty"`
+	// Search matches request attribute values, such as a user id.
+	Search string `json:"search,omitempty"`
+}
+
+// MarshalJSON expands TimeRange into top-level fromDate/toDate and sends
+// OrderBy as the column name the backend sorts on.
+func (r ListEndpointRequestsRequest) MarshalJSON() ([]byte, error) {
+	type alias ListEndpointRequestsRequest
+	wire := struct {
+		FromDate time.Time `json:"fromDate"`
+		ToDate   time.Time `json:"toDate"`
+		alias
+	}{r.TimeRange.From, r.TimeRange.To, alias(r)}
+	wire.OrderBy = orderByColumn(r.OrderBy)
+	return jsonMarshalNoHTMLEscape(wire)
+}
+
+// EndpointRequestStats mirrors models.EndpointDetailStats. Unlike the
+// requests themselves, its durations are milliseconds.
+type EndpointRequestStats struct {
+	Count          int64   `json:"count"`
+	AvgDuration    float64 `json:"avgDuration"`
+	MedianDuration float64 `json:"medianDuration"`
+	P95Duration    float64 `json:"p95Duration"`
+	P99Duration    float64 `json:"p99Duration"`
+	Apdex          float64 `json:"apdex"`
+	ErrorRate      float64 `json:"errorRate"`
+	Throughput     float64 `json:"throughput"`
+	IsStream       bool    `json:"isStream"`
+}
+
+// ListEndpointRequestsResponse mirrors EndpointInstancesResponse.
+type ListEndpointRequestsResponse struct {
+	Data       []Endpoint            `json:"data"`
+	Stats      *EndpointRequestStats `json:"stats"`
+	Pagination Pagination            `json:"pagination"`
+}
+
+// ListEndpointRequests returns one page of an endpoint's requests. endpoint is
+// the name exactly as ListEndpoints returns it ("GET /api/orders/:id").
+func (c *Client) ListEndpointRequests(ctx context.Context, projectID, endpoint string, req ListEndpointRequestsRequest) (*ListEndpointRequestsResponse, error) {
+	path := "/api/endpoints/endpoint?projectId=" + url.QueryEscape(projectID) + "&endpoint=" + url.QueryEscape(endpoint)
+	var resp ListEndpointRequestsResponse
+	if err := c.do(ctx, http.MethodPost, path, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // EndpointDetailResponse is the body of POST /api/endpoints/:endpointId.
 type EndpointDetailResponse struct {
-	Endpoint  *Endpoint        `json:"endpoint"`
-	Spans     []Span           `json:"spans"`
-	HasSpans  bool             `json:"hasSpans"`
-	Exception *LinkedException `json:"exception,omitempty"`
-	Messages  []LinkedMessage  `json:"messages"`
+	Endpoint        *Endpoint        `json:"endpoint"`
+	SpanGraphStatus *SpanGraphStatus `json:"spanGraphStatus,omitempty"`
+	Spans           []Span           `json:"spans"`
+	HasSpans        bool             `json:"hasSpans"`
+	Exception       *LinkedException `json:"exception,omitempty"`
+	Messages        []LinkedMessage  `json:"messages"`
 }
 
 // GetEndpoint returns one request (transaction) by id plus its spans and any

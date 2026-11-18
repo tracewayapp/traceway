@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SessionRecordingReasons from '$lib/components/issues/session-recording-reasons.svelte';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -6,7 +7,8 @@
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
-	import { formatDuration, formatDateTime } from '$lib/utils/formatters';
+	import { formatDateTime } from '$lib/utils/formatters';
+	import { sessionDurationLabel } from '$lib/utils/session-duration';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import * as Card from '$lib/components/ui/card';
@@ -23,18 +25,32 @@
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
-	import { ArrowRight } from '@lucide/svelte';
+	import { ArrowRight, Radar } from '@lucide/svelte';
+	import SdkCaptureDialog from '$lib/components/sdk-config/sdk-capture-dialog.svelte';
+	import { SDK_CONFIG_FRAMEWORKS } from '$lib/state/projects.svelte';
 	import type {
 		SessionActionEvent,
 		SessionLogEvent,
 		SessionReplayEvent
 	} from '$lib/types/exceptions';
+	import {
+		loadSessionTimeline,
+		pickBreadcrumbs,
+		type SessionBreadcrumbs
+	} from '$lib/utils/session-timeline';
 
 	type Session = {
+		recordingReasons?: Array<{
+			triggerId: string;
+			name: string;
+			sequence: string;
+			revision: string;
+		}>;
 		id: string;
 		startedAt: string;
 		endedAt?: string | null;
 		duration: number;
+		hasRecording?: boolean;
 		clientIP: string;
 		appVersion: string;
 		serverName: string;
@@ -57,6 +73,9 @@
 	let recordingEvents = $state<SessionReplayEvent[] | null>(null);
 	let recordingLogs = $state<SessionLogEvent[]>([]);
 	let recordingActions = $state<SessionActionEvent[]>([]);
+	let timeline = $state<SessionBreadcrumbs | null>(null);
+	let recordingLoading = $state(false);
+	let recordingError = $state('');
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
@@ -68,62 +87,143 @@
 		replayRef?.seek(offsetMs);
 	}
 
-	const hasLogs = $derived(recordingLogs.length > 0);
-	const hasActions = $derived(recordingActions.length > 0);
+	const breadcrumbs = $derived(
+		pickBreadcrumbs(timeline, { logs: recordingLogs, actions: recordingActions })
+	);
+	const hasLogs = $derived(breadcrumbs.logs.length > 0);
+	const hasActions = $derived(breadcrumbs.actions.length > 0);
 	const defaultTab = $derived(hasLogs ? 'logs' : 'actions');
 
-	const ABANDONED_AFTER_MS = 15 * 60_000;
+	let loadGeneration = 0;
 
-	function durationLabel(s: Session | null): string {
-		if (!s) return '—';
-		if (s.endedAt) return formatDuration(s.duration);
-		const startedMs = Date.parse(s.startedAt);
-		if (Number.isFinite(startedMs) && Date.now() - startedMs >= ABANDONED_AFTER_MS) {
-			return 'Abandoned';
-		}
-		return 'in progress';
+	function requestRecording(startedAt: string) {
+		return api.get(`/sessions/${sessionId}/recording?startedAt=${encodeURIComponent(startedAt)}`, {
+			projectId: projectsState.currentProjectId ?? undefined
+		});
 	}
 
-	async function loadAll() {
-		loading = true;
-		error = '';
-		notFound = false;
-
+	async function loadRecording(generation: number, request: ReturnType<typeof requestRecording>) {
+		recordingLoading = true;
+		recordingError = '';
 		try {
-			const startedAt = pageState.url.searchParams.get('t');
-			const detail = await api.post(`/sessions/${sessionId}`, startedAt ? { startedAt } : {}, {
-				projectId: projectsState.currentProjectId ?? undefined
-			});
-			session = detail.session;
-			exceptions = detail.exceptions || [];
-
-			const recording = await api.get(`/sessions/${sessionId}/recording`, {
-				projectId: projectsState.currentProjectId ?? undefined
-			});
+			const recording = await request;
+			if (generation !== loadGeneration) return;
 			recordingEvents = recording?.events ?? [];
 			recordingLogs = recording?.logs ?? [];
 			recordingActions = recording?.actions ?? [];
 		} catch (e) {
+			if (generation !== loadGeneration) return;
+			recordingError = getErrorMessage(e) || 'Failed to load the replay';
+		} finally {
+			if (generation === loadGeneration) recordingLoading = false;
+		}
+	}
+
+	// The SDK stamps breadcrumbs with the client clock, so the window leaves a minute either side.
+	async function loadTimeline(generation: number, loaded: Session) {
+		const start = Date.parse(loaded.startedAt);
+		const end = loaded.endedAt ? Date.parse(loaded.endedAt) : Date.now();
+		const result = await loadSessionTimeline(
+			loaded.id,
+			start - 60_000,
+			end + 60_000,
+			projectsState.currentProjectId ?? undefined
+		);
+		if (generation === loadGeneration) timeline = result;
+	}
+
+	function retryRecording() {
+		if (!session) return;
+		loadRecording(++loadGeneration, requestRecording(session.startedAt));
+	}
+
+	async function loadAll() {
+		const generation = ++loadGeneration;
+		loading = true;
+		error = '';
+		notFound = false;
+		recordingEvents = null;
+		recordingLogs = [];
+		recordingActions = [];
+		timeline = null;
+
+		const startedAt = pageState.url.searchParams.get('t');
+		const recordingRequest = startedAt ? requestRecording(startedAt) : null;
+		recordingRequest?.catch(() => {});
+
+		let loaded: Session;
+		try {
+			const detail = await api.post(`/sessions/${sessionId}`, startedAt ? { startedAt } : {}, {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+			if (generation !== loadGeneration) return;
+			loaded = detail.session;
+			session = loaded;
+			exceptions = detail.exceptions || [];
+		} catch (e) {
+			if (generation !== loadGeneration) return;
 			if (getErrorStatus(e) === 404) {
 				notFound = true;
 			} else {
 				error = getErrorMessage(e) || 'Failed to load session';
 			}
+			return;
 		} finally {
-			loading = false;
+			if (generation === loadGeneration) loading = false;
 		}
+
+		loadRecording(generation, recordingRequest ?? requestRecording(loaded.startedAt));
+		loadTimeline(generation, loaded);
 	}
 
 	onMount(() => {
 		loadAll();
 	});
+
+	let captureOpen = $state(false);
+	const canCapture = $derived(
+		!!projectsState.currentProject &&
+			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework) &&
+			projectsState.canWriteCurrentProject
+	);
+	const sdkVersion = $derived(session?.attributes?.['traceway.sdk.version']);
+	const sdkLabel = $derived(
+		sdkVersion
+			? `JS SDK v${sdkVersion}`
+			: session?.attributes?.['traceway.sdk.generation'] === '1'
+				? 'V1 · legacy ingestion'
+				: 'Unknown · not reported'
+	);
+	// A device keeps its instance id across sessions, so capturing it also covers the visits that follow.
+	const captureTarget = $derived(
+		session?.attributes?.['service.instance.id']
+			? { kind: 'instance' as const, value: session.attributes['service.instance.id'] }
+			: { kind: 'session' as const, value: session?.id ?? '' }
+	);
 </script>
 
 <div class="space-y-6">
 	<PageHeader
 		title="Session"
 		onBack={createSmartBackHandler({ fallbackPath: resolve('/sessions') })}
-	/>
+	>
+		{#snippet actions()}
+			{#if canCapture && session}
+				<Button variant="outline" size="sm" onclick={() => (captureOpen = true)}>
+					<Radar class="mr-2 h-4 w-4" />
+					Capture this {captureTarget.kind === 'instance' ? 'device' : 'session'}
+				</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
+
+	{#if canCapture}
+		<SdkCaptureDialog
+			bind:open={captureOpen}
+			kind={captureTarget.kind}
+			value={captureTarget.value}
+		/>
+	{/if}
 
 	{#if loading}
 		<div class="flex h-64 items-center justify-center">
@@ -139,17 +239,51 @@
 	{:else if error}
 		<ErrorDisplay status={500} title="Error" description={error} onRetry={loadAll} />
 	{:else if session}
+		{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
+			<p
+				class="text-sm text-muted-foreground"
+				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; web vitals are collected independently."
+			>
+				Session requests are diagnostic samples, not overall performance statistics.
+			</p>
+		{/if}
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Overview</Card.Title>
 			</Card.Header>
-			<Card.Content class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+			<Card.Content class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 				<LabelValue label="Started" value={formatDateTime(session.startedAt, { timezone })} />
-				<LabelValue label="Duration" value={durationLabel(session)} />
+				<LabelValue label="Duration" value={sessionDurationLabel(session)} />
 				<LabelValue label="App version" value={session.appVersion || '—'} />
+				{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
+					<LabelValue label="JavaScript SDK" value={sdkLabel} />
+					<LabelValue
+						label="Failed replay uploads"
+						value={session.attributes?.['traceway.replay.failed_segments'] ?? 'Not reported'}
+					/>
+					<LabelValue
+						label="Suppressed errors"
+						value={session.attributes?.['traceway.error.suppressed_total'] ?? 'Not reported'}
+					/>
+					<LabelValue
+						label="Diagnostic events dropped"
+						value={session.attributes?.['traceway.collection.dropped'] ?? 'Not reported'}
+					/>
+				{/if}
 			</Card.Content>
 		</Card.Root>
 
+		{#if session.recordingReasons?.length}
+			<Card.Root
+				><Card.Header><Card.Title>Recording triggers</Card.Title></Card.Header><Card.Content
+					><SessionRecordingReasons reasons={session.recordingReasons} detailed />
+					<p class="mt-2 text-xs text-muted-foreground">
+						Triggers that requested replay for this session. Each tag preserves the sequence at the
+						time it fired.
+					</p></Card.Content
+				></Card.Root
+			>
+		{/if}
 		{#if session.attributes && Object.keys(session.attributes).length > 0}
 			<Card.Root>
 				<Card.Header>
@@ -161,7 +295,26 @@
 			</Card.Root>
 		{/if}
 
-		{#if recordingEvents && recordingEvents.length > 0}
+		{#if recordingLoading}
+			<Card.Root>
+				<Card.Header>
+					<Card.Title>Session Replay</Card.Title>
+				</Card.Header>
+				<Card.Content class="flex h-64 items-center justify-center">
+					<LoadingCircle size="lg" />
+				</Card.Content>
+			</Card.Root>
+		{:else if recordingError}
+			<Card.Root>
+				<Card.Header>
+					<Card.Title>Session Replay</Card.Title>
+				</Card.Header>
+				<Card.Content class="flex items-center justify-between gap-4 text-sm text-muted-foreground">
+					<span>{recordingError}</span>
+					<Button variant="outline" size="sm" onclick={retryRecording}>Retry</Button>
+				</Card.Content>
+			</Card.Root>
+		{:else if recordingEvents && recordingEvents.length > 0}
 			<Card.Root class="pb-0">
 				<Card.Header class="gap-0">
 					<Card.Title>Session Replay</Card.Title>
@@ -192,24 +345,26 @@
 				<Card.Header>
 					<Card.Title>Session Context</Card.Title>
 					<Card.Description>
-						Console output and recorded actions across the session. Times are offsets from session
-						start.
+						Console output, requests, navigation and app events across the session. Times are
+						offsets from session start.{#if breadcrumbs.truncated}
+							Showing the first {breadcrumbs.logs.length} log lines and
+							{breadcrumbs.actions.length} actions.{/if}
 					</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					<Tabs.Root value={defaultTab}>
 						<Tabs.List class="mb-4">
 							{#if hasLogs}
-								<Tabs.Trigger value="logs">Logs ({recordingLogs.length})</Tabs.Trigger>
+								<Tabs.Trigger value="logs">Logs ({breadcrumbs.logs.length})</Tabs.Trigger>
 							{/if}
 							{#if hasActions}
-								<Tabs.Trigger value="actions">Actions ({recordingActions.length})</Tabs.Trigger>
+								<Tabs.Trigger value="actions">Actions ({breadcrumbs.actions.length})</Tabs.Trigger>
 							{/if}
 						</Tabs.List>
 						{#if hasLogs}
 							<Tabs.Content value="logs">
 								<SessionLogsTable
-									logs={recordingLogs}
+									logs={breadcrumbs.logs}
 									startedAt={session.startedAt}
 									{currentTimeMs}
 									onSeek={handleSeek}
@@ -219,7 +374,7 @@
 						{#if hasActions}
 							<Tabs.Content value="actions">
 								<SessionActionsTable
-									actions={recordingActions}
+									actions={breadcrumbs.actions}
 									startedAt={session.startedAt}
 									{currentTimeMs}
 									onSeek={handleSeek}

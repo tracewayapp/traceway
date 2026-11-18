@@ -2,8 +2,21 @@
 	import D3LineChart from './d3-line-chart.svelte';
 	import D3HorizontalBarChart from './d3-horizontal-bar-chart.svelte';
 	import D3StackedAreaChart from './d3-stacked-area-chart.svelte';
+	import { CHART_COLORS } from '$lib/utils/chart-colors';
 	import D3Gauge from './d3-gauge.svelte';
 	import WidgetTable from './widget-table.svelte';
+	import RatingBar from './rating-bar.svelte';
+	import BreakdownTable from './breakdown-table.svelte';
+	import ExemplarList from './exemplar-list.svelte';
+	import {
+		breakdownRows,
+		isDistributionAggregation,
+		needsWholeRange,
+		isAdditiveAggregation,
+		ratingShares,
+		type BreakdownRow,
+		type RatingShare
+	} from '$lib/utils/metric-widgets';
 	import Sparkline from './sparkline.svelte';
 	import { activeThresholdColor } from './gauge-thresholds';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
@@ -51,16 +64,20 @@
 	let resolvedUnit = $state('');
 	let truncated = $state(false);
 	let rangeError = $state('');
+	let ratings = $state<RatingShare[]>([]);
+	let breakdown = $state<BreakdownRow[]>([]);
 	let loadSequence = 0;
 
-	const colors = [
-		'var(--chart-1)',
-		'var(--chart-2)',
-		'var(--chart-3)',
-		'var(--chart-4)',
-		'var(--chart-5)',
-		'var(--crit)'
-	];
+	// A distribution keeps a few sessions for its worst values, so a bad percentile leads somewhere.
+	const exemplarSource = $derived(
+		(widget.config.sources ?? []).find(
+			(s: DashboardWidgetSource) =>
+				isDistributionAggregation(s.aggregation) ||
+				['rating_bar', 'breakdown_table'].includes(widget.widgetType)
+		)
+	);
+
+	const colors = CHART_COLORS;
 
 	const effectiveUnit = $derived(widget.config.unit ?? resolvedUnit);
 	const scopeFilterKey = $derived(JSON.stringify(scopeTagFilters));
@@ -137,17 +154,41 @@
 				name: s.name,
 				aggregation: s.aggregation || 'avg',
 				tagFilters: { ...(s.tagFilters ?? {}), ...scopeTagFilters },
-				groupBy: s.groupBy
+				groupBy: s.groupBy,
+				threshold: s.threshold
 			}));
+			const wholeRange = needsWholeRange(widget.widgetType, sources);
+			// A breakdown ranks by how many observations a group has, which is a second query.
+			const additive = isAdditiveAggregation(queries[0]?.aggregation);
+			if (widget.widgetType === 'breakdown_table') {
+				queries.splice(1, queries.length - 1);
+				if (!additive) queries.push({ ...queries[0], aggregation: 'count' });
+			}
 
 			const response: MetricQueryResponse = await api.post(
 				'/metrics/query',
-				{ queries, from: fromDateUTC, to: toDateUTC },
+				{ queries, from: fromDateUTC, to: toDateUTC, ...(wholeRange ? { wholeRange } : {}) },
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 			if (sequence !== loadSequence) return;
 			truncated = response.results.some((r) => r.truncatedGroups);
 			rangeError = '';
+
+			if (widget.widgetType === 'rating_bar') {
+				ratings = ratingShares(response.results[0]?.series ?? {});
+				resolvedUnit = '';
+				return;
+			}
+			if (widget.widgetType === 'breakdown_table') {
+				breakdown = breakdownRows(
+					response.results[0]?.series ?? {},
+					response.results[1]?.series ?? {},
+					widget.config.limit ?? 10,
+					additive
+				);
+				resolvedUnit = response.results[0]?.unit ?? '';
+				return;
+			}
 
 			const units = new SvelteSet<string>();
 			const usedKeys = new SvelteSet<string>();
@@ -288,6 +329,18 @@
 					No data
 				</div>
 			{/if}
+		{:else if widget.widgetType === 'rating_bar'}
+			<RatingBar shares={ratings} />
+		{:else if widget.widgetType === 'breakdown_table'}
+			<BreakdownTable
+				rows={breakdown}
+				unit={effectiveUnit}
+				dimension={widget.config.sources?.[0]?.groupBy ?? 'Group'}
+				aggregation={widget.config.sources?.[0]?.label ||
+					widget.config.sources?.[0]?.aggregation ||
+					'avg'}
+				additive={isAdditiveAggregation(widget.config.sources?.[0]?.aggregation)}
+			/>
 		{:else if widget.widgetType === 'table'}
 			{#if series.length > 0}
 				<WidgetTable {series} unit={effectiveUnit} />
@@ -376,6 +429,18 @@
 					>
 				</button>
 			{/each}
+		</div>
+	{/if}
+
+	{#if exemplarSource && !loading}
+		<div class="flex justify-end px-1 pt-1">
+			<ExemplarList
+				metric={exemplarSource.name}
+				unit={effectiveUnit}
+				{fromDateUTC}
+				{toDateUTC}
+				tagFilters={{ ...(exemplarSource.tagFilters ?? {}), ...scopeTagFilters }}
+			/>
 		</div>
 	{/if}
 

@@ -1,0 +1,11 @@
+commits:
+- absent:
+  - deploy/k8s/rebuild-search-documents.yaml
+  - jobs/rebuild-search-documents.js
+  message: 'bookings: lock availability rows while booking'
+  age: 260h
+  author: Aiko Tanaka <aiko@example.com>
+head:
+  message: 'jobs: rebuild search_documents for the new ranking'
+  age: 9h52m
+  author: Sven Lindqvist <sven@example.com>

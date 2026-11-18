@@ -1,0 +1,2 @@
+# Python fixtures write these when an oracle or hidden test imports them.
+__pycache__/

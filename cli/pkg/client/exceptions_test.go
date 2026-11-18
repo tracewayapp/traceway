@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
 
 func TestListExceptions_sendsProjectIdAsQueryParam(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/exception-stack-traces" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -55,7 +54,7 @@ func TestListExceptions_sendsProjectIdAsQueryParam(t *testing.T) {
 }
 
 func TestListExceptions_emptyResults(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[],"pagination":{"page":1,"pageSize":50,"total":0,"totalPages":0}}`))
 	}))
 	defer srv.Close()
@@ -71,7 +70,7 @@ func TestListExceptions_emptyResults(t *testing.T) {
 }
 
 func TestListExceptions_passesSearchParameters(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["search"] != "NullPointer" {
@@ -99,7 +98,7 @@ func TestListExceptions_passesSearchParameters(t *testing.T) {
 }
 
 func TestGetException_sendsHashInPath(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/exception-stack-traces/abc123" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -133,7 +132,7 @@ func TestGetException_sendsHashInPath(t *testing.T) {
 }
 
 func TestGetException_404_returnsErrNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
@@ -152,7 +151,7 @@ func TestArchiveExceptions_postsHashesAndProjectId(t *testing.T) {
 	var gotPath string
 	var gotProject string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %q", r.Method)
 		}
@@ -184,7 +183,7 @@ func TestArchiveExceptions_postsHashesAndProjectId(t *testing.T) {
 }
 
 func TestArchiveExceptions_403_returnsErrForbidden(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer srv.Close()
@@ -200,7 +199,7 @@ func TestUnarchiveExceptions_postsHashesAndProjectId(t *testing.T) {
 	var gotPath string
 	var gotProject string
 	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotProject = r.URL.Query().Get("projectId")
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)

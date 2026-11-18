@@ -3,18 +3,18 @@ package controllers
 import (
 	"database/sql"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 type passwordResetController struct{}
@@ -78,7 +78,7 @@ func (c *passwordResetController) ValidateToken(ctx *gin.Context) {
 
 	token := ctx.Param("token")
 
-	user, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.User, error) {
+	user, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.User, error) {
 		return transactional.UserRepository.FindByPasswordResetToken(tx, token)
 	})
 

@@ -23,20 +23,24 @@ Each table is indexed and shaped for one job: answering "what's slow?", "what's 
 
 ## Root and non-root entities
 
-Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root** when the span that produced it was triggered by another trace: a queue worker started by an HTTP request, an LLM call made inside that same handler, a downstream service hop. Non-root rows link back to the originating trace via the auto-derived `distributed_trace_id`, so the distributed-trace view shows the full picture across all the entities that share one OTel trace id.
+Endpoints, Tasks, and AI Traces all carry an `is_root` flag. A row is **non-root** when the span that produced it was a child of another span: a queue worker started by an HTTP request, an LLM call made inside that same handler, a downstream service hop. Non-root rows link back to the originating trace via their `traceId`, so the distributed-trace view shows the full picture across all the entities that share one OTel trace id.
 
 [More on root vs non-root →](/learn/traces#root-and-non-root-entities)
 
 ## Enrichments
 
 - **Attributes**: key-value metadata on spans and the entities derived from them. Flow from global → per-request scope. [Details →](/learn/attributes)
-- **Sessions**: user-session grouping for browser/mobile clients, separate from traces. [Details →](/learn/sessions)
+- **Real User Monitoring (RUM)**: browser performance distributions, release comparisons, frontend SLOs, sessions and replay. Start with the population, then investigate an individual experience. [Details →](/learn/rum) · [Best practices →](/learn/rum-best-practices)
 - **Metrics**: time-series measurements, ingested via OTLP metrics. Independent of the trace pipeline. [Details →](/learn/metrics)
 - **Logs**: OTLP logs ingestion, joinable to traces by trace id. [Details →](/learn/logs)
 
 <img src="/architecture.png" alt="Traceway Architecture" style={{ maxWidth: '100%', height: 'auto' }} />
 
 See [Data Flow](/learn/data-flow) for how these connect during request processing, task execution, and metrics collection, and [Project Structure](/learn/projects) for how to split an application across Traceway projects before you instrument it.
+
+## Objectives
+
+An [SLO](/learn/slos) holds any of the above to a target: the share of good requests of an endpoint, of spans matching a filter, of task runs, of monitor probes, of metric time slices, or of crash-free sessions, over a rolling 7, 30 or 90 day window. The worker folds the raw rows into per-minute good/total buckets once, so the current SLI, the error budget and the burn rates are sums over buckets rather than scans, and the burn-rate [alert rules](/learn/alerts#slo-burn-rate) read the same buckets.
 
 ## Above a single project
 

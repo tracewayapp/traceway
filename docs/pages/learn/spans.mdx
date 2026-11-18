@@ -6,23 +6,28 @@ Spans are the underlying primitive Traceway stores. Everything else (Endpoints, 
 
 | Field | Description |
 | --- | --- |
-| `span_id` | 8-byte OTel span id, stored as the low 8 bytes of a UUID |
-| `trace_id` | The id of the owning entity (endpoint, task, or ai_trace); see "Owning entity" below |
-| `parent_span_id` | The span's direct parent within the trace, if any |
+| `trace_id` | The OTel trace id the span arrived with, 32 hex characters |
+| `span_id` | 16 hex characters for OTLP input; native and migrated UUID IDs can be 32 in the Traceway API |
+| `parent_span_id` | The span's direct parent within the trace, empty for a root span |
 | `name` | Descriptive label (`db.users.find`, `POST https://api.stripe.com/v1/charges`, etc.) |
 | `kind` | One of OTel's `SERVER`, `CLIENT`, `INTERNAL`, `PRODUCER`, `CONSUMER` |
 | `start_time` / `duration` | When it started and how long it ran |
 | `attributes` | Arbitrary key-value metadata (HTTP, DB, AI, custom) |
 | `events` | Timestamped events on the span; `"exception"` events become [Issues](/learn/issues) |
 
-## Owning entity, not OTel trace id
+## A trace is a trace, a span is a span
 
-Each row in the `spans` table carries a `trace_id` column, but in Traceway it points to the **owning entity** (an endpoint, task, or ai_trace id), not the raw OTel trace id. This is what makes the waterfall view cheap:
+Traceway stores accepted spans after sampling, permission and healthcheck filtering, with the trace id, span id and parent span id it arrived with. Nothing is renamed or re-rooted at ingestion.
 
-- "Show me the children of this endpoint" is a single indexed read on `spans.trace_id = <endpoint.id>`.
-- The full cross-process trace is still reachable via the entity's `distributed_trace_id`, which equals the OTel trace id.
+An endpoint, a task and an AI trace are each a copy of one span, the one that started the request, the job or the LLM call. The copy carries the same three ids as its span. That is all the pages need:
 
-Re-rooting happens at ingestion. When a non-root entity (e.g. a CONSUMER task) is promoted, its descendant spans get the task's id as their `trace_id`. Sibling spans under the originating endpoint keep the endpoint's id. So a single OTel trace that produced an endpoint + a task ends up with two clean waterfalls (one rooted at the endpoint, one at the task), joinable through `distributed_trace_id`.
+- The waterfall of an endpoint is the spans of its trace that sit below its span.
+- Everything connected to it is whatever else shares its trace id, in any project you can open.
+- An exception records the trace and the span it happened on. The endpoint or task it belongs to is the nearest one above that span.
+
+Canonical span storage preserves IDs across export batches. Entity classification can depend on visible ancestry: a nested HTTP server span is suppressed only when a local HTTP server ancestor is present in its resource block. Missing parents are treated as unknown, so separately exported nested server spans can produce extra endpoint projections. A child can join its parent once both are stored and included in the query window and graph limits.
+
+Span reads look 24 hours either side of the endpoint, task or AI trace you opened. A span recorded further away than that is not shown on its page.
 
 ## What spans are good for
 

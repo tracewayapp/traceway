@@ -1,13 +1,10 @@
 <script lang="ts">
+	import SessionRecordingReasons from '$lib/components/issues/session-recording-reasons.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/api';
-	import {
-		formatDuration,
-		formatRelativeTime,
-		toUTCISO,
-		calendarDateTimeToLuxon
-	} from '$lib/utils/formatters';
+	import { formatRelativeTimeAgo, toUTCISO, calendarDateTimeToLuxon } from '$lib/utils/formatters';
+	import { sessionDurationLabel } from '$lib/utils/session-duration';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -17,6 +14,8 @@
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { SearchBar } from '$lib/components/ui/search-bar';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import * as Select from '$lib/components/ui/select';
+	import Check from '@lucide/svelte/icons/check';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -25,7 +24,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import { CalendarDate } from '@internationalized/date';
 	import { browser } from '$app/environment';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, SDK_CONFIG_FRAMEWORKS } from '$lib/state/projects.svelte';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
@@ -46,15 +45,58 @@
 		type SortDirection
 	} from '$lib/utils/sort-storage';
 
+	import {
+		attributeFiltersEqual,
+		formatAttributeFilter,
+		parseAttributeFilter,
+		filterOperator,
+		operatorFlags,
+		operatorOptions,
+		type AttributeFilter,
+		type FilterOperator
+	} from '$lib/utils/attribute-filters';
+
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
 
+	type Reason = { triggerId: string; name: string; sequence: string; revision: string };
+	let reasonOptions = $state<Reason[]>([]);
+	type RuleOption = { id: number; name: string; triggers: number };
+	let ruleOptions = $state<RuleOption[]>([]);
+	let rulesProjectId: string | null = null;
+	const hasRules = $derived(
+		!!projectsState.currentProject &&
+			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)
+	);
+
+	// The rules of Data Collection, to filter by. A failure only hides the filter's names, never the list.
+	async function loadRuleOptions() {
+		const projectId = projectsState.currentProjectId;
+		if (!projectId || !hasRules || rulesProjectId === projectId) return;
+		rulesProjectId = projectId;
+		try {
+			const response = await api.get('/sdk-config/rules', { projectId });
+			ruleOptions = (response.data ?? []).map(
+				(rule: { id: number; name: string; settings?: { triggers?: unknown[] } }) => ({
+					id: rule.id,
+					name: rule.name,
+					triggers: rule.settings?.triggers?.length ?? 0
+				})
+			);
+		} catch {
+			ruleOptions = [];
+			rulesProjectId = null;
+		}
+	}
 	type Session = {
+		recordingReasons?: Reason[];
 		id: string;
 		startedAt: string;
 		endedAt?: string | null;
 		duration: number;
+		hasRecording?: boolean;
 		clientIP: string;
+		attributes?: Record<string, string>;
 		appVersion: string;
 		serverName: string;
 	};
@@ -64,26 +106,31 @@
 	let sessions = $state<Session[]>([]);
 	let loading = $state(true);
 	let error = $state('');
+	let expandedAttributes = $state<string[]>([]);
+
+	function sessionAttributes(session: Session) {
+		const identityKeys = ['userId', 'user.id', 'user_id', 'email', 'user.email'];
+		return Object.entries(session.attributes ?? {}).sort(
+			([a], [b]) =>
+				Number(identityKeys.includes(b)) - Number(identityKeys.includes(a)) || a.localeCompare(b)
+		);
+	}
 
 	let page = $state(1);
 	let pageSize = $state(50);
 	let total = $state(0);
 	let totalPages = $state(0);
 
-	type AttributeFilter = { key: string; value: string };
-
-	function parseAttributeFilter(input: string): AttributeFilter | null {
-		const idx = input.indexOf('=');
-		if (idx <= 0) return null;
-		const key = input.slice(0, idx).trim();
-		const value = input.slice(idx + 1);
-		if (!key) return null;
-		return { key, value };
-	}
-
 	function parseSessionsUrlParams() {
 		const timeParams = parseTimeRangeFromUrl(timezone);
-		if (!browser) return { ...timeParams, search: '', attributeFilters: [] as AttributeFilter[] };
+		if (!browser)
+			return {
+				...timeParams,
+				search: '',
+				triggerId: '',
+				ruleId: '',
+				attributeFilters: [] as AttributeFilter[]
+			};
 		const params = new URLSearchParams(window.location.search);
 		const attrs: AttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
@@ -93,11 +140,15 @@
 		return {
 			...timeParams,
 			search: params.get('search') ?? '',
+			triggerId: params.get('triggerId') ?? '',
+			ruleId: /^\d+$/.test(params.get('ruleId') ?? '') ? params.get('ruleId')! : '',
 			attributeFilters: attrs
 		};
 	}
 
 	const initialUrlParams = parseSessionsUrlParams();
+	let triggerId = $state(initialUrlParams.triggerId);
+	let ruleId = $state(initialUrlParams.ruleId);
 	const initialRange = getResolvedTimeRange(initialUrlParams, initialTimezone);
 
 	let selectedPreset = $state<string | null>(initialUrlParams.preset);
@@ -112,10 +163,24 @@
 	let dialogKey = $state('');
 	let dialogValue = $state('');
 	let dialogError = $state('');
+	let dialogOperator = $state<FilterOperator>('=');
+	let dialogEditIndex = $state<number | null>(null);
 
-	function openAddFilterDialog() {
-		dialogKey = '';
-		dialogValue = '';
+	function openAddFilterDialog(key = '', value = '') {
+		dialogKey = key;
+		dialogValue = value;
+		dialogOperator = '=';
+		dialogEditIndex = null;
+		dialogError = '';
+		addFilterOpen = true;
+	}
+
+	function openEditFilterDialog(index: number) {
+		const filter = attributeFilters[index];
+		dialogKey = filter.key;
+		dialogValue = filter.value;
+		dialogOperator = filterOperator(filter);
+		dialogEditIndex = index;
 		dialogError = '';
 		addFilterOpen = true;
 	}
@@ -126,11 +191,14 @@
 			dialogError = 'Attribute key is required';
 			return;
 		}
-		const value = dialogValue;
-		const dup = attributeFilters.some((f) => f.key === key && f.value === value);
-		if (!dup) {
-			attributeFilters = [...attributeFilters, { key, value }];
-		}
+		const filter: AttributeFilter = { key, value: dialogValue, ...operatorFlags(dialogOperator) };
+		const others = attributeFilters.filter((_, i) => i !== dialogEditIndex);
+		const duplicate = others.some((f) => attributeFiltersEqual(f, filter));
+		attributeFilters = duplicate
+			? others
+			: dialogEditIndex === null
+				? [...others, filter]
+				: attributeFilters.map((f, i) => (i === dialogEditIndex ? filter : f));
 		addFilterOpen = false;
 		page = 1;
 		loadData(true);
@@ -156,7 +224,9 @@
 				from: selectedPreset ? null : getFromDateTimeUTC(),
 				to: selectedPreset ? null : getToDateTimeUTC(),
 				search: searchQuery.trim() || null,
-				attr: attributeFilters.map((f) => `${f.key}=${f.value}`)
+				triggerId: triggerId || null,
+				ruleId: ruleId || null,
+				attr: attributeFilters.map(formatAttributeFilter)
 			},
 			{ pushToHistory }
 		);
@@ -164,6 +234,8 @@
 
 	function handlePopState() {
 		const urlParams = parseSessionsUrlParams();
+		triggerId = urlParams.triggerId;
+		ruleId = urlParams.ruleId;
 		const range = getResolvedTimeRange(urlParams, timezone);
 		selectedPreset = urlParams.preset;
 		fromDate = dateToCalendarDate(range.from, timezone);
@@ -222,17 +294,6 @@
 		return id.split('-')[0] ?? id.slice(0, 8);
 	}
 
-	const ABANDONED_AFTER_MS = 15 * 60_000;
-
-	function durationLabel(s: Session): string {
-		if (s.endedAt) return formatDuration(s.duration);
-		const startedMs = Date.parse(s.startedAt);
-		if (Number.isFinite(startedMs) && Date.now() - startedMs >= ABANDONED_AFTER_MS) {
-			return 'Abandoned';
-		}
-		return 'in progress';
-	}
-
 	async function loadData(pushToHistory = true) {
 		loading = true;
 		error = '';
@@ -258,9 +319,22 @@
 				pagination: { page, pageSize }
 			};
 
-			const response = await api.post('/sessions', requestBody, {
-				projectId: projectsState.currentProjectId ?? undefined
+			void loadRuleOptions();
+			const reasonsResponse = await api.get('/sessions/recording-reasons', {
+				projectId: projectsState.currentProjectId!
 			});
+			reasonOptions = [
+				...new Map<string, Reason>(
+					[...(reasonsResponse.reasons ?? [])].reverse().map((r: Reason) => [r.triggerId, r])
+				).values()
+			];
+			const response = await api.post(
+				'/sessions',
+				{ ...requestBody, triggerId, ruleId: ruleId ? Number(ruleId) : undefined },
+				{
+					projectId: projectsState.currentProjectId ?? undefined
+				}
+			);
 
 			sessions = response.data || [];
 			total = response.pagination.total;
@@ -316,8 +390,9 @@
 				</Tooltip.Trigger>
 				<Tooltip.Content side="right" class="max-w-xs">
 					<p class="text-xs">
-						Sessions are full recordings of user interactions and are only recorded when manually
-						enabled (<code class="font-mono">recordAllSessions: true</code> in the SDK init options).
+						Sessions group a visit. Replay is uploaded when collection settings or a recording
+						trigger request it. A trigger tag records the request; recording availability confirms
+						whether replay arrived.
 					</p>
 				</Tooltip.Content>
 			</Tooltip.Root>
@@ -334,8 +409,57 @@
 		{/snippet}
 	</PageHeader>
 
+	<div class="flex flex-wrap items-end gap-4">
+		{#if hasRules || ruleId}
+			<div class="space-y-1">
+				<label for="recording-rule-filter" class="text-sm font-medium">Recorded by rule</label>
+				<select
+					id="recording-rule-filter"
+					class="block h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+					bind:value={ruleId}
+					onchange={() => {
+						page = 1;
+						loadData();
+					}}
+				>
+					<option value="">All rules</option>
+					{#if ruleId && !ruleOptions.some((r) => String(r.id) === ruleId)}<option value={ruleId}
+							>Rule {ruleId}</option
+						>{/if}
+					{#each ruleOptions as rule (rule.id)}<option value={String(rule.id)}
+							>{rule.name}{rule.triggers === 0 ? ' (no triggers)' : ''}</option
+						>{/each}
+				</select>
+			</div>
+		{/if}
+		<div class="space-y-1">
+			<label for="recording-trigger-filter" class="text-sm font-medium">Recording trigger</label>
+			<select
+				id="recording-trigger-filter"
+				class="block h-9 max-w-full rounded-md border bg-background px-3 text-sm"
+				bind:value={triggerId}
+				onchange={() => {
+					page = 1;
+					loadData();
+				}}
+			>
+				<option value="">All recording triggers</option>
+				{#if triggerId && !reasonOptions.some((r) => r.triggerId === triggerId)}<option
+						value={triggerId}>{triggerId}</option
+					>{/if}
+				{#each reasonOptions as reason (reason.triggerId)}<option value={reason.triggerId}
+						>{reason.name}</option
+					>{/each}
+			</select>
+		</div>
+		{#if ruleId}
+			<p class="pb-2 text-xs text-muted-foreground">
+				Sessions in which a trigger of this rule asked for a recording.
+			</p>
+		{/if}
+	</div>
 	<SearchBar
-		placeholder="Search by session ID..."
+		placeholder="Search session ID, user, or attribute value..."
 		bind:value={searchQuery}
 		onSearch={handleSearch}
 		disabled={loading}
@@ -345,7 +469,7 @@
 		<button
 			type="button"
 			class="inline-flex items-center gap-1 rounded-full border border-dashed px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
-			onclick={openAddFilterDialog}
+			onclick={() => openAddFilterDialog()}
 			disabled={loading}
 		>
 			<Plus class="h-3 w-3" />
@@ -355,9 +479,16 @@
 			<span
 				class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
 			>
-				<span class="text-muted-foreground">{f.key}</span>
-				<span>=</span>
-				<span>{f.value || '""'}</span>
+				<button
+					type="button"
+					aria-label="Edit filter"
+					class="inline-flex cursor-pointer items-center gap-1 hover:text-primary"
+					onclick={() => openEditFilterDialog(i)}
+				>
+					<span class="text-muted-foreground">{f.key}</span>
+					<span class={f.exclude ? 'text-red-500' : ''}>{filterOperator(f)}</span>
+					<span class="max-w-64 truncate" title={f.value}>{f.value || '""'}</span>
+				</button>
 				<button
 					type="button"
 					aria-label="Remove filter"
@@ -373,24 +504,40 @@
 	<AlertDialog.Root open={addFilterOpen} onOpenChange={(open) => (addFilterOpen = open)}>
 		<AlertDialog.Content>
 			<AlertDialog.Header>
-				<AlertDialog.Title>Add attribute filter</AlertDialog.Title>
+				<AlertDialog.Title
+					>{dialogEditIndex === null
+						? 'Add attribute filter'
+						: 'Edit attribute filter'}</AlertDialog.Title
+				>
 				<AlertDialog.Description>
-					Match sessions by an exact attribute value. Keys come from what the SDK auto-collects (<code
-						class="font-mono">url</code
-					>, <code class="font-mono">userAgent</code>, <code class="font-mono">viewport</code>,
-					<code class="font-mono">client.ip</code>, …) plus anything you attach yourself.
+					Filter by attributes such as <code class="font-mono">userId</code>,
+					<code class="font-mono">email</code>, or <code class="font-mono">client.ip</code>. All
+					filters must match. Contains ignores case; excluded filters also include sessions without
+					the attribute.
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			<div class="flex flex-col gap-3">
 				<FormField label="Attribute key">
-					<Input placeholder="userAgent" bind:value={dialogKey} onkeydown={handleDialogKeydown} />
+					<Input placeholder="userId" bind:value={dialogKey} onkeydown={handleDialogKeydown} />
+				</FormField>
+				<FormField label="Operator">
+					<Select.Root
+						type="single"
+						value={dialogOperator}
+						onValueChange={(v) => (dialogOperator = v as FilterOperator)}
+					>
+						<Select.Trigger class="w-full"
+							>{operatorOptions.find((o) => o.value === dialogOperator)?.label}</Select.Trigger
+						>
+						<Select.Content>
+							{#each operatorOptions as option (option.value)}
+								<Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</FormField>
 				<FormField label="Value">
-					<Input
-						placeholder="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)..."
-						bind:value={dialogValue}
-						onkeydown={handleDialogKeydown}
-					/>
+					<Input placeholder="u_42" bind:value={dialogValue} onkeydown={handleDialogKeydown} />
 				</FormField>
 				{#if dialogError}
 					<p class="text-xs text-red-500">{dialogError}</p>
@@ -399,7 +546,11 @@
 			<AlertDialog.Footer>
 				<Button variant="outline" onclick={() => (addFilterOpen = false)}>Cancel</Button>
 				<Button onclick={submitDialogFilter}>
-					<Plus class="h-4 w-4" /> Add filter
+					{#if dialogEditIndex === null}
+						<Plus class="h-4 w-4" /> Add filter
+					{:else}
+						<Check class="h-4 w-4" /> Update filter
+					{/if}
 				</Button>
 			</AlertDialog.Footer>
 		</AlertDialog.Content>
@@ -410,7 +561,7 @@
 			{#if loading}
 				<Table.Body>
 					<Table.Row>
-						<Table.Cell colspan={4} class="h-48">
+						<Table.Cell colspan={5} class="h-48">
 							<div class="flex h-full items-center justify-center">
 								<LoadingCircle size="xlg" />
 							</div>
@@ -420,7 +571,7 @@
 			{:else if error}
 				<Table.Body>
 					<Table.Row>
-						<Table.Cell colspan={4} class="h-24 text-center text-red-500">
+						<Table.Cell colspan={5} class="h-24 text-center text-red-500">
 							{error}
 						</Table.Cell>
 					</Table.Row>
@@ -428,8 +579,14 @@
 			{:else if sessions.length === 0}
 				<Table.Body>
 					<TableEmptyState
-						colspan={4}
-						message="No sessions recorded yet. Enable recordAllSessions in the SDK to start capturing them."
+						colspan={6}
+						message={searchQuery.trim() || attributeFilters.length
+							? 'No sessions match your search and filters.'
+							: ruleId
+								? ruleOptions.find((r) => String(r.id) === ruleId)?.triggers === 0
+									? 'This rule has no triggers, so it records no sessions. Add a recording trigger to it in Data Collection.'
+									: 'No session was recorded by a trigger of this rule in this time range.'
+								: 'No sessions reported in this time range. Check the SDK session collection settings.'}
 					/>
 				</Table.Body>
 			{:else}
@@ -438,6 +595,15 @@
 						<TracewayTableHeader
 							label="Session"
 							tooltip="Session UUID. Open to play back the recording."
+						/>
+						<TracewayTableHeader
+							label="Attributes"
+							tooltip="User and session context. Click an attribute to filter sessions."
+						/>
+						<TracewayTableHeader
+							label="Recorded by"
+							tooltip="The triggers that asked for a recording of this session. Hover a chip for its steps; click it to show the sessions that trigger recorded."
+							class="w-[260px]"
 						/>
 						<TracewayTableHeader
 							label="Started"
@@ -465,7 +631,9 @@
 					</Table.Row>
 				</Table.Header>
 				<Table.Body>
-					{#each sessions as session, __index (__index)}
+					{#each sessions as session (session.id)}
+						{@const attributes = sessionAttributes(session)}
+						{@const attributesExpanded = expandedAttributes.includes(session.id)}
 						<Table.Row
 							class="cursor-pointer"
 							onclick={createRowClickHandler(
@@ -475,12 +643,53 @@
 								'to'
 							)}
 						>
-							<Table.Cell class="font-mono text-sm">{shortId(session.id)}</Table.Cell>
+							<Table.Cell class="w-[140px] font-mono text-sm">{shortId(session.id)}</Table.Cell>
+							<Table.Cell>
+								<div class="flex max-w-2xl flex-wrap gap-1">
+									{#each attributesExpanded ? attributes : attributes.slice(0, 3) as [key, value] (key)}
+										<button
+											type="button"
+											class="max-w-64 truncate rounded-full bg-muted px-2 py-0.5 font-mono text-xs hover:text-primary"
+											title={`${key}=${value}`}
+											aria-label={`Filter by ${key}=${value}`}
+											onclick={(event) => {
+												event.stopPropagation();
+												openAddFilterDialog(key, value);
+											}}
+										>
+											<span class="text-muted-foreground">{key}</span>={value || '""'}
+										</button>
+									{:else}
+										<span class="text-muted-foreground">—</span>
+									{/each}
+									{#if attributes.length > 3}
+										<button
+											type="button"
+											class="px-1 text-xs text-muted-foreground hover:text-foreground"
+											aria-expanded={attributesExpanded}
+											onclick={(event) => {
+												event.stopPropagation();
+												expandedAttributes = attributesExpanded
+													? expandedAttributes.filter((id) => id !== session.id)
+													: [...expandedAttributes, session.id];
+											}}
+											>{attributesExpanded ? 'Show less' : `+${attributes.length - 3} more`}</button
+										>
+									{/if}
+								</div>
+							</Table.Cell>
+							<Table.Cell class="w-[260px]">
+								{#if session.recordingReasons?.length}
+									<SessionRecordingReasons reasons={session.recordingReasons} />
+								{:else}
+									<span class="text-muted-foreground">—</span>
+								{/if}
+							</Table.Cell>
 							<Table.Cell class="text-sm"
-								>{formatRelativeTime(session.startedAt, timezone)}</Table.Cell
+								>{formatRelativeTimeAgo(session.startedAt, timezone)}</Table.Cell
 							>
 							<Table.Cell class="font-mono text-sm tabular-nums">
-								{durationLabel(session)}
+								{sessionDurationLabel(session)}
 							</Table.Cell>
 							<Table.Cell class="font-mono text-sm">{session.appVersion || '—'}</Table.Cell>
 						</Table.Row>

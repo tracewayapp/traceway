@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"unicode/utf8"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 const SchemaVersion = 1
@@ -24,7 +24,9 @@ var widgetIdPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 var ErrUnsupportedSchemaVersion = errors.New("unsupported dashboard schemaVersion")
 
-var AllowedWidgetTypes = []string{"line_chart", "area_chart", "stacked_area", "bar_chart", "single_value", "gauge", "table"}
+// rating_bar shows the good / needs improvement / poor share of a rated distribution;
+// breakdown_table ranks the values of one dimension by an aggregation and a count.
+var AllowedWidgetTypes = []string{"line_chart", "area_chart", "stacked_area", "bar_chart", "single_value", "gauge", "table", "rating_bar", "breakdown_table"}
 
 var allowedWidgetTypeSet = func() map[string]bool {
 	set := make(map[string]bool, len(AllowedWidgetTypes))

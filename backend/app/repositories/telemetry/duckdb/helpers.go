@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/duckdb/duckdb-go/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/db/dbtrace"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 // The DuckDB Appender rejects typed Go pointers for nullable columns
@@ -76,6 +77,19 @@ func attrJSON(m map[string]string) (string, error) {
 // Appender API is not reachable through database/sql, and Close flushes
 // the appended rows.
 func withAppender(ctx context.Context, table string, fn func(*duckdb.Appender)) error {
+	return withAppenderColumns(ctx, table, nil, fn)
+}
+
+func withAppenderColumns(ctx context.Context, table string, columns []string, fn func(*duckdb.Appender)) error {
+	span, traced := dbtrace.StartSpan(ctx, dbtrace.Options{System: "duckdb", Namespace: "telemetry"}, "INSERT INTO "+table)
+	err := appendRows(ctx, table, columns, fn)
+	if traced {
+		dbtrace.EndSpan(span, err)
+	}
+	return err
+}
+
+func appendRows(ctx context.Context, table string, columns []string, fn func(*duckdb.Appender)) error {
 	conn, err := db.DuckDBConnector.Connect(ctx)
 	if err != nil {
 		db.RecordTelemetryInsertFailure()
@@ -83,7 +97,12 @@ func withAppender(ctx context.Context, table string, fn func(*duckdb.Appender)) 
 	}
 	defer conn.Close()
 
-	appender, err := duckdb.NewAppenderFromConn(conn, "", table)
+	var appender *duckdb.Appender
+	if len(columns) == 0 {
+		appender, err = duckdb.NewAppenderFromConn(conn, "", table)
+	} else {
+		appender, err = duckdb.NewAppenderWithColumns(conn, "", "", table, columns)
+	}
 	if err != nil {
 		db.RecordTelemetryInsertFailure()
 		return err

@@ -1,0 +1,81 @@
+id: debug-py-keyerror-webhook
+suite: debug
+title: Payment webhooks fail for guest payments since the account-linking release
+tags: [python, fastapi, regression]
+seed: debug/py-keyerror-webhook
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: A sender with a stale signing secret has been getting 401s (WARN "webhook signature verification failed") on every event type for three days; the 500s are only invoice.paid, start with v2.6.0 and come from a KeyError.
+workspace: {repo: payments-webhooks-py}
+prompt: |
+  For about a day our payment provider's dashboard has shown a lot of failed webhook deliveries for invoice.paid, and finance says some of the payments from that time are not in our records. Can you figure out what's going on and fix it?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I don't know more than that. Please fix it in the code."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    category: missing_key
+    culprit: {file: app/webhooks.py, symbol: _invoice_paid, line: 41}
+    needs_instrumentation: false
+    mentions_all: ["guest|without (a )?customer|no customer|customer[^.]{0,40}(missing|absent|omitted|optional|not (always )?(present|set|sent))", "2\\.6\\.0|release|deploy"]
+  grounding:
+    - "line 41, in _invoice_paid"
+  calls:
+    any_of:
+      - [{op: exceptions.show, args: {hash: "{{seed.hash}}"}}]
+      - [{op: exceptions.list}]
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.*, write_file]
+      - [exceptions.*, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-py-keyerror-webhook
+    command: python3 -m unittest
+    gating: true
+    touches_culprit: true
+judge:
+  expected: >-
+    POST /api/webhooks/payments answers 500 with KeyError: 'customer' in _invoice_paid (app/webhooks.py:41) for invoice.paid
+    events that have no customer: payments made without a customer record at the provider (guest payments). v2.6.0, released
+    about 22 hours ago, started linking paid invoices to accounts with invoice["customer"]; before it, those payments were
+    recorded fine. Because the handler raises before record_payment, those payments are missing, and the provider keeps
+    redelivering. The fix reads the customer optionally and records the payment without an account. The 401 signature
+    failures are a separate, older problem with one sender and are not the cause.
+  rubric:
+    - Identifies the KeyError on the optional customer field and that only invoice.paid events without a customer fail.
+    - Ties the onset to v2.6.0 and separates the older 401 signature failures.
+    - Fixes _invoice_paid so guest payments are recorded (account left empty) without changing customer invoices; does not just swallow the exception in the route.
+oracle:
+  - shell: >-
+      traceway exceptions list --since 24h --order-by count --output json
+      | jq '[.data[] | {hash: .exceptionHash, count, firstSeen, lastSeen, top: (.stackTrace | split("\n")[0])}]'
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 10 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}), latest: (.occurrences | sort_by(.recordedAt) | last | {recordedAt, appVersion, attributes}),
+      eventTypes: ([.occurrences[].attributes["payment.event.type"]] | unique), relatedEntity}'
+  - shell: >-
+      traceway logs query --since 24h --min-severity 13 --service payments-webhooks --page-size 100 --output json
+      | jq '[.data[] | {body, severityText, timestamp}] | group_by(.body) | map({body: .[0].body, severity: .[0].severityText, n: length, first: (map(.timestamp) | min)})'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - read_file: app/webhooks.py
+  - write_file: {path: app/webhooks.py, from: oracle/debug-py-keyerror-webhook/webhooks.py}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      category: missing_key
+      culprit: {file: app/webhooks.py, symbol: _invoice_paid, line: 41}
+      evidence:
+        - {call_id: c01, claim: "the only exception group of the last day is a KeyError, first seen less than a day ago"}
+        - {call_id: c02, claim: "KeyError: 'customer' at app/webhooks.py line 41 in _invoice_paid, only for invoice.paid events, on 2.6.0"}
+        - {call_id: c03, claim: "the only WARN or ERROR logs are the signature failures, a separate stream of rejected (401) deliveries; the failing invoice.paid requests log no error of their own"}
+        - {call_id: c04, claim: "v2.6.0 linked paid invoices to customer accounts"}
+        - {call_id: c05, claim: "_invoice_paid reads invoice['customer'] unconditionally before recording the payment"}
+      fix_summary: _invoice_paid reads the customer with invoice.get and records the payment without an account when there is none (guest payments).
+      files_changed: [app/webhooks.py]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        Since v2.6.0 (about 22 hours ago) invoice.paid deliveries for payments without a customer record (guest payments, where the provider omits customer) fail with KeyError: 'customer' in _invoice_paid (app/webhooks.py:41). v2.6.0 started linking paid invoices to accounts by reading invoice["customer"] before recording the payment, so those requests answer 500, the payment is never stored, and the provider keeps redelivering. I changed _invoice_paid to read the customer optionally and record the payment without an account when there is none; invoices with a customer behave as before. The 401 "webhook signature verification failed" warnings are an older, separate problem with one sender's signing secret.

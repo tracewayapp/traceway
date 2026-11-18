@@ -42,3 +42,15 @@ func SortedKeys(m map[string]string) []string {
 	sort.Strings(keys)
 	return keys
 }
+
+// TraceIdsFilter matches the supplied trace IDs and writes its named parameters into params.
+func TraceIdsFilter(traceIds []string, params map[string]any) string {
+	names := make([]string, len(traceIds))
+	for i, id := range traceIds {
+		key := fmt.Sprintf("trace_%d", i)
+		names[i] = ":" + key
+		params[key] = id
+	}
+	list := strings.Join(names, ",")
+	return "trace_id IN (" + list + ")"
+}

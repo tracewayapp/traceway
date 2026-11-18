@@ -10,7 +10,7 @@ services:
     # --disable-dev-shm-usage as a fallback, but real shm is faster.
     shm_size: "1gb"
     environment:
-      JWT_SECRET: "change-this-to-a-secure-secret-at-least-32-chars"
+      JWT_SECRET: change-this-to-a-secure-secret-at-least-32-chars
       # APP_BASE_URL: "https://traceway.example.com"
       # Proxies whose X-Forwarded-For is trusted for the real client IP (the
       # per-IP rate limits key on it). Only loopback is trusted by default, so

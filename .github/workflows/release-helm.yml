@@ -94,7 +94,9 @@ jobs:
           # not a bare major: "3" is a range the action resolves to the newest
           # 3.x at deploy time, which is the drift this pin exists to stop.
           wranglerVersion: "3.114.17"
-          command: pages deploy deploy --project-name traceway-charts --commit-dirty=true
+          # Tag pushes check out a detached HEAD, which Wrangler would deploy as a
+          # "head" preview instead of production.
+          command: pages deploy deploy --project-name traceway-charts --branch=main --commit-dirty=true
 
       - name: Summary
         run: |

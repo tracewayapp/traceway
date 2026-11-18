@@ -1,13 +1,14 @@
 package outbox
 
 import (
+	"context"
 	"database/sql"
 	"sync/atomic"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 type HealthStats struct {
@@ -21,12 +22,12 @@ type HealthStats struct {
 
 // HealthSnapshot powers /api/health/deep. OldestPendingAgeSec measures due-age
 // (from next_attempt_at), so a scheduled future delivery does not look stuck.
-func HealthSnapshot() (*HealthStats, error) {
+func HealthSnapshot(ctx context.Context) (*HealthStats, error) {
 	type snapshot struct {
 		Counts *models.OutboxHealthCounts
 		Oldest *models.OutboxDelivery
 	}
-	loaded, err := db.ExecuteTransaction(func(tx *sql.Tx) (snapshot, error) {
+	loaded, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (snapshot, error) {
 		counts, err := transactional.OutboxRepository.CountsForHealth(tx)
 		if err != nil {
 			return snapshot{}, err

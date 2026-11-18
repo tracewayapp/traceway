@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,7 +14,7 @@ import (
 // request must succeed with the rotated token. Run with -race to also assert
 // the JWT accesses are synchronized.
 func TestDo_concurrentRefreshSingleFlight(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer fresh" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return

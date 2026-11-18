@@ -25,9 +25,9 @@ Get the application URL:
 Check pod status:
   kubectl get pods --namespace {{ .Release.Namespace }} -l "{{ include "traceway.selectorLabels" . }}"
 
-{{- if eq .Values.variant "sqlite" }}
+{{- if include "traceway.embeddedDB" . }}
 
-NOTE: SQLite variant — set replicaCount: 1 (SQLite does not support concurrent writes).
+NOTE: {{ if eq .Values.variant "duckdb" }}DuckDB{{ else }}SQLite{{ end }} variant — set replicaCount: 1 (its databases are local files).
       Enable persistence to retain data across pod restarts:
         persistence:
           enabled: true

@@ -4,18 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/hooks"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
+
+// ClickHouse's quantile() over zero rows is NaN, and NaN compares false with
+// everything, so an empty window must be ruled out before the threshold.
+func latencyBreached(valueMs, thresholdMs float64) bool {
+	return !math.IsNaN(valueMs) && valueMs >= thresholdMs
+}
 
 type newErrorConfig struct {
 	IgnorePatterns []string `json:"ignorePatterns"`
@@ -33,15 +41,15 @@ func registerReportHook() {
 func evaluateEventRules(event hooks.ReportEvent) {
 	defer traceway.Recover()
 
-	rules, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
+	ctx := context.Background()
+
+	rules, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) ([]*models.NotificationRuleWithChannel, error) {
 		return transactional.NotificationRuleRepository.FindEnabledEventRules(tx, event.ProjectId)
 	})
 	if err != nil {
 		traceway.CaptureException(fmt.Errorf("failed to load event notification rules: %w", err))
 		return
 	}
-
-	ctx := context.Background()
 
 	for _, rule := range rules {
 		if rule.SnoozedUntil != nil && rule.SnoozedUntil.After(time.Now()) {
@@ -54,11 +62,11 @@ func evaluateEventRules(event hooks.ReportEvent) {
 		case "error_regression":
 			evaluateErrorRegression(ctx, rule, event)
 		case "ai_trace_cost":
-			evaluateAiTraceCostEvent(rule, event)
+			evaluateAiTraceCostEvent(ctx, rule, event)
 		case "ai_conversation_cost":
 			evaluateAiConversationCostEvent(ctx, rule, event)
 		case "ai_flagged_content":
-			evaluateAiFlaggedContentEvent(rule, event)
+			evaluateAiFlaggedContentEvent(ctx, rule, event)
 		}
 	}
 }
@@ -68,7 +76,7 @@ type aiTraceCostEventConfig struct {
 	ThresholdCost float64 `json:"thresholdCost"`
 }
 
-func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
+func evaluateAiTraceCostEvent(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
 	if len(event.AiTraces) == 0 {
 		return
 	}
@@ -81,7 +89,7 @@ func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event ho
 		return
 	}
 
-	projectName := getProjectName(event.ProjectId)
+	projectName := getProjectName(ctx, event.ProjectId)
 
 	for _, at := range event.AiTraces {
 		if at.TotalCost < cfg.ThresholdCost {
@@ -99,7 +107,7 @@ func evaluateAiTraceCostEvent(rule *models.NotificationRuleWithChannel, event ho
 		// Record before dispatch: a persistently failing dispatch retries once
 		// per cooldown window, never on every ingest event.
 		dedup.record(dedupKey)
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
@@ -142,7 +150,7 @@ func evaluateAiConversationCostEvent(ctx context.Context, rule *models.Notificat
 		return
 	}
 
-	projectName := getProjectName(event.ProjectId)
+	projectName := getProjectName(ctx, event.ProjectId)
 	for _, conversationId := range candidateIds {
 		cost := costs[conversationId]
 		if cost < cfg.ThresholdCost {
@@ -152,7 +160,7 @@ func evaluateAiConversationCostEvent(ctx context.Context, rule *models.Notificat
 		// Record before dispatch: a persistently failing dispatch retries once
 		// per cooldown window, never on every ingest event.
 		dedup.record(aiConversationCostDedupKey(rule.Id, conversationId))
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
@@ -160,7 +168,7 @@ type aiFlaggedContentConfig struct {
 	Terms []string `json:"terms"`
 }
 
-func evaluateAiFlaggedContentEvent(rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
+func evaluateAiFlaggedContentEvent(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
 	var cfg aiFlaggedContentConfig
 	if err := json.Unmarshal(rule.Config, &cfg); err != nil {
 		return
@@ -188,12 +196,12 @@ func evaluateAiFlaggedContentEvent(rule *models.NotificationRuleWithChannel, eve
 			continue
 		}
 		if projectName == "" {
-			projectName = getProjectName(event.ProjectId)
+			projectName = getProjectName(ctx, event.ProjectId)
 		}
 		msg := buildAiFlaggedContentMessage(at.ConversationId, at.UserId, matched, projectName)
 		msg.DedupToken = subject
 		dedup.record(dedupKey)
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
@@ -248,55 +256,72 @@ func extractErrorType(stackTrace string) string {
 	return "Unknown Error"
 }
 
-func resolveTraceName(ctx context.Context, projectId uuid.UUID, traceId *uuid.UUID, traceType string, recordedAt *time.Time) string {
-	if traceId == nil {
-		return ""
+// exceptionDetails describes the newest occurrence of hash in the event, and reads it from storage only when the
+// event does not carry the rows.
+func exceptionDetails(ctx context.Context, event hooks.ReportEvent, hash string) ExceptionDetails {
+	var latest *models.ExceptionStackTrace
+	for i := range event.Exceptions {
+		exception := &event.Exceptions[i]
+		if exception.ExceptionHash == hash && (latest == nil || exception.RecordedAt.After(latest.RecordedAt)) {
+			latest = exception
+		}
 	}
-	switch traceType {
-	case "task":
-		task, err := telemetry.TaskRepository.FindById(ctx, projectId, *traceId, recordedAt)
-		if task == nil && err == nil && recordedAt != nil {
-			task, err = telemetry.TaskRepository.FindById(ctx, projectId, *traceId, nil)
-		}
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to resolve task name for notification: %w", err))
-			return ""
-		}
-		if task == nil {
-			return ""
-		}
-		return task.TaskName
-	case "ai_trace":
-		trace, err := telemetry.AiTraceRepository.FindById(ctx, projectId, *traceId, recordedAt)
-		if trace == nil && err == nil && recordedAt != nil {
-			trace, err = telemetry.AiTraceRepository.FindById(ctx, projectId, *traceId, nil)
-		}
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to resolve ai trace name for notification: %w", err))
-			return ""
-		}
-		if trace == nil {
-			return ""
-		}
-		return trace.TraceName
-	default:
-		endpoint, err := telemetry.EndpointRepository.FindById(ctx, projectId, *traceId, recordedAt)
-		if endpoint == nil && err == nil && recordedAt != nil {
-			endpoint, err = telemetry.EndpointRepository.FindById(ctx, projectId, *traceId, nil)
-		}
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to resolve endpoint name for notification: %w", err))
-			return ""
-		}
-		if endpoint == nil {
-			return ""
-		}
-		return endpoint.Endpoint
+	if latest == nil {
+		return getExceptionDetails(ctx, event.ProjectId, hash)
 	}
+	return describeException(ctx, *latest)
 }
 
-func getProjectName(projectId uuid.UUID) string {
-	project, err := db.ExecuteTransaction(func(tx *sql.Tx) (*models.Project, error) {
+func describeException(ctx context.Context, exception models.ExceptionStackTrace) ExceptionDetails {
+	details := ExceptionDetails{
+		Id:         exception.Id.String(),
+		Hash:       exception.ExceptionHash,
+		ErrorType:  extractErrorType(exception.StackTrace),
+		StackTrace: exception.StackTrace,
+		AppVersion: exception.AppVersion,
+		ServerName: exception.ServerName,
+		RecordedAt: exception.RecordedAt,
+	}
+	if len(exception.Attributes) > 0 {
+		details.Attributes = exception.Attributes
+	}
+	details.TraceType, details.TraceName = resolveExceptionOwner(ctx, exception)
+	return details
+}
+
+func parseStoredAttributes(attributesJSON string) map[string]string {
+	if attributesJSON == "" || attributesJSON == "{}" {
+		return nil
+	}
+	attrs := make(map[string]string)
+	if err := json.Unmarshal([]byte(attributesJSON), &attrs); err != nil {
+		return nil
+	}
+	return attrs
+}
+
+func unknownException(hash string, err error) ExceptionDetails {
+	if !errors.Is(err, sql.ErrNoRows) {
+		traceway.CaptureException(fmt.Errorf("failed to load exception %s for a notification: %w", hash, err))
+	}
+	return ExceptionDetails{Hash: hash, ErrorType: "Unknown Error"}
+}
+
+// resolveExceptionOwner names the endpoint, task or AI trace an exception happened in, for the notification's text.
+func resolveExceptionOwner(ctx context.Context, exception models.ExceptionStackTrace) (traceType, name string) {
+	owner, err := telemetry.FindExceptionOwner(ctx, exception)
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to resolve the entity of exception %s for a notification: %w", exception.Id, err))
+		return "", ""
+	}
+	if owner == nil {
+		return "", ""
+	}
+	return owner.TraceType, owner.Name
+}
+
+func getProjectName(ctx context.Context, projectId uuid.UUID) string {
+	project, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.Project, error) {
 		return transactional.ProjectRepository.FindById(tx, projectId)
 	})
 	if err != nil || project == nil {

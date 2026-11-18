@@ -1,5 +1,29 @@
 package cmd
 
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"log"
+	"os"
+)
+
+// Embedded mode runs inside the host application's process, where JWT_SECRET
+// usually belongs to the host app. Only Traceway-specific sources are read.
+func embeddedJWTSecret(o *options) string {
+	if o.jwtSecret != nil {
+		return *o.jwtSecret
+	}
+	if secret, ok := os.LookupEnv("TRACEWAY_JWT_SECRET"); ok {
+		return secret
+	}
+	if !o.disableLogging {
+		log.Println("[tracewaybackend] No JWT secret configured, using a random one for this run. Dashboard sessions will not survive a restart. Pass tracewaybackend.WithJWTSecret(secret) (32+ characters) or set TRACEWAY_JWT_SECRET to keep them.")
+	}
+	secret := make([]byte, 32)
+	rand.Read(secret)
+	return hex.EncodeToString(secret)
+}
+
 type options struct {
 	sqlitePath            string
 	port                  int
@@ -8,6 +32,7 @@ type options struct {
 	defaultUser           *defaultUserOpts
 	defaultProjects       []defaultProjectOpts
 	monitoringTracewayURL string
+	jwtSecret             *string
 }
 
 type defaultUserOpts struct {
@@ -75,5 +100,11 @@ func WithDefaultProjectSourceMapToken(name, token string) Option {
 func WithMonitoringURL(url string) Option {
 	return func(o *options) {
 		o.monitoringTracewayURL = url
+	}
+}
+
+func WithJWTSecret(secret string) Option {
+	return func(o *options) {
+		o.jwtSecret = &secret
 	}
 }

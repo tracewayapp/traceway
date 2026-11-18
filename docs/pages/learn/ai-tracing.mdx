@@ -47,7 +47,7 @@ The data flow:
 1. **OTLP span arrives.** From an AI provider broadcast (e.g. [OpenRouter](/client/openrouter)) or your own SDK instrumentation. The span contains `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.total_cost`, and other standardized attributes.
 2. **Traceway promotes the span by attributes, not by position.** If a span has `gen_ai.*` attributes, it lands in the AI Traces table. Root spans use the OTel trace_id as their id; non-root child spans use their own span_id, so a request handler and the LLM call it made each get their own row without collision.
 3. **Conversation content stored separately.** The full prompt and completion are stored in object storage (S3 or local filesystem) to keep the database lean.
-4. **Linked across the trace.** `distributed_trace_id` is auto-derived from the OTel trace_id, so a child AI trace and its parent endpoint show up together in the distributed-trace view with no extra configuration.
+4. **Linked across the trace.** An AI trace keeps the OTel trace id of its span, so a child AI trace and its parent endpoint show up together in the distributed-trace view with no extra configuration.
 5. **Dashboard shows aggregated view.** AI traces are grouped by trace name (your agent or workflow identifier), with drill-down to individual calls. Groups containing non-root calls are flagged with a **Non-root** chip.
 
 ## Three-Level Drill-Down
@@ -80,7 +80,7 @@ Each AI call gets a conversation id at ingest, resolved in this order:
 
 1. `gen_ai.conversation.id` span attribute. Set this in your app for reliable multi-turn grouping.
 2. `session.id` span or resource attribute.
-3. The distributed trace id. A single agent run inside one request still groups its calls, even without an explicit id.
+3. The trace id. A single agent run inside one request still groups its calls, even without an explicit id.
 
 Calls ingested before this feature (or with none of the above) have no conversation id and are excluded from conversation analytics.
 

@@ -22,6 +22,12 @@ func dashboardURL(path string) string {
 	return base + path
 }
 
+// isAbsoluteURL reports whether dashboardURL could make the link absolute;
+// a relative path is no use as a link in a Slack post or a GitHub issue.
+func isAbsoluteURL(u string) bool {
+	return strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://")
+}
+
 func alertEmail(alert models.EmailAlert) *models.NotificationEmail {
 	return &models.NotificationEmail{Template: models.EmailTemplateAlert, Alert: &alert}
 }

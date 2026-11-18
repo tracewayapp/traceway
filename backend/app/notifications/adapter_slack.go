@@ -42,17 +42,20 @@ func (a *SlackAdapter) Send(ctx context.Context, msg Message) error {
 		username = "Traceway"
 	}
 
+	attachment := map[string]interface{}{
+		"color":  color,
+		"title":  msg.Subject,
+		"text":   msg.Body,
+		"footer": "Traceway Alerts",
+		"ts":     time.Now().Unix(),
+	}
+	if isAbsoluteURL(msg.URL) {
+		attachment["title_link"] = msg.URL
+	}
+
 	payload := map[string]interface{}{
-		"username": username,
-		"attachments": []map[string]interface{}{
-			{
-				"color":  color,
-				"title":  msg.Subject,
-				"text":   msg.Body,
-				"footer": "Traceway Alerts",
-				"ts":     time.Now().Unix(),
-			},
-		},
+		"username":    username,
+		"attachments": []map[string]interface{}{attachment},
 	}
 
 	if a.Channel != "" {

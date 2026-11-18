@@ -76,7 +76,7 @@ The current server accepts p50/p75/p90/p95/p99 and `good_ratio` on distributions
 
 Replace the example dates with the requested range. Use `tagFilters` for environment/population. For trends omit `wholeRange` and optionally set `intervalMinutes`. Inspect errors and truncation. `good_ratio` query results are fractions (0..1); alert rule thresholds are percentages (0..100). Percentiles require distributions; point metrics cannot yield them.
 
-Current CLI/MCP dashboard import validation still rejects percentile/good-ratio sources and `rating_bar`/`breakdown_table`, although the dashboard supports them. Use the dashboard editor/JSON UI for these, preserving existing widget IDs; do not strip unsupported widgets from an export to force an import. SLO authoring and exemplars also use the dashboard. Existing supported alert and OpAMP writes use `traceway-write` with its normal permission checks.
+Current CLI/MCP dashboard import validation still rejects percentile/good-ratio sources and `rating_bar`/`breakdown_table`, although the dashboard supports them. Use the dashboard editor/JSON UI for these, preserving existing widget IDs; do not strip unsupported widgets from an export to force an import. Exemplars also use the dashboard. Read SLOs with `traceway slos list` / `slos show <id>` (`list_slos`, `get_slo`) and try a definition with `slos preview`; creating, changing and deleting them needs `traceway-write slos` (`create_slo`, `update_slo`, `delete_slo`) with its normal permission checks, like alert and OpAMP writes. A distribution SLO is `sliKind: metric` with `aggregation: distribution`.
 
 ## Verify delivery and operate it
 

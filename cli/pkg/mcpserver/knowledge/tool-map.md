@@ -22,6 +22,8 @@ The knowledge resources show `traceway` CLI commands in their examples. Every co
 | `traceway pages list` / `pages show <id>` | `list_pages` / `get_page` |
 | `traceway alerts list` | `list_notification_rules` |
 | `traceway monitors list` / `monitors show <id>` | `list_checks` / `get_check` |
+| `traceway slos list` / `slos show <id>` | `list_slos` / `get_slo` |
+| `traceway slos preview --file F` / `slos series <id> --file F` | `preview_slo` / `get_slo_series` (the file's JSON object is the `data` param) |
 | `traceway post-mortems list` / `post-mortems show <id>` | `list_post_mortems` / `get_post_mortem` |
 
 Write server only (`traceway-write mcp`, or `/mcp/write` on the instance):
@@ -35,6 +37,7 @@ Write server only (`traceway-write mcp`, or `/mcp/write` on the instance):
 | `traceway-write monitors run <id>` | `run_check` |
 | `traceway-write post-mortems create` / `update <id>` | `create_post_mortem` / `update_post_mortem` |
 | `traceway-write endpoints mark-slow <endpoint>` | `set_slow_endpoint` |
+| `traceway-write slos create --file F` / `update <id> --file F` / `delete <id>` | `create_slo` / `update_slo` / `delete_slo` |
 
 Flag translation: `--since/--from/--to` are `since`/`from`/`to`; `--page/--page-size` are `page`/`page_size`; `--recorded-at` is `recorded_at`; `--started-at` is `started_at`; `--min-severity` is `min_severity`; `--search-type` is `search_type`; `--order-by` is `order_by`; `--interval-minutes` is `interval_minutes`; `--metric-type` is `metric_type`.
 

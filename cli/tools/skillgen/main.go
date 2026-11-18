@@ -71,7 +71,7 @@ func main() {
 		write(filepath.Join(dir, "rum.md"), copiedHeader("learn/rum.md")+knowledge.MustRead("learn/rum.md"))
 	}
 	write(filepath.Join(writeDir, "SKILL.md"), render(writeSkillTemplate))
-	for _, topic := range []string{"dashboard-building.md", "write-setup.md", "alert-configuration.md", "oncall-configuration.md", "personal-notifications.md", "incident-actions.md", "sdk-configuration.md"} {
+	for _, topic := range []string{"dashboard-building.md", "write-setup.md", "alert-configuration.md", "slo-configuration.md", "oncall-configuration.md", "personal-notifications.md", "incident-actions.md", "sdk-configuration.md"} {
 		write(filepath.Join(writeDir, topic), copiedHeader(topic)+knowledge.MustRead(topic))
 	}
 }

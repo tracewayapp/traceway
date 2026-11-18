@@ -134,6 +134,10 @@ var agentRoutes = map[string]agentAccess{
 	"GET /api/slos/:id":                       agentRead,
 	"POST /api/slos/:id/series":               agentRead,
 	"GET /api/slos/breached-count":            agentRead,
+	"POST /api/slos/preview":                  agentRead,
+	"POST /api/slos":                          agentWrite,
+	"PUT /api/slos/:id":                       agentWrite,
+	"DELETE /api/slos/:id":                    agentWrite,
 	"POST /api/synthetics/checks/:id/run":     agentWrite,
 
 	"GET /api/organizations/:organizationId/overview/servers":    agentRead,

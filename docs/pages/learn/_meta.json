@@ -10,6 +10,7 @@
   "symbolicator-library": { "display": "hidden" },
   "collector-symbolicator": { "display": "hidden" },
   "rum": "Real User Monitoring",
+  "rum-best-practices": "RUM Best Practices",
   "sessions": "Sessions & Replay",
   "remote-config": "Remote SDK Config (Beta)",
   "attributes": "Attributes",

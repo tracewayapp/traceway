@@ -15,21 +15,54 @@ declare global {
   }
 }
 
+let memoryChoice: string | null = null;
+
+function cookieEntries(): string[] {
+  try {
+    return document.cookie.split("; ");
+  } catch {
+    return [];
+  }
+}
+
+function setCookie(value: string) {
+  try {
+    document.cookie = value;
+  } catch {
+    // Embedded pages can be denied cookie access altogether.
+  }
+}
+
+function consentCookieValue() {
+  return cookieEntries()
+    .find((entry) => entry.startsWith(`${CONSENT_COOKIE}=`))
+    ?.slice(CONSENT_COOKIE.length + 1);
+}
+
 export function readConsent(): Consent | null {
   if (typeof document === "undefined") return null;
-  const match = document.cookie
-    .split("; ")
-    .find((c) => c.startsWith(`${CONSENT_COOKIE}=`));
-  if (!match) return null;
-  const value = match.slice(CONSENT_COOKIE.length + 1);
-  if (!value.startsWith("v1:")) return null;
-  return { analytics: value.includes("analytics=1") };
+  let value = memoryChoice;
+  if (value === null) {
+    try {
+      value = sessionStorage.getItem(CONSENT_COOKIE);
+    } catch {}
+  }
+  value ??= consentCookieValue() ?? null;
+  if (value === "v1:analytics=1") return { analytics: true };
+  if (value === "v1:analytics=0") return { analytics: false };
+  return null;
 }
 
 export function writeConsent(consent: Consent) {
   const value = `v1:analytics=${consent.analytics ? 1 : 0}`;
   const secure = location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${CONSENT_COOKIE}=${value}; Max-Age=${CONSENT_MAX_AGE_SECONDS}; Path=/; SameSite=Lax${secure}`;
+  setCookie(`${CONSENT_COOKIE}=${value}; Max-Age=${CONSENT_MAX_AGE_SECONDS}; Path=/; SameSite=Lax${secure}`);
+  // Browsers can silently discard a SameSite cookie in an embedded preview.
+  memoryChoice = consentCookieValue() === value ? null : value;
+  try {
+    if (memoryChoice === null) sessionStorage.removeItem(CONSENT_COOKIE);
+    else sessionStorage.setItem(CONSENT_COOKIE, memoryChoice);
+  } catch {}
   applyConsent(consent);
   window.dispatchEvent(
     new CustomEvent<Consent>(CONSENT_CHANGED_EVENT, { detail: consent }),
@@ -134,11 +167,11 @@ function disableAnalytics() {
   const hosts = [location.hostname, `.${location.hostname}`];
   const parts = location.hostname.split(".");
   if (parts.length > 2) hosts.push(`.${parts.slice(-2).join(".")}`);
-  for (const name of document.cookie.split("; ").map((c) => c.split("=")[0])) {
+  for (const name of cookieEntries().map((c) => c.split("=")[0])) {
     if (name !== "_ga" && !name.startsWith("_ga_")) continue;
     for (const host of hosts) {
-      document.cookie = `${name}=; ${expired}; Domain=${host}`;
+      setCookie(`${name}=; ${expired}; Domain=${host}`);
     }
-    document.cookie = `${name}=; ${expired}`;
+    setCookie(`${name}=; ${expired}`);
   }
 }

@@ -32,9 +32,14 @@ export function MotionPolish() {
       const hero = document.querySelector(".hero");
       if (hero) {
         const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-        tl.from(".hero .chip", { y: 10, opacity: 0, duration: 0.45 }, 0)
-          .from(".hero h1", { y: 14, opacity: 0, duration: 0.55 }, 0.08)
-          .from(".hero-sub", { y: 10, opacity: 0, duration: 0.45 }, 0.18);
+        for (const { selector, y, duration, start } of [
+          { selector: ".chip", y: 10, duration: 0.45, start: 0 },
+          { selector: "h1", y: 14, duration: 0.55, start: 0.08 },
+          { selector: ".hero-sub", y: 10, duration: 0.45, start: 0.18 },
+        ]) {
+          const targets = hero.querySelectorAll(selector);
+          if (targets.length) tl.from(targets, { y, opacity: 0, duration }, start);
+        }
       }
 
       // Number counters

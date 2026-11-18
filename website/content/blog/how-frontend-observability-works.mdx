@@ -6,19 +6,19 @@ cover: "wave"
 author: "dusan"
 ---
 
-I have a demo shop called Shoply, and I gave its release 0.2.0 a regression on purpose. On Android phones, about half of the taps on `Add to cart` block for half a second or more. You tap, nothing happens, then the cart updates.
+You tap **Add to cart** on your phone but nothing happens. Just as you’re about to tap again, the cart updates. I built that delay into version 0.2.0 of Shoply, my demo store. On Android, the button sometimes takes half a second or more to respond.
 
 The backend sees none of it. The API answers as fast as before, because the delay never leaves the browser. Latency is flat, the error rate is flat, the uptime check passes. On a backend dashboard, 0.2.0 is a clean release.
 
 SREs need to know how many shoppers hit the delay. Developers need to explain one slow tap, but it’s hard to say in advance what they’ll need to see. This post shows which browser signals answer both questions and how to collect them without recording every visit.
 
-> Disclosure: I build Traceway. Everything below is open source and in the [Traceway](https://github.com/tracewayapp/traceway) repo. The screenshots come from a demo shop where I slowed one release down on purpose, so none of the numbers belong to a customer.
+> I build [Traceway](https://github.com/tracewayapp/traceway), the open-source tool in the screenshots. All the numbers come from the demo store.
 
 ## What we're building
 
 This is the sentence I want to be able to say about a frontend:
 
-> 90% of page views respond to input within 200 ms, measured over 30 days, for every release. When that stops being true, I can get from the number to the cause in a few clicks.
+> For each release, at least 90% of page views with a measured interaction should respond to input within 200 ms over a 30-day window. If a release misses that target, I want to open a slow session and see what happened.
 
 ![The SLO list of the demo shop. Fast interactions for release 0.1.0 and crash-free sessions meet their 90% targets. Fast interactions for release 0.2.0 is breached.](/blog/how-frontend-observability-works/slo-list.webp)
 
@@ -34,7 +34,7 @@ The first and third pull against each other. Explaining any visit means keeping 
 
 ## The browser already measures this
 
-We don't have to invent a measure of user experience. Browsers have APIs for it, and they run on the user's device during the user's visit.
+Think about the last page that frustrated you. Did you wait for the main content to appear? Did you tap a button and wait for it to respond? Did the button move just as you reached for it? Browsers expose measurements for all three experiences.
 
 | Signal | Browser API | What the user feels | What we use it for |
 | --- | --- | --- | --- |
@@ -106,9 +106,9 @@ The Web Vitals pass all four. They are measured on the device. Each is defined a
 
 ### A Core Web Vital is already an SLO
 
-Google says a site passes a Web Vital when its 75th percentile is within the threshold. Turn that around:
+Line up the measured page views from fastest to slowest. The 75th percentile, or p75, is the point three quarters of the way along that line.
 
-> "p75 INP is at most 200 ms" means "at least 75% of page views had a good INP".
+> If p75 INP is 200 ms or less, at least 75% of measured page views were within 200 ms.
 
 That is an SLO with a 75% target that somebody else picked. 75% is reasonable for a ranking signal across the whole web. Checkout can still pass even if taps or clicks take longer than 200 ms on one in four measured page views. Your own SLO can ask for 90% or 95% on the routes that earn money, and leave the blog at 75%.
 
@@ -166,9 +166,9 @@ One click further is a single visit: the device, the release, the user if the ap
 
 ## Exceptions are only useful after symbolication
 
-An exception is the only signal that points at code. It is also the natural moment to upload the detail a device has been holding, since this is the visit worth explaining.
+The slow tap in the demo never throws an error. A separate checkout example shows what you get when the browser does throw one. The exception includes a stack trace, and the device can upload the events leading up to it.
 
-This is one from the demo's production bundle, as it leaves the browser:
+Here’s how the coupon error looks in the JavaScript bundle sent to the browser.
 
 ```text
 TypeError: Cannot read properties of null (reading 'percent')
@@ -190,9 +190,9 @@ _Symbolication_ maps each minified frame back to its original file and line, usi
 
 ![The issue page for the same exception. The top frame now reads src/CheckoutPage.jsx at line 10, column 40, and the nine React frames under it are folded as library frames.](/blog/how-frontend-observability-works/issue-stack.webp)
 
-The first frame is now `src/CheckoutPage.jsx`, line 10, with nine React frames folded under it. That is a bug I can open in an editor.
+The first frame now points to `src/CheckoutPage.jsx`, line 10. The nine React frames are folded underneath it.
 
-To fix it I usually also want the release, the route, the user, and what they did in the minute before. So an exception should arrive with the steps that led to it and a short replay. Look at the coupon field in the clip: it shows asterisks, because typed input is masked before it leaves the page.
+The stack tells you where to look in the code. To see what happened just before the exception, look at the request timeline under the replay. It ends with a failed request to `/api/coupon`. The replay shows the coupon field, with the typed characters masked on the device.
 
 ![The same issue's event. A replay clip of the checkout page with the coupon field masked, and under it the requests, clicks and navigations before the error, ending in a failed POST to /api/coupon.](/blog/how-frontend-observability-works/issue-context.webp)
 
@@ -221,7 +221,7 @@ Breadcrumbs are context around a problem, not a record of everything, because he
 
 ## Getting the rest of the debug data
 
-For Shoply's slow tap, we want to know which script held up the next paint. For the slow checkout request, we needed the trace to see how long the payment took. How do we keep the detail we'll need when we don't know which problem the next shopper will hit?
+It’s easy to decide what to log once you know what went wrong. The harder question comes before you ship. Which details should the browser keep so they’re still available when someone reports a problem?
 
 Producing those signals is the easy part. The OpenTelemetry browser instrumentations turn uncaught errors, console lines, clicks and navigations into OTLP log records. Every `fetch` and XHR becomes a span that carries `traceparent` to the backend. rrweb records the page for replay.
 
@@ -231,12 +231,12 @@ The hard part is deciding which of it to upload. Everything from everyone costs 
 
 We took a third route, and the idea is not ours. [bitdrift](https://blog.bitdrift.io/post/bitdrift-ring-buffer) built it for mobile apps: keep the telemetry in a ring buffer on the device, and let the server decide what is worth uploading. We brought that approach to the browser and built it on open standards: OTLP for the data, rrweb for the replay and OpAMP for the control channel.
 
-Every measurement in the browser gets two outputs:
+The browser keeps a summary for charts and a short history for debugging.
 
-- The **number** goes into a histogram on the device. These aggregates are tiny and always uploaded, which is how the SLO covers every visit.
-- The **detail** goes into a ring buffer: clicks, navigations, requests, console lines and your own events, for the last 10 minutes or 2 MB, whichever fills first. It survives page loads, so a checkout that fails on its third page still has the first two. The replay sits next to it in memory, with typed input masked.
+- **The summary** goes into a histogram on the device. A slow tap adds to a timing bucket. Those counts feed the dashboard across visits, including visits without a replay.
+- **The history** holds clicks, navigations, requests, console messages and app events. The ring buffer keeps up to 10 minutes or 2 MB, whichever limit it reaches first. As new events arrive, the oldest drop out. The history survives page loads. Replay has its own in-memory buffer, with typed input masked.
 
-While a visit is healthy, none of the detail leaves the device.
+By default, a healthy visit uploads the summary. A collection rule can request more detail.
 
 ![The ring buffer on the device. Breadcrumbs for the last 10 minutes or 2 MB and replay segments up to 8 MB stay in the browser while a session is healthy. An error, a trigger or a capture opens the buffer and uploads the history under one session id.](/blog/how-frontend-observability-works/ring-buffer.webp)
 
@@ -261,7 +261,13 @@ The server's side of this is one page in the dashboard. A rule has two halves: w
 
 ![The Data Collection page of the demo project. Four rules: Android on 0.2.0 streams network, console, navigation and clicks; Acme Corp, matched by tenant.id, streams replay; a checkout failed trigger for all clients; and a 1% sample of healthy sessions. Under them, three captures with their status, the first for user.id u-9481 with 59 minutes left.](/blog/how-frontend-observability-works/data-collection.webp)
 
-Every kind of data is in one of three modes. _Stream_ uploads it as it happens. _Buffer_ keeps it in the ring buffer. _Off_ drops it. A rule can also carry a _trigger_, a condition evaluated on the device that uploads the buffer when it matches, such as three failed requests within a minute or a `track("checkout_failed")` call from the app. Triggers see every record, including the kinds that are never uploaded.
+For each kind of data, choose one mode.
+
+- **Stream** sends each event as it happens.
+- **Buffer** keeps recent events on the device.
+- **Off** drops the event.
+
+A *trigger* tells the device when to upload what it has buffered. For example, it can watch for three failed requests in a minute or a `track("checkout_failed")` call. Triggers evaluate incoming records even for signals you’ve chosen to drop.
 
 The other half is the scope. A browser describes itself on every poll, so a rule can target anything in that description:
 
@@ -301,4 +307,6 @@ This post stayed out of the implementation on purpose. The next one goes through
 
 Some things to know before you try it. The 2.x browser SDK is in beta. CLS and long animation frames only exist in Chromium. A settings change takes up to one poll interval to arrive. A capture cannot bring back what the buffer already evicted.
 
-The server is in [tracewayapp/traceway](https://github.com/tracewayapp/traceway) and the browser SDK in [tracewayapp/js-client](https://github.com/tracewayapp/js-client). OTLP, rrweb and OpAMP are all open, so none of this is tied to our backend. If you build the same thing on another one, I would like to hear where it breaks.
+The [Traceway server](https://github.com/tracewayapp/traceway) and [browser SDK](https://github.com/tracewayapp/js-client) are open source and use OTLP, rrweb and OpAMP.
+
+To try this on your own site, pick one interaction people rely on. Compare its route’s INP across releases, then open a slow session if one is available. Which element did the person interact with, and what happened before the screen responded?

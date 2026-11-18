@@ -32,14 +32,6 @@ func sanitizeForDB(s string) string {
 // recorded here at enqueue time (the durable promise) so a rule cannot
 // re-fire while the outbox is still retrying.
 func dispatch(ctx context.Context, rule *models.NotificationRuleWithChannel, msg Message) bool {
-	channel, dbErr := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.NotificationChannel, error) {
-		return transactional.NotificationChannelRepository.FindById(tx, rule.ChannelId)
-	})
-	if dbErr != nil || channel == nil {
-		recordFiredNotification(rule, msg, "failed", "failed to load channel")
-		return false
-	}
-
 	msg.RuleType = rule.RuleType
 	msg.RuleName = rule.Name
 	// The rule's severity grades the alert, not the notice that closes it.
@@ -47,6 +39,14 @@ func dispatch(ctx context.Context, rule *models.NotificationRuleWithChannel, msg
 		msg.Severity = Severity(rule.Severity)
 	}
 	msg.URL = dashboardURL(msg.URL)
+
+	channel, dbErr := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.NotificationChannel, error) {
+		return transactional.NotificationChannelRepository.FindById(tx, rule.ChannelId)
+	})
+	if dbErr != nil || channel == nil {
+		recordFiredNotification(rule, msg, "failed", "failed to load channel")
+		return false
+	}
 
 	// Escalation channels do not send anything themselves: they open (or
 	// dedup into) an on-call page, and the escalator + outbox do all

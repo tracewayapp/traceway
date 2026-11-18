@@ -31,12 +31,20 @@ export default async function BlogPostPage({
   const post = getPostBySlug(slug);
   if (!post || post.category !== "engineering") notFound();
 
+  const posts = getPostsByCategory("engineering");
+  const index = posts.findIndex((p) => p.slug === post.slug);
+  const morePosts = [1, 2]
+    .map((step) => posts[(index + step) % posts.length])
+    .filter((p) => p.slug !== post.slug);
+
   return (
     <BlogArticle
       post={post}
       backHref="/blog"
       eyebrow="Engineering"
       showSubscribe
+      longForm
+      morePosts={morePosts}
       codeTheme={githubDarkShiki}
     />
   );

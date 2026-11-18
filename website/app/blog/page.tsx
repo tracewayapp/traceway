@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Eyebrow } from "@/components/eyebrow";
 import { BlogTabs } from "@/components/blog-tabs";
-import { BlogPostList } from "@/components/blog-post-list";
+import { BlogPostGrid } from "@/components/blog-post-card";
 import { BlogSubscribe } from "@/components/blog-subscribe";
 import { getPostsByCategory } from "@/lib/blog";
 
@@ -16,17 +16,17 @@ export default function BlogIndex() {
 
   return (
     <main className="relative blog-scope">
-      <section className="wrap pt-6 pb-24">
-        <div className="prose max-w-[960px]">
+      <section className="wrap relative pt-10 pb-24">
+        <div className="blog-index">
           <Eyebrow>Blog</Eyebrow>
-          <h1 className="mt-4 mb-3">Engineering</h1>
-          <p style={{ color: "var(--fg-2)" }} className="mb-12">
+          <h1 className="blog-index-title">Engineering</h1>
+          <p className="blog-lead mb-10" style={{ marginTop: 0 }}>
             Deep dives, benchmarks, and how we build Traceway.
           </p>
 
           <BlogTabs active="blog" />
 
-          <BlogPostList posts={posts} />
+          <BlogPostGrid posts={posts} />
 
           <BlogSubscribe />
         </div>

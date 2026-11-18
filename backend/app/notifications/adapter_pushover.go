@@ -74,7 +74,11 @@ func (a *PushoverAdapter) form(msg Message) url.Values {
 	}
 	form.Set("timestamp", strconv.FormatInt(time.Now().Unix(), 10))
 
+	// a recovery needs no acknowledgement, so it never repeats at emergency priority
 	priority := a.Priority
+	if msg.Recovered {
+		priority = 0
+	}
 	form.Set("priority", strconv.Itoa(priority))
 
 	if priority == 2 {

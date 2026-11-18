@@ -1,1 +1,0 @@
-function r(e){return e.contains?e.exclude?"!~=":"~=":e.exclude?"!=":"="}function n(e){const t=e.match(/^(.+?)(!~=|~=|!=|=)(.*)$/s);return!t||!t[1].trim()?null:{key:t[1].trim(),value:t[3],exclude:t[2].startsWith("!"),contains:t[2].includes("~")}}export{r as f,n as p};

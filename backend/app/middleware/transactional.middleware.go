@@ -64,11 +64,9 @@ func Transactional(c *gin.Context) {
 
 const commitHooksContextKey = "txCommitHooks"
 
-// OnCommit queues fn to run after the Transactional middleware successfully
-// commits the request transaction; queued fns are dropped on rollback. Use it
-// for side effects that must only fire once the transaction's writes are
-// visible to other connections (e.g. waking the outbox drain worker, which
-// would otherwise poll before the enqueued row exists and go back to sleep).
+// OnCommit queues fn until Transactional successfully commits the request.
+// Use it to publish a cache entry or wake the outbox worker once the data is
+// durable. Transactional discards queued hooks on rollback.
 func OnCommit(c *gin.Context, fn func()) {
 	hooks, _ := c.Get(commitHooksContextKey)
 	fns, _ := hooks.([]func())

@@ -169,8 +169,17 @@ func sendWithDeadline(ctx context.Context, row *models.OutboxDelivery, msg model
 	}
 }
 
+// PermanentError marks a send that no retry can fix (the receiver rejected the
+// request itself), so the delivery turns terminal at once instead of failing
+// the same way through the whole backoff schedule.
+type PermanentError struct{ Err error }
+
+func (e *PermanentError) Error() string { return e.Err.Error() }
+func (e *PermanentError) Unwrap() error { return e.Err }
+
 func finalizeRow(ctx context.Context, row *models.OutboxDelivery, sendErr error) {
-	if sendErr != nil && row.Attempts >= maxAttempts {
+	var permanent *PermanentError
+	if sendErr != nil && (row.Attempts >= maxAttempts || errors.As(sendErr, &permanent)) {
 		finalizeTerminal(ctx, row, sendErr.Error())
 		return
 	}

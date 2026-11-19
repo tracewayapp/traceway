@@ -9,6 +9,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
+)
+
+// GitHub rejects a longer title or body with 422.
+const (
+	githubMaxTitleChars = 256
+	githubMaxBodyChars  = 65536
 )
 
 type GitHubAdapter struct {
@@ -48,8 +56,8 @@ func (a *GitHubAdapter) Send(ctx context.Context, msg Message) error {
 	}
 
 	payload := map[string]interface{}{
-		"title": msg.Subject,
-		"body":  issueBody,
+		"title": truncateRunes(msg.Subject, githubMaxTitleChars),
+		"body":  truncateRunes(issueBody, githubMaxBodyChars),
 	}
 	if len(a.Labels) > 0 {
 		payload["labels"] = a.Labels
@@ -75,11 +83,48 @@ func (a *GitHubAdapter) Send(ctx context.Context, msg Message) error {
 		return fmt.Errorf("GitHub request failed: %w", err)
 	}
 	defer resp.Body.Close()
+	detail, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != 201 {
-		return fmt.Errorf("GitHub returned status %d", resp.StatusCode)
+		err := fmt.Errorf("GitHub returned status %d%s", resp.StatusCode, githubErrorDetail(detail))
+		switch resp.StatusCode {
+		// The delivery carries a snapshot of the channel, so a rejected token,
+		// a missing repository or an invalid issue fails the same way on every
+		// retry. 403 and 429 stay retryable: they are how GitHub rate limits.
+		case http.StatusBadRequest, http.StatusUnauthorized, http.StatusNotFound, http.StatusGone, http.StatusUnprocessableEntity:
+			return &outbox.PermanentError{Err: err}
+		}
+		return err
 	}
 
 	return nil
+}
+
+// githubErrorDetail renders the reason GitHub gives for a refusal, e.g.
+// ": Validation Failed (title too_long)", so a failed delivery says why.
+func githubErrorDetail(body []byte) string {
+	var parsed struct {
+		Message string `json:"message"`
+		Errors  []struct {
+			Field   string `json:"field"`
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if json.Unmarshal(body, &parsed) != nil || parsed.Message == "" {
+		return ""
+	}
+	detail := ": " + parsed.Message
+	var reasons []string
+	for _, e := range parsed.Errors {
+		reason := strings.TrimSpace(e.Field + " " + e.Code + " " + e.Message)
+		if reason != "" {
+			reasons = append(reasons, reason)
+		}
+	}
+	if len(reasons) > 0 {
+		detail += " (" + strings.Join(reasons, "; ") + ")"
+	}
+	return truncateRunes(detail, 500)
 }

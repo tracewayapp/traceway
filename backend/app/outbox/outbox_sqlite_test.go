@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -172,6 +173,30 @@ func TestBackoffProgressionToTerminal(t *testing.T) {
 	}
 	if hookCalls != 1 || hookStatus != models.OutboxFailed {
 		t.Errorf("terminal hook calls = %d status = %s, want 1 failed", hookCalls, hookStatus)
+	}
+}
+
+func TestPermanentErrorIsTerminalOnFirstAttempt(t *testing.T) {
+	setupOutboxDB(t)
+	fake := &fakeSender{fail: fmt.Errorf("adapter: %w", &PermanentError{Err: errors.New("rejected")})}
+	RegisterSender(fake.fn)
+	var hookStatus string
+	RegisterTerminalHook(func(row *models.OutboxDelivery, status string, errorMsg string) {
+		hookStatus = status
+	})
+
+	id := enqueueTest(t, Delivery{Kind: models.OutboxKindRule, AdapterType: "github", Message: testMessage("x")})
+	DrainOnce(context.Background(), time.Now().UTC())
+
+	row := reloadRow(t, id)
+	if row.Status != models.OutboxFailed || row.Attempts != 1 {
+		t.Fatalf("row = %s after %d attempts, want failed after 1", row.Status, row.Attempts)
+	}
+	if row.LastError != "adapter: rejected" {
+		t.Errorf("last_error = %q", row.LastError)
+	}
+	if hookStatus != models.OutboxFailed {
+		t.Errorf("terminal hook status = %q, want failed", hookStatus)
 	}
 }
 

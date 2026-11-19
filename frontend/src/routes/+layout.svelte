@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '$lib/polyfills';
 	import { browser } from '$app/environment';
 	import { resolve } from '$app/paths';
 	import './layout.css';

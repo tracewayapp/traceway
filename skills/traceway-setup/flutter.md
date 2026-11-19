@@ -189,12 +189,7 @@ The Flutter SDK does not support web (no error tracking, no screen recording the
 </script>
 ```
 
-For network capture in Dart code on web (where `HttpOverrides.global` does not run), `TracewayHttpClient` is a drop-in `http.Client`, usable directly or passed to libraries that accept a custom client (Dio, Chopper):
-
-```dart
-final client = TracewayHttpClient();
-final res = await client.get(Uri.parse('https://api.example.com/users'));
-```
+The Dart SDK, `TracewayHttpClient` included, does not run on web. The JS SDK records the page's `fetch` and `XMLHttpRequest` calls, which is what Dart's HTTP clients use in a web build, so no Dart-side network setup is needed there.
 
 ## Verify
 

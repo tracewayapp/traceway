@@ -71,10 +71,22 @@ type NotificationRuleWithChannel struct {
 // NotificationRuleFiring is an alert a rule sent and has not yet closed, keyed
 // by the alert's dedup token, which also names its escalation page.
 // SilentSince is set while the alert's subject reports no data.
+// LastNotifiedAt is when the alert was last sent; the rule's cooldown is
+// measured from it, so a restart or another instance does not send it again.
 type NotificationRuleFiring struct {
-	Id          int        `json:"id" lit:"id"`
-	RuleId      int        `json:"ruleId" lit:"rule_id"`
-	Token       string     `json:"token" lit:"token"`
-	Since       time.Time  `json:"since" lit:"since"`
-	SilentSince *time.Time `json:"silentSince" lit:"silent_since"`
+	Id             int        `json:"id" lit:"id"`
+	RuleId         int        `json:"ruleId" lit:"rule_id"`
+	Token          string     `json:"token" lit:"token"`
+	Since          time.Time  `json:"since" lit:"since"`
+	SilentSince    *time.Time `json:"silentSince" lit:"silent_since"`
+	LastNotifiedAt *time.Time `json:"lastNotifiedAt" lit:"last_notified_at"`
+}
+
+// NotifiedAt falls back to when the alert opened for rows written before
+// last_notified_at existed.
+func (f *NotificationRuleFiring) NotifiedAt() time.Time {
+	if f.LastNotifiedAt != nil {
+		return *f.LastNotifiedAt
+	}
+	return f.Since
 }

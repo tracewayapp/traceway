@@ -33,9 +33,13 @@ type OtelSearchDialect struct {
 	StartOrder  string
 	ReadSetting string
 	WinnerOrder string
-	Bucket      func(column string, seconds int) string
-	Count       string
-	CountIf     func(condition string) string
+	// Prefilter narrows the winner sort to the spans that match the filters.
+	// Only ClickHouse sets it: that is where the sort was measured to run out
+	// of memory, and DuckDB returns no rows for an attribute filter in this form.
+	Prefilter bool
+	Bucket    func(column string, seconds int) string
+	Count     string
+	CountIf   func(condition string) string
 }
 
 var otelSearchOrders = map[string]string{
@@ -89,8 +93,18 @@ func OtelSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page s
 	order = strings.ReplaceAll(order, "%s", dialect.StartOrder)
 	order += ", trace_id, span_id"
 	scope, scopeArgs := otelSearchPredicate(OtelSpanSearch{ProjectId: search.ProjectId, From: search.From, To: search.To, TraceId: search.TraceId}, dialect)
-	winners := OtelWinningRows("*", scope, dialect.WinnerOrder)
-	args = append(scopeArgs, args...)
+	// The winner of every span in the range is picked by a sort, and a filter on
+	// the result makes that sort carry the filtered columns (the attribute map
+	// among them) for all of those spans: on ClickHouse a day of 4M spans ran out
+	// of the search's memory. So the sort only sees the spans that have a version
+	// matching the filters; the filters are still applied to the winner.
+	inner, innerArgs := scope, scopeArgs
+	if dialect.Prefilter && len(args) > len(scopeArgs) {
+		inner = scope + " AND (trace_id, span_id) IN (SELECT trace_id, span_id FROM " + SpansTable + " WHERE " + predicate + ")"
+		innerArgs = append(append([]any{}, scopeArgs...), args...)
+	}
+	winners := OtelWinningRows("*", inner, dialect.WinnerOrder)
+	args = append(innerArgs, args...)
 	page = "SELECT " + OtelTopologyColumns + " FROM " + winners + " WHERE " + predicate + " ORDER BY " + order + " LIMIT ? OFFSET ?" + dialect.ReadSetting
 	pageArgs = append(append([]any{}, args...), search.PageSize, (search.Page-1)*search.PageSize)
 	return page, pageArgs, "SELECT count(*) FROM " + winners + " WHERE " + predicate + dialect.ReadSetting, args

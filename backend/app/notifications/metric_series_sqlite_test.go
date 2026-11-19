@@ -189,6 +189,47 @@ func TestMetricSeriesRecoverySurvivesARestart(t *testing.T) {
 	}
 }
 
+func TestMetricSeriesCooldownSurvivesARestart(t *testing.T) {
+	f := setupMetricSeries(t)
+	f.report(t, "RUINS", 22166, 2*time.Minute)
+	if alert := f.evaluate(t); len(alert.Messages) != 1 {
+		t.Fatalf("alerts = %v", subjectsOf(alert.Messages))
+	}
+	if f.firing(t, "radius.freshness{site=RUINS}").LastNotifiedAt == nil {
+		t.Fatal("opening an alert must record when it was sent")
+	}
+
+	// A restart, or a second instance: nothing is remembered in memory.
+	ClearRuleState(f.Rule.Id)
+	if again := f.evaluate(t); again.Fired {
+		t.Fatalf("a series still breaching inside its cooldown must not be sent again: %v", subjectsOf(again.Messages))
+	}
+
+	notifiedAgo := func(d time.Duration) {
+		t.Helper()
+		if _, err := db.DB.Exec("UPDATE notification_rule_firing SET last_notified_at = ? WHERE rule_id = ?", time.Now().UTC().Add(-d), f.Rule.Id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	notifiedAgo(31 * time.Minute)
+	ClearRuleState(f.Rule.Id)
+	if reminder := f.evaluate(t); len(reminder.Messages) != 1 {
+		t.Fatalf("past the cooldown the open alert is sent again, got %v", subjectsOf(reminder.Messages))
+	}
+	if at := f.firing(t, "radius.freshness{site=RUINS}").NotifiedAt(); time.Since(at) > time.Minute {
+		t.Fatalf("the reminder must restart the cooldown, last notified %s", at)
+	}
+
+	// Rows written before the column existed count from when the alert opened.
+	if _, err := db.DB.Exec("UPDATE notification_rule_firing SET last_notified_at = NULL, since = ? WHERE rule_id = ?", time.Now().UTC().Add(-time.Minute), f.Rule.Id); err != nil {
+		t.Fatal(err)
+	}
+	ClearRuleState(f.Rule.Id)
+	if again := f.evaluate(t); again.Fired {
+		t.Fatalf("an older row inside its cooldown must not be sent again: %v", subjectsOf(again.Messages))
+	}
+}
+
 func TestMetricSeriesSilentForAnHourIsClosed(t *testing.T) {
 	f := setupMetricSeries(t)
 	f.report(t, "RUINS", 22166, 2*time.Minute)

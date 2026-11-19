@@ -215,6 +215,7 @@ const otelSearchSettings = ` SETTINGS max_execution_time=15, timeout_overflow_mo
 
 var clickhouseSearchDialect = shared.OtelSearchDialect{
 	WinnerOrder: shared.OtelClickHouseWinnerOrder,
+	Prefilter:   true,
 	Project:     func(id uuid.UUID) any { return id },
 	Time:        clickhouseOtelCodec.Time,
 	Trace:       func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },

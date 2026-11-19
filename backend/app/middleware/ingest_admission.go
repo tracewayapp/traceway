@@ -87,7 +87,7 @@ func newAdmissionGate(name string, capacity int, wait time.Duration, message str
 }
 
 func ingestCapacityFromEnv() int {
-	n := runtime.NumCPU() * 2
+	n := runtime.NumCPU() * 4
 	if n < 4 {
 		n = 4
 	}

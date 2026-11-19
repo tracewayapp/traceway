@@ -17,15 +17,16 @@ type notificationRuleFiringRepository struct{}
 func (r *notificationRuleFiringRepository) FindByRule(tx *sql.Tx, ruleId int) ([]*models.NotificationRuleFiring, error) {
 	return lit.SelectNamed[models.NotificationRuleFiring](
 		tx,
-		"SELECT id, rule_id, token, since, silent_since FROM notification_rule_firing WHERE rule_id = :rule_id ORDER BY token",
+		"SELECT id, rule_id, token, since, silent_since, last_notified_at FROM notification_rule_firing WHERE rule_id = :rule_id ORDER BY token",
 		lit.P{"rule_id": ruleId},
 	)
 }
 
 // Insert reports whether this call opened the alert, so when two instances
-// open the same one at once only one of them sends it.
+// open the same one at once only one of them sends it. Opening an alert
+// notifies, so it starts the alert's cooldown.
 func (r *notificationRuleFiringRepository) Insert(tx *sql.Tx, ruleId int, token string, now time.Time) (bool, error) {
-	return execAffected(tx, "INSERT INTO notification_rule_firing (rule_id, token, page_key, since) VALUES (:rule_id, :token, :key, :since) ON CONFLICT(rule_id, page_key) DO NOTHING",
+	return execAffected(tx, "INSERT INTO notification_rule_firing (rule_id, token, page_key, since, last_notified_at) VALUES (:rule_id, :token, :key, :since, :since) ON CONFLICT(rule_id, page_key) DO NOTHING",
 		lit.P{"rule_id": ruleId, "token": token, "key": models.RulePageDedupKey(ruleId, token), "since": now.UTC()})
 }
 
@@ -39,6 +40,16 @@ func (r *notificationRuleFiringRepository) Delete(tx *sql.Tx, ruleId int, token 
 func (r *notificationRuleFiringRepository) SetSilentSince(tx *sql.Tx, ruleId int, token string, silentSince *time.Time) error {
 	query, args, err := lit.ParseNamedQuery(db.Driver, "UPDATE notification_rule_firing SET silent_since = :silent_since WHERE rule_id = :rule_id AND page_key = :key AND token = :token",
 		lit.P{"rule_id": ruleId, "token": token, "key": models.RulePageDedupKey(ruleId, token), "silent_since": silentSince})
+	if err != nil {
+		return err
+	}
+	return lit.UpdateNative(tx, query, args...)
+}
+
+// MarkNotified restarts the cooldown of an open alert that was sent again.
+func (r *notificationRuleFiringRepository) MarkNotified(tx *sql.Tx, ruleId int, token string, now time.Time) error {
+	query, args, err := lit.ParseNamedQuery(db.Driver, "UPDATE notification_rule_firing SET last_notified_at = :now WHERE rule_id = :rule_id AND page_key = :key AND token = :token",
+		lit.P{"rule_id": ruleId, "token": token, "key": models.RulePageDedupKey(ruleId, token), "now": now.UTC()})
 	if err != nil {
 		return err
 	}

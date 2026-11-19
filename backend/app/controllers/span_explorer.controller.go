@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -151,7 +152,25 @@ func (s spanExplorerController) Search(c *gin.Context) {
 	defer cancel()
 
 	spanCtx, span := traceway.StartSpan(ctx, "searching spans")
+	// What a slow search was asked for: the range and which filters narrowed it.
+	// Filter values stay out, they are whatever the user typed.
+	traceway.SetAttribute(spanCtx, "spans.range_seconds", strconv.FormatFloat(search.To.Sub(search.From).Seconds(), 'f', 0, 64))
+	traceway.SetAttribute(spanCtx, "spans.order_by", search.OrderBy)
+	traceway.SetAttribute(spanCtx, "spans.page", strconv.Itoa(search.Page))
+	traceway.SetAttribute(spanCtx, "spans.page_size", strconv.Itoa(search.PageSize))
+	traceway.SetAttribute(spanCtx, "spans.name_filter", strconv.FormatBool(search.Name != ""))
+	traceway.SetAttribute(spanCtx, "spans.service_filter", strconv.FormatBool(search.Service != ""))
+	traceway.SetAttribute(spanCtx, "spans.trace_filter", strconv.FormatBool(search.TraceId != ""))
+	traceway.SetAttribute(spanCtx, "spans.kind_filter", strconv.FormatBool(search.Kind != nil))
+	traceway.SetAttribute(spanCtx, "spans.status_filter", strconv.FormatBool(search.Status != nil))
+	traceway.SetAttribute(spanCtx, "spans.duration_filter", strconv.FormatBool(search.MinDuration > 0 || search.MaxDuration > 0))
+	traceway.SetAttribute(spanCtx, "spans.attribute_filter_count", strconv.Itoa(len(search.Attributes)))
 	found, total, err := telemetry.OtelSpanRepository.Search(spanCtx, search)
+	if err == nil {
+		traceway.SetAttribute(spanCtx, "spans.total", strconv.FormatUint(total, 10))
+	} else {
+		traceway.SetAttribute(spanCtx, "spans.read_limit_hit", strconv.FormatBool(spanSearchTimedOut(ctx, err)))
+	}
 	span.End()
 	if err != nil {
 		if spanSearchTimedOut(ctx, err) {

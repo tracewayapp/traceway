@@ -179,12 +179,10 @@ func metricThresholdResult(ctx context.Context, rule *models.NotificationRule, c
 		}
 		return cmp.Compare(a.Key, b.Key)
 	})
-	notified := fresh[:min(len(fresh), maxMetricRuleSeriesNotified)]
-	overflow := len(fresh) - len(notified)
-
 	// An edit, a failed enqueue, or a restart must never separate a page or
 	// outbox delivery from the state that will eventually close it.
 	var delivery metricSeriesDelivery
+	var due []metricSeries
 	result, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*EvalResult, error) {
 		current, err := transactional.NotificationRuleRepository.FindByIdForUpdate(tx, rule.Id)
 		if err != nil {
@@ -200,7 +198,7 @@ func metricThresholdResult(ctx context.Context, rule *models.NotificationRule, c
 		if channel == nil || !channel.Enabled {
 			return nil, nil
 		}
-		t, err := transitionMetricSeries(tx, rule.Id, cfg, series, notified, overflow > 0, truncated, time.Now().UTC())
+		t, err := transitionMetricSeries(tx, rule.Id, cfg, series, fresh, cooldown, truncated, time.Now().UTC())
 		if err != nil {
 			return nil, err
 		}
@@ -214,7 +212,8 @@ func metricThresholdResult(ctx context.Context, rule *models.NotificationRule, c
 		if project == nil {
 			return nil, fmt.Errorf("project %s for rule %d is missing", projectId, rule.Id)
 		}
-		result := t.messages(cfg, overflow, project.Name)
+		due = t.due
+		result := t.messages(cfg, project.Name)
 		delivery.rule = &models.NotificationRuleWithChannel{
 			Id: current.Id, ProjectId: projectId, Name: current.Name,
 			RuleType: current.RuleType, Severity: current.Severity,
@@ -240,7 +239,7 @@ func metricThresholdResult(ctx context.Context, rule *models.NotificationRule, c
 	if result == nil {
 		return &EvalResult{}, nil
 	}
-	for _, s := range fresh {
+	for _, s := range due {
 		dedup.record(metricSeriesDedupKey(rule.Id, s.Key))
 	}
 	result.seriesCommitted = true
@@ -294,13 +293,13 @@ func (d *metricSeriesDelivery) afterCommit() {
 	}
 }
 
-func (t *metricSeriesTransitions) messages(cfg metricThresholdConfig, overflow int, projectName string) *EvalResult {
+func (t *metricSeriesTransitions) messages(cfg metricThresholdConfig, projectName string) *EvalResult {
 	var messages, recoveries []Message
 	for _, s := range t.alerted {
 		messages = append(messages, buildMetricThresholdMessage(s.Name, s.Value, cfg.Operator, cfg.ThresholdValue, cfg.Aggregation, cfg.LookbackMinutes, projectName))
 	}
 	if t.overflowAlerted {
-		messages = append(messages, buildMetricThresholdOverflowMessage(cfg.MetricName, overflow, cfg.Operator, cfg.ThresholdValue, cfg.LookbackMinutes, projectName))
+		messages = append(messages, buildMetricThresholdOverflowMessage(cfg.MetricName, t.overflow, cfg.Operator, cfg.ThresholdValue, cfg.LookbackMinutes, projectName))
 	}
 	for _, s := range t.recovered {
 		recoveries = append(recoveries, buildMetricSeriesRecoveredMessage(s.Name, s.Value, cfg.Operator, cfg.ThresholdValue, cfg.Aggregation, cfg.LookbackMinutes, projectName))
@@ -315,6 +314,10 @@ func (t *metricSeriesTransitions) messages(cfg metricThresholdConfig, overflow i
 }
 
 type metricSeriesTransitions struct {
+	// due are the breaching series whose cooldown has passed; overflow counts
+	// those past the per-evaluation notification limit.
+	due             []metricSeries
+	overflow        int
 	alerted         []metricSeries
 	overflowAlerted bool
 	recovered       []metricSeries
@@ -326,26 +329,42 @@ type metricSeriesTransitions struct {
 // notification_rule_firing, keyed by series name, so each one is closed after
 // a restart too: by a recovery once its series is back within the threshold,
 // or by a silence notice once it has reported nothing for
-// metricSeriesSilenceLimit. Callers ensure some series reported.
-func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, series, notified []metricSeries, overflow, truncated bool, now time.Time) (metricSeriesTransitions, error) {
+// metricSeriesSilenceLimit. An open alert is sent again only once the cooldown
+// since its last notice has passed; the row keeps that time, so neither a
+// restart nor a second instance repeats it early. fresh are the breaching
+// series, most severe first. Callers ensure some series reported.
+func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, series, fresh []metricSeries, cooldown time.Duration, truncated bool, now time.Time) (metricSeriesTransitions, error) {
 	var t metricSeriesTransitions
 	rows, err := transactional.NotificationRuleFiringRepository.FindByRule(tx, ruleId)
 	if err != nil {
 		return t, err
 	}
-	firing := make(map[string]bool, len(rows))
+	firing := make(map[string]*models.NotificationRuleFiring, len(rows))
 	for _, row := range rows {
-		firing[row.Token] = true
+		firing[row.Token] = row
+	}
+	cooling := func(token string) bool {
+		row := firing[token]
+		return row != nil && now.Sub(row.NotifiedAt()) < cooldown
 	}
 	open := func(token string) (bool, error) {
-		if firing[token] {
-			return true, nil
+		if firing[token] != nil {
+			return true, transactional.NotificationRuleFiringRepository.MarkNotified(tx, ruleId, token, now)
 		}
 		opened, err := transactional.NotificationRuleFiringRepository.Insert(tx, ruleId, token, now)
-		firing[token] = opened
+		if opened {
+			firing[token] = &models.NotificationRuleFiring{RuleId: ruleId, Token: token, Since: now, LastNotifiedAt: &now}
+		}
 		return opened, err
 	}
 
+	for _, s := range fresh {
+		if !cooling(s.Name) {
+			t.due = append(t.due, s)
+		}
+	}
+	notified := t.due[:min(len(t.due), maxMetricRuleSeriesNotified)]
+	t.overflow = len(t.due) - len(notified)
 	for _, s := range notified {
 		opened, err := open(s.Name)
 		if err != nil {
@@ -356,7 +375,7 @@ func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, s
 		}
 	}
 	overflowToken := metricOverflowToken(cfg.MetricName)
-	if overflow {
+	if t.overflow > 0 && !cooling(overflowToken) {
 		if t.overflowAlerted, err = open(overflowToken); err != nil {
 			return t, err
 		}
@@ -364,7 +383,7 @@ func transitionMetricSeries(tx *sql.Tx, ruleId int, cfg metricThresholdConfig, s
 	// The "N more series" notice names no series, so it clears only once none
 	// breaches.
 	unresolved := func(s metricSeries) bool { return s.Insufficient || cfg.breaches(s) }
-	if firing[overflowToken] && !truncated && !slices.ContainsFunc(series, unresolved) {
+	if firing[overflowToken] != nil && !truncated && !slices.ContainsFunc(series, unresolved) {
 		if t.allClear, err = transactional.NotificationRuleFiringRepository.Delete(tx, ruleId, overflowToken); err != nil {
 			return t, err
 		}

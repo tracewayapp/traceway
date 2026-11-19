@@ -3,12 +3,71 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/tracewayapp/traceway/backend/v2/app/config"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
+
+const (
+	migrationHeartbeatInterval = 10 * time.Second
+	migrationExtensionWindow   = time.Minute
+	migrationExtensionBudget   = 30 * time.Minute
+)
+
+// A stalled migration must eventually fall back to the unit's startup timeout.
+// Cap even the last extension at the budget remaining when we send it.
+func startMigrationHeartbeat(extend func(time.Duration) error) func() {
+	deadline := time.Now().Add(migrationExtensionBudget)
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer traceway.Recover()
+		ticker := time.NewTicker(migrationHeartbeatInterval)
+		defer ticker.Stop()
+		failed := false
+		for {
+			remaining := time.Until(deadline)
+			if remaining < time.Microsecond {
+				return
+			}
+			err := extend(min(remaining, migrationExtensionWindow))
+			if err != nil && !failed {
+				reportSystemdError(fmt.Errorf("extend systemd migration timeout: %w", err))
+			}
+			failed = err != nil
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return func() {
+		close(stop)
+		<-done
+	}
+}
+
+// SdNotify has no write deadline. A full notification socket must not hold up
+// the end of migrations while we join the heartbeat before reporting ready.
+func extendSystemdStartup(socket string, window time.Duration) error {
+	deadline := time.Now().Add(250 * time.Millisecond)
+	dialer := net.Dialer{Deadline: deadline}
+	conn, err := dialer.Dial("unixgram", socket)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := conn.SetWriteDeadline(deadline); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(conn, "EXTEND_TIMEOUT_USEC=%d", window.Microseconds())
+	return err
+}
 
 func notifySystemd(ctx context.Context) {
 	sent, err := daemon.SdNotify(false, daemon.SdNotifyReady)

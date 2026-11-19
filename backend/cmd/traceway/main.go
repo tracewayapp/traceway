@@ -7,20 +7,14 @@ import (
 	"syscall"
 	"time"
 
-	tracewaybackend "github.com/tracewayapp/traceway/backend/v2"
 	"github.com/tracewayapp/traceway/backend/v2/app/services"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
+	"github.com/tracewayapp/traceway/backend/v2/cmd"
 )
 
 func main() {
 	go flushOnSignal()
-	tracewaybackend.Run()
-	// tracewaybackend.Run(
-	// 	tracewaybackend.WithPort(8082),
-	// 	tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
-	// 	tracewaybackend.WithDefaultProject("Backend", "gin", "backend-dev-token"),
-	// 	tracewaybackend.WithDefaultProject("Frontend", "svelte", "frontend-dev-token"),
-	// )
+	cmd.RunStandalone()
 }
 
 // The server has no graceful shutdown, so a stop signal ends it at once. The

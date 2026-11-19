@@ -48,6 +48,15 @@ import (
 var PostStartupHooks []func(ctx context.Context)
 
 func Run(opts ...Option) {
+	run(false, opts...)
+}
+
+// RunStandalone lets the server binary extend its own systemd startup deadline.
+func RunStandalone() {
+	run(true)
+}
+
+func run(standalone bool, opts ...Option) {
 	var cfg *config.Cfg
 	var o *options
 
@@ -117,23 +126,7 @@ func Run(opts ...Option) {
 		panic(fmt.Errorf("failed to initialize storage: %w", err))
 	}
 
-	err = migrations.Run(cfg.DBType)
-	if err != nil {
-		panic(fmt.Errorf("migrations run failed: %w", err))
-	}
-
-	if err := backfill.RunDashboards(); err != nil {
-		panic(fmt.Errorf("dashboards backfill failed: %w", err))
-	}
-	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
-		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
-	}
-	if err := backfill.RunBrowserDefaults(); err != nil {
-		panic(fmt.Errorf("browser defaults migration failed: %w", err))
-	}
-	if err := backfill.RunBrowserPerformanceDashboards(); err != nil {
-		panic(fmt.Errorf("Web Performance dashboard backfill failed: %w", err))
-	}
+	runStartupMigrations(cfg.DBType, standalone)
 
 	if o != nil {
 		if err := seed(o); err != nil {
@@ -325,6 +318,32 @@ func Run(opts ...Option) {
 	notifySystemd(ctx)
 	config.Logln("Starting server on " + listeners[0].Addr().String())
 	serveHTTP(router, listeners[0])
+}
+
+func runStartupMigrations(dbType string, standalone bool) {
+	if socket := os.Getenv("NOTIFY_SOCKET"); standalone && socket != "" {
+		stop := startMigrationHeartbeat(func(window time.Duration) error {
+			return extendSystemdStartup(socket, window)
+		})
+		defer stop()
+	}
+
+	if err := migrations.Run(dbType); err != nil {
+		panic(fmt.Errorf("migrations run failed: %w", err))
+	}
+
+	if err := backfill.RunDashboards(); err != nil {
+		panic(fmt.Errorf("dashboards backfill failed: %w", err))
+	}
+	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
+		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
+	}
+	if err := backfill.RunBrowserDefaults(); err != nil {
+		panic(fmt.Errorf("browser defaults migration failed: %w", err))
+	}
+	if err := backfill.RunBrowserPerformanceDashboards(); err != nil {
+		panic(fmt.Errorf("Web Performance dashboard backfill failed: %w", err))
+	}
 }
 
 // A bad connection string must not take the server down.

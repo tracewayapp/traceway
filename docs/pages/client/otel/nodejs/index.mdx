@@ -4,7 +4,7 @@ Instrument any Node.js backend (Express, Fastify, Koa, Hono, NestJS, or plain HT
 
 ## Requirements
 
-- Node 20.6 or newer. The ESM loader hook below uses `module.register()`, which landed in Node 18.19 / 20.6.
+- Node 22.15 or newer for the OpenTelemetry packages installed below.
 - Node 22.18 or newer if you want to run `.ts` files directly. Node strips the types itself, so you do not need `tsx` or `ts-node`.
 
 ## Installation
@@ -304,7 +304,7 @@ async function runNightlyReport() {
 }
 ```
 
-> **A plain root span is dropped.** A root `INTERNAL` or `PRODUCER` span with no HTTP attributes and no `console.command` attribute produces no Endpoint, no Task, and no Span row. It is discarded on ingest with no error. Wrapping a job in `tracer.startActiveSpan("my-job", ...)` at the top level of a script gets you silence, not a Task.
+> Set `kind: SpanKind.CONSUMER` to list this job under **Tasks**. With the default `INTERNAL` kind, the example remains visible in **Spans** and its logs keep their trace ID.
 
 [Traces](/client/otel/nodejs/traces) has the full example with error handling and the console-command variant.
 

@@ -40,7 +40,7 @@ A span lands in a top-level table when its kind or attributes match a rule. The 
 | Root `INTERNAL` span with a `console.command` attribute (artisan / artisan-style runners) | **Task** |
 | Any span carrying `gen_ai.*` attributes (root or child) | **AI Trace** |
 | `"exception"` event on any span | **Issue** (attributed to the owning entity above) |
-| Anything else with a parent | **Span** in the waterfall, with its original trace/span/parent IDs |
+| Any other accepted span, including a root | **Span** in the waterfall, with its original trace/span/parent IDs |
 
 In-process sub-handler spans (e.g. a framework's "handler /path" INTERNAL+HTTP child) stay in the spans table. Endpoints are only promoted for actual entry points, so frameworks don't silently double-emit.
 

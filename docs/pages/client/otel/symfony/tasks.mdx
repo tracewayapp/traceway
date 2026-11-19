@@ -162,6 +162,6 @@ try {
 }
 ```
 
-> **A root span with the default `INTERNAL` kind is dropped.** Traceway classifies a span as a Task when its kind is `CONSUMER`, or when it is a root span carrying `console.command`. A root `INTERNAL` span with no HTTP attributes matches neither, so it is discarded on ingest without any error. If you created a background span and it never appeared anywhere in the dashboard, this is almost always why.
+> Use a CONSUMER span to list background work under **Tasks**. A root INTERNAL span carrying `console.command` also qualifies. Other ordinary INTERNAL spans remain available under **Spans**.
 
 Child spans inside the block do not need any of this. They nest under the consumer span and are shown in its trace regardless of their kind.

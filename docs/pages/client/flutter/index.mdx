@@ -190,17 +190,6 @@ Logs and actions are sent to the backend inside the same `sessionRecordings` ent
 
 When the screen recorder is on, `startedAt` and `endedAt` come from the first and last buffered video frames. When there's no video (e.g. `screenCapture: false` with logs/actions only), they fall back to the timestamp range of the buffered events. A session recording entry is created for every captured exception that has any timeline data.
 
-### Network capture on Flutter web
-
-`HttpOverrides.global` does not run on Flutter web. Use `TracewayHttpClient` instead. It's a drop-in `http.Client` you can use directly or pass to libraries that accept a custom client (Dio, Chopper, etc.):
-
-```dart
-import 'package:traceway/traceway.dart';
-
-final client = TracewayHttpClient();
-final res = await client.get(Uri.parse('https://api.example.com/users'));
-```
-
 ### Disabling channels
 
 Each channel can be turned off individually via `TracewayOptions`:
@@ -255,7 +244,7 @@ This replaces the region with a solid color (black by default) in the recording.
 `Traceway.run()` sets up capture for the following error sources with no additional configuration:
 
 - **Flutter framework errors**: rendering, layout, and gesture errors reported through `FlutterError.onError`.
-- **Platform errors**: native platform channel errors.
+- **Unhandled root-isolate errors** reported through `PlatformDispatcher.instance.onError`.
 - **Uncaught async errors**: any unhandled exceptions in asynchronous code, captured via Dart's `Zone` mechanism.
 
 ## Release Symbolication (obfuscated builds)
@@ -308,28 +297,28 @@ For Flutter web, use the JS SDK instead; see [Flutter Web](#flutter-web) below.
 
 ## Flutter Web
 
-This SDK does not support Flutter web. For web apps, use the [`@tracewayapp/frontend`](/client/js-sdk) JS SDK which provides rrweb session replay and automatic fetch instrumentation.
+This SDK does not support Flutter web. For web apps, use the [`@tracewayapp/frontend`](/client/js-sdk) JS SDK, which captures errors and records `fetch` and `XMLHttpRequest` calls automatically.
+
+Give the web build its own browser project and use that project's connection string. In the framework picker choose any of the browser frameworks (React, Svelte, Vue.js or jQuery); they differ only in the setup the Connection page shows. Do not reuse the Flutter project's connection string: a Flutter project is a mobile project, and the dashboard does not show the Sessions and Data Collection pages for it. See [Project Structure](/learn/projects).
 
 **Add the CDN script to `web/index.html`:**
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@1/dist/traceway.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2/dist/traceway.iife.global.js"></script>
 <script>
   Traceway.init("your-token@https://traceway.example.com/api/report");
 </script>
 ```
 
-Alternatively, if you use npm in your Flutter web project:
+For a web project with a JavaScript bundler, install the SDK and initialize it from your JavaScript entry point:
 
 ```bash
 npm install @tracewayapp/frontend
 ```
 
-```html
-<script type="module">
-  import { init } from '@tracewayapp/frontend';
-  init('your-token@https://traceway.example.com/api/report');
-</script>
+```javascript
+import { init } from "@tracewayapp/frontend";
+init("your-token@https://traceway.example.com/api/report");
 ```
 
-See the full [JS SDK documentation](/client/js-sdk) for all options including session recording, error filtering, and distributed tracing.
+See the full [JS SDK documentation](/client/js-sdk) for all options, including [error filtering](/client/js-sdk/initialization#error-filtering), [distributed tracing](/client/js-sdk/distributed-tracing) and [remote collection settings](/learn/remote-config). [Session replay](/client/js-sdk/session-replay) records the DOM; Flutter web paints its UI into a canvas, which the recorder does not capture, so a replay shows little of a Flutter app.

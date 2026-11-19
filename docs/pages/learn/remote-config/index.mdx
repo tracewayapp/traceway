@@ -1,17 +1,14 @@
-# Remote SDK Config (Beta)
+# Remote SDK Config
 
 import { Callout } from "nextra/components";
-import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
-
-<BrowserSdkBeta />
 
 The browser SDK decides, on every device, what to send right away, what to keep on the device in case it is needed, and what to drop. Traceway tells it how, for each group of clients, while the app runs. From the dashboard you change what one release, one browser, one user or a tenth of your traffic sends, without shipping a build. Telemetry can wait on the device and leave only when something goes wrong, or when someone asks for it.
 
 <Callout type="info">
-  Remote config needs the OpenTelemetry-based browser SDK, `@tracewayapp/frontend` 2.x (beta, and the React, Vue, Svelte and jQuery wrappers of the same version), and a Traceway server with the **Data Collection** page. The page is in the sidebar of React, Vue, Svelte, jQuery and Flutter projects. Setup steps are on [Set up remote config](/learn/remote-config/setup); every field is in the [settings reference](/learn/remote-config/reference).
+  Remote config needs the OpenTelemetry-based browser SDK, `@tracewayapp/frontend` 2.0 or later (or the React, Vue, Svelte or jQuery wrapper of the same version), and a Traceway server with the **Data Collection** page. The page is in the sidebar of browser projects: React, Vue, Svelte and jQuery. Setup steps are on [Set up remote config](/learn/remote-config/setup); every field is in the [settings reference](/learn/remote-config/reference).
 </Callout>
 
-Remote configuration is available for browser projects (React, Svelte, Vue and jQuery) and Flutter projects. Backend projects and the other mobile projects have no remote-collection controls, and their OpAMP/config requests are rejected. For a full-stack app, use its separate browser project.
+Remote configuration is available for browser projects (React, Svelte, Vue and jQuery). Backend and mobile projects have no Data Collection page, and the server rejects their OpAMP polls and config requests. The one exception is a Flutter project: the server answers the polls of the Flutter SDK's 2.0 beta, but the dashboard offers no Data Collection page for it. For a full-stack app, use its separate browser project.
 
 Production defaults send session lifecycle metadata and the aggregated [performance metrics](/learn/client-metrics), and keep healthy breadcrumbs, web vital events and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
 
@@ -108,7 +105,7 @@ A capture makes one device upload what it was holding and stream everything for 
 - **From the dashboard**: a capture targets a device (`service.instance.id`, stable per browser profile), a user (`user.id`), a session, or any attribute, for 1 minute to 24 hours. It travels in the settings document of the clients it matches. A client under a capture polls every 60 seconds.
 - **From a trigger** with the `capture` action, for example when a log line repeats. The capture is stored in `localStorage`, so the pages that follow keep streaming until it ends; while it runs, the same trigger only extends it.
 
-For dashboard captures, each tab uploads its lookback once per capture across pages. Trigger captures persist on the device until expiry. While a capture runs, its `"*"` means every signal the SDK collects by default, including those a rule switched off for this cohort. Resource timing, which is off by default, has to be named. When a trigger starts the capture, the record that fired it is uploaded too, so the log line that started a capture is part of it.
+For dashboard captures, each tab uploads its lookback once per capture across pages. Trigger captures persist on the device until expiry. While a capture runs, its `"*"` means every signal the SDK collects by default, including those a rule switched off for this cohort. Resource timing, long tasks and route timing, which are off by default, have to be named. When a trigger starts the capture, the record that fired it is uploaded too, so the log line that started a capture is part of it.
 
 <Callout type="info">
   A dashboard capture reaches a browser on its next poll (5 minutes by default) or when a tab becomes visible after its polling interval has elapsed. There is no push channel: keeping a socket open per browser tab would cost more than it saves.

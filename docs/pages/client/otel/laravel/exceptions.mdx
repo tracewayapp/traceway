@@ -48,16 +48,17 @@ $span->setAttribute('order.id', $orderId);
 try {
     $this->processOrder($orderId);
 } catch (\Throwable $e) {
-    $span->recordException($e, [
+    $span->setAttributes([
         'order.status' => 'failed',
         'retry.count' => $retryCount,
     ]);
+    $span->recordException($e);
     $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
     throw $e;
 }
 ```
 
-The additional attributes passed to `recordException` are attached to the exception event itself.
+The Issue gets these fields from the span that recorded the exception.
 
 ## Adding Context to the Auto-Capture
 
@@ -128,10 +129,11 @@ class PaymentService
         try {
             $this->gateway->charge($customerId, $amount);
         } catch (\Throwable $e) {
-            $span->recordException($e, [
+            $span->setAttributes([
                 'customer.id' => $customerId,
                 'payment.amount' => $amount,
             ]);
+            $span->recordException($e);
             $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
             throw $e;
         }
@@ -159,11 +161,12 @@ try {
     $this->withdraw($accountId, $amount);
 } catch (InsufficientFundsException $e) {
     $span = Span::getCurrent();
-    $span->recordException($e, [
+    $span->setAttributes([
         'account.id' => $e->accountId,
         'amount.requested' => $e->requested,
         'amount.available' => $e->available,
     ]);
+    $span->recordException($e);
     $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
 }
 ```

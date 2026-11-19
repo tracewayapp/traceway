@@ -1,17 +1,19 @@
 # Session Replay
 
-import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
+import BrowserSdkV1 from "../../../components/BrowserSdkV1";
 
-<BrowserSdkBeta stableHref="/client/js-sdk/v1/session-replay" />
+<BrowserSdkV1 href="/client/js-sdk/v1/session-replay" />
 
-The 2.x browser SDK records DOM events with rrweb. Replay is buffered on the device by default. Accepted errors upload up to 10 minutes of buffered breadcrumbs; the built-in exception trigger also requests a 30-second replay clip, with a 5-second cooldown and at most 20 clips per session. The session page can show the surrounding uploaded segments and breadcrumbs.
+The 2.x browser SDK records DOM events with rrweb. Replay is buffered on the device by default. Accepted errors upload up to 10 minutes of buffered breadcrumbs; the built-in exception trigger also requests a 30-second replay clip, with a 5-second cooldown and at most 20 clips per session. An error inside the cooldown or past the limit still uploads its breadcrumbs, without a clip. The session page can show the surrounding uploaded segments and breadcrumbs.
+
+rrweb is loaded the first time replay starts, so with a bundler a page whose replay is off never downloads or runs it.
 
 ## Options
 
 | Option | Default | Meaning |
 |---|---|---|
 | `sessionRecording` | `true` | Allow replay at all; remote settings cannot override `false` |
-| `sessionRecordingSegmentDuration` | `30000` | Segment duration in milliseconds |
+| `sessionRecordingSegmentDuration` | `30000` | Segment duration in milliseconds. Every segment starts with a full snapshot, so it replays on its own |
 | `recordAllSessions` | `false` | Stream completed replay segments and breadcrumbs by default |
 | `sessions` | `true` | Report session lifecycle events, independently of replay |
 
@@ -23,6 +25,29 @@ init(connectionString, {
 });
 ```
 
+## Modes
+
+Replay is in one of three modes:
+
+| Mode | What happens |
+|---|---|
+| `buffer` (default) | rrweb records and completed segments stay in memory. A trigger or a capture uploads the segments that ended inside its lookback, plus the segment in progress |
+| `stream` | Every completed segment is uploaded as it rotates, and the segment in progress is uploaded when the page is hidden |
+| `off` | rrweb does not run, and what was buffered or queued is discarded |
+
+`recordAllSessions: true` makes `stream` the default. The mode and its companions can also be set locally with `collection`, or remotely with a rule:
+
+```javascript
+init(connectionString, {
+  collection: {
+    replay: { mode: "stream", sessionSampleRate: 0.1, maskAllInputs: true },
+    buffer: { replayMaxBytes: 4 * 1024 * 1024, maxAgeSeconds: 300 },
+  },
+});
+```
+
+`replay.sessionSampleRate` is the share of sessions whose replay may stream; the others stay in `buffer` mode, so they still provide error clips. Whatever sets the mode, `sessionRecording: false` wins. Replay is uploaded to Traceway's recordings endpoint, not over OTLP, so a [standalone setup](/client/js-sdk/initialization#standalone-without-a-traceway-server) has no replay.
+
 Sessions are recorded even when replay is buffered or disabled, unless `sessions: false` is set. A session belongs to one tab and can continue across page loads. It ends after 15 minutes without activity or 60 minutes in total; subsequent activity opens another session.
 
 ## Remote control
@@ -33,7 +58,15 @@ The default replay buffer holds completed segments within an 8 MiB estimate and 
 
 ## Privacy
 
-Inputs are masked by default. A rule can change `replay.maskAllInputs`; applying a change restarts rrweb and discards incompatible buffered or queued replay. Already-sent requests cannot be recalled. Set `sessionRecording: false` in the application when replay must never run.
+The values of form inputs are masked by default (`replay.maskAllInputs: true`); 1.x masked only password inputs. `collection.replay.maskAllInputs` or a rule can change it; applying a change restarts rrweb and discards incompatible buffered or queued replay. Already-sent requests cannot be recalled. Set `sessionRecording: false` in the application when replay must never run.
+
+`maskAllInputs` is the only masking setting of the SDK. For other content, rrweb's standard class hooks work without configuration, as in 1.x:
+
+| Class | Effect |
+|---|---|
+| `rr-mask` | The text of the element and its children is replaced with asterisks |
+| `rr-block` | The element is replaced with a placeholder of the same size |
+| `rr-ignore` | Input events of the element are not recorded |
 
 ## Breadcrumbs
 

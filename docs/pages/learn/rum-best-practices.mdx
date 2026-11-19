@@ -1,12 +1,8 @@
 # RUM Best Practices
 
-import BrowserSdkBeta from "../../components/BrowserSdkBeta";
-
-<BrowserSdkBeta />
-
 The browser SDK collects five kinds of data. Each one answers a different question, and each one is collected in a different way. This page explains what each kind represents, which one to use for what, how to set up a frontend app so the data is useful, and how to get more detail when you need it.
 
-For what RUM is and how it works, start with [Real User Monitoring](/learn/rum).
+For what RUM is and how it works, start with [Real User Monitoring](/learn/rum). This page applies to browser SDK 2.0 or later: `@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version.
 
 ## The five kinds of data
 
@@ -24,7 +20,7 @@ Metrics, sessions and exceptions are always sent, so they describe every visit. 
 
 ### Metrics: numbers about all visits
 
-A metric describes all visits together, never one visitor. Each browser adds its measurements to a running total and uploads the total when the page is hidden, at the end of the session, and every five minutes on a long visit. The upload carries no user, session or device id.
+A metric describes all visits together, never one visitor. Each browser adds its measurements to a running total and uploads the total when the page is hidden, at the end of the session, and every five minutes on a long visit. Built-in metric dimensions omit user, session and device IDs. A slow-session exemplar can include a session ID so you can investigate the visit.
 
 - You can split a metric by release, page, browser, device and country.
 - You cannot look up the metric of one user. To see one person's visit, open a [session](#sessions-one-visit).
@@ -142,7 +138,7 @@ init("your-token@https://traceway.example.com/api/report", {
 });
 ```
 
-Use them for data your app must not collect. For everything else, leave the defaults and adjust from the **Data Collection** page.
+Use them for data your app must not collect. For everything else, leave the defaults and adjust from the **Data Collection** page in the project's sidebar.
 
 ### 9. Keep environments apart
 
@@ -182,7 +178,7 @@ The same attribute is shown on every exception, so an issue page tells you which
 
 ### User ids do not belong in metrics
 
-Metrics carry no identity, on purpose. A user id as a metric dimension would create one series per user, hit the limit of 50 values, and be stored as `other`. To split a metric by a group of users, use a small set of values:
+Use aggregate dimensions for groups of users. A user id as a metric dimension would create one series per user, hit the limit of 50 values, and be stored as `other`. To split a metric by a group of users, use a small set of values:
 
 ```javascript
 import { setMetricDimension } from "@tracewayapp/frontend";
@@ -226,7 +222,7 @@ Rules, triggers and captures are explained on [Remote SDK Config](/learn/remote-
 - **A user id, an email or an order id as a metric dimension.** Put it on the session with `setAttribute` instead.
 - **`captureMessage` for ordinary events.** It fills the Issues list. Use `track()`.
 - **Counting with log lines.** Logs from visits with no problems never reach the server, so the count is too low. Use `count()`.
-- **Your own `window` error listener that calls `captureException`.** The SDK already listens, so every error would be reported twice.
+- **Your own `window` error listener that calls `captureException`.** The SDK already listens. A second report of the same error is dropped as a duplicate when it arrives within a second with the same type, message and stack, and counted as a second occurrence when it differs, for example after wrapping the error.
 - **No `version`.** Release comparisons, regression alerts and per-release targets all need it.
 - **Secrets or personal data in console output, attributes or event names.** They are uploaded with the next error. Keep them out, or set `captureLogs: false`.
 - **Turning on full recording for everyone to debug one user.** Start a capture for that user instead.

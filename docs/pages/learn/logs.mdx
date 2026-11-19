@@ -47,9 +47,9 @@ Traceway supports six severity levels, matching the OpenTelemetry specification:
 | ERROR    | 17-20             | Errors that don't stop the service                |
 | FATAL    | 21+               | Errors that cause termination or severe impact    |
 
-If your SDK sends only a severity number (no text), Traceway assigns the text level based on the number's range. If it sends only a text level, the number is computed from the text.
+If your SDK sends only a severity number (no text), Traceway assigns the text level based on the number's range. If the exporter supplies only severity text, the stored number remains 0. The dashboard recognizes standard text levels when assigning badges and volume-chart buckets.
 
-The severity dropdown on the Logs page filters by threshold. Picking `WARN+` keeps warnings and everything more severe.
+The severity dropdown on the Logs page filters by threshold. Picking `WARN+` keeps records with severity number 13 or higher. A text-only warning therefore appears with a warning badge but falls outside that numeric filter.
 
 <img src="/logs/logs-severity-filter.png" alt="Severity threshold dropdown" style={{ maxWidth: '560px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 

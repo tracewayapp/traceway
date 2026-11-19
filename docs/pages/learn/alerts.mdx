@@ -125,7 +125,7 @@ A rule connects a condition to a channel. Every rule has:
 | Cooldown | Minimum time between notifications for the same condition (default 15 minutes) |
 | Severity | Auto (derived from the condition) or an explicit override |
 
-Rules belong to a project and only evaluate that project's data. Frontend projects support the New Issue rule type and the two SLO rule types; all other types monitor backend telemetry.
+Rules belong to a project and only evaluate that project's data. Frontend projects support New Issue, Metric Threshold and Release Regression (the last two over their [client metrics](/learn/client-metrics#alerts-and-slos)) and the two SLO rule types; all other types monitor backend telemetry.
 
 ## Rule Types
 
@@ -143,6 +143,7 @@ Rules belong to a project and only evaluate that project's data. Frontend projec
 | [Task Duration](#task-duration) | A background task's P95 duration exceeds a threshold | Polled |
 | [Task Failure Rate](#task-failure-rate) | The share of failed task executions exceeds a percentage | Polled |
 | [Metric Threshold](#metric-threshold) | An aggregated metric violates a comparison | Polled |
+| [Release Regression](/learn/client-metrics#alerts-and-slos) | A metric of the newest release is worse than the earlier release by more than an allowed percentage | Polled |
 | [No Data](#no-data) | No telemetry received for a configured duration | Polled |
 | [AI Trace Cost](#ai-trace-cost) | A single AI trace exceeds a cost threshold | On ingest |
 | [AI Conversation Cost](#ai-conversation-cost) | A conversation's cumulative 24-hour cost exceeds a threshold | On ingest |
@@ -267,7 +268,7 @@ Fires when an aggregated [metric](/learn/metrics) value violates the configured 
 | Option | Default | Description |
 |--------|---------|-------------|
 | Metric Name | | The metric to monitor |
-| Aggregation | avg | One of `avg`, `max`, `min`, `sum`, `p95`, `p99`, `last` (most recent value) |
+| Aggregation | avg | One of `avg`, `max`, `min`, `sum`, `count`, `p50`, `p75`, `p90`, `p95`, `p99`, `last` (most recent value). A distribution metric, such as a [client metric](/learn/client-metrics#alerts-and-slos), also takes `good_ratio`, as a percentage |
 | Operator | gt | One of `gt`, `gte`, `lt`, `lte`, `eq` |
 | Threshold Value | 90 | The value compared against the aggregate |
 | Lookback Minutes | 5 | Window the aggregate is computed over |

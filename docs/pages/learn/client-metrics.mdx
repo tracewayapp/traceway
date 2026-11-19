@@ -6,13 +6,13 @@ Browser metrics are the measurement layer of [Real User Monitoring (RUM)](/learn
 
 ## How the numbers travel
 
-1. **On the device.** The browser SDK (2.1 and later) keeps a histogram per metric and dimension set in memory. An observation increments a bucket. It uploads one small payload when the page is hidden, at session end, and every five minutes for long sessions. A payload that fails, or whose page went away before the answer came, is kept in the browser's storage (at most three, for a day) and sent once more on the next page load. Every payload has an id so the receiving instance can recognize retries within its duplicate-filter window; see the multi-instance limitation below.
+1. **On the device.** The browser SDK (2.0 and later) keeps a histogram per metric and dimension set in memory. An observation increments a bucket. It uploads one small payload when the page is hidden, at session end, and every five minutes for long sessions. A payload that fails, or whose page went away before the answer came, is kept in the browser's storage (at most three, for a day) and sent once more on the next page load. Every payload has an id so the receiving instance can recognize retries within its duplicate-filter window; see the multi-instance limitation below.
 2. **At ingest.** The payload is merged into cells in memory and the request is answered. No storage write happens per request. Every 10 seconds the cells are written as one batch per table.
 3. **In storage.** Rows of the same cell merge. On ClickHouse, minutes roll up to hours and days (kept 7 days, 90 days and 2 years). On SQLite and DuckDB, minute rows older than six hours are folded into hour rows and follow the telemetry retention.
 
 The wire format is standard OTLP/HTTP metrics to `/api/otel/v1/metrics`: delta `ExponentialHistogram` for distributions, delta monotonic `Sum` for counters. Anything else from a client project (gauges, cumulative series, unknown names) is dropped and counted.
 
-Browser SDKs 2.0 send only performance events. The server reads the same metrics from the events they upload, one observation each, so dashboards work before an app upgrades.
+The legacy 1.x browser SDK sends no client metrics. A 2.x app that switches the aggregates off in `init()` (`captureMetrics: false`) uploads only performance events; the server then reads the same metrics from the events that reach it, one observation each.
 
 Histogram buckets are about 9% wide, with roughly 4.5% midpoint resolution for ordinary positive values. Percentiles and threshold counts are estimates; bucket resolution does not bound sampling error or restore missing observations.
 
@@ -49,7 +49,7 @@ Custom metrics come from `metric(name, value, dims?)` and `count(name, n?, dims?
 
 ## Dimensions
 
-Every dimension is bounded. There is never a session, user or device id, and never a full URL.
+Every dimension is bounded. Dimensions never hold a session, user or device id, or a full URL. A slow-session exemplar carries a session id separately from the metric's dimensions.
 
 | Key | Values per project per day |
 |---|---|

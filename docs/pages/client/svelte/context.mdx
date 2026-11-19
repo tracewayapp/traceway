@@ -26,29 +26,43 @@ Must be called during component initialization (not in an event handler):
 
 **Initialization is synchronous:** `setupTraceway` calls the SDK's `init()` immediately, during component setup, not in `onMount`. Everything captured after that point is recorded, including captures in a child component's setup code that runs before `onMount`. There is no pre-init buffer, so a capture made before `setupTraceway` runs is dropped.
 
+The SDK starts once per page. A later `setupTraceway` call (a nested layout, a remounted root) sets the context again but does not restart the SDK or apply its options. Only after `await shutdown()` does the next call start it again.
+
 ### Options
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `connectionString` | `string` | Yes | Your Traceway connection string |
-| `options` | `object` | No | SDK configuration |
+| `connectionString` | `string \| StandaloneOptions` | Yes | Your Traceway connection string. An options object with a `telemetry` destination runs the SDK without a Traceway server, see [Local configuration without OpAMP](/client/js-sdk/initialization#standalone-without-a-traceway-server) |
+| `options` | `TracewayFrontendOptions` | No | SDK configuration, passed to the browser SDK's `init()` |
 
 ### SDK Options
 
+`options` takes every option of the browser SDK. The ones used most often are below; [Initialization](/client/js-sdk/initialization#options-reference) has the full list.
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log filtered-out exceptions and failed uploads to the console |
-| `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
-| `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
-| `version` | `string` | `undefined` | Your application version |
-| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/v1/initialization#error-filtering) |
-| `beforeCapture` | `(exception) => boolean` | `undefined` | Return `false` to suppress an error. See [Error Filtering](/client/js-sdk/v1/initialization#error-filtering) |
-| `sessionRecording` | `boolean` | `true` | Enable the rrweb session recorder |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | rrweb segment length in ms |
-| `recordAllSessions` | `boolean` | `false` | Always-on session recording. See [Sessions](/learn/sessions) |
-| `captureLogs` | `boolean` | `true` | Mirror `console.*` calls into the rolling log buffer |
-| `captureNetwork` | `boolean` | `true` | Record `fetch` / `XHR` calls as network actions |
-| `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions |
+| `version` | `string` | none | Your application version, reported as `service.version` |
+| `environment` | `string` | none | Reported as `deployment.environment.name`, e.g. `"production"` |
+| `serviceName` | `string` | the page's host name | Reported as `service.name` |
+| `attributes` | `Record<string, string>` | `{}` | Initial global attributes, see [Custom Attributes](#custom-attributes) |
+| `debug` | `boolean` | `false` | Log a rejected project token and a `beforeCapture` callback that throws to the console |
+| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
+| `beforeCapture` | `({ type, message, stack, attributes }) => boolean` | none | Return `false` to suppress an error. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
+| `sessionRecording` | `boolean` | `true` | Allow session replay at all |
+| `sessionRecordingSegmentDuration` | `number` | `30000` | Replay segment length in ms |
+| `recordAllSessions` | `boolean` | `false` | Stream every replay segment and breadcrumb instead of keeping them on the device for error clips. See [Session Replay](/client/js-sdk/session-replay) |
+| `sessions` | `boolean` | `true` | Record session start and end |
+| `captureLogs` | `boolean` | `true` | Allow `console.*` output to be collected as breadcrumbs |
+| `captureNetwork` | `boolean` | `true` | Instrument `fetch` / `XHR`: CLIENT spans and the `traceparent` header |
+| `captureNavigation` | `boolean` | `true` | Allow History API navigation to be collected as breadcrumbs |
+| `captureUserActions` | `boolean` | `true` | Allow clicks to be collected as breadcrumbs |
+| `captureMetrics` | `boolean` | `true` | Allow the [performance metrics](/learn/client-metrics) aggregated on the device |
+| `captureHttpServerErrors` | `boolean` | `false` | Report `fetch` / `XHR` responses with status >= 500 as message issues |
+| `propagateTraceHeaderCorsUrls` | `Array<string \| RegExp>` | none | Cross-origin URLs that also get the `traceparent` header |
+| `remoteConfig` | `boolean` | `true` | Fetch collection settings from Traceway, see [Remote SDK Config](/learn/remote-config) |
+| `exportDelayMs` | `number` | `1000` | Delay between uploads of queued telemetry, in ms |
+
+The `capture*`, `sessionRecording` and `sessions` options are ceilings: remote config can restrict what they allow, but never turns on what they switch off.
 
 ## getTraceway
 
@@ -62,14 +76,18 @@ Retrieve capture functions in any child component:
 </script>
 ```
 
+`getTraceway` throws when no ancestor has called `setupTraceway`. `useTraceway` is an alias of it, for parity with the React and Vue packages.
+
 ### Return Value
 
 | Function | Description |
 |----------|-------------|
-| `captureException(error)` | Capture an error with stack trace |
-| `captureExceptionWithAttributes(error, attributes)` | Capture error with metadata |
-| `captureMessage(message)` | Send a custom message |
-| `recordAction(category, name, data)` | Record an action into the rolling buffer that ships with the next exception |
+| `captureException(error, attributes?)` | Capture an error with stack trace |
+| `captureExceptionWithAttributes(error, attributes)` | Capture error with metadata. Attribute values are strings |
+| `captureMessage(message, attributes?)` | Send a custom message |
+| `recordAction(category, name, data?)` | Record a breadcrumb for the replay timeline. It is buffered on the device like the other breadcrumbs and uploaded with the next error, or streamed with `recordAllSessions` |
+
+`setupTraceway` returns the same object.
 
 ## Complete Example
 
@@ -128,7 +146,7 @@ Child component:
 
 ## Custom Attributes
 
-Use `useTracewayAttributes` to bind a reactive map of attributes (`userId`, `tenant`, feature flags, etc.) to the SDK's global scope. It's a factory: call it once during component setup, then invoke the returned setter from `$effect` (Svelte 5) or `$:` (Svelte 4). The setter diffs against the last map and pushes only the deltas; `onDestroy` removes every key it currently owns.
+Use `useTracewayAttributes` to bind a reactive map of attributes (`user.id`, `tenant`, feature flags, etc.) to the SDK's global scope. It's a factory: call it once during component setup, then invoke the returned setter from `$effect` (Svelte 5) or `$:` (Svelte 4). The setter diffs against the last map and pushes only the deltas; `onDestroy` removes every key it currently owns.
 
 ```svelte
 <!-- Svelte 5 -->
@@ -136,7 +154,7 @@ Use `useTracewayAttributes` to bind a reactive map of attributes (`userId`, `ten
   import { useTracewayAttributes } from "@tracewayapp/svelte";
   let { user, org } = $props();
   const sync = useTracewayAttributes();
-  $effect(() => sync({ userId: user.id, tenant: org.id }));
+  $effect(() => sync({ "user.id": user.id, tenant: org.id }));
 </script>
 ```
 
@@ -146,11 +164,11 @@ Use `useTracewayAttributes` to bind a reactive map of attributes (`userId`, `ten
   import { useTracewayAttributes } from "@tracewayapp/svelte";
   export let user; export let org;
   const sync = useTracewayAttributes();
-  $: sync({ userId: user.id, tenant: org.id });
+  $: sync({ "user.id": user.id, tenant: org.id });
 </script>
 ```
 
-The setter accepts `null` / `undefined` as "empty map", which is useful while user data loads or after logout.
+The setter accepts `null` / `undefined` as "empty map", which is useful while user data loads or after logout. Attribute values are strings, so convert a numeric id with `String()`. The setter removes every key it set when the component is destroyed, so do not set the same key with `setAttribute` elsewhere.
 
 For imperative use (load functions, hooks), the same primitives are exported as plain functions:
 
@@ -163,6 +181,49 @@ clearAttributes(); // on logout
 ```
 
 Layering on each event: **defaults < global scope < per-call**. See [Sessions](/learn/sessions) for the full attribute model.
+
+## Route Names
+
+Performance metrics are grouped by page. Call `trackRoute` with the route id so they group by route (`/orders/[id]`) and not by URL; without it the SDK replaces id-like path segments itself. In SvelteKit, from the root layout:
+
+```svelte
+<!-- src/routes/+layout.svelte, Svelte 5 -->
+<script>
+  import { page } from "$app/state";
+  import { setupTraceway, trackRoute } from "@tracewayapp/svelte";
+
+  let { children } = $props();
+
+  setupTraceway({
+    connectionString: "your-token@https://traceway.example.com/api/report",
+  });
+
+  $effect(() => trackRoute(page.route.id));
+</script>
+
+{@render children()}
+```
+
+On Svelte 4, or a SvelteKit version without `$app/state`, import `page` from `$app/stores` and write `$: trackRoute($page.route.id);`. `trackRoute(null)` clears the name.
+
+## Events, Metrics and Lifecycle
+
+The rest of the browser SDK's API is re-exported from `@tracewayapp/svelte`, so nothing has to be imported from `@tracewayapp/frontend`. These are plain functions, not part of the context, and do nothing until `setupTraceway` has run:
+
+| Function | Description |
+|----------|-------------|
+| `track(eventName, attributes?)` | Record a named app event, e.g. `track("checkout_failed", { step: "payment" })`. Buffered on the device by default |
+| `metric(name, value, dims?)` | Record one observation of a custom distribution, e.g. `metric("checkout.duration", 840, { plan: "pro" })`. Aggregated on the device; at most two dimensions are kept |
+| `count(name, n?, dims?)` | Add to a custom counter, e.g. `count("cart.item_added")` |
+| `setMetricDimension(key, value)` | Set a dimension of your own on every performance metric from now on; `null` removes it. At most two keys with a small set of values each, never a user id |
+| `setRoute(template)` | What `trackRoute` calls |
+| `startInteraction(name)` | Trace an interaction explicitly, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
+| `refreshConfig()` | Fetch this client's [remote settings](/learn/remote-config) now instead of at the next poll, e.g. right after a login set `user.id` with `setAttribute` |
+| `flush(timeoutMs?)` | Send everything that is queued for sending. Buffered telemetry stays on the device. See [Flush](/client/js-sdk/flush) |
+| `shutdown()` | Flush, remove the instrumentations and stop recording. `setupTraceway` may run again afterwards |
+| `getInstanceId()` | The id this browser profile reports as `service.instance.id`, which a dashboard capture can target |
+
+`captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` and `DEFAULT_IGNORE_PATTERNS` are exported the same way. See [Client Metrics](/learn/client-metrics) for the custom metric rules.
 
 ## TRACEWAY_KEY
 
@@ -193,7 +254,7 @@ export function handleError({ error, event }) {
 }
 ```
 
-Do not capture from `+error.svelte`. That page only receives `$page.error`, which SvelteKit has already reduced to a plain `{ message }` object. Passing it to `captureException` produces an issue titled `Object: Internal Error` with no stack trace and no original message. Use the page for display and let `handleError` do the reporting.
+Do not capture from `+error.svelte`. That page only receives `$page.error`, which SvelteKit has already reduced to a plain `{ message }` object. Passing it to `captureException` produces an issue named after the serialized object, such as `Error: {"message":"Internal Error"}`, with the stack of the capture call and no original message. Use the page for display and let `handleError` do the reporting.
 
 ```svelte
 <!-- src/routes/+error.svelte -->
@@ -234,6 +295,7 @@ PUBLIC_TRACEWAY_CONNECTION=your-token@https://traceway.example.com/api/report
 
 ```svelte
 <script>
+  import { setupTraceway } from "@tracewayapp/svelte";
   import { PUBLIC_TRACEWAY_CONNECTION } from "$env/static/public";
 
   setupTraceway({
@@ -245,7 +307,7 @@ PUBLIC_TRACEWAY_CONNECTION=your-token@https://traceway.example.com/api/report
 ## Best Practices
 
 1. **Initialize early**: Call `setupTraceway` in your root layout
-2. **Skip the browser guard**: `setupTraceway` must also run during SSR, or `getTraceway()` throws in child components
+2. **Skip the browser guard**: `setupTraceway` must also run during SSR, or `getTraceway()` throws in child components. On the server it only sets the context: the SDK does not start without `window`
 3. **Use attributes**: Add context with `captureExceptionWithAttributes`
 4. **Handle gracefully**: Show user-friendly errors while capturing details
 

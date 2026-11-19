@@ -115,14 +115,14 @@ A maximum of 50 frames are emitted, inline expansions included. A frame with no 
 
 ## The flat format
 
-R8 `mapping.txt` is plain text and cheap to parse, but the engine never retraces against the text twice. On the first crash for a build, the mapping compiles once into the same compact [`.tw`](/symbolicator#the-tw-resolver-format) flat artifact used for JavaScript source maps and native dSYM/DWARF symbols, and that artifact is what every later lookup uses.
+Memory mode parses the build’s `mapping.txt` and caches that mapping on the heap. In disk mode the engine compiles the mapping to a [`.tw` artifact](/symbolicator#the-tw-resolver-format) on a cache miss, or reuses one already in blob storage.
 
 Where the other languages' `.tw` files map an address (a bundle position, a program counter) to a span of frames, the R8 `.tw` maps an obfuscated **(class, method, line)** to its original frames. It holds two sorted tables, both binary-searchable, with every class, method, and file name interned once:
 
 - A **class table**, sorted by obfuscated class name, mapping each token to its original fully qualified name and source file.
 - A **member table**, sorted within each class by obfuscated method name. Each record carries the original class, method, and file, plus the obfuscated and original line ranges. One obfuscated method can map to several records, because R8 inlines small methods into their callers, so a single frame resolves to a chain of source frames innermost first, with the obfuscated line selecting which records apply. Synthesized members are flagged and skipped.
 
-A lookup binary-searches the class table, then the member table, then filters by line range, so resolution stays a handful of comparisons no matter how large the mapping is. The artifact is read in place: in disk-cache mode a crash retraces straight off the memory-mapped `.tw` with the name tables living in the OS page cache, while in memory mode the parsed mapping is held on the heap. Either way the compiled form rides the [same cache tiers](/symbolicator#cache-tiers) as every other language (in-memory LRU, the local `.tw` disk cache, and object storage) and rebuilds automatically when the format version is bumped. The throughput and memory trade between the two modes is measured on [Performance](/symbolicator/performance).
+A lookup binary-searches the class table, then the member table, then filters by line range, so resolution stays a handful of comparisons no matter how large the mapping is. The artifact is read in place: in disk-cache mode a crash retraces straight off the memory-mapped `.tw` with the name tables living in the OS page cache, while in memory mode the parsed mapping is held on the heap. In disk mode an incompatible artifact is rebuilt from the uploaded mapping. The throughput and memory trade between the two modes is measured on [Performance](/symbolicator/performance).
 
 ## Migrating from Honeycomb
 

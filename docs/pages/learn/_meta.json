@@ -12,7 +12,7 @@
   "rum": "Real User Monitoring",
   "rum-best-practices": "RUM Best Practices",
   "sessions": "Sessions & Replay",
-  "remote-config": "Remote SDK Config (Beta)",
+  "remote-config": "Remote SDK Config",
   "attributes": "Attributes",
   "spans": "Spans",
   "healthchecks": "Healthchecks",

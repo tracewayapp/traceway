@@ -1,10 +1,10 @@
 # Flush & Lifecycle
 
-import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
+import BrowserSdkV1 from "../../../components/BrowserSdkV1";
 
-<BrowserSdkBeta stableHref="/client/js-sdk/v1/flush" />
+<BrowserSdkV1 href="/client/js-sdk/v1/flush" />
 
-The 2.x browser SDK sends streamed telemetry through OpenTelemetry batch processors. `exportDelayMs` sets the usual delay, defaulting to 1000 ms. Buffered telemetry stays on the device until a trigger or capture asks for it.
+The 2.x browser SDK sends streamed telemetry through OpenTelemetry batch processors. `exportDelayMs` sets the usual delay, defaulting to 1000 ms. Performance metrics upload on their own interval, five minutes by default, and when the page is hidden. Buffered telemetry stays on the device until a trigger or capture asks for it.
 
 ## Flush queued telemetry
 
@@ -19,15 +19,15 @@ try {
 }
 ```
 
-`flush()` sends queued logs, spans and replay uploads, and checkpoints the telemetry buffer. It does not upload every buffered record or force an in-progress replay segment to complete. A captured exception normally fires the built-in error trigger, which selects the lookback and replay clip before this flush.
+`flush()` sends queued logs, spans and replay uploads and the pending performance metrics, and checkpoints the telemetry buffer. It does not release buffered telemetry or force an in-progress replay segment to complete, and it does not end the session. A captured exception normally fires the built-in error trigger, which selects the lookback and replay clip before this flush.
 
-`flush(timeoutMs)` bounds how long the caller waits; it does not cancel outstanding requests. Successful completion is not a guarantee that every record reached the server: exporters can reject or retry data.
+`flush(timeoutMs)` bounds how long the caller waits; it does not cancel outstanding requests. Its completion is not a guarantee that every record reached the server: exporters can reject or retry data. Before `init()`, `flush()` resolves at once.
 
 ## Navigation and connectivity
 
-The SDK handles `visibilitychange` and `pagehide`. It closes a streaming replay segment, queues uploads while the page can still send them, and checkpoints telemetry for the next page of the same session. Browser termination, blocked storage, storage quotas, and the browser's keepalive body limit can still cause data loss.
+The SDK handles `visibilitychange` and `pagehide`. It closes a streaming replay segment, uploads the pending performance metrics, sends what is queued while the page can still send it, and checkpoints telemetry for the next page of the same session. Browser termination, blocked storage, storage quotas, and the browser's keepalive body limit can still cause data loss.
 
-With `buffer.persist: true`, failed OTLP batches wait in IndexedDB and retry with backoff while the page remains open, on connectivity recovery, and on later pages. Replay uploads have a separate bounded retry queue in memory. See the [buffer reference](/learn/remote-config/reference#buffer) for retention limits.
+With `buffer.persist: true`, the default, failed OTLP batches wait in IndexedDB and retry with backoff while the page remains open, on connectivity recovery, and on later pages. Replay uploads have a separate bounded retry queue in memory. See the [buffer reference](/learn/remote-config/reference#buffer) for retention limits.
 
 For an application-controlled redirect, await `flush()` before changing location:
 
@@ -44,9 +44,9 @@ import { shutdown } from "@tracewayapp/frontend";
 await shutdown();
 ```
 
-Shutdown closes the session's current replay segment, flushes queued telemetry, stops polling and retry timers, and removes instrumentation. Call `init()` again to create a fresh client.
+Shutdown reports the session's end and closes its current replay segment, flushes queued telemetry and metrics, stops polling and retry timers, and removes instrumentation. A later `init()` creates a fresh client; await `shutdown()` before calling it. Without a shutdown, a second `init()` is ignored. A new client in the same tab continues the session when it starts within the session's inactivity timeout.
 
-Initialize once in a single-page application. For server-rendered applications, initialize on the browser side only. The framework wrappers handle their respective mount lifecycles.
+Initialize once in a single-page application. In a server-rendered application the SDK only does work in the browser: on the server `init()` starts nothing and captures are ignored. The framework wrappers handle their respective mount lifecycles; follow each guide on where to call them (the Svelte setup, for example, must also run during server rendering).
 
 ## Timing options
 
@@ -54,4 +54,4 @@ Initialize once in a single-page application. For server-rendered applications, 
 init(connectionString, { exportDelayMs: 500 });
 ```
 
-SDK 1.x's `debounceMs` and `retryDelayMs` options were removed in 2.x. The exporter delay is separate from buffering, capture duration, and the OpAMP polling interval.
+SDK 1.x's `debounceMs` and `retryDelayMs` options were removed in 2.x. The exporter delay is separate from buffering, capture duration, the metric upload interval (`collection.metrics.flushSeconds`), and the OpAMP polling interval.

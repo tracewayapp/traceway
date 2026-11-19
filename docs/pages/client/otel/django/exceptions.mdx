@@ -51,15 +51,16 @@ def process_order(request, order_id):
     try:
         _process_order(order_id)
     except Exception as exc:
-        span.record_exception(exc, attributes={
+        span.set_attributes({
             "order.status": "failed",
             "retry.count": int(request.headers.get("x-retry", 0)),
         })
+        span.record_exception(exc)
         span.set_status(Status(StatusCode.ERROR, str(exc)))
         raise
 ```
 
-The `attributes={...}` payload passed to `record_exception` is attached to the exception event itself, not the span.
+The Issue gets these fields from the span that recorded the exception.
 
 ## Adding Context to the Auto-Capture (Middleware)
 
@@ -109,10 +110,11 @@ class PaymentService:
         try:
             self.gateway.charge(customer_id, amount)
         except Exception as exc:
-            span.record_exception(exc, attributes={
+            span.set_attributes({
                 "customer.id": customer_id,
                 "payment.amount": amount,
             })
+            span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))
             raise
 ```
@@ -138,11 +140,12 @@ def withdraw(request):
     try:
         _withdraw(request)
     except InsufficientFundsError as exc:
-        span.record_exception(exc, attributes={
+        span.set_attributes({
             "account.id": exc.account_id,
             "amount.requested": exc.requested,
             "amount.available": exc.available,
         })
+        span.record_exception(exc)
         span.set_status(Status(StatusCode.ERROR, str(exc)))
         raise
 ```

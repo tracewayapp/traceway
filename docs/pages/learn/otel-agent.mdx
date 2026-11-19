@@ -22,7 +22,7 @@ The **Traceway OTel Agent** is a tiny, pre-configured OpenTelemetry Collector th
 
 ### Grab a project token
 
-Open your Traceway dashboard → the project you want metrics to land in → **Settings** → copy the **project token**. You'll pass it to the installer on the next step.
+Open your Traceway dashboard → the project you want metrics to land in → **Connection** → copy the token from the OTLP authorization header. Pass just the token value to the installer.
 
 ### Run the installer on your server
 
@@ -97,7 +97,7 @@ curl -fsSL https://install.tracewayapp.com/install.sh | \
 
 Re-running the installer with the same env vars upgrades in place.
 
-Note that it also overwrites `config.yaml` with the release default. If you edit that file by hand, pin `TRACEWAY_VERSION` first so an upgrade cannot swap the config under you unnoticed.
+Note that it also overwrites `config.yaml` with the release default. If you edit that file by hand, back up your changes and reapply them after reinstalling, including when you pin the agent version.
 
 ## Uninstall
 

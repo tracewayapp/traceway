@@ -36,7 +36,7 @@ With `http_server` on, these arrive without any code:
 
 The other subsystems add `messaging.process.duration` and `messaging.client.consumed.messages` for Messenger, `db.client.operation.duration` for Doctrine, and `http.client.request.duration` for outgoing HttpClient calls.
 
-Traceway splits every histogram into an `.avg` and a `.count` series, so `http.server.request.duration` shows up in the dashboard as `http.server.request.duration.avg` and `http.server.request.duration.count`. See [OTel metrics](/client/otel/metrics#histogram-handling).
+Traceway stores bucketed histograms under the instrument name for percentile queries. Explicit-bucket histograms also produce average and count series. See [OTel metrics](/client/otel/metrics#histogram-handling).
 
 ## Recording Your Own Metrics
 

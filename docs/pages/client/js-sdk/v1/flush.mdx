@@ -3,7 +3,7 @@
 import { Callout } from "nextra/components";
 
 <Callout type="info">
-  This page covers the stable 1.x browser SDK, which `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs today. The 2.x SDK, with [remote SDK config](/learn/remote-config), is in beta: see [Flush & Lifecycle](/client/js-sdk/flush) for its version of this page.
+  This page covers the legacy 1.x browser SDK. Since 2.0.0, `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs 2.x, so pin `@1` to stay on this version. See [Flush & Lifecycle](/client/js-sdk/flush) for the current version of this page, and [Migrating from 1.x to 2.x](/client/js-sdk/migration) to upgrade.
 </Callout>
 
 Understanding the SDK's batching behavior and how to control it.
@@ -20,58 +20,19 @@ This means events are not sent immediately. For most applications, this is the d
 
 ## flush()
 
-Force-send all pending events immediately:
+Use `flush()` when the page is finished recording, for example immediately before an application-controlled redirect or at the end of a test. In 1.x it stops the replay recorder, removes session lifecycle listeners, closes an always-on session, and attempts to send the pending batch. Let the normal batch timer handle errors when the user will keep interacting with the page.
 
 ```javascript
-import { flush } from "@tracewayapp/frontend";
+import { captureMessage, flush } from "@tracewayapp/frontend";
 
-// Send all pending events now
-await flush();
-```
-
-## When to Use flush()
-
-### Before Page Unload
-
-```javascript
-window.addEventListener("beforeunload", () => {
-  flush();
-});
-```
-
-Note: Due to browser limitations, `flush()` during `beforeunload` may not always complete. Use the [Beacon API](https://developer.mozilla.org/en-US/docs/Web/API/Beacon_API) pattern if critical events must be sent.
-
-### After Critical Errors
-
-```javascript
-try {
-  criticalOperation();
-} catch (error) {
-  captureException(error);
-  await flush(); // Ensure this error is sent immediately
-  showErrorPage();
-}
-```
-
-### Before Redirects
-
-```javascript
 async function handleLogout() {
   captureMessage("User logged out");
-  await flush(); // Send before redirect
+  await flush(2000);
   window.location.href = "/login";
 }
 ```
 
-### In Tests
-
-```javascript
-it("should capture errors", async () => {
-  captureException(new Error("Test error"));
-  await flush(); // Ensure event is sent before assertions
-  // ... verify event was received
-});
-```
+The optional timeout bounds the caller’s wait. An upload can fail and be queued for retry, or another upload may already be running. To verify delivery in a test, check the received report.
 
 ## Lifecycle Considerations
 

@@ -106,9 +106,7 @@ The matching key is the Mach-O UUID (the debug ID). Because the frame offset is 
 
 1. **Reconstruct the program counter.** The frame's offset is added to the dSYM's `__TEXT` segment VM address, `pc = dSYM __TEXT VMAddr + offset`. That VM address is what the lookup keys on, and it is the same regardless of where the image was slid at runtime.
 2. **Look up the PC.** A binary search over the resolver's range table finds the PC's entry and its span of frames. DWARF inline information means one machine address can stand for several source frames, so a single `#N` offset can expand into a chain of inlined calls, innermost first.
-3. **Render.** Resolved frames print as `#N  functionName (file:line:col)`. A frame with no match (a PC outside any known range, or a dSYM that was not uploaded) keeps its raw form, so the trace is never worse than it arrived.
-
-If no dSYM is found for the build's UUID, every frame falls back to its raw offset form.
+3. **Render.** Resolved frames print as `#N  functionName (file:line:col)`. For an unresolved frame, Traceway prints the image name and hexadecimal offset, for example `#0  MyApp+0xa1340`. When the image name is missing, it uses the UUID prefix.
 
 ## The flat format
 

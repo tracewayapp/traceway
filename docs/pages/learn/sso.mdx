@@ -381,7 +381,7 @@ The OAuth callback redirects back to `/login?error=<code>` when something goes w
 ## Security notes
 
 - The callback hands the JWT back via the URL fragment (`#token=…`), so it never reaches the backend logs or a TLS-terminating proxy as a query string.
-- The transient cookie used by gothic during the round-trip is `HttpOnly`, `SameSite=Lax`, and 10-minute lifetime. It only carries the OAuth state and PKCE verifier, never a long-lived session.
+- The transient cookie used by gothic during the round-trip is `HttpOnly`, `SameSite=Lax`, and 10-minute lifetime. It contains a signed session ID. The transient provider session is stored in the main database.
 - `OAUTH_SESSION_SECRET` rotates the cookie signing key. Rotating it invalidates any in-flight OAuth round-trips but does not affect issued JWTs (those are signed with `JWT_SECRET`).
 - An OAuth-only user has an empty password hash. Password login for them always fails: `CheckPassword` short-circuits on empty hashes.
 - Role mapping (`OIDC_ROLE_MAP`) never elevates a user to `owner`; that role can only be assigned manually by an existing owner.

@@ -1,14 +1,11 @@
-# Set up remote config (Beta)
+# Set up remote config
 
 import { Callout, Steps } from "nextra/components";
-import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
-
-<BrowserSdkBeta />
 
 This page takes a browser app from install to its first rule, trigger and capture. How the pieces fit together is on [Remote SDK Config](/learn/remote-config); every field of the settings document is in the [settings reference](/learn/remote-config/reference).
 
 <Callout type="info">
-  You need `@tracewayapp/frontend` 2.x (beta), or the React, Vue, Svelte or jQuery wrapper of the same version, and a React, Vue, Svelte or jQuery project in Traceway. The **Data Collection** page is shown for those project types and for Flutter projects, which use the Flutter SDK's own setup.
+  You need `@tracewayapp/frontend` 2.0 or later, or the React, Vue, Svelte or jQuery wrapper of the same version, and a React, Vue, Svelte or jQuery project in Traceway. The **Data Collection** page is shown for those project types only.
 </Callout>
 
 <Steps>
@@ -16,15 +13,15 @@ This page takes a browser app from install to its first rule, trigger and captur
 ### Install and initialize the SDK
 
 ```bash
-npm install @tracewayapp/frontend@beta
+npm install @tracewayapp/frontend
 ```
 
-For a framework wrapper, install `@tracewayapp/react@beta`, `@tracewayapp/vue@beta`, `@tracewayapp/svelte@beta` or `@tracewayapp/jquery@beta` instead. Without `@beta`, npm installs the stable 1.x SDK, which never polls for settings.
+For a framework wrapper, install `@tracewayapp/react`, `@tracewayapp/vue`, `@tracewayapp/svelte` or `@tracewayapp/jquery` instead. The legacy 1.x SDK never polls for settings: an app still on it has to [upgrade](/client/js-sdk/migration) first.
 
 ```ts
 import * as Traceway from "@tracewayapp/frontend";
 
-Traceway.init("<project-token>@https://traceway.example.com", {
+Traceway.init("your-token@https://traceway.example.com/api/report", {
   serviceName: "shop-web",        // service.name, defaults to the page's host name
   version: "2.4.1",               // service.version: rules target releases with it
   environment: "production",      // deployment.environment.name
@@ -36,7 +33,7 @@ That is all remote config needs: it is on by default (`remoteConfig: true`). The
 
 Set `version` and `environment`. They are what most rules target, and without them you cannot tell a canary from production.
 
-The React, Vue, Svelte and jQuery wrappers take the same options. The React, Vue and Svelte wrappers re-export every function used below (`setAttribute`, `refreshConfig`, `track`, `recordAction`, `getInstanceId`, ...). The jQuery wrapper (`TracewayJQuery` on the CDN) re-exports the same functions except `recordAction` (as of 2.1.0): use `track()` there.
+The React, Vue, Svelte and jQuery wrappers take the same options. The React, Vue and Svelte wrappers re-export every function used below (`setAttribute`, `refreshConfig`, `track`, `recordAction`, `getInstanceId`, ...). The jQuery wrapper (`TracewayJQuery` on the CDN) re-exports the same functions except `recordAction`: use `track()` there.
 
 ### Decide what the page may never send
 
@@ -71,7 +68,7 @@ All of them default to `true`. Use them for data your app must never collect, su
 Rules and captures can only target what the browser reports. Set the user once they sign in, then ask for the settings that apply to them right away instead of at the next poll:
 
 ```ts
-Traceway.setAttribute("user.id", user.email);
+Traceway.setAttribute("user.id", user.id);
 await Traceway.refreshConfig();
 ```
 
@@ -209,7 +206,7 @@ In the browser, `Traceway.getInstanceId()` returns the device id to capture or p
 
 | Symptom | Check |
 |---|---|
-| A rule does not apply | Wait for the next poll, focus the tab, or call `refreshConfig()`. Use **Preview** with the client's attributes: a condition on `user.id` only matches after `setAttribute("user.id", ...)`. Check that `init()` does not turn the signal off. A `403` on `/api/otel/v1/opamp` means the connection string carries the token of a backend or mobile project, and the SDK stops polling: use the browser project's token |
+| A rule does not apply | Wait for the next poll, focus the tab, or call `refreshConfig()`. Use **Preview** with the client's attributes: a condition on `user.id` only matches after `setAttribute("user.id", ...)`. Check that `init()` does not turn the signal off. A `403` on `/api/otel/v1/opamp` means the connection string carries the token of a backend or mobile project, and the SDK stops polling: use the browser project's token. A `404` means the server predates remote config: the SDK stops polling and, unless `transport: "otlp"` is set, sends its data through the legacy protocol that server understands |
 | A capture does not start | The target must match exactly what the browser reports: its instance id, `user.id` or session id. The capture starts at the next poll or tab focus |
 | A trigger fires but little is uploaded | A flush uploads only what was buffered: a signal that is off has nothing to upload. The buffer keeps 10 minutes or 2 MB by default (`buffer` in the [settings reference](/learn/remote-config/reference#buffer)) |
 | Nothing arrives at all | Look for a kill switch rule that matches the client, and for a plan without the data you expect. A 401 on the OpAMP endpoint stops polling: check the project token |

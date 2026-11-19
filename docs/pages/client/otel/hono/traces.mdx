@@ -119,7 +119,7 @@ async function processPayment(orderId: string) {
 
 ## Background Jobs
 
-A cron job or queue consumer runs outside any request, so `@hono/otel` never sees it and the span you create is a root span. Root spans need `kind: SpanKind.CONSUMER` or Traceway drops them. The full example is in the [Quick Start](/client/otel/hono#background-jobs).
+For a cron job or queue consumer outside a request, set `kind: SpanKind.CONSUMER` to list the operation under **Tasks**. See [Background jobs](/client/otel/hono#background-jobs).
 
 ## Outgoing HTTP Requests (Auto-Instrumented)
 

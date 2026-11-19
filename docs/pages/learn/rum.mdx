@@ -52,7 +52,7 @@ The consequences are the reason to build it this way:
 
 - **Cost follows dimensions, not traffic.** A stored row is one metric, one combination of dimensions and one minute. A million users on the same release, route and device class merge into the same rows as a hundred.
 - **Percentiles stay correct.** Buckets from every device add up, and a percentile is read from the merged buckets. Traceway never averages percentiles. Buckets are about 9% wide.
-- **No identity in the metrics.** A payload carries no session, user or device id and never a full URL. Routes are templates (`/orders/:id`). "Users affected" is counted by the device itself, once per browser profile per day.
+- **Metric dimensions group visits.** Built-in dimensions use route templates such as `/orders/:id` and omit user, session and device IDs. A retained exemplar carries a session ID so you can open the visit behind a poor measurement. "Users affected" is counted by the device itself, once per browser profile per day.
 - **Every session counts.** Because metrics do not depend on replay or on an error happening, a fast release and a slow one are compared on all of their traffic.
 - **A dying page still reports.** A payload sent while the page is closing is kept in the browser and sent once more on the next page load; the server recognizes the duplicate.
 
@@ -80,11 +80,11 @@ Triggers run in the browser and see every record, including those of a signal th
 
 The buffer is bounded so a page is never harmed by its own monitoring: identical errors within a second are suppressed, a client accepts at most 60 errors a minute, error clips have a 5 second cooldown and a limit of 20 per session, and a session uploads at most 50 MiB or 10,000 diagnostic events. Failed uploads are retried from the browser's storage for up to 24 hours.
 
-The modes, triggers and captures are set from the **Data Collection** page: see [Remote SDK Config](/learn/remote-config). The ring buffer, triggers and captures need the 2.x browser SDK.
+The modes, triggers and captures are set from the **Data Collection** page in the sidebar of a browser project: see [Remote SDK Config](/learn/remote-config). The ring buffer, triggers and captures need browser SDK 2.0 or later.
 
 ## Start with Web Performance
 
-Create a React, Vue, Svelte or jQuery project. Traceway assigns **Web Performance** immediately, before the first upload. Connect your [browser SDK](/client/js-sdk) and let it collect traffic; an empty chart on a new project means there is no matching data yet. The aggregated metrics path requires SDK 2.1 or later and a compatible server. Follow the SDK guide's current release-channel instructions; the 2.x docs currently use `@beta`.
+Create a React, Vue, Svelte or jQuery project. Traceway assigns **Web Performance** immediately, before the first upload. Connect your [browser SDK](/client/js-sdk) and let it collect traffic; an empty chart on a new project means there is no matching data yet. The aggregated metrics need browser SDK 2.0 or later (`@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version); an app on the legacy 1.x SDK sends none, see the [migration guide](/client/js-sdk/migration).
 
 ![Web Performance with real browser telemetry from a controlled storefront demo](/rum/dashboard.png)
 
@@ -105,7 +105,7 @@ Start with a release comparison, then narrow by OS or country. Use a breakdown t
 
 ![The same dashboard narrowed to the slow demo release on Android](/rum/release.png)
 
-**Metric Threshold** alerts detect a bad current experience. **Metric Release Regression** alerts compare a sufficiently observed new release with an earlier one. The default comparison can adjust for device and OS mix; **Compare Within** compares matching segments. Minimum-count gates and percentile confidence intervals use effective sample size, so one heavily weighted observation cannot pretend to be thousands of independent measurements. See [client metrics](/learn/client-metrics#alerts-and-slos).
+**Metric Threshold** alerts detect a bad current experience. **Release Regression** alerts compare a sufficiently observed new release with an earlier one. The default comparison can adjust for device and OS mix; **Compare Within** compares matching segments. Minimum-count gates and percentile confidence intervals use effective sample size, so one heavily weighted observation cannot pretend to be thousands of independent measurements. See [client metrics](/learn/client-metrics#alerts-and-slos).
 
 ## Make performance an objective
 
@@ -176,7 +176,7 @@ Use `tagFilters` to restrict an environment or population. For a trend, omit `wh
 
 ## Privacy and control
 
-- **Metrics carry no identity.** No session, user or device id, no full URL, and dimensions are bounded sets.
+- **Built-in metric dimensions omit identifiers.** Slow-session exemplars can include a session ID and the element associated with the measurement.
 - **Replay masks inputs by default**, and the detail of a healthy session never leaves the device.
 - **The app sets the outer limits.** What `init()` switches off (`sessionRecording: false`, `captureLogs: false`, ...) cannot be switched on from the server.
 - **No code runs from the server.** Collection rules are data: modes, numbers and matchers with a fixed set of operators.

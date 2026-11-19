@@ -20,7 +20,7 @@ This is dispatched by the trace, not configured per project: a browser exception
 
 ## The pipeline
 
-Whatever the language, resolution is four steps:
+For formats cached as `.tw` artifacts, resolution has four steps:
 
 1. **Fetch the raw debug info** for the build from a store.
 2. **Compile it into a resolver** and serialize that to a [`.tw` file](#the-tw-resolver-format). This is the expensive step, and it happens once per build artifact.
@@ -39,22 +39,17 @@ The structure is the same regardless of where the debug info came from:
 - A **range table** over the address space the runtime reports (a position in a generated file, a program counter in a code section), sorted by start. Each range points at the resolved frames it covers: file, line, column, and function. One range can carry several frames, because a single compiled address can stand for a chain of inlined calls.
 - **Interned string tables** for file and function names, so a name referenced across thousands of ranges is stored once.
 
-Because the ranges are sorted, a lookup is a single binary search. Because the layout is fixed and little-endian, opening a `.tw` validates its structure and then reads straight from the mapped pages, with no copying or decoding, and the OS page cache shares those pages across every process that maps the same file. Compiling the resolver (parsing the debug info, computing every range, interning every name) runs once at build time; opening the compiled result skips all of it.
+JavaScript and native lookups search sorted positions or address ranges. Android retracing searches sorted class and method tables. Because the layout is fixed and little-endian, opening a `.tw` validates its structure and then reads straight from the mapped pages, with no copying or decoding, and the OS page cache shares those pages across every process that maps the same file. Compiling the resolver (parsing the debug info, computing every range, interning every name) runs when the artifact is first built; opening the compiled result skips all of it.
 
 A `.tw` is a cache artifact, never the source of truth. It's versioned by a single integer with no migration path: bump the version and every existing file fails validation and is lazily rebuilt from its original debug info. Each language has its own `.tw` encoding tuned to its debug format; the per-language specifics are on the [JavaScript](/symbolicator/javascript), [Dart](/symbolicator/dart), [iOS](/symbolicator/ios), and [Android](/symbolicator/android) pages.
 
 ## Cache tiers
 
-A resolver is expensive to build and cheap to keep, so the engine caches the compiled `.tw`, not the raw debug info. A lookup walks the tiers from fastest to slowest:
+Traceway uses one local cache per backend process. In the default memory mode it keeps recently used artifacts on the heap. In disk mode it keeps a byte-bounded directory of `.tw` files, scans the directory on startup, and memory-maps a file when a trace needs it on Unix. Other platforms read the cached file into memory. Each trace releases the mapping after its frame lookups finish.
 
-1. **In-memory LRU.** Always present. A hit is a pure memory lookup.
-2. **Local `.tw` file** (disk tier only). Memory-mapped and opened with validation; on little-endian hosts the tables are used straight from the mapped pages with zero copying.
-3. **`.tw` from object storage.** A compiled artifact built earlier, by another instance or before a restart. In disk mode it's written to the local directory and then mapped; in memory mode it's opened on the heap.
-4. **Full rebuild** from the raw debug info. The finished resolver is serialized to `.tw` and written back to object storage, so an artifact is compiled once cluster-wide and every other instance downloads the compiled form instead of re-parsing.
+On a local miss, Traceway looks for a compiled artifact in blob storage. If it needs to build one, it reads the original debug info and writes the result back for future requests and other instances. Concurrent requests for the same key share a load within one process. Android memory mode caches a parsed R8 mapping directly. The collector uses its configured store for build inputs and keeps its compiled cache locally.
 
-Concurrent requests for the same key are deduplicated: the first builds, the rest park and receive the same resolver. The disk directory is itself an LRU bounded by bytes, survives restarts (it's scanned at startup), and deletes any `.tw` that fails validation so the rebuild path replaces it.
-
-Whether the disk tier earns its keep depends on your corpus size and churn. That's a tuning decision, covered with numbers on [Performance](/symbolicator/performance).
+See [Performance](/symbolicator/performance) for cache limits and measurements.
 
 ## The store
 

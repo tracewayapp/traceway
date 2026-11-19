@@ -14,7 +14,7 @@ The loop is three steps, and only the middle one is agent-specific:
 |------|---------|--------------|-------------|
 | **Prepare** | `tracewayapp/traceway/.github/actions/autofix-prepare` | Refuses issues from anyone but the channel's token owner, extracts the `Hash`, `Exception ID` and `Occurred at` fields from the issue body with strict regexes, copies the [traceway skill](https://github.com/tracewayapp/traceway/tree/main/skills/traceway) outside the working tree, installs and logs in the CLI, and writes the prompt from the validated fields only. Outputs `proceed`, `hash`, `prompt`, `prompt_file`, `skills_dir`, `report_file` | Read-only Traceway token |
 | **Agent** | Your choice | Reads the prompt (and `SKILL.md`), investigates with `traceway` read commands, edits the working tree if a fix is warranted, and writes the report file | The same read-only token, no GitHub credential |
-| **Publish** | `tracewayapp/traceway/.github/actions/autofix-publish` | Validates the report against the tree (see [What the publish step refuses](#what-the-publish-step-refuses)), then opens the PR (`traceway/fix-<hash>-<run>`, body `Fixes #N` + the report) or comments the analysis, and archives the exception | GitHub write token, Traceway write token |
+| **Publish** | `tracewayapp/traceway/.github/actions/autofix-publish` | Validates the report against the tree (see [What the publish step refuses](#what-the-publish-step-refuses)), then opens the PR (`traceway/fix-<hash>-<run>`, body `Fixes #N` + the report) or comments the analysis | GitHub write token |
 
 The report file is the whole interface between the agent and the publish step:
 
@@ -30,8 +30,8 @@ The security model is the split, not the agent's tool allowlist: the agent step 
 
 The reusable workflow composes the three steps, with Claude Code as the tested agent.
 
-1. **Create two Traceway bot users** (or one; see [Credentials](#credentials)) and mint a [personal access token](/learn/cli-auth#personal-access-tokens) for each.
-2. **Add repository secrets**: `TRACEWAY_TOKEN` (read-only), `TRACEWAY_PUBLISH_TOKEN` (write, optional: without it the exception is never archived), `GH_PUSH_TOKEN` (a GitHub token that can push branches, open pull requests and comment; the built-in `github.token` cannot open a pull request that triggers other workflows), and `ANTHROPIC_API_KEY`.
+1. **Create a Traceway bot user** with read access to the project and mint a read-only [personal access token](/learn/cli-auth#personal-access-tokens).
+2. **Add repository secrets**: `TRACEWAY_TOKEN` (read-only), `GH_PUSH_TOKEN` (a GitHub token that can push branches, open pull requests and comment; the built-in `github.token` cannot open a pull request that triggers other workflows), and `ANTHROPIC_API_KEY`.
 3. **Add a repository variable** `TRACEWAY_PROJECT_ID` with the project's id (`traceway projects list`). It has to be a variable rather than a secret, and the two fail differently: `with:` cannot reference the `secrets` context at all, so a caller that tries is rejected during workflow validation with no job and no logs, while an undefined `vars.TRACEWAY_PROJECT_ID` quietly resolves to an empty string and the prepare step stops with an error naming this variable.
 4. **Point the GitHub channel at the repository** with a label such as `traceway`, and create the caller workflow:
 
@@ -57,6 +57,7 @@ jobs:
       issue_number: ${{ github.event.issue.number || inputs.issue_number }}
       allowed_authors: the-github-login-that-owns-the-channel-token
       project_id: ${{ vars.TRACEWAY_PROJECT_ID }}
+      archive_on_open: false
       # traceway_url: https://traceway.example.com   # self-hosted
     secrets: inherit
 ```
@@ -105,7 +106,7 @@ jobs:
           hash: ${{ steps.prepare.outputs.hash }}
           github_token: ${{ secrets.GH_PUSH_TOKEN }}
           report_file: ${{ steps.prepare.outputs.report_file }}
-          traceway_token: ${{ secrets.TRACEWAY_PUBLISH_TOKEN }}
+          archive_on_open: false
           project_id: ${{ vars.TRACEWAY_PROJECT_ID }}
 ```
 
@@ -117,14 +118,14 @@ The prompt's first instruction is to read `<skills_dir>/traceway/SKILL.md`, so a
 
 ## Credentials
 
-The agent step should not be able to change anything in Traceway, and the publish step needs to archive one exception. The least-privilege recipe is two bot users in the organization:
+Give the agent a read-only bot credential. A custom publish step that archives an exception needs its own write credential and [organization Agent Access](/learn/agent-write-access).
 
 | Secret | User | Role | Used by |
 |--------|------|------|---------|
 | `TRACEWAY_TOKEN` | `autofix-reader` | Organization role `readonly` | Prepare (login) and the agent step |
 | `TRACEWAY_PUBLISH_TOKEN` | `autofix-publisher` | Organization role `readonly` with a per-project override to `user` on the target project ([Settings → Team Members](/learn/projects)) | Publish, to archive the exception |
 
-One token for both works and is documented as weaker: the agent step could then archive exceptions, whatever its tool allowlist says. Neither token needs to be an admin, and neither user needs a password login.
+Keep the write token confined to the custom publish step. Neither user needs an admin role.
 
 `GH_PUSH_TOKEN` is a fine-grained GitHub token for the repository with **Contents**, **Pull requests** and **Issues** set to read and write. The prepare step reads the issue with the workflow's own `github.token`.
 
@@ -139,6 +140,6 @@ Each refusal comments the reason on the issue and fails the run, and the run's a
 
 ## Caveats
 
-- The exception is archived when the pull request **opens**, not when it merges. Set `archive_on_open: false` if a closed-unmerged PR would otherwise hide a live error; archiving on merge is planned.
+- The bundled publish action tries to archive after opening a PR when `archive_on_open` is true and a publish token is set. It calls the read-only `traceway` CLI, so the archive step fails with current CLI editions and the PR stays open. The examples disable that step. To archive from custom CI, use `traceway-write exceptions archive` in the publish step.
 - Two runs on the same input can differ. The workflow serializes runs per issue (`concurrency`), but does not yet dedup across issues for the same hash.
 - The agent is told to follow the repository's contribution rules, but that is a prompt-level instruction; review the diff as you would any contributor's.

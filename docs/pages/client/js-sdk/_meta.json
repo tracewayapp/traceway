@@ -8,5 +8,6 @@
   "sourcemap-upload": "Source Maps",
   "debug-ids": "Debug IDs",
   "session-replay": "Session Replay",
-  "v1": "SDK 1.x (stable)"
+  "migration": "Migrating from 1.x",
+  "v1": "SDK 1.x (legacy)"
 }

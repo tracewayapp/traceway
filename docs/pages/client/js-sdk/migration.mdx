@@ -1,0 +1,66 @@
+# Migrating from 1.x to 2.x
+
+The 2.x browser SDK uses OpenTelemetry for logs, request spans and [performance metrics](/learn/client-metrics). Traceway can manage what each browser collects [remotely](/learn/remote-config), and session replay is stored separately from the rest of the telemetry.
+
+This guide applies to `@tracewayapp/frontend` and its React, Vue, Svelte and jQuery wrappers. `@tracewayapp/react-native` shares the version number but keeps its own transport and API, so a React Native app has nothing to migrate.
+
+## Upgrade the packages
+
+Upgrade every Traceway package your application installs directly to the same version. A vanilla browser app needs only the frontend package. A framework app installs its wrapper, which pulls in the matching frontend SDK.
+
+```bash
+npm install @tracewayapp/frontend@2
+# or @tracewayapp/react@2, @tracewayapp/vue@2, @tracewayapp/svelte@2, @tracewayapp/jquery@2
+```
+
+With a CDN script, change the pinned major from `@1` to `@2`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2/dist/traceway.iife.global.js"></script>
+```
+
+Your project token and connection string stay the same, including a URL that ends in `/api/report`.
+
+## What to change
+
+| If your 1.x app uses… | What to do in 2.x |
+| --- | --- |
+| `init(connectionString, options)` or a framework provider | Keep the existing connection string. Initialize once per page: a second `init()` is ignored. To initialize again with different options, call `await shutdown()` first. |
+| `captureException`, `captureMessage`, `recordAction` or session attributes (`setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes`) | Keep these calls. Pass per-error string attributes as the second argument to `captureException(error, attributes)` or `captureExceptionWithAttributes(error, attributes)`. Remove the `distributedTraceId` option from both calls. To tie several steps of one user action together, use `startInteraction(name)` and its `run`, `captureException` and `end` methods. |
+| `traceway-trace-id`, `DISTRIBUTED_TRACE_HEADER`, `getActiveDistributedTraceId()` or `createAxiosInterceptor()` | Remove the custom header and the interceptor. The SDK records `fetch` and XHR (including Axios) as spans and sends the W3C `traceparent` header on same-origin requests. For a cross-origin API, add its URL pattern to `propagateTraceHeaderCorsUrls` and allow `traceparent` in the API's CORS policy. See [Distributed Tracing](/client/js-sdk/distributed-tracing). |
+| `installGlobalHandlers`, `installConsoleInstrumentation`, `installNavigationInstrumentation` or `formatBrowserStackTrace` | Let `init()` install the handlers and pass the original error to `captureException()`. Import report types such as `CollectionFrame` from `@tracewayapp/core` if you still consume that format. |
+| A `beforeCapture` callback that reads `stackTrace` | Read `type`, `message`, `stack` and `attributes` from the callback argument. Return `false` to drop the event. `ignoreErrors` matches the error type and message. |
+| `eventsWindowMs`, `eventsMaxCount`, `debounceMs` or `retryDelayMs` | Set retention with `collection.buffer.maxAgeSeconds` (seconds) and `collection.buffer.maxBytes` (bytes). Use `exportDelayMs` for log and span batching. The SDK manages retries of failed exports itself. |
+| `recordAllSessions` or error-triggered replay | Keep `recordAllSessions: true` to stream every session's replay. Without it, errors and messages are sent right away, most breadcrumbs and the replay stay on the device, and an error uploads up to ten minutes of breadcrumbs and a 30-second clip. |
+| `flush()` before a redirect or after an error | Keep it. In 2.x `flush()` only sends what is queued and no longer stops the recorder or ends the session. See [Flush & Lifecycle](/client/js-sdk/flush). |
+| A self-hosted server that only accepts 1.x reports | Nothing by default: the SDK probes the server and falls back to the 1.x report protocol when it finds no remote-config endpoint. For a server you know is older, set `transport: "legacy"` to skip the probe. Remote rules, performance metrics and the session timeline need a current Traceway server. |
+
+All options are listed on [Initialization](/client/js-sdk/initialization).
+
+## What behaves differently
+
+- **Collection has modes.** Each signal either streams, stays buffered on the device, or is switched off. A trigger or a capture releases buffered history. You set the modes in `init()` with `collection`, or from the dashboard's **Data Collection** page, which is on by default (`remoteConfig: true`). See [Remote SDK Config](/learn/remote-config).
+- **Sessions are reported for every visit.** 1.x reported a session only with `recordAllSessions`. 2.x reports session start and end unless you set `sessions: false`; the replay still stays on the device until something asks for it.
+- **Performance metrics are new.** Web vitals, route changes and requests are aggregated on the device and uploaded every five minutes and when the page is hidden, whatever the mode of the detailed events. `flush()` sends pending metrics too. Use `track()` for a named event, `count()` for a counter and `metric()` for a distribution. See [Client Metrics](/learn/client-metrics).
+- **Requests join backend traces.** `fetch` and XHR calls are OpenTelemetry spans that carry `traceparent`, so a backend instrumented with OpenTelemetry continues the same trace.
+- **Issues regroup once.** 2.x sends the browser's raw stack, which Traceway normalizes differently from the text 1.x formatted on the device. Existing issues from a 1.x app start new groups after the upgrade.
+
+## Choose a setup
+
+2.x can run in three ways. Most apps keep the first one, which needs no option beyond the connection string.
+
+1. **Everything on one Traceway server.** `init("token@https://traceway.example.com/api/report", { serviceName, environment })`. The browser polls Traceway for collection rules and sends telemetry and replay to the same host.
+2. **Issues and replay on Traceway, other telemetry elsewhere.** Add `telemetry: { url }` to send ordinary logs, request spans and metrics to your own OTLP/HTTP receiver, while exceptions, messages, sessions and replay keep going to Traceway.
+3. **No Traceway server.** Pass a single options object, `init({ serviceName, telemetry, collection })`, to export everything over OTLP with a local collection policy and no remote config.
+
+[Initialization](/client/js-sdk/initialization) has the options for each.
+
+## Staying on 1.x
+
+1.x keeps working against current Traceway servers. Because `latest` on npm is now 2.x, pin the major to stay on it:
+
+```bash
+npm install @tracewayapp/frontend@1
+```
+
+The [SDK 1.x reference](/client/js-sdk/v1) documents that version.

@@ -40,7 +40,7 @@ Any language with an OTel SDK can export to Traceway. Here are the most common o
 | Node.js | [opentelemetry-js](https://github.com/open-telemetry/opentelemetry-js) | `npm install @opentelemetry/sdk-node`. See [Node.js guide](/client/otel/nodejs), [NestJS guide](/client/otel/nestjs), [Hono guide](/client/otel/hono), [Next.js guide](/client/otel/nextjs) |
 | PHP / Symfony | [opentelemetry-php](https://github.com/open-telemetry/opentelemetry-php) | `composer require open-telemetry/sdk`. See [Symfony guide](/client/otel/symfony) |
 | PHP / Laravel | [opentelemetry-php](https://github.com/open-telemetry/opentelemetry-php) | `composer require keepsuit/laravel-opentelemetry`. See [Laravel guide](/client/otel/laravel) |
-| Cloudflare Workers | [Workers OTel export](https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/) | Built-in, traces and logs only, Workers Paid. See [Cloudflare guide](/client/otel/cloudflare) |
+| Cloudflare Workers | [Workers OTel export](https://developers.cloudflare.com/workers/observability/exporting-opentelemetry-data/) | Built-in Workers traces and logs. See [Cloudflare guide](/client/otel/cloudflare) |
 
 Every OTel ecosystem ships the API, the SDK and the OTLP exporter as separate packages. If you install only the SDK, you get an app that records spans and throws them away. The install commands above cover the exporter too.
 
@@ -59,7 +59,7 @@ Every OTel ecosystem ships the API, the SDK and the OTLP exporter as separate pa
 | **Max body size** | 10 MB, applied to the compressed body **and** to the decompressed output. Gzip does not raise it. A larger export is rejected with `413` |
 | **Auth failure** | `401` with an empty body. The header value must literally start with `Bearer ` |
 
-Traceway serves OTLP over HTTP only. There is no gRPC endpoint, so set your exporter's protocol to `http/protobuf` (or `http/json`) explicitly. Several SDKs default to gRPC when the variable is unset: with `OTEL_TRACES_EXPORTER=otlp` and no `OTEL_EXPORTER_OTLP_PROTOCOL`, the Python SDK resolves to gRPC, and the Java agent does the same. The failure is silent. The app runs, exits 0, prints no warning, and every export lands nowhere.
+Traceway serves OTLP over HTTP only. There is no gRPC endpoint, so set your exporter's protocol to `http/protobuf` (or `http/json`) explicitly. Several SDKs default to gRPC when the variable is unset: with `OTEL_TRACES_EXPORTER=otlp` and no `OTEL_EXPORTER_OTLP_PROTOCOL`, the Python SDK resolves to gRPC. The failure is silent. The app runs, exits 0, prints no warning, and every export lands nowhere.
 
 ```bash
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
@@ -67,7 +67,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 
 Set that wherever you configure the exporter. The one exception is PHP, which needs `http/json` instead.
 
-An export larger than 10 MB after decompression is rejected outright with `413 Request Entity Too Large` and `{"error":"request body exceeds the 10MB limit"}`. Nothing is truncated and nothing is partially ingested. OTLP exporters treat 4xx as permanent and drop the batch instead of retrying, so that data is lost. Keep batches comfortably under the limit by capping the exporter's batch size: `maxExportBatchSize` in the JS SDK, `max_export_batch_size` in Python, `send_batch_max_size` on the Collector's `batch` processor. The SDK default of 512 spans per export is far below the limit.
+An export larger than 10 MB after decompression is rejected outright with `413 Request Entity Too Large` and `{"error":"request body exceeds the size limit"}`. Nothing is truncated and nothing is partially ingested. OTLP exporters treat 4xx as permanent and drop the batch instead of retrying, so that data is lost. Keep batches comfortably under the limit by capping the exporter's batch size: `maxExportBatchSize` in the JS SDK, `max_export_batch_size` in Python, `send_batch_max_size` on the Collector's `batch` processor. The SDK default of 512 spans per export is far below the limit.
 
 If ingest is saturated, Traceway answers `503` with a `Retry-After` header instead. That one is retryable, and every OTLP exporter and the Collector will back off and resend.
 
@@ -195,12 +195,12 @@ What lands in Traceway:
 |----------------|-------------------|
 | The root SERVER span with `http.route` | **Endpoints**, as `GET /orders/:id`, with its duration and status |
 | The child CLIENT span | The **Spans** waterfall on that endpoint's detail page, labelled with the SQL from `db.query.text` |
-| The `logger.emit` call | The **Logs** card on the same page, **This Trace** tab |
+| The `logger.emit` call | The **Logs** panel for the same trace |
 | Anything you `recordException` on either span | **Issues**, linked back to this endpoint |
 
 The glue is that the log record carries the root span's `trace_id`, and a root span's Endpoint row is keyed by that same trace id.
 
-Note the `SpanKind.SERVER` on the outer span. With the default `INTERNAL` kind and no HTTP attributes, the span is dropped and none of this appears. See [Traces](/client/otel/traces) for the full classification rules.
+The server span’s HTTP attributes make this request an Endpoint. See [Traces](/client/otel/traces) for the classification rules.
 
 ## Quick Start: Spring Boot (Java Agent)
 
@@ -222,7 +222,7 @@ Set `-Dotel.exporter.otlp.protocol=http/protobuf` explicitly even though it is t
 
 **All three signals are exported by this command.** `otel.traces.exporter`, `otel.metrics.exporter` and `otel.logs.exporter` all default to `otlp`, so JVM and HTTP server metrics land on your dashboards and your Logback or Log4j output lands in **Logs**, with no extra flags and no appender to register. If you deliberately want traces only, add `-Dotel.metrics.exporter=none -Dotel.logs.exporter=none`.
 
-Leave `otel.exporter.otlp.metrics.default.histogram.aggregation` at its default `EXPLICIT_BUCKET_HISTOGRAM`. Traceway reads explicit-bucket histograms and exposes each one as `<name>.avg` and `<name>.count`. Base-2 exponential histograms are not read and are dropped without an error, so `http.server.request.duration` and the JVM latency histograms would silently disappear from your dashboards.
+Traceway stores bucketed histograms under the instrument name for percentile queries. Explicit-bucket histograms also produce average and count series. See [OTel metrics](/client/otel/metrics#histogram-handling).
 
 In a container or a Kubernetes manifest, use the environment-variable form instead. Same settings, uppercased, with `.` and `-` replaced by `_`:
 
@@ -241,11 +241,11 @@ What lands where, with the command above:
 | Spring Boot | Traceway |
 |-------------|----------|
 | Controller requests (`@GetMapping("/orders/{id}")`) | **Endpoints**, named `GET /orders/{id}`, because the Spring Web MVC instrumentation sets `http.route` |
-| `@Scheduled` jobs, `@Async` work, queue consumers | **Tasks** |
+| Queue consumers instrumented with CONSUMER spans | **Tasks**. For scheduled work that emits a plain INTERNAL span, add explicit task instrumentation. |
 | JDBC, HTTP client and Redis calls inside a request | Child spans on the trace detail page |
 | Uncaught controller exceptions | **Issues**, with the full JVM stack trace |
 | Logback / Log4j output | **Logs**, correlated to the trace that produced it |
-| JVM and HTTP server metrics (`jvm.memory.used`, `http.server.request.duration`) | **Metrics** and dashboard widgets. Histograms appear as `<name>.avg` and `<name>.count` |
+| JVM and HTTP server metrics (`jvm.memory.used`, `http.server.request.duration`) | **Metrics** and dashboard widgets, including histogram percentiles |
 
 Exceptions that reach the servlet container are recorded as span events and show up in **Issues**. Traceway groups them by the exception class **plus the normalized frame list**. The message is stripped and Java, Kotlin and Scala line numbers are removed, so one failure keeps a single issue across redeploys and across differing error messages. A different call site, or a frame added or removed in the same path, is a different issue by design.
 
@@ -319,15 +319,15 @@ curl -i -X POST https://<your-instance>/api/otel/v1/traces \
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Background job or cron never appears on Tasks | Its root span uses the default `SpanKind.INTERNAL`, so it is discarded | Set `kind: SpanKind.CONSUMER`, or add a `console.command` attribute for CLI commands |
+| Background job or cron is visible in Spans but missing from Tasks | Its span uses the default INTERNAL kind | Set `kind: SpanKind.CONSUMER`, or add `console.command` to a root INTERNAL span |
 | Endpoint is named after the span, not the route | No `http.request.method` or `http.method` on the span. Without a method the route is ignored entirely | Set the method attribute alongside `http.route` |
 | One endpoint row per URL, thousands of them | Only `url.path` is set, so the concrete URL becomes the name | Set `http.route` to the low-cardinality template, `/users/:id` |
 | Requests appear as `UNMATCHED` | They are 404s with no matched route, collapsed on purpose | Expected. A matched route returning 404 keeps its name |
 | The same route is listed twice with a **Mixed** chip | A batch processor split the parent and child spans across two exports, so the child was promoted to its own endpoint | Raise `maxExportBatchSize` / `scheduledDelayMillis`, or stop emitting the redundant sub-handler span |
 | Nothing at all from an ESM Node app | The `@opentelemetry/instrumentation/hook.mjs` loader hook is missing, so nothing was patched | Add the two `node:module` lines shown above |
 | Logs page is empty | No log exporter is wired (a trace exporter does not send logs), or there is no bridge from your logging library into the OTel logs API | See [Logs](/client/otel/logs) |
-| Logs exist but the endpoint's Logs card is empty | The endpoint was promoted from a non-root span, so it is keyed by span id and not by the trace id the logs carry | Search the trace id on the Logs page |
-| A whole metric family is missing | It is an ExponentialHistogram or a Summary. Both are dropped without an error | Switch to explicit-bucket histograms, or convert in the Collector |
+| Logs exist but the trace’s Logs panel is empty | The records may lack the active trace context | Compare the log’s trace ID with the request’s trace ID and check that logging runs inside the active span |
+| A Summary metric is missing | Traceway skips OTLP Summary points | Export a histogram |
 | Metrics arrive but every series looks identical | The distinguishing attribute is on the Resource and is not in the allowlist | Emit it as a data-point attribute instead. See [Metrics](/client/otel/metrics) |
 | Large exports vanish and the exporter logs a 413 | The batch exceeded 10 MB after decompression and was rejected outright | Lower the exporter's batch size |
 

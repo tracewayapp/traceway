@@ -1,8 +1,8 @@
 # Error Boundary
 
-> **Deprecated since v1.1.0.** `TracewayProvider` now catches render errors and reports them on its own. Use `TracewayErrorBoundary` only when you need a custom `fallback` UI for a specific subtree. This component will be removed in v2.
+> **Deprecated since v1.1.0.** `TracewayProvider` catches render errors and reports them on its own. Use `TracewayErrorBoundary` only when you need a custom `fallback` UI for a specific subtree. It is still exported in 2.x for that purpose.
 
-The `TracewayErrorBoundary` component catches React errors in a subtree, reports them to Traceway, and renders a `fallback` in place of the crashed UI.
+The `TracewayErrorBoundary` component catches React errors in a subtree, reports them to Traceway, and renders a `fallback` in place of the crashed UI. It reports through the SDK client that `TracewayProvider` starts, so place it inside the provider.
 
 ## Basic Usage
 
@@ -33,7 +33,7 @@ function ErrorPage() {
 |------|------|----------|-------------|
 | `children` | `ReactNode` | Yes | Components to wrap |
 | `fallback` | `ReactNode` | Yes | UI to show when an error occurs |
-| `onError` | `function` | No | Callback when error is caught |
+| `onError` | `(error, errorInfo) => void` | No | Called after the error has been reported |
 
 ## With onError Callback
 

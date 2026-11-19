@@ -44,10 +44,12 @@ Any Linux, macOS, or Windows host with outbound HTTPS works. A small VM (2 vCPU,
 cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o traceway-runner ./cmd/traceway-runner
 ```
 
+Install the runner binary as `/usr/local/bin/traceway-runner` for the systemd unit below.
+
 **Set up the Playwright harness.** The runner never uses npm at runtime; it spawns `node` against a directory that has `@playwright/test` installed. Pinning the browser download inside the harness keeps the service independent of `$HOME`:
 
 ```bash
-sudo mkdir -p /opt/traceway-runner && cd /opt/traceway-runner
+sudo install -d -o "$(id -un)" /opt/traceway-runner && cd /opt/traceway-runner
 npm init -y && npm i @playwright/test
 PLAYWRIGHT_BROWSERS_PATH=/opt/traceway-runner/browsers npx playwright install --with-deps chromium
 ```
@@ -66,7 +68,13 @@ The default is `auto`, which uses bubblewrap when the host can run it and falls 
 
 ## 3. Run it as a service
 
-Run the binary under a dedicated non-root user: it executes user-authored scripts. A systemd unit:
+Run the binary under a dedicated non-root user: it executes user-authored scripts. The account needs read and execute access to the harness and browsers, and its own writable directory for check runs:
+
+```bash
+sudo install -d -m 0700 -o traceway-runner /opt/traceway-runner/.runs
+```
+
+A systemd unit:
 
 ```ini
 [Unit]
@@ -76,6 +84,7 @@ Wants=network-online.target
 
 [Service]
 User=traceway-runner
+ExecStart=/usr/local/bin/traceway-runner
 WorkingDirectory=/opt/traceway-runner
 Environment=TRACEWAY_URL=https://traceway.example.com
 Environment=TRACEWAY_RUNNER_SECRET=<the server's SYNTHETICS_RUNNER_SECRET>

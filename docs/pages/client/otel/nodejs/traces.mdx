@@ -4,18 +4,18 @@ OpenTelemetry auto-instrumentation handles most tracing automatically. This page
 
 ## How Spans Map to Traceway
 
-Spans are classified by kind and attributes, not by whether they are a root span:
+All accepted spans are stored. Traceway additionally classifies spans by kind, attributes and parentage:
 
 | OTel Span | Traceway Concept |
 |-----------|-----------------|
-| SERVER or INTERNAL span with HTTP attributes, when it is a root or its parent is not in the same export batch | **Endpoint** (e.g., `GET /api/users`) |
+| HTTP SERVER entry point or root HTTP INTERNAL span without exception attributes | **Endpoint** (e.g., `GET /api/users`) |
 | `SpanKind = CONSUMER`, root or child | **Task** |
 | Root INTERNAL span with a `console.command` attribute | **Task** |
 | Any span with `gen_ai.*` attributes | **AI Trace** |
-| Any other span with a parent | **Span** |
+| Any other root or child span | **Span** |
 | Event named `"exception"` on any span | **Issue** |
 
-> **A root span that matches none of these rows is dropped.** A root `INTERNAL` or `PRODUCER` span with no HTTP attributes and no `console.command` attribute produces no Endpoint, no Task, and no Span row. Ingest discards it and returns success, so there is nothing to debug. If the span carries an exception event, the Issue is still created, but the span itself is gone. To trace a cron job or a queue worker, set `kind: SpanKind.CONSUMER`.
+A root INTERNAL span can be inspected under **Spans**, including its exception events. Mark queue work with `SpanKind.CONSUMER` to also list it under **Tasks**.
 
 See [OTel Trace Mapping](/client/otel/traces) for full details on attributes and conventions.
 
@@ -105,7 +105,7 @@ async function runNightlyReport() {
 
 A CONSUMER span becomes a Task whether it is a root span or a child of a request. A job dispatched inside an HTTP handler still gets its own Task row, linked back to the request through the distributed trace.
 
-> **Do not use a plain root span for a job.** A root `INTERNAL` or `PRODUCER` span with no HTTP attributes and no `console.command` attribute is dropped on ingest. `tracer.startActiveSpan("my-job", async (span) => { ... })` at the top level of a worker script produces no Task and no Span, and nothing reports the loss. Pass `{ kind: SpanKind.CONSUMER }`.
+> Set `kind: SpanKind.CONSUMER` to list this job under **Tasks**. With the default `INTERNAL` kind, the example remains visible in **Spans** and its logs keep their trace ID.
 
 For a CLI or console command, the other accepted signal is a `console.command` attribute on a root INTERNAL span:
 

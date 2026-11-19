@@ -4,15 +4,15 @@ The symbolicator has one performance decision that matters: where compiled resol
 
 ## Memory vs disk
 
-The in-memory LRU is always present and is the default. Compiled resolvers live on the heap, capped by entry count and estimated size. It's the right choice for most deployments: when the set of actively-resolving maps fits under the cap, every lookup after the first is a pure memory hit.
+The in-memory LRU is the default cache mode. Compiled resolvers live on the heap, capped by entry count and estimated size. It's the right choice for most deployments: when the set of actively-resolving maps fits under the cap, every lookup after the first is a pure memory hit.
 
-The disk tier adds a local cache of [`.tw` files](/symbolicator#the-tw-resolver-format) between memory and object storage. It changes what a *memory miss* costs. Instead of downloading and re-parsing, a miss becomes a local memory-mapped open measured in microseconds, and the token tables live in the OS page cache rather than on the process heap. The practical effect:
+Disk mode stores [`.tw` files](/symbolicator#the-tw-resolver-format) in a local directory. A cache hit opens the local file through a memory mapping. The OS can retain frequently used pages between lookups. The practical effect:
 
 - **Resident memory tracks the hot set, not the corpus.** A thousand distinct builds on disk cost disk, not RAM. Memory mode has to hold every actively-used resolver in the heap at once.
 - **Restarts warm instantly.** The local directory is scanned at startup, so a redeploy doesn't pay to rebuild everything.
 - **Corpus size becomes a disk budget.** You bound it with a byte cap instead of hoping it fits in memory.
 
-The disk tier earns its keep when the set of maps actively resolving is much larger than the memory cap, which is exactly when memory mode thrashes: high eviction traffic, every eviction a re-download and re-parse. If your corpus comfortably fits in RAM, the memory default is simpler and just as fast.
+The disk tier earns its keep when the set of maps actively resolving is much larger than the memory cap, which is exactly when memory mode thrashes: high eviction traffic, evicted entries must be loaded again. If your corpus comfortably fits in RAM, the memory default is simpler and just as fast.
 
 ## Benchmarks
 
@@ -79,11 +79,11 @@ In Traceway's ingest path, the cache is configured by environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOURCEMAP_CACHE_TYPE` | `memory` | `memory` for the in-memory LRU only, `disk` to add the local `.tw` tier |
+| `SOURCEMAP_CACHE_TYPE` | `memory` | `memory` for the in-memory LRU only, `disk` to use the local `.tw` directory |
 | `SOURCEMAP_DISK_CACHE_PATH` | `./twcache` | Directory for local `.tw` files (disk mode only) |
 | `SOURCEMAP_DISK_CACHE_MAX_MB` | `2048` | Byte cap for the local `.tw` directory, LRU-evicted (disk mode only) |
-| `SOURCEMAP_CACHE_MAX_ENTRIES` | `200` | Max built resolvers held in memory |
-| `SOURCEMAP_CACHE_MAX_BYTES_MB` | `500` | Max estimated in-memory size of all resolvers |
+| `SOURCEMAP_CACHE_MAX_ENTRIES` | `200` | Max built resolvers held in memory (memory mode only) |
+| `SOURCEMAP_CACHE_MAX_BYTES_MB` | `500` | Max estimated in-memory size of all resolvers (memory mode only) |
 | `SYMBOLICATOR_PARSER` | `goja` | Bundle parser for function names: `goja` or `oxc` (the latter only in `-tags oxc` builds) |
 
 In the [collector processor](/symbolicator/opentelemetry) the same modes are configured by processor keys instead (`cache_dir`, `cache_max_mb`, `cache_max_disk_pct`, `source_map_cache_size`); see that page for the full reference. A `.tw` file is typically a small multiple of the map's `mappings` field, far smaller than the parsed-in-RAM representation, so a disk budget stretches much further than a memory budget for the same corpus. See [Capacity & Self-Monitoring](/server/capacity-monitoring) for the operations view.
@@ -92,7 +92,7 @@ In the [collector processor](/symbolicator/opentelemetry) the same modes are con
 
 If a map doesn't exist, a read times out, storage errors, or an artifact fails to parse:
 
-- The affected frames pass through **unchanged**, and the trace is stored as-is. Ingest is never blocked beyond the per-read budget (5 seconds) and never errors because of symbolication.
+- The affected frames pass through **unchanged**, and other frames in the same trace can still resolve. Each storage read has a five-second timeout. A trace can need several reads.
 - The failure is **negative-cached per key**: while the cooldown is active, frames referencing it skip the storage read entirely. A missing artifact starts at a 1 minute cooldown; a transient failure (timeout, storage error, unparseable input) starts at 15 seconds, so brief hiccups recover fast. Each consecutive failure doubles the cooldown, capped at 15 minutes, so a project that never uploads converges to a few storage reads per hour instead of one per minute.
 - The cooldown clears the moment that artifact is uploaded (the upload endpoint invalidates it in-process) or a load succeeds. In a multi-instance deployment, other instances retry within their remaining cooldown, at most 15 minutes.
 - Within a single trace, a failed artifact is attempted **once**, not once per frame, so a 50-frame trace cannot stack fifty timeouts.
@@ -104,25 +104,25 @@ The backend self-reports cache metrics every 30 seconds:
 
 | Metric | Meaning |
 |---|---|
-| `traceway.sourcemap.entries` | built resolvers currently in memory |
-| `traceway.sourcemap.bytes` | estimated total size of those entries |
+| `traceway.sourcemap.entries` | entries in the active memory or disk cache |
+| `traceway.sourcemap.bytes` | total size of entries in the active cache |
 | `traceway.sourcemap.negative_entries` | keys currently under a miss/failure cooldown |
 | `traceway.sourcemap.hits.delta` | cache hits since the last tick |
-| `traceway.sourcemap.misses.delta` | builds triggered since the last tick |
+| `traceway.sourcemap.misses.delta` | cache misses that triggered a load since the last tick |
 | `traceway.sourcemap.evictions.delta` | LRU evictions since the last tick |
-| `traceway.sourcemap.load_failures.delta` | failed builds; each one is a trace stored unsymbolicated |
+| `traceway.sourcemap.load_failures.delta` | failed artifact loads since the last tick, excluding missing artifacts |
 | `traceway.sourcemap.not_found.delta` | lookups that found no uploaded artifact since the last tick |
 | `traceway.sourcemap.negative_hits.delta` | lookups skipped by an active cooldown since the last tick |
-| `traceway.sourcemap.parse_ms` | duration of the most recent resolver build |
-| `traceway.sourcemap.store_hits.delta` | memory misses served by a `.tw` fetched from object storage (both cache modes) |
-| `traceway.sourcemap.builds.delta` | memory misses that required a full rebuild (both cache modes) |
+| `traceway.sourcemap.parse_ms` | duration of the most recent successful cache load |
+| `traceway.sourcemap.store_hits.delta` | cache misses served by a `.tw` fetched from object storage (both cache modes) |
+| `traceway.sourcemap.builds.delta` | cache misses that required a full rebuild (both cache modes) |
 | `traceway.sourcemap.disk.entries` / `disk.bytes` | local `.tw` files cached and their total size (disk tier only) |
-| `traceway.sourcemap.disk.hits.delta` | memory misses served by a local `.tw` file (disk tier only) |
+| `traceway.sourcemap.disk.hits.delta` | disk cache hits (disk tier only) |
 | `traceway.sourcemap.disk.evictions.delta` | local `.tw` files evicted by the byte cap (disk tier only) |
 | `traceway.sourcemap.warmup_dropped.delta` | Source-map warm-ups dropped because the 2048-job warm-up queue was full; the artifact is built on its first lookup instead. Sustained drops also raise a rate-limited (1/min) exception |
 | `traceway.sourcemap.warmup_backlog` | Source-map warm-ups not finished yet (uploads being enqueued, queued and running jobs). It rises after an upload and drains at the pace of the 2 warm-up workers |
 
-What healthy looks like: `misses.delta` near zero in steady state, `load_failures.delta` at zero (anything above means unsymbolicated traces are reaching your issues), and `bytes` comfortably under the cap. A useful alert is `load_failures.delta` max greater than 0 over 5 minutes.
+What healthy looks like: `misses.delta` near zero in steady state, `load_failures.delta` at zero (a failure can affect an upload warm-up or an ingest lookup), and `bytes` comfortably under the cap. A useful alert is `load_failures.delta` max greater than 0 over 5 minutes.
 
 `not_found.delta` is a configuration signal, not a failure: sustained nonzero values for a project that should symbolicate mean exceptions reference artifacts that were never uploaded, most commonly a missing upload step in CI. `negative_hits.delta` shows the cooldown doing its job; high values alongside high `not_found.delta` are normal for projects that simply don't upload.
 

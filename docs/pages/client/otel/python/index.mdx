@@ -166,7 +166,7 @@ logger.info("order received", extra={"order.id": "ord_123"})
 
 ## Background Tasks
 
-A cron job or queue worker becomes a **Task** only when its root span has `SpanKind.CONSUMER`. A root span with the default `INTERNAL` kind and no HTTP attributes is discarded on ingest, and Traceway still answers `200 OK`, so a plain `start_as_current_span("my-job")` gets you silence.
+For a cron job or queue worker, use `SpanKind.CONSUMER` to list the run in **Tasks**. A plain `start_as_current_span("my-job")` still appears in **Spans**.
 
 In Python the kind is a keyword argument, not an options object:
 
@@ -181,13 +181,8 @@ def run_scheduled_job():
     with tracer.start_as_current_span(
         "cleanup-expired-sessions", kind=SpanKind.CONSUMER
     ) as span:
-        try:
-            do_work()
-            span.set_status(Status(StatusCode.OK))
-        except Exception as error:
-            span.record_exception(error)
-            span.set_status(Status(StatusCode.ERROR, str(error)))
-            raise
+        do_work()
+        span.set_status(Status(StatusCode.OK))
 ```
 
 Run it as `opentelemetry-instrument python worker.py`. The span name is the task name and the grouping key, so keep it stable and put job ids, batch sizes, and timestamps in span attributes instead.
@@ -212,7 +207,7 @@ checkout_latency = meter.create_histogram("app.checkout.latency", unit="ms")
 checkout_latency.record(12.5, {"tier": "pro"})
 ```
 
-The counter appears in metric discovery as `app.sessions_cleaned`, with `job` as a tag you can group by. A histogram arrives split in two, `app.checkout.latency.avg` and `app.checkout.latency.count`, which is how Traceway stores every histogram. See [Metrics](/client/otel/metrics).
+The counter appears in metric discovery as `app.sessions_cleaned`, with `job` as a tag you can group by. Traceway stores bucketed histograms under the instrument name for percentile queries. Explicit-bucket histograms also produce average and count series. See [OTel metrics](/client/otel/metrics#histogram-handling).
 
 > **Metrics export every 60 seconds by default.** That is the SDK default for `OTEL_METRIC_EXPORT_INTERVAL`, so a working pipeline still looks empty for the first minute. Set `OTEL_METRIC_EXPORT_INTERVAL=10000` while you are verifying the integration.
 
@@ -240,7 +235,7 @@ Telemetry is batched, so give traces about 10 seconds and metrics up to a minute
 1. **Endpoints.** Three requests to a parametrized route give one row with count 3. Three rows means `http.route` is missing.
 2. **Issues.** A route that raises shows up with its Python traceback, and its endpoint row reports status 500.
 3. **Spans.** Open that endpoint and confirm your database and outgoing HTTP calls are in the waterfall.
-4. **Logs.** A `logger.info(...)` from inside a handler appears on the endpoint's **Logs** card, on the **This Trace** tab. If only WARN and above are there, `OTEL_PYTHON_LOG_CORRELATION` is not set.
+4. **Logs.** A `logger.info(...)` from inside a handler appears in the trace's **Logs** panel. If only WARN and above are there, `OTEL_PYTHON_LOG_CORRELATION` is not set.
 5. **Tasks.** A job run under `opentelemetry-instrument` with `kind=SpanKind.CONSUMER` appears by its span name.
 6. **Metrics.** `http.server.duration.avg` and your custom metric names appear in metric discovery.
 

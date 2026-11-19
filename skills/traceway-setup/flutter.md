@@ -180,10 +180,10 @@ Self-hosted instances must have blob storage (S3 or a persistent volume) configu
 
 ## Flutter web
 
-The Flutter SDK does not support web (no error tracking, no screen recording there). For Flutter web apps, use the JS SDK in `web/index.html` instead:
+The Flutter SDK does not support web (no error tracking, no screen recording there). For Flutter web apps, use the JS SDK in `web/index.html` instead, with the connection string of a separate browser project (a Flutter project is a mobile project):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@1/dist/traceway.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2/dist/traceway.iife.global.js"></script>
 <script>
   Traceway.init("your-token@https://traceway.example.com/api/report");
 </script>

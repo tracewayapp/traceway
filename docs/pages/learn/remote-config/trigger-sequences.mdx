@@ -1,16 +1,12 @@
 # Record the journeys that matter
 
-import BrowserSdkBeta from "../../../components/BrowserSdkBeta";
-
-<BrowserSdkBeta />
-
 Build an ordered sequence of clicks, hovers, navigations and log messages in **Data Collection → New Rule → Add recording trigger**. When a browser completes the sequence, it requests a replay capture. Sessions show the trigger name and a readable sequence, so you can find the visits that followed that journey.
 
-This requires the browser SDK's 2.1 sequence-trigger implementation and a matching server. The SDK advertises `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client gets the rule. Older browser SDKs and the Flutter SDK cannot evaluate these event matchers and drop the whole trigger, so update the browser integration before enabling the rule. The builder is shown for browser projects only.
+Recording triggers need browser SDK 2.0 or later: `@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version. The SDK advertises `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client the rule matches gets it. An SDK that cannot read one of these event matchers drops the whole trigger, and the legacy 1.x SDK never polls for rules, so [upgrade](/client/js-sdk/migration) the browser integration before relying on one. The builder is shown for browser projects (React, Vue, Svelte, jQuery) only.
 
 ## Build a sequence without writing a query
 
-1. Select the frontend project and open **Data Collection**.
+1. Select the browser project and open **Data Collection** in its sidebar.
 2. Create a Rule. Use the rule's targeting controls to choose the release, environment or cohort that should receive it.
 3. Add a recording trigger and give it a recognizable name, such as **Open user journey**.
 4. Add **Click** with `#open-user`, **Navigation** with `/users/{id}`, and **Log** with `User loaded`. Choose exact or contains matching for the log.

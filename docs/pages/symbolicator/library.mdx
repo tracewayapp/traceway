@@ -1,12 +1,10 @@
 # Library
 
-import { Callout } from "nextra/components";
-
 Traceway's JS symbolicator is an importable Go library. Everything the ingest pipeline uses to turn minified stack traces back into source locations (source map parsing, bundle scope analysis for function names, the [`.tw` resolver format](/symbolicator#the-tw-resolver-format), and the mmap-backed disk cache) lives in public packages of the backend module, so you can use the engine in your own tooling without running Traceway at all.
 
 It's pure Go by default: no cgo, no C libraries, works in a `scratch` image.
 
-If you want this functionality inside an OpenTelemetry Collector pipeline instead of your own code, use the prebuilt [collector processor](/symbolicator/opentelemetry). For how the engine works internally, see [Architecture](/symbolicator) and [JavaScript](/symbolicator/javascript).
+If you want this functionality inside an OpenTelemetry Collector pipeline instead of your own code, use the [collector processor](/symbolicator/opentelemetry). For how the engine works internally, see [Architecture](/symbolicator) and [JavaScript](/symbolicator/javascript).
 
 ## Installation
 
@@ -14,18 +12,11 @@ If you want this functionality inside an OpenTelemetry Collector pipeline instea
 go get github.com/tracewayapp/traceway/backend/v2@latest
 ```
 
-<Callout type="info">
-  The symbolicator packages first ship in backend release `v1.8.0`, so
-  `@latest` resolves to a version that has them. The import paths below are
-  stable public packages; everything under `backend/app/symbolicator` is
-  importable.
-</Callout>
-
 | Package | Import path | Purpose |
 | ------- | ----------- | ------- |
-| `symbolicator` | `github.com/tracewayapp/traceway/backend/v2/app/symbolicator` | The resolver: source map + bundle in, original locations out |
-| `jsstack` | `github.com/tracewayapp/traceway/backend/v2/app/symbolicator/jsstack` | Browser stack trace parsing (V8, Firefox, Safari formats) |
-| `scopes` | `github.com/tracewayapp/traceway/backend/v2/app/symbolicator/scopes` | Bundle parser selection (goja default, oxc optional) |
+| `sourcemap` | `github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap` | The resolver: source map + bundle in, original locations out |
+| `jsstack` | `github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/jsstack` | Browser stack trace parsing (V8, Firefox, Safari formats) |
+| `scopes` | `github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/scopes` | Bundle parser selection (goja default, oxc optional) |
 | `twcache` | `github.com/tracewayapp/traceway/backend/v2/app/symbolicator/twcache` | Mmap-backed disk cache of compiled `.tw` resolvers |
 | `otelprocessor` | `github.com/tracewayapp/traceway/backend/v2/app/symbolicator/otelprocessor` | The [OTel Collector processor](/symbolicator/opentelemetry) wrapping the engine |
 
@@ -40,7 +31,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap"
 )
 
 func main() {
@@ -50,14 +41,14 @@ func main() {
 	}
 	bundleBytes, _ := os.ReadFile("dist/app.min.js") // optional, enables function names
 
-	resolver, err := symbolicator.NewResolver(mapBytes, bundleBytes)
+	artifact, err := sourcemap.BuildTW(mapBytes, bundleBytes)
 	if err != nil {
 		panic(err)
 	}
 
-	// Lookup takes zero-based generated positions. A browser frame like
+	// LookupTW takes zero-based generated positions. A browser frame like
 	// "app.min.js:1:13337" is line 0, column 13336 here.
-	frame, ok := resolver.Lookup(0, 13336)
+	frame, ok := sourcemap.LookupTW(artifact, 0, 13336)
 	if !ok {
 		fmt.Println("no mapping at this position")
 		return
@@ -72,8 +63,8 @@ func main() {
 
 The coordinate conventions, precisely:
 
-- `Lookup(genLine, genCol uint32)` takes **zero-based** positions, matching the source map spec's internal encoding.
-- Browser stack traces print **one-based** positions, so subtract 1 from each before calling `Lookup`.
+- `LookupTW(artifact, genLine, genCol)` takes **zero-based** positions, matching the source map spec's internal encoding.
+- Browser stack traces print **one-based** positions, so subtract 1 from each before calling `LookupTW`.
 - The returned `StackTraceFrame` carries **one-based** `Line` and `Col`, ready to print.
 - `Fn` is the enclosing original function name, or `""` when the bundle was not provided or the position is not inside a known scope.
 
@@ -87,26 +78,30 @@ package main
 import (
 	"fmt"
 
-	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator"
-	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/jsstack"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/jsstack"
 )
 
-func symbolicateStack(rawStack string, resolverFor func(url string) *symbolicator.Resolver) {
+func symbolicateStack(rawStack string, artifactFor func(url string) []byte) {
 	for _, f := range jsstack.ParseFrames(rawStack) {
-		r := resolverFor(f.URL)
-		if r == nil {
+		artifact := artifactFor(f.URL)
+		if artifact == nil || f.Line == 0 || f.Col == 0 {
 			continue
 		}
-		frame, ok := r.Lookup(f.Line-1, f.Col-1)
+		frame, ok := sourcemap.LookupTW(artifact, f.Line-1, f.Col-1)
 		if !ok {
 			continue
 		}
-		fmt.Printf("%s at %s:%d:%d\n", f.Function, frame.File, frame.Line, frame.Col)
+		name := frame.Fn
+		if name == "" {
+			name = f.Function
+		}
+		fmt.Printf("%s at %s:%d:%d\n", name, frame.File, frame.Line, frame.Col)
 	}
 }
 ```
 
-`resolverFor` is yours to implement: typically a map from bundle URL basename to the resolver built from that bundle's artifacts.
+`artifactFor` is yours to implement: typically a map from bundle URL basename to the resolver built from that bundle's artifacts.
 
 If you need Traceway's canonical frame format (function name on one line, `    file:line:col` on the next, the format described in [JavaScript](/symbolicator/javascript#the-frame-format)), use `jsstack.Canonicalize`:
 
@@ -118,54 +113,42 @@ It returns the input unchanged (`converted == false`) when the trace is not a re
 
 ## Caching compiled resolvers: the `.tw` format
 
-Parsing a large source map and analyzing its bundle takes time you don't want to spend twice. A resolver serializes to Traceway's compact binary `.tw` format ([format details](/symbolicator#the-tw-resolver-format)) and loads back without reparsing anything:
+The bytes returned by `sourcemap.BuildTW` are the complete [`.tw` artifact](/symbolicator#the-tw-resolver-format). Save them to reuse the mapping across restarts. To check a stored artifact before reuse, call `sourcemap.ValidTW`.
 
-```go
-data := resolver.MarshalTW()
-// persist data wherever you like, then later:
-resolver2, err := symbolicator.OpenTW(data)
-```
-
-`OpenTW` validates the input fully and, when the byte slice is memory-mapped, resolves lookups directly against the mapping with zero copying. That is exactly what `twcache` does for you:
+For a byte-bounded disk cache, open the directory once and use a build-specific key. On a cache miss, `Get` invokes your loader. Keep the returned bytes until the lookup finishes, then call the release function so the cache can unmap the file.
 
 ```go
 package main
 
 import (
-	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator"
+	"context"
+
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap"
 	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/twcache"
 )
 
-// 2 GiB LRU of .tw files under /var/cache/tw; least recently used evicted first.
-func newCache() (*twcache.Cache, error) {
-	return twcache.New("/var/cache/tw", 2<<30, nil)
-}
-
-func cachedResolver(cache *twcache.Cache, name string, mapBytes, bundleBytes []byte) (*symbolicator.Resolver, error) {
-	if r, err := cache.Open(name); err == nil {
-		return r, nil // mmap hit
-	}
-	built, err := symbolicator.NewResolver(mapBytes, bundleBytes)
+func newCache(dir string) (*twcache.Cache[[]byte], error) {
+	cache, err := twcache.NewDisk(dir, 2<<30, nil)
 	if err != nil {
 		return nil, err
 	}
-	if r, err := cache.Write(name, built.MarshalTW()); err == nil {
-		return r, nil // persisted and mmapped
+	cache.Validate = sourcemap.ValidTW
+	return cache, nil
+}
+
+func lookup(ctx context.Context, cache *twcache.Cache[[]byte], key string,
+	load twcache.LoadFunc[[]byte], line, col uint32) (sourcemap.StackTraceFrame, bool, error) {
+	artifact, release, err := cache.Get(ctx, key, load)
+	if err != nil {
+		return sourcemap.StackTraceFrame{}, false, err
 	}
-	return built, nil // disk failed, serve the in-memory resolver
+	defer release()
+	frame, ok := sourcemap.LookupTW(artifact, line, col)
+	return frame, ok, nil
 }
 ```
 
-What `twcache` handles for you:
-
-- Names are slash-separated paths relative to the cache directory and must stay inside it; subdirectories are fine (`project-a/app.min.js.tw`).
-- Writes are atomic (temp file + rename), so a crash never leaves a partial `.tw` behind.
-- Corrupt files are deleted on `Open` so your rebuild path replaces them.
-- The LRU survives restarts: the directory is scanned on `New` and ordered by file mtime.
-- `Remove(name)` invalidates after a re-deploy; `Stats()` reports entries, bytes, hits, and evictions.
-- Resolvers stay valid after eviction deletes their file; the mapping is released only when the resolver is garbage collected.
-
-`resolver.ApproxSize()` reports the retained footprint if you want to bound an in-memory cache on top.
+The loader can read the map and bundle and return `sourcemap.BuildTW(mapBytes, bundleBytes)`. Name entries relative to the cache directory with a `.tw` suffix so the startup scan discovers them. Use `Invalidate(key)` when replacing an artifact under the same name. To cache the bytes on the heap, construct the cache with `twcache.NewMem(maxEntries, maxBytes)`.
 
 ## Choosing the bundle parser
 
@@ -175,7 +158,7 @@ Function-name resolution parses the minified bundle into scopes. Two parsers pro
 - **oxc**: a Rust parser behind cgo, several times faster on large bundles. The `-tags oxc` build links a static library from the `scopes` package's own source directory (`oxc-shim/target/release/liboxc_shim.a`), which the read-only module cache that `go get` populates never contains. To enable it, build against a writable checkout: clone the repo, run `scripts/build-oxc-shim.sh` once, add a `replace github.com/tracewayapp/traceway/backend/v2 => /path/to/traceway/backend` directive to your `go.mod` (or vendor the module and build the shim inside `vendor/`), then compile with `-tags oxc`.
 
 ```go
-import "github.com/tracewayapp/traceway/backend/v2/app/symbolicator/scopes"
+import "github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/scopes"
 
 if err := scopes.SetParser("oxc"); err != nil {
 	// not compiled in; still on goja
@@ -183,19 +166,3 @@ if err := scopes.SetParser("oxc"); err != nil {
 ```
 
 `scopes.AvailableParsers()` lists what your binary was built with. The parser affects resolver build speed only, never output, so `.tw` files are interchangeable between the two.
-
-## API summary
-
-| Symbol | Signature | Notes |
-| ------ | --------- | ----- |
-| `symbolicator.NewResolver` | `(sourceMap, bundle []byte) (*Resolver, error)` | `bundle` may be `nil` (no function names) |
-| `(*Resolver).Lookup` | `(genLine, genCol uint32) (StackTraceFrame, bool)` | zero-based in, one-based out |
-| `symbolicator.StackTraceFrame` | `{File string; Line, Col uint32; Fn string}` | `Fn` may be empty |
-| `(*Resolver).MarshalTW` | `() []byte` | serialize to `.tw` |
-| `symbolicator.OpenTW` | `(data []byte) (*Resolver, error)` | validates fully; zero-copy over mmapped data |
-| `(*Resolver).ApproxSize` | `() int64` | retained footprint for cache accounting |
-| `jsstack.ParseFrames` | `(trace string) []Frame` | `Frame{Function, URL string; Line, Col uint32}`, one-based |
-| `jsstack.Canonicalize` | `(trace string) (string, bool)` | passthrough on non-browser input |
-| `scopes.SetParser` | `(name string) error` | `"goja"` or `"oxc"` (with `-tags oxc`) |
-| `twcache.New` | `(dir string, maxBytes int64, warn func(error)) (*Cache, error)` | scans `dir`, LRU bounded by `maxBytes` |
-| `(*twcache.Cache).Open` / `.Write` / `.Remove` / `.Stats` | | mmap-backed `.tw` files by relative name |

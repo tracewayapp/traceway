@@ -29,7 +29,7 @@ This provides the `traceway-sourcemaps` CLI command.
 
 ## Getting an Upload Token
 
-Uploads authenticate with a dedicated **upload token**, not the project token your SDK uses. Generate it in the dashboard: open the **Connection** page for your project, scroll to the **Source Maps** section, and click **Generate Upload Token**. The token is per-project and can be copied from the same place later.
+Uploads authenticate with a dedicated **upload token**, not the project token your SDK uses. Generate it in the dashboard: open the **Connection** page for your project, scroll to the **Source Map Upload** card, and click **Generate Upload Token**. The token is per-project and can be copied from the same place later.
 
 Treat it like any other CI secret. **Regenerate** issues a new token and invalidates the current one immediately, so any pipeline still using the old token fails to upload until its secret is updated. Members with the `readonly` role cannot generate or regenerate tokens; ask an organization admin.
 
@@ -53,6 +53,7 @@ On self-hosted instances, uploaded files land in the backend's [blob storage](/s
 | `--url <url>` | Yes | Traceway backend URL |
 | `--token <token>` | Yes | Source map upload token |
 | `--directory <dir>` | No | Directory to search (default: current directory) |
+| `--help`, `-h` | No | Print the usage and exit |
 
 ## Environment Variables
 
@@ -69,7 +70,7 @@ Flags take precedence over environment variables when both are set.
 
 Individual source map files must not exceed **50MB**, and one request must not exceed **250MB** and **1000 files** (maps and bundles together) in total.
 
-The CLI posts every map and its sibling bundle in a single request, so the total is what a large build actually hits. A request over the total answers `413`; a single file over 50MB answers `400`.
+The CLI posts every map and its sibling bundle in a single request, so the total is what a large build actually hits. A request over the total answers `413`; a single file over 50MB answers `400`. The CLI checks the 50MB limit itself before it uploads, and exits with code 1 on that or on any failed upload.
 
 ## Maps Without Source File Names
 

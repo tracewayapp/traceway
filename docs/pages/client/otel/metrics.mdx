@@ -10,15 +10,15 @@ Metrics are their own OTLP signal. A trace exporter does not send them, so the S
 |-----------|-----------|-------------------|
 | Gauge | Yes | Stored as-is |
 | Sum | Yes | Stored as-is |
-| Histogram | Yes | Computes average and count (see below) |
-| ExponentialHistogram | No | Dropped |
+| Histogram | Yes | Bucket distribution, plus average and count series |
+| ExponentialHistogram | Yes | Bucket distribution under the original name |
 | Summary | No | Dropped |
 
-> **ExponentialHistogram and Summary are dropped without an error.** Traceway answers `200 OK` and stores nothing. The metric never shows up in dashboards or in metric discovery, so the only symptom is an empty widget. If a metric is missing, check its aggregation first. Switch the SDK's histogram aggregation to explicit-bucket (`Aggregation.Explicit`, `explicit_bucket_histogram`, or `EXPLICIT_BUCKET_HISTOGRAM` for the Java agent), or convert in a Collector before exporting. Summary is a Prometheus-only legacy type; export the same data as a Gauge or a Histogram instead.
+Summary points are skipped. Export a histogram when you need a distribution that Traceway can aggregate across time or instances.
 
 ## Histogram Handling
 
-Histograms are converted into two separate metric records:
+Traceway merges explicit and base-2 exponential bucket distributions into minute intervals. Query the original metric name for percentiles. An explicit-bucket histogram also produces the following scalar metrics:
 
 | Derived Metric | Name | Value |
 |---------------|------|-------|
@@ -33,7 +33,7 @@ For example, a histogram named `http.request.duration` produces:
 
 `{name}.avg` is only emitted for data points that have both a non-zero `count` and a `sum`. A delta histogram with no observations in an interval, or a histogram exported without a sum, produces `{name}.count` alone. An average chart then shows a gap for those intervals rather than a zero.
 
-Histogram bucket boundaries are not stored, so percentiles cannot be computed from a Histogram. Use the Endpoints page, which keeps raw request durations, for P50/P95/P99.
+Percentiles are estimates from the stored buckets. Select the original histogram for percentile queries and the derived series for a reported average or count.
 
 ## Resource Attributes
 
@@ -146,7 +146,7 @@ provider.shutdown()
 
 The provider on its own exports nothing. An instrument has to be created and a value recorded, and in a script that exits quickly the flush has to happen before the interpreter tears down. A long-running service can drop the last two lines, since the reader exports on its own interval.
 
-`checkout.latency` arrives as `checkout.latency.avg` and `checkout.latency.count`, per the histogram split above.
+The default explicit histogram exports `checkout.latency` and its `.avg` and `.count` series.
 
 > **The SDK's default export interval is 60 seconds.** With `export_interval_millis` left out, or on the zero-code `opentelemetry-instrument` path, a working pipeline still shows nothing for the first minute, which reads as failure. Set `export_interval_millis=10000`, or `OTEL_METRIC_EXPORT_INTERVAL=10000` on the env-var path, while you are verifying the integration.
 
@@ -168,7 +168,7 @@ java \
 
 Remove any `-Dotel.metrics.exporter=none` flag and the metrics appear in metric discovery, ready to chart.
 
-Leave `otel.exporter.otlp.metrics.default.histogram.aggregation` at its default `EXPLICIT_BUCKET_HISTOGRAM`. Setting it to `BASE2_EXPONENTIAL_BUCKET_HISTOGRAM` makes Traceway drop every histogram silently, which takes `http.server.request.duration` and the JVM latency histograms off your dashboards.
+The Java exporter can use either explicit or base-2 exponential histogram aggregation. Both support percentile queries in Traceway. Choose explicit buckets if your widgets use the additional `.avg` or `.count` series.
 
 ## Next Steps
 

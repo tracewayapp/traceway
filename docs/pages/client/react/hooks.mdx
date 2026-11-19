@@ -1,6 +1,6 @@
 # Hooks
 
-Use the `useTraceway` hook to capture errors and messages in your React components.
+Use the `useTraceway` hook to capture errors and messages in your React components. `useTracewayRoute` and `useTracewayAttributes` name the current route and bind attributes to the SDK.
 
 ## useTraceway
 
@@ -8,19 +8,22 @@ Use the `useTraceway` hook to capture errors and messages in your React componen
 import { useTraceway } from "@tracewayapp/react";
 
 function MyComponent() {
-  const { captureException, captureExceptionWithAttributes, captureMessage } = useTraceway();
+  const { captureException, captureExceptionWithAttributes, captureMessage, recordAction } = useTraceway();
 
   // Use these functions as needed
 }
 ```
 
+`useTraceway` throws when it is called outside a `TracewayProvider`.
+
 ## Return Value
 
 | Function | Description |
 |----------|-------------|
-| `captureException(error)` | Capture an error with stack trace |
-| `captureExceptionWithAttributes(error, attributes)` | Capture an error with metadata |
-| `captureMessage(message)` | Send a custom message |
+| `captureException(error, attributes?)` | Capture an error with stack trace |
+| `captureExceptionWithAttributes(error, attributes?)` | Capture an error with metadata. Same as `captureException` with attributes |
+| `captureMessage(message, attributes?)` | Send a custom message |
+| `recordAction(category, name, data?)` | Record a breadcrumb for the replay timeline |
 
 ## captureException
 
@@ -68,7 +71,7 @@ function UserProfile({ userId }) {
 }
 ```
 
-**Attribute values must be strings.** The ingest endpoint types them as a string map and rejects the whole upload with `400 Bad Request` if any value is a number, boolean, or object. The SDK re-queues a rejected batch and retries it forever, so one number blocks every later exception and message from that page too. Wrap non-string values in `String(...)`. TypeScript catches this for you (the signature is `Record<string, string>`), plain `.jsx` does not.
+**Attribute values are strings.** The signature is `Record<string, string>`, so wrap numbers, booleans and objects in `String(...)` or `JSON.stringify(...)`. TypeScript catches a non-string value for you, plain `.jsx` does not.
 
 ## captureMessage
 
@@ -86,6 +89,87 @@ function CheckoutButton({ cart }) {
   return <button onClick={handleCheckout}>Checkout</button>;
 }
 ```
+
+`captureMessage` takes the same optional attributes as `captureException`. A message becomes an issue; for a step you only want to see next to a replay, use `recordAction`.
+
+## recordAction
+
+Record an app-level breadcrumb. It shows on the replay timeline, and a [trigger](/learn/remote-config/trigger-sequences) can match it. Like other breadcrumbs it stays on the device and uploads with an error, unless `recordAllSessions` or a remote rule streams it:
+
+```jsx
+function PayButton({ order }) {
+  const { recordAction } = useTraceway();
+
+  function handlePay() {
+    recordAction("checkout", "payment_submitted", { items: order.items.length });
+    submitPayment(order);
+  }
+
+  return <button onClick={handlePay}>Pay</button>;
+}
+```
+
+`data` is optional and may hold any JSON-serializable values.
+
+## useTracewayRoute
+
+Names the page being shown by its route template, so [performance metrics](/learn/client-metrics) group by route (`/orders/:id`) and not by URL. Call it from the component a route renders:
+
+```jsx
+import { useTracewayRoute } from "@tracewayapp/react";
+
+function OrderPage() {
+  useTracewayRoute("/orders/:id");
+
+  // ...
+}
+```
+
+The name applies to the current view and is cleared by the next route change, so each routed component names its own. Pass `null` to name nothing. Without a name the SDK replaces id-like path segments itself (`/orders/8841` becomes `/orders/:id`).
+
+## useTracewayAttributes
+
+Binds a map of attributes (`user.id`, `tenant`, feature flags) to every session and exception while the component is mounted:
+
+```jsx
+import { useTracewayAttributes } from "@tracewayapp/react";
+
+function AppShell({ user }) {
+  useTracewayAttributes(user ? { "user.id": user.id, plan: user.plan } : null);
+
+  // ...
+}
+```
+
+`<TracewayAttributes attributes={...} />` does the same as a component. See [Custom Attributes](/client/react/provider#custom-attributes).
+
+## Without a Hook
+
+Everything on the hook, and the rest of the SDK's API, is also exported from `@tracewayapp/react` as plain functions. Use them in utilities, stores and other modules outside the React tree, with no second dependency on `@tracewayapp/frontend`:
+
+```javascript
+import { captureException, track, metric, count, flush } from "@tracewayapp/react";
+
+track("checkout_failed", { step: "payment" });
+metric("checkout.duration", 840, { plan: "pro" });
+count("cart.item_added");
+```
+
+| Export | Purpose |
+|--------|---------|
+| `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` | The same functions `useTraceway` returns |
+| `track(eventName, attributes?)` | A named app event. Buffered like a breadcrumb; a trigger can match it |
+| `metric(name, value, dims?)`, `count(name, n?, dims?)` | Custom [performance metrics](/learn/client-metrics), aggregated on the device |
+| `setMetricDimension(key, value)` | A dimension of your own on every performance metric; `null` removes it |
+| `setRoute(template)` | What `useTracewayRoute` calls |
+| `setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes` | Global attributes, see [Custom Attributes](/client/react/provider#custom-attributes) |
+| `startInteraction(name)` | Trace a whole interaction, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
+| `refreshConfig()` | Fetch this client's remote collection settings now instead of at the next poll |
+| `flush(timeoutMs?)`, `shutdown()` | See [Flush & Lifecycle](/client/js-sdk/flush) |
+| `getInstanceId()` | The id this browser profile reports as `service.instance.id` |
+| `DEFAULT_IGNORE_PATTERNS` | The built-in `ignoreErrors` list |
+
+The functions do nothing until a `TracewayProvider` has mounted.
 
 ## Custom Hook Example
 
@@ -130,7 +214,7 @@ function MyComponent() {
 }
 ```
 
-## Without Hook (Class Components)
+## Class Components
 
 For class components, use `TracewayContext`:
 

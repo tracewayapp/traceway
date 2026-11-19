@@ -163,7 +163,7 @@ Real OTEL JSON payloads are stored in `testdata/` as fixtures. The tests parse t
 
 ```bash
 cd backend
-go test -v -count=1 -args -update ./app/controllers/otelcontrollers/
+go test -v -count=1 ./app/controllers/otelcontrollers/ -args -update
 ```
 
 Then review the diff in the `.golden.json` files to confirm the changes are expected before committing.

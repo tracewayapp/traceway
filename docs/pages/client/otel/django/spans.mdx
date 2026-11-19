@@ -88,7 +88,7 @@ with trace.use_span(span, end_on_exit=True):
 
 Setting `end_on_exit=True` makes `use_span` close the span when the block exits. Always pair `start_span` with either `use_span(..., end_on_exit=True)` or an explicit `span.end()` in a `finally` block. Otherwise the span leaks and is never exported.
 
-> **Root spans need a kind.** Everything above assumes there is already a parent span, which is the case inside a request or a Celery task. A span you open at the top of a script, a cron entry, or a management command is a **root** span, and a root span with the default `INTERNAL` kind is dropped by Traceway with no error. Pass `kind=SpanKind.CONSUMER` so it becomes a Task. See [Tasks](/client/otel/django/tasks#cron-jobs-scripts-and-management-commands).
+> A span opened at the top of a script, cron entry or management command is a root span. Set `kind=SpanKind.CONSUMER` to also list it under **Tasks**. See [Tasks](/client/otel/django/tasks#cron-jobs-scripts-and-management-commands).
 
 ## Other Tracer Utilities
 

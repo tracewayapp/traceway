@@ -2,11 +2,7 @@
 
 Integrate Traceway into your Vue 3 application with the `@tracewayapp/vue` package.
 
-import { Callout } from "nextra/components";
-
-<Callout type="info">
-  This guide installs the stable 1.x SDK. The 2.x SDK, which adds [remote SDK config](/learn/remote-config) and on-device buffering, is in beta: install `@tracewayapp/vue@beta` and follow the [JS SDK reference](/client/js-sdk), where the 1.x pages are under **SDK 1.x (stable)**.
-</Callout>
+Upgrading an app from 1.x? See the [migration guide](/client/js-sdk/migration).
 
 ## Installation
 
@@ -16,7 +12,7 @@ npm install @tracewayapp/vue
 
 ## Setup
 
-Install the Traceway plugin in your Vue application. Session recording is on by default; the last ~30s of DOM events ship with every captured exception:
+Install the Traceway plugin in your Vue application. Session replay is on by default and buffered on the device: a captured error uploads a 30-second replay clip and up to 10 minutes of breadcrumbs (console, network, navigation, clicks). Set `recordAllSessions: true` to stream every session instead:
 
 ```javascript
 import { createApp } from "vue";
@@ -32,7 +28,7 @@ app.use(createTracewayPlugin({
 app.mount("#app");
 ```
 
-The plugin automatically installs a global error handler that captures uncaught errors.
+The plugin initializes the SDK once and installs `app.config.errorHandler`, so errors thrown in components are captured along with uncaught errors and unhandled promise rejections.
 
 ## Capture Errors in Components
 
@@ -92,10 +88,11 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Distributed Tracing
 
-The 1.x SDK adds a `traceway-trace-id` header to same-origin `fetch` and `XMLHttpRequest` calls, but Traceway no longer uses it, so 1.x does not link browser errors to backend requests. Exceptions still carry their replay clip. To see a browser request and the backend work it caused in one trace, use the [2.x SDK (beta)](/client/js-sdk/distributed-tracing): it sends the W3C `traceparent` header, which a backend instrumented with OpenTelemetry picks up with no extra middleware. See [Distributed Tracing (SDK 1.x)](/client/js-sdk/v1/distributed-tracing) for what 1.x sends and which old setup code can go.
+The SDK records `fetch` and `XMLHttpRequest` calls as CLIENT spans and adds the W3C `traceparent` header to same-origin requests. A backend instrumented with OpenTelemetry picks it up with no extra middleware, so a browser request and the backend work it caused show up as one trace. For an API on another origin, list it in `propagateTraceHeaderCorsUrls`. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
 ## Next Steps
 
-- [Plugin Setup](/client/vue/plugin) - Configuration options
+- [Plugin Setup](/client/vue/plugin) - Configuration options, route names, custom attributes
 - [Composables](/client/vue/composables) - Using useTraceway
-- [Distributed Tracing](/client/js-sdk/v1/distributed-tracing) - Frontend ↔ backend correlation
+- [Session Replay](/client/js-sdk/session-replay) - What is recorded and when it is uploaded
+- [Distributed Tracing](/client/js-sdk/distributed-tracing) - Frontend ↔ backend correlation

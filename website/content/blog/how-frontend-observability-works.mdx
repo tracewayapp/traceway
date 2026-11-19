@@ -305,7 +305,7 @@ That much control needs guard rails. Remote config can only restrict: what `init
 
 This post stayed out of the implementation on purpose. The next one goes through it with code: the OpenTelemetry setup in the browser, the on-device histogram and how a percentile survives merging, how rrweb is cut into clips that can be replayed, the OpAMP client, and the SvelteKit wiring.
 
-Some things to know before you try it. The 2.x browser SDK is in beta. CLS and long animation frames only exist in Chromium. A settings change takes up to one poll interval to arrive. A capture cannot bring back what the buffer already evicted.
+Some things to know before you try it. CLS and long animation frames only exist in Chromium. A settings change takes up to one poll interval to arrive. A capture cannot bring back what the buffer already evicted.
 
 The [Traceway server](https://github.com/tracewayapp/traceway) and [browser SDK](https://github.com/tracewayapp/js-client) are open source and use OTLP, rrweb and OpAMP.
 

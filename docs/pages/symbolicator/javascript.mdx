@@ -45,7 +45,7 @@ For each location line, in order:
 
 ### 1. Find the right source map
 
-**By debug ID first.** If the exception payload carries a `debugIds` entry for the frame's file (injected at build time by [`@tracewayapp/bundler-plugin`](/client/js-sdk/debug-ids)), the map is addressed at `sourcemaps/{projectId}/by-debug-id/{debugId}.js.map` and the bundle at the same key without `.map`. This is content-addressed matching: the ID was embedded into the bundle and its map by the build, so the frame can never resolve against a map from a different build, regardless of filenames, CDNs, or concurrent deploys. If no artifact with that debug ID was uploaded, resolution falls back to filename matching below.
+**By debug ID first.** If the exception carries a debug ID for the frame's file (injected at build time by [`@tracewayapp/bundler-plugin`](/client/js-sdk/debug-ids)), the map is addressed at `sourcemaps/{projectId}/by-debug-id/{debugId}.js.map` and the bundle at the same key without `.map`. This is content-addressed matching: the ID was embedded into the bundle and its map by the build, so the frame can never resolve against a map from a different build, regardless of filenames, CDNs, or concurrent deploys. If no artifact with that debug ID was uploaded, resolution falls back to filename matching below.
 
 **By filename otherwise.** The frame's file name is reduced to its basename (any query string or fragment stripped first), and the map is addressed in object storage at a deterministic key:
 
@@ -61,7 +61,7 @@ No map in storage: the line passes through unchanged, and that filename enters a
 
 ### 2. Get the resolver
 
-The parsed lookup structure comes from the [cache tiers](/symbolicator#cache-tiers). First use pays a storage read plus a parse (or a memory-mapped [`.tw`](/symbolicator#the-tw-resolver-format) open, which skips the parse); everything after is a memory lookup.
+A lookup uses the compiled [`.tw` artifact](/symbolicator#the-tw-resolver-format) from the configured memory or disk cache. On a miss, the backend tries blob storage before rebuilding from the source map and optional bundle. Uploads also queue a warm-up so the artifact can be ready before the first exception arrives.
 
 ### 3. Look up the position
 
@@ -93,7 +93,7 @@ with this source map:
 }
 ```
 
-A frame pointing at `minified.js:1:11` (the `t` in `function t`) resolves through the `mappings` (delta-encoded VLQ segments of generated position, source index, original position, name index) to `tests/fixtures/simple/original.js:2:10`, with the name token `abcd`.
+A frame pointing at `minified.js:1:11` (the opening parenthesis after `t`) resolves through the `mappings` (delta-encoded VLQ segments of generated position, source index, original position, name index) to `tests/fixtures/simple/original.js:2:10`, with the name token `abcd`.
 
 ### 4. Rewrite the lines
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/dart"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/dart"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 

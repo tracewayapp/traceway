@@ -1,0 +1,76 @@
+id: write-page-resolve-archive
+suite: write
+title: Close out a page after a rollback and archive its issue
+tags: [pages, issues]
+seed: write/page-resolve-archive
+arms: [cli-write+skill, mcp-write]
+invoke: natural
+distractor: A second open page (recommendations p95) and a still-occurring, alert-ignored beacon JSON error must stay untouched; resolving or archiving before the user confirms is the wrong order.
+prompt: |
+  After the page about the priceCents TypeError in cart-api I rolled cart-api back to 2.7.4 a couple of minutes ago. Can you check that the error has really stopped? If it has, I want that page closed and the issue archived, but tell me what you find first.
+budget: {max_turns: 25, max_tool_calls: 15, timeout: 8m}
+user:
+  - match: "(resolv|clos|archiv)"
+    reply: "Yes, that matches what I saw. Go ahead: resolve the page and archive the issue."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    - kind: page
+      id: "{{seed.pageId}}"
+      status: resolved
+    - kind: page
+      id: "{{seed.otherPageId}}"
+      status: open
+    - kind: archived
+      among: ["{{seed.hash}}", "{{seed.otherHash}}"]
+      equals: ["{{seed.hash}}"]
+    - kind: agent_writes
+      count: {min: 1, max: 2}
+  calls:
+    required:
+      - {op: ask_user}
+      - {op: pages.resolve, args: {id: "{{seed.pageId}}"}}
+    # Checking that the error stopped: the issue's occurrences, or its error
+    # logs, which every failing request wrote.
+    any_of:
+      - [{op: exceptions.show, args: {hash: "{{seed.hash}}"}}]
+      - [{op: exceptions.list}]
+      - [{op: logs.query}]
+    forbidden:
+      - {op: pages.resolve, args: {id: "{{seed.otherPageId}}"}}
+      - {op: pages.ack, args: {id: "{{seed.otherPageId}}"}}
+      - {op: exceptions.archive, args: {hashes: "~{{seed.otherHash}}"}}
+      - {op: alerts.snooze}
+      - {op: alerts.disable}
+    order:
+      - [ask_user, pages.resolve]
+      - [ask_user, exceptions.archive]
+    max_failed_calls: 3
+  report:
+    contains:
+      - "resolv"
+      - "archiv"
+judge:
+  expected: |
+    The agent finds the new-error page {{seed.pageId}} for issue {{seed.hash}} (TypeError "Cannot read properties of undefined (reading 'priceCents')" in POST /api/cart/items). All {{seed.errorCount}} occurrences are on 2.8.0, the last at {{seed.lastErrorAt}}, before the rollback to 2.7.4 at about {{seed.rollbackAt}}; {{seed.requestsAfterRollback}} POST /api/cart/items requests since then succeeded. It reports that, asks the user, and only after the yes resolves page {{seed.pageId}} and archives issue {{seed.hash}} (resolve with archive_issue, or resolve plus archive). The recommendations latency page ({{seed.otherPageId}}) and the beacon JSON error ({{seed.otherHash}}) stay untouched.
+  rubric:
+    - Confirms the error stopped with evidence (last occurrence before the rollback, only on 2.8.0, clean requests since).
+    - Asks before resolving and archiving, and only then resolves the page and archives that one issue.
+    - Leaves the recommendations page and the unrelated beacon error alone, and says what changed and that an archived issue comes back (and alerts) if it recurs.
+oracle:
+  - shell: traceway-write pages list --output json
+  - shell: >-
+      traceway-write exceptions show {{seed.hash}} --page-size 50 --output json
+      | jq '{group: .group | {exceptionHash, firstSeen, lastSeen, count}, occurrences: [.occurrences[] | {recordedAt, appVersion}]}'
+  - op: endpoints.list
+    args: {since: 2m, search: "POST /api/cart/items"}
+  - ask_user: |
+      The TypeError (issue {{seed.hash}}) happened only on cart-api 2.8.0; its last occurrence was at {{seed.lastErrorAt}}, before your rollback to 2.7.4, and POST /api/cart/items has served requests cleanly since then. Shall I resolve page {{seed.pageId}} and archive issue {{seed.hash}}? I'll leave the recommendations latency page ({{seed.otherPageId}}) alone; it is a different problem.
+  - op: pages.resolve
+    args: {id: "{{seed.pageId}}", archive_issue: true}
+  - finish:
+      summary: |
+        The priceCents TypeError has stopped: every occurrence of issue {{seed.hash}} was on cart-api 2.8.0, the last at {{seed.lastErrorAt}}, and POST /api/cart/items has been clean since the rollback to 2.7.4. With your go-ahead I resolved page {{seed.pageId}} and archived issue {{seed.hash}} in the same step. If the error comes back (for example when 2.8.0 is re-deployed), the issue reappears and alerts again. I left the recommendations latency page ({{seed.otherPageId}}) and the unrelated beacon JSON error untouched. Undo: unarchive the issue with exceptions unarchive {{seed.hash}}; a resolved page cannot be reopened.
+      changes:
+        - {action: resolve page, target: "page {{seed.pageId}}", new_value: resolved, undo: "cannot be reopened"}
+        - {action: archive issue, target: "issue {{seed.hash}}", new_value: archived, undo: "exceptions unarchive {{seed.hash}}"}

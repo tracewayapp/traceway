@@ -105,7 +105,7 @@ curl http://localhost:8080/test-exception
 ```
 
 **Verification:**
-- `exception_stack_traces` table: row with `type` containing panic/Error type, `value` containing `"test panic from /test-exception"`
+- `exceptions_v2` table: row with `stack_trace` containing the panic/Error type and `"test panic from /test-exception"`
 - Stack trace should be present
 - `transactions` table: row with `status_code` = `500`
 
@@ -127,7 +127,7 @@ curl http://localhost:8080/test-error-simple
 ```
 
 **Verification:**
-- `exception_stack_traces` table: row with `value` containing `"simple error without stack"`
+- `exceptions_v2` table: row with `stack_trace` containing `"simple error without stack"`
 - `transactions` table: row with `status_code` = `500`
 
 ---
@@ -148,7 +148,7 @@ curl http://localhost:8080/test-error-stacktrace
 ```
 
 **Verification:**
-- `exception_stack_traces` table: row with `value` containing `"error with stack trace"`
+- `exceptions_v2` table: row with `stack_trace` containing `"error with stack trace"`
 - Stack trace should contain the handler function name
 - `transactions` table: row with `status_code` = `500`
 
@@ -170,7 +170,7 @@ curl http://localhost:8080/test-error-wrapped
 ```
 
 **Verification:**
-- `exception_stack_traces` table: row with `value` containing `"layer 2"` and `"base error"` in the chain
+- `exceptions_v2` table: row with `stack_trace` containing `"layer 2"` and `"base error"` in the chain
 - Error chain should preserve wrapping (Go: `fmt.Errorf %w`, JS: `Error.cause`)
 - `transactions` table: row with `status_code` = `500`
 
@@ -192,7 +192,7 @@ curl http://localhost:8080/test-error-nested
 ```
 
 **Verification:**
-- `exception_stack_traces` table: row with `value` containing `"error from inner function"`
+- `exceptions_v2` table: row with `stack_trace` containing `"error from inner function"`
 - Stack trace should show `innerFunction`, `middleFunction`, `outerFunction` in the call chain
 - `transactions` table: row with `status_code` = `500`
 
@@ -214,7 +214,7 @@ curl http://localhost:8080/test-message
 ```
 
 **Verification:**
-- `exception_stack_traces` table: row with `value` = `"test message from /test-message"` and `type` = `"message"` (or similar message type marker)
+- `exceptions_v2` table: row with `stack_trace` = `"test message from /test-message"` and `is_message` = true
 - `transactions` table: row with `status_code` = `200`
 
 ---
@@ -235,7 +235,7 @@ curl http://localhost:8080/test-message-attributes
 ```
 
 **Verification:**
-- `exception_stack_traces` table: row with `value` = `"test message with attributes"`
+- `exceptions_v2` table: row with `stack_trace` = `"test message with attributes"`
 - **Go only:** `tags` map should contain `source` = `"test-message-attributes"` and `priority` = `"high"`
 - **JS limitation:** `captureMessage` does not support attributes; message is captured without custom tags
 
@@ -327,7 +327,7 @@ curl http://localhost:8080/test-attributes
 ```
 
 **Verification:**
-- `exception_stack_traces` table: row with `value` containing `"exception with custom attributes"`
+- `exceptions_v2` table: row with `stack_trace` containing `"exception with custom attributes"`
 - `tags` map should contain:
   - `user_id` = `"usr_123"`
   - `request_id` = `"req_456"`
@@ -368,7 +368,7 @@ Normal response:
 ```
 
 **Verification (panic case):**
-- `exception_stack_traces` table: row with `value` containing `"panic triggered by /test-recording"`
+- `exceptions_v2` table: row with `stack_trace` containing `"panic triggered by /test-recording"`
 - `tags` map should contain recorded request details (depending on framework recording support):
   - URL/path information
   - Request body content
@@ -457,6 +457,6 @@ curl -H "Authorization: Bearer <jwt>" \
 
 | Table | Data From Endpoints |
 |-------|-------------------|
-| `transactions` | All endpoints (1-14) generate transaction records |
-| `exception_stack_traces` | Endpoints 3-9, 13-14 generate exception/message records |
+| `endpoints_v2` / `tasks_v2` | All endpoints (1-14) generate transaction records |
+| `exceptions_v2` | Endpoints 3-9, 13-14 generate exception/message records |
 | `metric_records` | Endpoint 12 generates custom metric + automatic system metrics |

@@ -1,0 +1,69 @@
+id: debug-go-nil-regression
+suite: debug
+title: Nil-pointer panic on the invoice page since the last release
+tags: [smoke, go, regression]
+seed: debug/go-nil-regression
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: An older, unrelated mailer timeout issue on POST /api/invoices/{id}/send; the panic only hits customers without a billing address, so most invoice requests succeed.
+workspace: {repo: billing-api-go}
+prompt: |
+  /traceway debug {{seed.hash}}
+  This started showing up yesterday on the invoice page. Find out why and fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "Please go ahead and fix it in the code."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    category: null_reference
+    culprit: {file: internal/invoices/render.go, symbol: formatAddress, line: 37}
+    needs_instrumentation: false
+    mentions_all: ["billing address|BillingAddress", "1\\.8\\.2|release|deploy"]
+  grounding:
+    - "render.go:37"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.show, edit_file]
+      - [exceptions.show, write_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-go-nil-regression
+    command: go test ./...
+    gating: true
+    touches_culprit: true
+    must_not_change: [internal/invoices/model.go]
+judge:
+  expected: formatAddress (internal/invoices/render.go:37) dereferences Customer.BillingAddress, which is nil for customers who never entered an address. The billing address line was added to the invoice view in v1.8.2, deployed about 30 hours ago, which is when the panic group first appeared. The fix handles a nil address (render nothing or a placeholder).
+  rubric:
+    - Ties the panic to the v1.8.2 change that added the billing address to the invoice view (firstSeen at the deploy, the git history).
+    - Explains that only customers without a billing address hit it.
+    - Fixes it by handling a nil address, without changing unrelated behaviour.
+oracle:
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 5 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}),
+      latest: (.occurrences | sort_by(.recordedAt) | last | {recordedAt, appVersion, traceId}), relatedEntity}'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - shell: git show --stat HEAD
+  - read_file: internal/invoices/render.go
+  - write_file: {path: internal/invoices/render.go, from: oracle/debug-go-nil-regression/render.go}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      category: null_reference
+      culprit: {file: internal/invoices/render.go, symbol: formatAddress, line: 37}
+      evidence:
+        - {call_id: c01, claim: "nil pointer dereference in formatAddress at render.go:37, first seen after the v1.8.2 deploy, on app version 1.8.2"}
+        - {call_id: c02, claim: "v1.8.2, released about 30 hours ago, added the billing address to the invoice page"}
+        - {call_id: c04, claim: "formatAddress reads a.Line1 without checking for a nil address"}
+      fix_summary: formatAddress returns an empty string when the customer has no billing address.
+      files_changed: [internal/invoices/render.go]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The panic (runtime error: invalid memory address or nil pointer dereference) is in formatAddress, internal/invoices/render.go:37. v1.8.2, released about 30 hours ago, added the billing address to the invoice view; customers who never entered a billing address have a nil BillingAddress, so rendering their invoice panics and the page answers 500. The group's firstSeen matches the release. I made formatAddress return an empty string for a nil address.

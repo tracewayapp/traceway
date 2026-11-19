@@ -2,19 +2,32 @@ package mcpserver
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/mcpserver/knowledge"
 )
 
 // connect stands up the MCP server over in-memory transports against the
 // given fake backend and returns a connected client session.
 func connect(t *testing.T, backend http.Handler, projectID string) *mcp.ClientSession {
+	t.Helper()
+	return connectServer(t, backend, projectID, false)
+}
+
+func connectWrite(t *testing.T, backend http.Handler, projectID string) *mcp.ClientSession {
+	t.Helper()
+	return connectServer(t, backend, projectID, true)
+}
+
+func connectServer(t *testing.T, backend http.Handler, projectID string, allowWrite bool) *mcp.ClientSession {
 	t.Helper()
 	ts := httptest.NewServer(backend)
 	t.Cleanup(ts.Close)
@@ -24,6 +37,7 @@ func connect(t *testing.T, backend http.Handler, projectID string) *mcp.ClientSe
 		DefaultProjectID: projectID,
 		InstanceURL:      ts.URL,
 		Version:          "test",
+		AllowWrite:       allowWrite,
 	})
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
@@ -75,13 +89,70 @@ func TestListTools_surfaceAndAnnotations(t *testing.T) {
 	wantReadOnly := map[string]bool{
 		"list_projects": true, "list_exceptions": true, "get_exception": true,
 		"get_exception_occurrence": true, "query_logs": true, "list_endpoints": true,
-		"get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
+		"list_endpoint_requests": true, "get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
 		"query_metrics": true, "get_task": true, "get_ai_trace": true, "get_session": true,
-		"get_trace":          true,
-		"archive_exceptions": false, "unarchive_exceptions": false,
+		"get_trace": true, "list_pages": true, "get_page": true,
+		"list_notification_rules": true, "list_checks": true, "get_check": true,
+		"list_post_mortems": true, "get_post_mortem": true,
+		"list_sdk_config_rules": true, "preview_sdk_config": true,
+		"list_dashboards": true, "dashboard_library": true, "export_dashboard": true, "discover_metrics": true,
+		"list_notification_channels": true, "list_teams": true, "list_oncall_schedules": true,
+		"get_oncall_schedule": true, "get_oncall_timeline": true, "list_escalation_policies": true,
+		"list_contact_methods": true, "get_user_notification_rules": true, "list_notification_history": true,
+		"get_oncall_now": true, "get_current_oncall": true, "list_organization_members": true,
+		"list_slos": true, "get_slo": true, "get_slo_series": true, "preview_slo": true,
 	}
+	assertToolSurface(t, res.Tools, wantReadOnly)
+}
+
+func TestListTools_writeServerAddsMutatingTools(t *testing.T) {
+	cs := connectWrite(t, emptyBackend(), "p-1")
+	res, err := cs.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"list_projects": true, "list_exceptions": true, "get_exception": true,
+		"get_exception_occurrence": true, "query_logs": true, "list_endpoints": true,
+		"list_endpoint_requests": true, "get_endpoint_request": true, "endpoints_chart": true, "get_slow_endpoint_config": true,
+		"query_metrics": true, "get_task": true, "get_ai_trace": true, "get_session": true,
+		"get_trace": true, "list_pages": true, "get_page": true,
+		"list_notification_rules": true, "list_checks": true, "get_check": true,
+		"list_post_mortems": true, "get_post_mortem": true,
+		"list_sdk_config_rules": true, "preview_sdk_config": true,
+		"list_dashboards": true, "dashboard_library": true, "export_dashboard": true, "discover_metrics": true,
+		"list_notification_channels": true, "list_teams": true, "list_oncall_schedules": true,
+		"get_oncall_schedule": true, "get_oncall_timeline": true, "list_escalation_policies": true,
+		"list_contact_methods": true, "get_user_notification_rules": true, "list_notification_history": true,
+		"get_oncall_now": true, "get_current_oncall": true, "list_organization_members": true,
+		"list_slos": true, "get_slo": true, "get_slo_series": true, "preview_slo": true,
+
+		"import_dashboards":           false,
+		"create_notification_channel": false, "update_notification_channel": false, "delete_notification_channel": false, "test_notification_channel": false,
+		"create_notification_rule": false, "update_notification_rule": false, "delete_notification_rule": false,
+		"create_team": false, "update_team": false, "delete_team": false, "set_team_members": false, "set_team_projects": false,
+		"create_oncall_schedule": false, "update_oncall_schedule": false, "delete_oncall_schedule": false, "create_oncall_override": false, "delete_oncall_override": false,
+		"create_escalation_policy": false, "update_escalation_policy": false, "delete_escalation_policy": false,
+		"create_contact_method": false, "update_contact_method": false, "delete_contact_method": false, "test_contact_method": false, "verify_contact_method": false, "resend_contact_method_code": false,
+		"set_user_notification_rules": false,
+		"create_slo":                  false, "update_slo": false, "delete_slo": false,
+		"archive_exceptions": false, "unarchive_exceptions": false,
+		"acknowledge_page": false, "resolve_page": false,
+		"set_notification_rule_enabled": false, "snooze_notification_rule": false,
+		"run_check": false, "create_post_mortem": false, "update_post_mortem": false,
+		"set_slow_endpoint":      false,
+		"create_sdk_config_rule": false, "update_sdk_config_rule": false, "delete_sdk_config_rule": false, "reorder_sdk_config_rules": false,
+	}
+	assertToolSurface(t, res.Tools, want)
+	if init := cs.InitializeResult(); init == nil || !strings.Contains(init.Instructions, "Write access") {
+		t.Errorf("write server instructions should carry the write rules")
+	}
+}
+
+func assertToolSurface(t *testing.T, tools []*mcp.Tool, wantReadOnly map[string]bool) {
+	t.Helper()
 	got := map[string]bool{}
-	for _, tool := range res.Tools {
+	for _, tool := range tools {
 		if tool.OutputSchema == nil {
 			t.Errorf("tool %s has no output schema", tool.Name)
 		}
@@ -117,6 +188,43 @@ func TestInitialize_carriesInstructions(t *testing.T) {
 	}
 }
 
+func TestListEndpointRequests_wireShapeAndDefaults(t *testing.T) {
+	var gotPath string
+	var gotQuery url.Values
+	var gotBody map[string]any
+	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query()
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"6f9619ff-8b86-d011-b42d-00c04fc964ff","endpoint":"GET /api/orders","duration":597000000,"recordedAt":"2026-10-20T10:00:00Z","statusCode":200,"traceId":"ab69e041ab69e041ab69e041ab69e041"}],"stats":{"count":1},"pagination":{"page":1,"pageSize":20,"total":1,"totalPages":1}}`))
+	})
+	cs := connect(t, backend, "p-1")
+
+	res := callTool(t, cs, "list_endpoint_requests", map[string]any{"endpoint": "GET /api/orders", "since": "24h"})
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %s", resultText(t, res))
+	}
+	if gotPath != "/api/endpoints/endpoint" || gotQuery.Get("projectId") != "p-1" || gotQuery.Get("endpoint") != "GET /api/orders" {
+		t.Errorf("path = %q, query = %v", gotPath, gotQuery)
+	}
+	if gotBody["orderBy"] != "duration" || gotBody["sortDirection"] != "desc" || gotBody["fromDate"] == nil {
+		t.Errorf("defaults not applied: %v", gotBody)
+	}
+	if !strings.Contains(resultText(t, res), "6f9619ff-8b86-d011-b42d-00c04fc964ff") {
+		t.Errorf("result text missing the request id: %s", resultText(t, res))
+	}
+
+	res = callTool(t, cs, "list_endpoint_requests", map[string]any{"since": "24h"})
+	if !res.IsError || !strings.Contains(resultText(t, res), "endpoint") {
+		t.Errorf("a missing endpoint must be a usage error: %s", resultText(t, res))
+	}
+	res = callTool(t, cs, "list_endpoint_requests", map[string]any{"endpoint": "GET /api/orders", "order_by": "recordedAt"})
+	if res.IsError || gotBody["orderBy"] != "recorded_at" {
+		t.Errorf("order_by recordedAt sent %v: %s", gotBody["orderBy"], resultText(t, res))
+	}
+}
+
 func TestListExceptions_wireShapeAndDefaults(t *testing.T) {
 	var gotPath, gotQuery string
 	var gotBody map[string]any
@@ -142,7 +250,7 @@ func TestListExceptions_wireShapeAndDefaults(t *testing.T) {
 	if gotBody["fromDate"] == nil || gotBody["toDate"] == nil {
 		t.Errorf("body missing fromDate/toDate: %v", gotBody)
 	}
-	if gotBody["orderBy"] != "lastSeen" || gotBody["searchType"] != "text" {
+	if gotBody["orderBy"] != "last_seen" || gotBody["searchType"] != "text" {
 		t.Errorf("defaults not applied: %v", gotBody)
 	}
 	page := gotBody["pagination"].(map[string]any)
@@ -319,7 +427,7 @@ func TestArchiveExceptions_hitsArchiveRoute(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"success":true}`))
 	})
-	cs := connect(t, backend, "p-1")
+	cs := connectWrite(t, backend, "p-1")
 	res := callTool(t, cs, "archive_exceptions", map[string]any{"hashes": []string{"abc123def4567890"}})
 	if res.IsError {
 		t.Fatalf("unexpected tool error: %s", resultText(t, res))
@@ -395,6 +503,22 @@ func TestResources_listAndRead(t *testing.T) {
 	}
 	if !strings.Contains(res.Contents[0].Text, "get_exception_occurrence") {
 		t.Error("tool map should mention the MCP tool names")
+	}
+}
+
+func TestResources_everyLearnTopicIsServed(t *testing.T) {
+	topics, err := fs.Glob(knowledge.FS, "learn/*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := map[string]bool{}
+	for _, r := range knowledgeResources {
+		served[r.file] = true
+	}
+	for _, topic := range topics {
+		if !served[topic] {
+			t.Errorf("%s has no traceway://knowledge resource", topic)
+		}
 	}
 }
 

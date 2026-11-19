@@ -7,37 +7,40 @@ import (
 )
 
 type AiTrace struct {
-	Id                 uuid.UUID         `json:"id" ch:"id"`
-	ProjectId          uuid.UUID         `json:"projectId" ch:"project_id"`
-	RecordedAt         time.Time         `json:"recordedAt" ch:"recorded_at"`
-	Duration           time.Duration     `json:"duration" ch:"duration"`
-	StatusCode         uint8             `json:"statusCode" ch:"status_code"`
-	Model              string            `json:"model" ch:"model"`
-	ResponseModel      string            `json:"responseModel" ch:"response_model"`
-	Provider           string            `json:"provider" ch:"provider"`
-	Operation          string            `json:"operation" ch:"operation"`
-	InputTokens        int64             `json:"inputTokens" ch:"input_tokens"`
-	OutputTokens       int64             `json:"outputTokens" ch:"output_tokens"`
-	TotalTokens        int64             `json:"totalTokens" ch:"total_tokens"`
-	CachedTokens       int64             `json:"cachedTokens" ch:"cached_tokens"`
-	ReasoningTokens    int64             `json:"reasoningTokens" ch:"reasoning_tokens"`
-	InputCost          float64           `json:"inputCost" ch:"input_cost"`
-	OutputCost         float64           `json:"outputCost" ch:"output_cost"`
-	TotalCost          float64           `json:"totalCost" ch:"total_cost"`
-	TraceName          string            `json:"traceName" ch:"trace_name"`
-	UserId             string            `json:"userId" ch:"user_id"`
-	FinishReason       string            `json:"finishReason" ch:"finish_reason"`
-	ServerName         string            `json:"serverName" ch:"server_name"`
-	AppVersion         string            `json:"appVersion" ch:"app_version"`
-	StorageKey         string            `json:"storageKey" ch:"storage_key"`
-	Attributes         map[string]string `json:"attributes" ch:"attributes"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty" ch:"distributed_trace_id"`
-	IsRoot             bool              `json:"isRoot" ch:"is_root"`
-	ConversationId     string            `json:"conversationId" ch:"conversation_id"`
-	ToolCallCount      int64             `json:"toolCallCount" ch:"tool_call_count"`
-	ToolNames          []string          `json:"toolNames" ch:"tool_names"`
-	Flagged            bool              `json:"flagged" ch:"flagged"`
-	FlaggedTerms       []string          `json:"flaggedTerms" ch:"flagged_terms"`
+	Id              uuid.UUID         `json:"id" ch:"id"`
+	ProjectId       uuid.UUID         `json:"projectId" ch:"project_id"`
+	RecordedAt      time.Time         `json:"recordedAt" ch:"recorded_at"`
+	Duration        time.Duration     `json:"duration" ch:"duration"`
+	StatusCode      uint8             `json:"statusCode" ch:"status_code"`
+	Model           string            `json:"model" ch:"model"`
+	ResponseModel   string            `json:"responseModel" ch:"response_model"`
+	Provider        string            `json:"provider" ch:"provider"`
+	Operation       string            `json:"operation" ch:"operation"`
+	InputTokens     int64             `json:"inputTokens" ch:"input_tokens"`
+	OutputTokens    int64             `json:"outputTokens" ch:"output_tokens"`
+	TotalTokens     int64             `json:"totalTokens" ch:"total_tokens"`
+	CachedTokens    int64             `json:"cachedTokens" ch:"cached_tokens"`
+	ReasoningTokens int64             `json:"reasoningTokens" ch:"reasoning_tokens"`
+	InputCost       float64           `json:"inputCost" ch:"input_cost"`
+	OutputCost      float64           `json:"outputCost" ch:"output_cost"`
+	TotalCost       float64           `json:"totalCost" ch:"total_cost"`
+	TraceName       string            `json:"traceName" ch:"trace_name"`
+	UserId          string            `json:"userId" ch:"user_id"`
+	FinishReason    string            `json:"finishReason" ch:"finish_reason"`
+	ServerName      string            `json:"serverName" ch:"server_name"`
+	AppVersion      string            `json:"appVersion" ch:"app_version"`
+	StorageKey      string            `json:"storageKey" ch:"storage_key"`
+	Attributes      map[string]string `json:"attributes" ch:"attributes"`
+
+	TraceId        string   `json:"traceId" ch:"trace_id"`
+	SpanId         string   `json:"spanId" ch:"span_id"`
+	ParentSpanId   string   `json:"parentSpanId,omitempty" ch:"parent_span_id"`
+	IsRoot         bool     `json:"isRoot" ch:"is_root"`
+	ConversationId string   `json:"conversationId" ch:"conversation_id"`
+	ToolCallCount  int64    `json:"toolCallCount" ch:"tool_call_count"`
+	ToolNames      []string `json:"toolNames" ch:"tool_names"`
+	Flagged        bool     `json:"flagged" ch:"flagged"`
+	FlaggedTerms   []string `json:"flaggedTerms" ch:"flagged_terms"`
 }
 
 type AiTraceStats struct {

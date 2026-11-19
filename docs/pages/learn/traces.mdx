@@ -19,7 +19,7 @@ OTLP span batch
     ├──► ai_traces      ─┤      indexed for fast aggregation
     ├──► exception_…    ─┘
     │
-    └──► spans (everything else, the raw waterfall)
+    └──► spans_v2 (all accepted spans, including promoted ones)
 ```
 
 You can think of `endpoints`, `tasks`, and `ai_traces` as **cached projections** of the spans table. They exist for one reason: aggregations like "P95 of every endpoint over 7 days" or "total LLM cost grouped by trace_name" need to be cheap. Scanning the full spans table to compute those every dashboard load would not be cheap.
@@ -40,7 +40,7 @@ A span lands in a top-level table when its kind or attributes match a rule. The 
 | Root `INTERNAL` span with a `console.command` attribute (artisan / artisan-style runners) | **Task** |
 | Any span carrying `gen_ai.*` attributes (root or child) | **AI Trace** |
 | `"exception"` event on any span | **Issue** (attributed to the owning entity above) |
-| Anything else with a parent | **Span** in the waterfall, re-rooted to its nearest enclosing entity |
+| Anything else with a parent | **Span** in the waterfall, with its original trace/span/parent IDs |
 
 In-process sub-handler spans (e.g. a framework's "handler /path" INTERNAL+HTTP child) stay in the spans table. Endpoints are only promoted for actual entry points, so frameworks don't silently double-emit.
 
@@ -56,19 +56,17 @@ Each Endpoint / Task / AI Trace row carries an `is_root` flag.
 
 Non-root rows surface a **Non-root** chip in the dashboard list. On the row's detail page, a **View distributed trace** link jumps to the full picture across all the entities sharing that trace id.
 
-The id rules avoid collisions when a root and a non-root entity share the same trace id:
-- Root entity id = OTel trace id (so the request and its lineage are easy to look up by trace id).
-- Non-root entity id = the entity's own span id (distinct from the root's id even within the same trace).
+Every OTLP projection keeps the ids of the span it was made from: `trace_id`, `span_id` and `parent_span_id`. Its own row id is derived from the project, the trace and the span, so a retried export produces the same id. Native `/api/report` occurrences keep their SDK UUIDs instead; the API exposes UUID-width span IDs and OTLP export maps them to eight bytes.
 
 ## Distributed traces
 
-Every Endpoint / Task / AI Trace stores a **`distributed_trace_id`** equal to the OTel trace id, auto-derived on ingestion. So:
+Every Endpoint / Task / AI Trace stores the **`trace_id`** of its span. Rows that share a trace id belong together, whichever service or project reported them. So:
 
-- A request that dispatches a queue job and the worker that processes it share the same `distributed_trace_id`. They show up as two rows (the endpoint and the task), and a single page (`/distributed-traces/<id>`) renders them side by side with their spans.
-- A request handler that calls an LLM produces an endpoint row and an ai_trace row with the same `distributed_trace_id`. Same cross-trace page.
-- Cross-service HTTP hops (each service exports its own SERVER span) all share the trace id. Each hop appears as its own endpoint row.
+- A request and its queue worker share a trace id when the instrumentation propagates a parent context. Some queue integrations start a new trace with a link instead; those runs are not grouped by shared trace ID. With parent-context propagation the card shows the endpoint and task together, nested by their span parentage. A task started as a new trace with a span link has its own trace view.
+- A request handler that calls an LLM produces an endpoint row and an ai_trace row with the same trace id. Same card.
+- Cross-service HTTP hops (each service exports its own SERVER span) all share the trace id. Each hop appears as its own endpoint row, nested by the spans in between.
 
-You don't need to set any vendor attribute for this to work, OTLP's native trace_id is enough. If you do need to stitch runs that genuinely carry different trace ids, the span attribute `traceway.distributed_trace_id` overrides the derived value.
+Standard W3C propagation also makes browser requests share the backend trace ID. OTel span links can reference another trace, but those traces remain separate. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
 ## What each entity stores
 
@@ -86,9 +84,7 @@ On the OTel ingestion path, a 404 from a matched route keeps its route identity.
 - the span carries no valid `http.route` attribute, meaning the framework matched no route, or
 - `http.route` is a catch-all made only of slashes and wildcards, such as `/`, `/*`, `/**`, or `*/*`. Some instrumentations report these for unmatched requests: Express reports `/` when only app-level middleware ran, and Spring reports `/**` for its static resource handler.
 
-Scoped wildcards like `GET /api/*` are real routes and keep their name even on 404.
-
-This route check only exists for OTel ingestion. The legacy `/api/report` path has no route information on the wire, so it groups every 404 under `UNMATCHED`.
+Scoped wildcards like `GET /api/*` are real routes and keep their name even on 404. The native `/api/report` path retains its existing behavior of grouping all 404 responses as `UNMATCHED`; it cannot use the same OTLP route-attribute distinction.
 
 ### Tasks
 Identified by a task name (job class, scheduled command, agent operation). Ranked by count × (P95 − P50) as a rough impact proxy. CONSUMER spans from any queue driver (database, Redis, SQS, Beanstalk, …) land here, as do root `console.command` spans.
@@ -101,7 +97,7 @@ Identified by `trace.name` (your agent or workflow). Carries model, provider, in
 1. A span is created in your app (by a framework's auto-instrumentation or by manual OTel calls).
 2. Child spans, attributes, and events accumulate against it.
 3. The trace is exported via OTLP.
-4. Traceway classifies each span, inserts into the matching entity table, and re-roots the remaining children into `spans` under their nearest enclosing entity.
+4. Traceway stores accepted spans in `spans_v2`, then writes matching entity projections. Parent IDs remain unchanged. Sampling, healthcheck filtering, permissions and rejected rows can limit what is stored.
 5. Exceptions recorded as `"exception"` events become Issues attributed to the owning entity.
 
 Sampling:

@@ -5,10 +5,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/controllers/otelcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/opampcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/otelcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -61,6 +62,9 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.OPTIONS("/report", middleware.CORSReport)
 	router.POST("/report", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.ClientController.Report)
 
+	router.OPTIONS("/recordings", middleware.CORSReport)
+	router.POST("/recordings", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.RecordingsController.Ingest)
+
 	router.OPTIONS("/profiles/ingest", middleware.CORSReport)
 	router.POST("/profiles/ingest", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.ProfileIngestController.Ingest)
 
@@ -70,9 +74,11 @@ func RegisterControllers(router *gin.RouterGroup) {
 	otelGroup.OPTIONS("/v1/logs", middleware.CORSReport)
 	otelGroup.OPTIONS("/v1development/profiles", middleware.CORSReport)
 	otelGroup.POST("/v1/traces", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportTraces)
-	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportMetrics)
+	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, middleware.MetricsAdmission, otelcontrollers.OtelController.ExportMetrics)
 	otelGroup.POST("/v1/logs", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportLogs)
 	otelGroup.POST("/v1development/profiles", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportProfiles)
+	otelGroup.OPTIONS("/v1/opamp", middleware.OpampCors)
+	otelGroup.POST("/v1/opamp", middleware.OpampCors, middleware.UseClientAuth, middleware.OpampAdmission, opampcontrollers.OpampController.Poll)
 
 	router.GET("/projects", middleware.UseAppAuth, ProjectController.ListProjects)
 	router.POST("/projects", middleware.UseAppAuth, middleware.RequireProjectAccess, ProjectController.CreateProject)
@@ -96,6 +102,7 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/metrics/server", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricsController.GetServerMetrics)
 
 	router.POST("/metrics/query", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Query)
+	router.POST("/metrics/exemplars", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Exemplars)
 	router.GET("/metrics/discover", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.Discover)
 	router.GET("/metrics/discover/instances", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverInstances)
 	router.GET("/metrics/discover/tags", middleware.UseAppAuth, middleware.RequireProjectAccess, MetricQueryController.DiscoverTags)
@@ -144,9 +151,11 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/tasks/task", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskController.FindByTaskName)
 	router.POST("/tasks/:taskId", middleware.UseAppAuth, middleware.RequireProjectAccess, TaskDetailController.GetTaskDetail)
 
+	router.GET("/sessions/recording-reasons", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionController.RecordingReasons)
 	router.POST("/sessions", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionController.FindAllSessions)
 	router.POST("/sessions/:sessionId", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionDetail)
 	router.GET("/sessions/:sessionId/recording", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionDetailController.GetSessionRecording)
+	router.GET("/sessions/:sessionId/timeline", middleware.UseAppAuth, middleware.RequireProjectAccess, SessionTimelineController.Timeline)
 
 	router.POST("/profiles/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.FindGroupedByService)
 	router.POST("/profiles/series", middleware.UseAppAuth, middleware.RequireProjectAccess, ProfileController.GetSeries)
@@ -166,9 +175,14 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/ai-conversations/conversation", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.GetConversationDetail)
 	router.POST("/ai-users/grouped", middleware.UseAppAuth, middleware.RequireProjectAccess, AiTraceController.FindAiUsers)
 
-	router.POST("/distributed-traces/:distributedTraceId", middleware.UseAppAuth, DistributedTraceController.GetDistributedTrace)
+	router.POST("/distributed-traces/:traceId", middleware.UseAppAuth, DistributedTraceController.GetDistributedTrace)
+	router.GET("/otel/spans/:traceId/:spanId", middleware.UseAppAuth, middleware.RequireProjectAccess, GetOtelSpan)
+	router.POST("/spans/search", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.Search)
+	router.GET("/spans/traces/:traceId", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.GetTrace)
+	router.GET("/spans/traces/:traceId/spans/:spanId/attributes", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.GetSpanAttributes)
 
 	router.POST("/logs", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.List)
+	router.POST("/logs/histogram", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.Histogram)
 
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
 	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ExceptionStackTraceController.ArchiveExceptions)
@@ -231,6 +245,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.GET("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetSettings)
 	router.PUT("/organizations/:organizationId/settings", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.UpdateSettings)
 	router.GET("/organizations/:organizationId/members", middleware.UseAppAuth, middleware.RequireAdminAccess, OrganizationController.GetMembers)
+	router.PUT("/organizations/:organizationId/agent-access", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.UpdateAgentAccess)
+	router.GET("/organizations/:organizationId/agent-activity", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, OrganizationController.AgentActivity)
 
 	router.PUT("/organizations/:organizationId/members/:userId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, MemberController.UpdateRole)
 	router.DELETE("/organizations/:organizationId/members/:userId", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, MemberController.RemoveMember)
@@ -277,6 +293,15 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/synthetics/checks/:id/series", middleware.UseAppAuth, middleware.RequireProjectAccess, SyntheticCheckController.Series)
 	router.GET("/synthetics/open-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SyntheticCheckController.OpenCount)
 
+	router.GET("/slos", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SLOController.List)
+	router.POST("/slos", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SLOController.Create)
+	router.GET("/slos/breached-count", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SLOController.BreachedCount)
+	router.POST("/slos/preview", middleware.UseAppAuth, middleware.RequireProjectAccess, SLOController.Preview)
+	router.GET("/slos/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SLOController.Get)
+	router.PUT("/slos/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SLOController.Update)
+	router.DELETE("/slos/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SLOController.Delete)
+	router.POST("/slos/:id/series", middleware.UseAppAuth, middleware.RequireProjectAccess, SLOController.Series)
+
 	// No Transactional on either runner route: Poll holds the request for up
 	// to 25s (a held transaction would starve the single-connection SQLite
 	// main DB) and Result finalizes through ProcessOutcome, which manages its
@@ -316,13 +341,20 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/post-mortems", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Create)
 	router.PUT("/post-mortems/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Update)
 	router.DELETE("/post-mortems/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, PostMortemController.Delete)
+
+	router.GET("/sdk-config/rules", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SdkConfigController.ListRules)
+	router.POST("/sdk-config/rules", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.CreateRule)
+	router.PUT("/sdk-config/rules/reorder", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.ReorderRules)
+	router.PUT("/sdk-config/rules/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.UpdateRule)
+	router.DELETE("/sdk-config/rules/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.DeleteRule)
+	router.POST("/sdk-config/preview", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SdkConfigController.Preview)
+	router.GET("/sdk-config/captures", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SdkConfigController.ListCaptures)
+	router.POST("/sdk-config/captures", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.CreateCapture)
+	router.DELETE("/sdk-config/captures/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.CancelCapture)
 	// Anonymous, rate-limited, cached ~30s per slug; no Transactional (it
 	// reads main DB + telemetry through its own short transactions).
 	router.GET("/status/:slug", middleware.RateLimitPerIP(30, time.Minute), StatusPageController.Public)
 	router.GET("/status/:slug/logo", middleware.RateLimitPerIP(60, time.Minute), StatusPageController.PublicLogo)
-	// Maps a CNAMEd vanity host to its status page slug (called by the SPA
-	// when an anonymous visitor lands on / of an unrecognized host).
-	router.GET("/status-domains/resolve", middleware.RateLimitPerIP(60, time.Minute), StatusPageController.ResolveHost)
 
 	router.GET("/organizations/:organizationId/teams", middleware.UseAppAuth, middleware.RequireOrganizationAccess, middleware.Transactional, TeamController.List)
 	router.POST("/organizations/:organizationId/teams", middleware.UseAppAuth, middleware.RequireAdminAccess, middleware.Transactional, TeamController.Create)

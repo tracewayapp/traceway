@@ -13,6 +13,7 @@
 		projectsState,
 		isJsFramework,
 		isOtelFramework,
+		usesOtelSetupGuide,
 		isCloudflareFramework,
 		supportsSymbolUpload
 	} from '$lib/state/projects.svelte';
@@ -32,6 +33,7 @@
 	import SetupModeTabs from '$lib/components/setup/setup-mode-tabs.svelte';
 	import AiSetupSteps from '$lib/components/setup/ai-setup-steps.svelte';
 	import OtelSetupSteps from '$lib/components/setup/otel-setup-steps.svelte';
+	import { legacyOtelGuide } from '$lib/utils/otel-setup';
 	import OtelExporterConfig from '$lib/components/setup/otel-exporter-config.svelte';
 	import SourceMapUploadCard from '$lib/components/setup/source-map-upload-card.svelte';
 	import CopyableInline from '$lib/components/setup/copyable-inline.svelte';
@@ -41,7 +43,10 @@
 	let setupMode = $state(getSetupMode());
 
 	const isOtel = $derived(projectWithToken ? isOtelFramework(projectWithToken.framework) : false);
-	const isOtelGeneric = $derived(projectWithToken?.framework === 'opentelemetry');
+	const isOtelGeneric = $derived(
+		projectWithToken ? usesOtelSetupGuide(projectWithToken.framework) : false
+	);
+	const otelGuide = $derived(projectWithToken ? legacyOtelGuide(projectWithToken.framework) : null);
 	const isCloudflare = $derived(
 		projectWithToken ? isCloudflareFramework(projectWithToken.framework) : false
 	);
@@ -97,7 +102,7 @@ service:
 	);
 
 	const installCommand = $derived(
-		projectWithToken ? getInstallCommand(projectWithToken.framework) : 'go get go.tracewayapp.com'
+		projectWithToken ? getInstallCommand(projectWithToken.framework) : ''
 	);
 
 	const highlightLanguage = $derived.by(() => {
@@ -135,7 +140,12 @@ service:
 		{#if setupMode === 'ai'}
 			<AiSetupSteps backendUrl={projectWithToken.backendUrl} token={projectWithToken.token} />
 		{:else if isOtelGeneric}
-			<OtelSetupSteps backendUrl={projectWithToken.backendUrl} token={projectWithToken.token} />
+			<OtelSetupSteps
+				backendUrl={projectWithToken.backendUrl}
+				token={projectWithToken.token}
+				initialTarget={otelGuide?.target}
+				initialFramework={otelGuide?.framework}
+			/>
 		{:else if isOtel}
 			<Card>
 				<CardHeader>
@@ -180,7 +190,7 @@ service:
 							<p class="mb-2 text-xs text-muted-foreground">
 								Add this as an authorization header in your OTLP destination settings.
 							</p>
-							<CopyableInline value={cloudflareAuthHeader} />
+							<CopyableInline value={cloudflareAuthHeader} secret />
 						</div>
 						<div>
 							<p class="mb-2 text-sm font-medium">Step 3: wrangler.jsonc</p>
@@ -208,7 +218,7 @@ service:
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<CopyableCodeBlock code={sdkCode} language={highlightLanguage} />
+					<CopyableCodeBlock code={sdkCode} language={highlightLanguage} secret />
 				</CardContent>
 			</Card>
 

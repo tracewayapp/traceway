@@ -9,18 +9,18 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/cache"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/cache"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/gothic"
-	traceway "go.tracewayapp.com"
 )
 
 type oauthController struct{}
@@ -69,6 +69,14 @@ func (a oauthController) Begin(c *gin.Context) {
 func (a oauthController) Callback(c *gin.Context) {
 	provider := c.Param("provider")
 	if services.OAuthService == nil || !services.OAuthService.IsProviderEnabled(provider) {
+		a.redirectError(c, "oauth_failed")
+		return
+	}
+
+	// A callback without a code is the provider reporting a refusal (the user
+	// cancelled consent: ?error=access_denied) or someone opening the URL
+	// directly. Exchanging the empty code would only produce a provider error.
+	if c.Query("code") == "" {
 		a.redirectError(c, "oauth_failed")
 		return
 	}
@@ -293,13 +301,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 			return
 		}
 
-		cache.ProjectCache.AddProject(&models.Project{
-			Id:             project.Id,
-			Name:           project.Name,
-			Token:          project.Token,
-			Framework:      project.Framework,
-			OrganizationId: project.OrganizationId,
-		})
+		middleware.OnCommit(c, func() { cache.ProjectCache.AddProject(project) })
 		projectWithUrl = project.ToProjectWithBackendUrl()
 	}
 

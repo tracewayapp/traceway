@@ -1,0 +1,75 @@
+id: debug-ios-force-unwrap
+suite: debug
+title: iOS app traps when customers open live chat in Help
+tags: [mobile, ios, swift]
+seed: debug/ios-force-unwrap
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: An NSInternalInconsistencyException from the cart's collection-view batch updates (CartViewController.apply) is older, rare and on every version; the Help crash is a SIGTRAP that starts with 3.12.0.
+workspace: {repo: shop-ios}
+prompt: |
+  /traceway debug {{seed.hash}}
+  Customers on iOS say the app closes when they try to reach support from the Help screen. Find the cause and fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I don't know more than that. Please fix it in the app."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    category: null_reference
+    culprit: {file: ShopApp/Help/HelpCenterViewModel.swift, line: 23}
+    needs_instrumentation: false
+    mentions_all: ["force[- ]?unwrap|unwrapping|\\bnil\\b", "support_chat_url|supportChatURL|remote config|audience|not set"]
+  grounding:
+    - "HelpCenterViewModel.swift:23"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.show, write_file]
+      - [exceptions.show, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    static: true
+    gating: true
+    touches_culprit: true
+    must_change: [ShopApp/Help/HelpCenterViewModel.swift]
+    must_not_change: [ShopApp/Cart/CartViewController.swift]
+judge:
+  expected: >-
+    The group is "Fatal Signal SIGTRAP (5)" with frame #0 HelpCenterViewModel.chatURL.getter (HelpCenterViewModel.swift:23),
+    from the Help view's chat sheet, only on 3.12.0, first seen with that release. A Swift trap on that line is the force
+    unwrap of RemoteConfig.url(for: .supportChatURL), which is nil when support_chat_url is not set for the user's audience
+    (and RemoteConfig is empty until its first refresh). 3.12.0 added live chat to Help. The fix makes chatURL optional and
+    hides (or falls back from) the chat button when there is no URL, instead of trapping.
+  rubric:
+    - Reads the symbolicated frame #0 as a force unwrap of an optional config value and explains when it is nil.
+    - Ties the crash to 3.12.0 (only version, first seen at the release, the git change that added chat).
+    - The diff removes the force unwrap and handles a missing chat URL in the UI, without touching the unrelated cart screen.
+oracle:
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 30 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, stackTrace}), versions: ([.occurrences[].appVersion] | unique), devices: ([.occurrences[].serverName] | unique)}'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - read_file: ShopApp/Help/HelpCenterViewModel.swift
+  - read_file: ShopApp/Config/RemoteConfig.swift
+  - write_file: {path: ShopApp/Help/HelpCenterViewModel.swift, from: oracle/debug-ios-force-unwrap/HelpCenterViewModel.swift}
+  - write_file: {path: ShopApp/Help/HelpCenterView.swift, from: oracle/debug-ios-force-unwrap/HelpCenterView.swift}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      category: null_reference
+      culprit: {file: ShopApp/Help/HelpCenterViewModel.swift, symbol: chatURL, line: 23}
+      evidence:
+        - {call_id: c01, claim: "SIGTRAP with frame #0 HelpCenterViewModel.chatURL.getter at HelpCenterViewModel.swift:23, from the Help view's chat sheet, only on 3.12.0"}
+        - {call_id: c02, claim: "3.12.0 added live chat to the Help center"}
+        - {call_id: c03, claim: "chatURL force-unwraps config.url(for: .supportChatURL)"}
+        - {call_id: c04, claim: "RemoteConfig returns nil for a key that is not set for the user's audience or before the first refresh"}
+      fix_summary: chatURL is optional; the Help view offers chat only when the config has a chat URL (e-mail stays available), so a missing key no longer traps.
+      files_changed: [ShopApp/Help/HelpCenterViewModel.swift, ShopApp/Help/HelpCenterView.swift]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The crash is a Swift trap (Fatal Signal SIGTRAP) in HelpCenterViewModel.chatURL (HelpCenterViewModel.swift:23), reached when the Help screen opens the chat sheet. That line force-unwraps RemoteConfig.url(for: .supportChatURL), which is nil whenever support_chat_url is not set for the user's audience (and before the config's first refresh). Live chat came with 3.12.0, the only version that crashes, and the group first appeared with that release. I made chatURL optional and the view only offers chat when there is a URL; e-mail support stays available. The cart's NSInternalInconsistencyException group is older and unrelated.

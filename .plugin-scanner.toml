@@ -1,0 +1,14 @@
+[scanner]
+ignore_paths = [
+  "*_test.go",
+  "backend/app/repositories/transactional/pg/project.repository.go",
+  "backend/app/repositories/transactional/sqlite/project.repository.go",
+  "backend/static/frontend/*",
+  "benchmarks/*",
+  "cli/internal/state/state.go",
+  "cli/test/evals/cases/*",
+  "cli/test/evals/testdata/*",
+  "docs/*",
+  "examples/*",
+  "testing/*",
+]

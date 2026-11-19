@@ -10,8 +10,8 @@ import (
 
 	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 // dbSessionStore is a gorilla/sessions.Store backed by the main transactional

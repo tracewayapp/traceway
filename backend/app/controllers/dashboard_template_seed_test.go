@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/migrations"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	dashboardsvc "github.com/tracewayapp/traceway/backend/app/services/dashboards"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/migrations"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	dashboardsvc "github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
 	_ "modernc.org/sqlite"
 )
 
@@ -58,7 +58,7 @@ func TestSeededDashboardTemplatesAreValid(t *testing.T) {
 
 	expectedKeys := []string{
 		"traceway-clickhouse", "traceway-duckdb",
-		"golang", "traceway-otel-agent",
+		"golang", "traceway-otel-agent", "browser-performance", "mobile-performance",
 	}
 	byKey := map[string]*models.DashboardTemplate{}
 	for _, tpl := range templates {
@@ -84,7 +84,16 @@ func TestSeededDashboardTemplatesAreValid(t *testing.T) {
 		}
 	}
 
-	for _, framework := range []string{"opentelemetry", "react", "gin", ""} {
+	if keys := defaultTemplateKeysForFramework("react"); len(keys) != 1 || keys[0] != "browser-performance" {
+		t.Errorf("a browser project starts with the Web Performance dashboard, got %v", keys)
+	}
+	for _, framework := range []string{"flutter", "ios", "android", "react-native"} {
+		if keys := defaultTemplateKeysForFramework(framework); len(keys) != 1 || keys[0] != "mobile-performance" {
+			t.Errorf("a %s project starts with the Mobile Performance dashboard, got %v", framework, keys)
+		}
+	}
+
+	for _, framework := range []string{"opentelemetry", "react", "gin", "flutter", ""} {
 		for _, key := range defaultTemplateKeysForFramework(framework) {
 			if byKey[key] == nil {
 				t.Errorf("default template %s for framework %q is not seeded", key, framework)

@@ -3,6 +3,7 @@
 package chdb
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -16,10 +17,10 @@ import (
 
 const batchSendMaxAttempts = 3
 
-func SendBatch(query string, fill func(driver.Batch) error) error {
+func SendBatch(ctx context.Context, query string, fill func(driver.Batch) error) error {
 	var batch driver.Batch
 	if err := RetryOnConn(batchSendMaxAttempts, IsConnError, func() error {
-		b, err := Conn.PrepareBatch(BatchCtx(), query)
+		b, err := Conn.PrepareBatch(BatchCtx(ctx), query)
 		batch = b
 		return err
 	}); err != nil {

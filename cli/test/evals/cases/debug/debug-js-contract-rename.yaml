@@ -1,0 +1,86 @@
+id: debug-js-contract-rename
+suite: debug
+title: The order history page crashes after the API renamed a field
+tags: [javascript, react, node, cross-surface, url]
+seed: debug/js-contract-rename
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: >-
+  The stack points at the web app (formatCents in web/src/lib/money.js), but the web app has not changed in two weeks;
+  the crash starts with storefront-api v5.9.0, which renamed total_cents in the order summary. A steady
+  "ResizeObserver loop completed" message group on the same project is harmless.
+workspace: {repo: storefront-monorepo}
+prompt: |
+  {{env.url}}/issues/{{seed.hash}}/{{seed.occ.id}}?t={{seed.occ.t}}
+  Customers say the order history page in the shop has been blank for a few hours. Can you find out why and fix it?
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I don't know more than that. Please fix it."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    category: type_or_contract_mismatch
+    culprit: {file: api/src/orders/serialize.js, symbol: serializeOrderSummary, line: 9}
+    needs_instrumentation: false
+    mentions_all: ["total_cents", "totalCents", "5\\.9\\.0|api (release|deploy|change)|serializer"]
+  grounding:
+    - "money.js:5"
+  calls:
+    required:
+      - {op: exceptions.occurrence, args: {id: "{{seed.occ.id}}", recorded_at: "~^{{seed.occ.second}}"}}
+    forbidden:
+      - {op: "*", write: true}
+    order:
+      - [exceptions.occurrence, write_file]
+      - [exceptions.occurrence, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-js-contract-rename
+    command: node --test
+    gating: true
+    touches_culprit: true
+judge:
+  expected: >-
+    The linked occurrence is TypeError: Cannot read properties of undefined (reading 'toString') in formatCents
+    (web/src/lib/money.js:5), called from orderTotalLabel with order.total_cents while rendering the order history; it
+    follows a successful GET /api/orders response (network action). The web app is unchanged for two weeks. storefront-api
+    v5.9.0, deployed about six hours ago, shared the order summary serializer between list and detail and renamed
+    total_cents to totalCents (api/src/orders/serialize.js:9), breaking the documented snake_case contract the web and
+    mobile clients read. The fix restores total_cents in the API serializer (the frontend may additionally guard), so web
+    and mobile both work again.
+  rubric:
+    - Opens the linked occurrence with its t, and uses its network action and the timing to connect the crash to the API response.
+    - Finds the rename in the v5.9.0 API change (git history) rather than blaming the unchanged web code.
+    - Fixes the contract in the API serializer (total_cents again), not only the web reader, since the mobile apps read the same field.
+oracle:
+  - shell: >-
+      traceway exceptions occurrence {{seed.occ.id}} --recorded-at {{seed.occ.recordedAt}} --output json
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 50 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count}), versions: ([.occurrences[].appVersion] | unique)}'
+  - shell: >-
+      traceway endpoints list --project {{env.projects.storefront-api.id}} --since 24h --search /api/orders --output json
+      | jq '[.data[] | {endpoint, count, p95ms: (.p95Duration / 1e6), impactReason}]'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - shell: git show HEAD -- api/src/orders/serialize.js
+  - read_file: web/src/lib/orders.js
+  - write_file: {path: api/src/orders/serialize.js, from: oracle/debug-js-contract-rename/serialize.js}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      occurrence_id: "{{seed.occ.id}}"
+      category: type_or_contract_mismatch
+      culprit: {file: api/src/orders/serialize.js, symbol: serializeOrderSummary, line: 9}
+      evidence:
+        - {call_id: c01, claim: "TypeError reading 'toString' of undefined in formatCents (money.js:5) from orderTotalLabel, right after a 200 from GET /api/orders"}
+        - {call_id: c02, claim: "the group started about six hours ago, on the unchanged web version 2026.10.3"}
+        - {call_id: c03, claim: "the API keeps answering GET /api/orders normally"}
+        - {call_id: c04, claim: "the API's v5.9.0 shipped six hours ago; the web app last changed two weeks ago"}
+        - {call_id: c05, claim: "v5.9.0 renamed total_cents to totalCents in serializeOrderSummary"}
+        - {call_id: c06, claim: "the web app reads order.total_cents"}
+      fix_summary: serializeOrderSummary serves total_cents again (the documented snake_case contract), so the order history renders and the mobile apps keep working.
+      files_changed: [api/src/orders/serialize.js]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The order history crashes while rendering: TypeError: Cannot read properties of undefined (reading 'toString') in formatCents (web/src/lib/money.js:5), because orderTotalLabel passes order.total_cents and the orders from GET /api/orders no longer carry it. The web app has not changed in two weeks; storefront-api v5.9.0, deployed about six hours ago, shared the order summary serializer between list and detail and renamed total_cents to totalCents (api/src/orders/serialize.js:9). The API's JSON is a snake_case contract also read by the iOS and Android apps, so I restored total_cents in the serializer rather than changing the web reader.

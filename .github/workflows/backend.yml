@@ -9,12 +9,14 @@ on:
       # imports cli/pkg/{client,mcpserver}, so a cli-only change can break the
       # backend build. cli.yml already lists backend/** for the same reason.
       - "cli/**"
+      - "docker/start-backend.sh"
       - ".github/workflows/backend.yml"
   pull_request:
     types: [labeled]
     paths:
       - "backend/**"
       - "cli/**"
+      - "docker/start-backend.sh"
       - ".github/workflows/backend.yml"
   workflow_dispatch:
 
@@ -30,7 +32,7 @@ jobs:
     name: Test (dual SQLite)
     if: github.event_name != 'pull_request' || github.event.label.name == 'ci'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
@@ -105,7 +107,9 @@ jobs:
       - name: Test
         env:
           CGO_ENABLED: "1"
-        run: go test -race -count=1 ./...
+        # The SQLite telemetry package can take over 10 minutes under -race
+        # on hosted runners. The whole job still has a 20-minute deadline.
+        run: go test -race -timeout=15m -count=1 ./...
 
   duckdb:
     name: Test (DuckDB telemetry)
@@ -294,6 +298,8 @@ jobs:
       # it uses fakes and needs no live ClickHouse. app/migrations is included
       # for the same reason: migrate_logger_test.go is tagged
       # `transactional_pg || telemetry_ch` and needs no database either.
+      # app/notifications includes the ClickHouse-only task failure identity
+      # regression, which neither the SQLite nor DuckDB job can run.
       #
       # -json is written to a file for the tally below and replayed through jq
       # so the log still reads like ordinary `go test` output. pipefail is set
@@ -305,6 +311,7 @@ jobs:
           CGO_ENABLED: "0"
           TEST_CLICKHOUSE_SERVER: localhost:9000
           TEST_CLICKHOUSE_DATABASE: traceway_test
+          TRACEWAY_QUERY_TEST_ADDR: localhost:9000
           TEST_POSTGRES_HOST: localhost
           TEST_POSTGRES_DATABASE: traceway_test
           TEST_POSTGRES_USERNAME: traceway
@@ -312,7 +319,7 @@ jobs:
         run: |
           set -o pipefail
           go test -json -tags "transactional_pg telemetry_ch" -count=1 \
-            ./app/repositories/... ./app/chdb/... ./app/migrations/... \
+            ./app/repositories/... ./app/chdb/... ./app/migrations/... ./app/notifications/... \
             | tee "$RUNNER_TEMP/pgch-tests.jsonl" \
             | jq -j 'select(.Action == "output") | .Output'
 
@@ -334,7 +341,12 @@ jobs:
       - name: Assert the suite actually ran
         run: |
           results="$RUNNER_TEMP/pgch-tests.jsonl"
-          skipped=$(jq -r 'select(.Action == "skip" and .Test != null) | "\(.Package) \(.Test)"' "$results")
+          # ClickHouse rolls up histograms itself; manual compaction is tested
+          # by the SQLite and DuckDB jobs. All other skips remain failures.
+          skipped=$(jq -r 'select(.Action == "skip" and .Test != null)
+            | select(.Package != "github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+              or .Test != "TestMetricHistogramRepository_CompactsABusyHourOfSeveralProjects")
+            | "\(.Package) \(.Test)"' "$results")
           passed=$(jq -r 'select(.Action == "pass" and .Test != null and (.Test | contains("/") | not)) | .Test' "$results" | wc -l)
 
           if [ -n "$skipped" ]; then
@@ -348,4 +360,4 @@ jobs:
             exit 1
           fi
 
-          echo "$passed tests ran, 0 skipped"
+          echo "$passed tests ran, 0 unexpected skips"

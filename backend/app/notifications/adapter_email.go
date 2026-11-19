@@ -6,8 +6,8 @@ import (
 	netmail "net/mail"
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
 )
 
 type EmailAdapter struct {

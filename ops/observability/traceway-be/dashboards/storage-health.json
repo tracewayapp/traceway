@@ -1,0 +1,448 @@
+{
+  "schemaVersion": 1,
+  "name": "Traceway BE - Storage Health",
+  "description": "Backend self-monitoring: storage health. Peak gauges and delta totals, split by bounded dimensions. New log-protection metrics require the instrumentation deployment. Storage-specific metrics and unused worker paths may be empty; empty is not zero.",
+  "widgets": [
+    {
+      "id": "tw_2a0a206b1b02",
+      "title": "ch / delayed inserts (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.delayed_inserts.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_6e83da9baab0",
+      "title": "ch / disk / free bytes (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.disk.free_bytes",
+            "aggregation": "max",
+            "groupBy": "disk"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "By"
+      }
+    },
+    {
+      "id": "tw_1cb7fe19af9a",
+      "title": "ch / disk / total bytes (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.disk.total_bytes",
+            "aggregation": "max",
+            "groupBy": "disk"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "By"
+      }
+    },
+    {
+      "id": "tw_3e72201a50da",
+      "title": "ch / disk / used pcnt (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.disk.used_pcnt",
+            "aggregation": "max",
+            "groupBy": "disk"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "%"
+      }
+    },
+    {
+      "id": "tw_d345b01f6fd0",
+      "title": "ch / failed inserts (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.failed_inserts.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_ea46652ca59b",
+      "title": "ch / inserted rows (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.inserted_rows.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_bcbfee1df873",
+      "title": "ch / memory / os available bytes (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.memory.os_available_bytes",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "By"
+      }
+    },
+    {
+      "id": "tw_a4df26780372",
+      "title": "ch / memory / tracking bytes (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.memory.tracking_bytes",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "By"
+      }
+    },
+    {
+      "id": "tw_b53103d85bcd",
+      "title": "ch / merges / running (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.merges.running",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_d1bad0b23724",
+      "title": "ch / parts / active (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.parts.active",
+            "aggregation": "max",
+            "groupBy": "table"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_1ab61ab89032",
+      "title": "ch / parts / max per partition (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.parts.max_per_partition",
+            "aggregation": "max",
+            "groupBy": "table"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_f91546bcc581",
+      "title": "ch / parts / rows (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.parts.rows",
+            "aggregation": "max",
+            "groupBy": "table"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_9c1125c08938",
+      "title": "ch / pool / idle (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.pool.idle",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_ccebcb7cb10c",
+      "title": "ch / pool / open (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.pool.open",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_520dd2c57c3f",
+      "title": "ch / rejected inserts (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.ch.rejected_inserts.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_e3e417cd9202",
+      "title": "duckdb / db size mb (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.duckdb.db_size_mb",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "MB"
+      }
+    },
+    {
+      "id": "tw_d76cd4de5742",
+      "title": "duckdb / insert failures (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.duckdb.insert_failures.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_3c6d9efd09af",
+      "title": "duckdb / memory used mb (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.duckdb.memory_used_mb",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "MB"
+      }
+    },
+    {
+      "id": "tw_839f01d60560",
+      "title": "duckdb / read pool / in use (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.duckdb.read_pool.in_use",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_ccf306b71b3f",
+      "title": "duckdb / read pool / wait count (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.duckdb.read_pool.wait_count.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_3dd83f4e905b",
+      "title": "duckdb / read pool / wait ms (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.duckdb.read_pool.wait_ms.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "ms"
+      }
+    },
+    {
+      "id": "tw_b30c983bc3f1",
+      "title": "duckdb / rows dropped (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.duckdb.rows_dropped.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    },
+    {
+      "id": "tw_3dbe32c7475e",
+      "title": "duckdb / wal size mb (peak per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.duckdb.wal_size_mb",
+            "aggregation": "max",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md",
+        "unit": "MB"
+      }
+    },
+    {
+      "id": "tw_79d56cb15b59",
+      "title": "storage / rows dropped (total per chart bucket)",
+      "widgetType": "line_chart",
+      "config": {
+        "sources": [
+          {
+            "type": "metric",
+            "name": "traceway.storage.rows_dropped.delta",
+            "aggregation": "sum",
+            "groupBy": "server_name"
+          }
+        ],
+        "showLegend": true,
+        "colSpan": 1,
+        "size": "md"
+      }
+    }
+  ]
+}

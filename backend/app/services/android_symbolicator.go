@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/android"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/android"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/twcache"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 func loadAndroidMapping(mappingKey string) twcache.LoadFunc[SymbolicationCacheEntry] {

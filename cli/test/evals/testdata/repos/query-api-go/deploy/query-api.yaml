@@ -1,0 +1,11 @@
+# Production deployment (applied by CI).
+service: query-api
+instances: 2
+instance:
+  type: c6i.large # 2 vCPU, 4 GiB
+  goMaxProcs: 2
+autoscaling:
+  enabled: false
+healthCheck:
+  path: /healthz
+  intervalSeconds: 10

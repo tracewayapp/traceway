@@ -6,36 +6,36 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
-
-type EvalResult struct {
-	Fired    bool
-	Message  Message
-	Messages []Message
-}
 
 type RuleEvaluator func(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error)
 
 var polledEvaluators = map[string]RuleEvaluator{
-	"error_rate_threshold":    evaluateErrorRateThreshold,
-	"endpoint_p95_threshold":  evaluateEndpointP95Threshold,
-	"endpoint_p99_threshold":  evaluateEndpointP99Threshold,
-	"apdex_drop":              evaluateApdexDrop,
-	"metric_threshold":        evaluateMetricThreshold,
-	"no_data":                 evaluateNoData,
-	"error_count_threshold":   evaluateErrorCountThreshold,
-	"task_duration_threshold": evaluateTaskDurationThreshold,
-	"task_failure_rate":       evaluateTaskFailureRate,
-	"throughput_drop":         evaluateThroughputDrop,
-	"endpoint_error_rate":     evaluateEndpointErrorRate,
-	"impact_score_critical":   evaluateImpactScoreCritical,
-	"impact_score_high":       evaluateImpactScoreHigh,
-	"impact_score_medium":     evaluateImpactScoreMedium,
+	"error_rate_threshold":      evaluateErrorRateThreshold,
+	"endpoint_p95_threshold":    evaluateEndpointP95Threshold,
+	"endpoint_p99_threshold":    evaluateEndpointP99Threshold,
+	"apdex_drop":                evaluateApdexDrop,
+	"metric_threshold":          evaluateMetricThreshold,
+	"metric_release_regression": evaluateMetricReleaseRegression,
+	"no_data":                   evaluateNoData,
+	"error_count_threshold":     evaluateErrorCountThreshold,
+	"task_duration_threshold":   evaluateTaskDurationThreshold,
+	"task_failure_rate":         evaluateTaskFailureRate,
+	"throughput_drop":           evaluateThroughputDrop,
+	"endpoint_error_rate":       evaluateEndpointErrorRate,
+	"impact_score_critical":     evaluateImpactScoreCritical,
+	"impact_score_high":         evaluateImpactScoreHigh,
+	"impact_score_medium":       evaluateImpactScoreMedium,
+	"slo_burn_rate":             evaluateSLOBurnRate,
+	"slo_budget_consumed":       evaluateSLOBudgetConsumed,
 }
 
 // --- Error Rate Threshold ---
@@ -60,7 +60,7 @@ func evaluateErrorRateThreshold(ctx context.Context, rule *models.NotificationRu
 
 	var total, errors uint64
 	err := chdb.Conn.QueryRow(ctx,
-		"SELECT count() as total, countIf(status_code >= 500) as errors FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
+		"SELECT count() as total, countIf(status_code >= 500) as errors FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
 		projectId, from, now).Scan(&total, &errors)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func evaluateErrorRateThreshold(ctx context.Context, rule *models.NotificationRu
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildErrorRateMessage(rate, cfg.ThresholdPercent, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -101,7 +101,7 @@ func evaluateEndpointP95Threshold(ctx context.Context, rule *models.Notification
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
 	// duration is stored in nanoseconds, convert to milliseconds
-	query := "SELECT quantile(0.95)(duration / 1000000) as p95 FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT quantile(0.95)(duration / 1000000) as p95 FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId, from, now}
 	if cfg.Endpoint != "" && cfg.Endpoint != "*" {
 		query += " AND endpoint = ?"
@@ -114,7 +114,7 @@ func evaluateEndpointP95Threshold(ctx context.Context, rule *models.Notification
 		return nil, err
 	}
 
-	if p95 < cfg.ThresholdMs {
+	if !latencyBreached(p95, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -122,7 +122,7 @@ func evaluateEndpointP95Threshold(ctx context.Context, rule *models.Notification
 	if endpoint == "" || endpoint == "*" {
 		endpoint = "all endpoints"
 	}
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildEndpointLatencyMessage("P95", p95, cfg.ThresholdMs, endpoint, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -141,7 +141,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 	now := time.Now().UTC()
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
-	query := "SELECT quantile(0.99)(duration / 1000000) as p99 FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT quantile(0.99)(duration / 1000000) as p99 FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId, from, now}
 	if cfg.Endpoint != "" && cfg.Endpoint != "*" {
 		query += " AND endpoint = ?"
@@ -154,7 +154,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 		return nil, err
 	}
 
-	if p99 < cfg.ThresholdMs {
+	if !latencyBreached(p99, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -162,7 +162,7 @@ func evaluateEndpointP99Threshold(ctx context.Context, rule *models.Notification
 	if endpoint == "" || endpoint == "*" {
 		endpoint = "all endpoints"
 	}
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildEndpointLatencyMessage("P99", p99, cfg.ThresholdMs, endpoint, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -193,7 +193,7 @@ func evaluateApdexDrop(ctx context.Context, rule *models.NotificationRule, proje
 		`SELECT count() as total,
 			countIf(duration <= 750000000 AND status_code < 500) as satisfied,
 			countIf(duration > 750000000 AND duration <= 1500000000 AND status_code < 500) as tolerating
-		FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?`,
+		FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?`,
 		projectId, from, now).Scan(&total, &satisfied, &tolerating)
 	if err != nil {
 		return nil, err
@@ -208,31 +208,25 @@ func evaluateApdexDrop(ctx context.Context, rule *models.NotificationRule, proje
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildApdexDropMessage(apdex, cfg.ThresholdApdex, int64(total), cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
 
 // --- Metric Threshold ---
 
-type metricThresholdConfig struct {
-	MetricName      string  `json:"metricName"`
-	Operator        string  `json:"operator"`
-	ThresholdValue  float64 `json:"thresholdValue"`
-	Aggregation     string  `json:"aggregation"`
-	LookbackMinutes int     `json:"lookbackMinutes"`
-}
-
 func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule, projectId uuid.UUID) (*EvalResult, error) {
-	var cfg metricThresholdConfig
-	if err := json.Unmarshal(rule.Config, &cfg); err != nil {
-		return nil, fmt.Errorf("invalid metric_threshold config: %w", err)
-	}
-	if cfg.LookbackMinutes <= 0 {
-		cfg.LookbackMinutes = 5
+	cfg, err := parseMetricThresholdConfig(rule.Config)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
+	if scan, err := histogramMetricSeries(ctx, cfg, projectId, now); err != nil {
+		return nil, err
+	} else if scan != nil {
+		return metricThresholdResult(ctx, rule, cfg, scan.series, projectId, scan.truncated)
+	}
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
 	selectExpr := "avg(value)"
@@ -243,48 +237,43 @@ func evaluateMetricThreshold(ctx context.Context, rule *models.NotificationRule,
 		selectExpr = "min(value)"
 	case "sum":
 		selectExpr = "sum(value)"
-	case "p95":
-		selectExpr = "quantile(0.95)(value)"
-	case "p99":
-		selectExpr = "quantile(0.99)(value)"
+	case "count":
+		selectExpr = "toFloat64(count())"
+	case "p50", "p75", "p90", "p95", "p99":
+		selectExpr = fmt.Sprintf("quantile(%g)(value)", shared.HistogramAggregations[cfg.Aggregation])
 	case "last":
 		selectExpr = "argMax(value, recorded_at)"
 	}
 
-	query := fmt.Sprintf("SELECT count(), %s FROM metric_points WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?", selectExpr)
-	args := []interface{}{projectId, cfg.MetricName, from, now}
+	groupExpr, args := metricGroupExpr(cfg.GroupBy, "tags[?]")
+	query := fmt.Sprintf("SELECT %s AS group_key, %s FROM metric_points WHERE project_id = ? AND name = ? AND recorded_at >= ? AND recorded_at <= ?", groupExpr, selectExpr)
+	args = append(args, projectId, cfg.MetricName, from, now)
+	for _, k := range slices.Sorted(maps.Keys(cfg.Tags)) {
+		query += " AND tags[?] = ?"
+		args = append(args, k, cfg.Tags[k])
+	}
+	query += " GROUP BY group_key ORDER BY group_key LIMIT ?"
+	args = append(args, maxMetricRuleSeriesScanned)
 
-	var count uint64
-	var value float64
-	err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&count, &value)
+	rows, err := chdb.Conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	if count == 0 {
-		return &EvalResult{Fired: false}, nil
+	defer rows.Close()
+
+	var series []metricSeries
+	for rows.Next() {
+		var s metricSeries
+		if err := rows.Scan(&s.Key, &s.Value); err != nil {
+			return nil, err
+		}
+		series = append(series, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
-	fired := false
-	switch cfg.Operator {
-	case "gt":
-		fired = value > cfg.ThresholdValue
-	case "gte":
-		fired = value >= cfg.ThresholdValue
-	case "lt":
-		fired = value < cfg.ThresholdValue
-	case "lte":
-		fired = value <= cfg.ThresholdValue
-	case "eq":
-		fired = value == cfg.ThresholdValue
-	}
-
-	if !fired {
-		return &EvalResult{Fired: false}, nil
-	}
-
-	projectName := getProjectName(projectId)
-	msg := buildMetricThresholdMessage(cfg.MetricName, value, cfg.Operator, cfg.ThresholdValue, cfg.Aggregation, cfg.LookbackMinutes, projectName)
-	return &EvalResult{Fired: true, Message: msg}, nil
+	return metricThresholdResult(ctx, rule, cfg, series, projectId, len(series) >= maxMetricRuleSeriesScanned)
 }
 
 // --- No Data ---
@@ -306,7 +295,7 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 	threshold := time.Now().UTC().Add(-time.Duration(cfg.SilenceMinutes) * time.Minute)
 
 	if cfg.DataType == "any" {
-		tables := []string{"endpoints", "exception_stack_traces", "metric_points", "tasks"}
+		tables := []string{"endpoints_v2", "exceptions_v2", "metric_points", "tasks_v2"}
 		for _, t := range tables {
 			var maxTs time.Time
 			err := chdb.Conn.QueryRow(ctx,
@@ -316,7 +305,7 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 				return &EvalResult{Fired: false}, nil
 			}
 		}
-		projectName := getProjectName(projectId)
+		projectName := getProjectName(ctx, projectId)
 		msg := buildNoDataMessage("any", cfg.SilenceMinutes, projectName)
 		return &EvalResult{Fired: true, Message: msg}, nil
 	}
@@ -324,13 +313,13 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 	table := ""
 	switch cfg.DataType {
 	case "endpoints":
-		table = "endpoints"
+		table = "endpoints_v2"
 	case "exceptions":
-		table = "exception_stack_traces"
+		table = "exceptions_v2"
 	case "metrics":
 		table = "metric_points"
 	case "tasks":
-		table = "tasks"
+		table = "tasks_v2"
 	default:
 		return nil, fmt.Errorf("unknown data type: %s", cfg.DataType)
 	}
@@ -347,7 +336,7 @@ func evaluateNoData(ctx context.Context, rule *models.NotificationRule, projectI
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildNoDataMessage(cfg.DataType, cfg.SilenceMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -373,7 +362,7 @@ func evaluateErrorCountThreshold(ctx context.Context, rule *models.NotificationR
 
 	var count uint64
 	err := chdb.Conn.QueryRow(ctx,
-		"SELECT count() FROM exception_stack_traces WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_message = 0",
+		"SELECT count() FROM exceptions_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ? AND is_message = 0",
 		projectId, from, now).Scan(&count)
 	if err != nil {
 		return nil, err
@@ -383,7 +372,7 @@ func evaluateErrorCountThreshold(ctx context.Context, rule *models.NotificationR
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildErrorCountMessage(int64(count), cfg.ThresholdCount, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -409,7 +398,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 	from := now.Add(-time.Duration(cfg.LookbackMinutes) * time.Minute)
 
 	// duration is stored in nanoseconds, convert to milliseconds
-	query := "SELECT quantile(0.95)(duration / 1000000) as p95 FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT quantile(0.95)(duration / 1000000) as p95 FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId, from, now}
 	if cfg.TaskName != "" && cfg.TaskName != "*" {
 		query += " AND task_name = ?"
@@ -422,7 +411,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 		return nil, err
 	}
 
-	if p95 < cfg.ThresholdMs {
+	if !latencyBreached(p95, cfg.ThresholdMs) {
 		return &EvalResult{Fired: false}, nil
 	}
 
@@ -430,7 +419,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 	if taskName == "" || taskName == "*" {
 		taskName = "all tasks"
 	}
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildTaskDurationMessage(taskName, p95, cfg.ThresholdMs, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -438,7 +427,7 @@ func evaluateTaskDurationThreshold(ctx context.Context, rule *models.Notificatio
 // --- Task Failure Rate ---
 
 func countTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName string, named bool, from, to time.Time) (int64, error) {
-	query := "SELECT count() FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	query := "SELECT count() FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId, from, to}
 	if named {
 		query += " AND task_name = ?"
@@ -453,14 +442,15 @@ func countTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName stri
 }
 
 func countFailedTaskExecutions(ctx context.Context, projectId uuid.UUID, taskName string, named bool, from, to time.Time) (int64, error) {
-	query := "SELECT countDistinct(trace_id) FROM exception_stack_traces WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
-		" AND trace_id IN (SELECT id FROM tasks WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
+	// A task failed when an exception was recorded on its own span. One caught further down did not fail it.
+	query := "SELECT count() FROM (SELECT DISTINCT trace_id, span_id FROM exceptions_v2 WHERE project_id = ? AND trace_type = 'task' AND recorded_at >= ? AND recorded_at <= ?" +
+		" AND (trace_id, span_id) IN (SELECT trace_id, span_id FROM tasks_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?"
 	args := []interface{}{projectId, from, to, projectId, from, to}
 	if named {
 		query += " AND task_name = ?"
 		args = append(args, taskName)
 	}
-	query += ")"
+	query += ")) AS failed_tasks"
 
 	var failed uint64
 	if err := chdb.Conn.QueryRow(ctx, query, args...).Scan(&failed); err != nil {
@@ -495,7 +485,7 @@ func evaluateThroughputDrop(ctx context.Context, rule *models.NotificationRule, 
 
 	var currentCount uint64
 	err := chdb.Conn.QueryRow(ctx,
-		"SELECT count() FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
+		"SELECT count() FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
 		projectId, lookbackFrom, now).Scan(&currentCount)
 	if err != nil {
 		return nil, err
@@ -503,7 +493,7 @@ func evaluateThroughputDrop(ctx context.Context, rule *models.NotificationRule, 
 
 	var baselineCount uint64
 	err = chdb.Conn.QueryRow(ctx,
-		"SELECT count() FROM endpoints WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
+		"SELECT count() FROM endpoints_v2 WHERE project_id = ? AND recorded_at >= ? AND recorded_at <= ?",
 		projectId, baselineFrom, lookbackFrom).Scan(&baselineCount)
 	if err != nil {
 		return nil, err
@@ -523,7 +513,7 @@ func evaluateThroughputDrop(ctx context.Context, rule *models.NotificationRule, 
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildThroughputDropMessage(dropPercent, int64(currentCount), normalizedBaseline, cfg.LookbackMinutes, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -551,7 +541,7 @@ func evaluateEndpointErrorRate(ctx context.Context, rule *models.NotificationRul
 
 	var total, errors uint64
 	err := chdb.Conn.QueryRow(ctx,
-		"SELECT count() as total, countIf(status_code >= 500) as errors FROM endpoints WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?",
+		"SELECT count() as total, countIf(status_code >= 500) as errors FROM endpoints_v2 WHERE project_id = ? AND endpoint = ? AND recorded_at >= ? AND recorded_at <= ?",
 		projectId, cfg.Endpoint, from, now).Scan(&total, &errors)
 	if err != nil {
 		return nil, err
@@ -566,7 +556,7 @@ func evaluateEndpointErrorRate(ctx context.Context, rule *models.NotificationRul
 		return &EvalResult{Fired: false}, nil
 	}
 
-	projectName := getProjectName(projectId)
+	projectName := getProjectName(ctx, projectId)
 	msg := buildEndpointErrorRateMessage(cfg.Endpoint, rate, cfg.ThresholdPercent, projectName)
 	return &EvalResult{Fired: true, Message: msg}, nil
 }
@@ -624,7 +614,7 @@ func computeImpactEndpoints(ctx context.Context, projectId uuid.UUID, minRequest
 		FROM (
 			SELECT e.endpoint, e.duration, e.status_code, e.recorded_at,
 				   s.offset_ms as offset_ms
-			FROM endpoints e
+			FROM endpoints_v2 e
 			LEFT JOIN (SELECT * FROM slow_endpoints FINAL) AS s
 				ON e.endpoint = s.endpoint AND e.project_id = s.project_id
 			WHERE e.project_id = ? AND e.recorded_at >= ? AND e.recorded_at <= ? AND e.is_stream = 0

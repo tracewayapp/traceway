@@ -2,8 +2,13 @@
   "endpointCount": 0,
   "endpoints": [],
   "taskCount": 0,
-  "spanCount": 0,
-  "spans": [],
+  "spanCount": 1,
+  "spans": [
+    {
+      "name": "chat claude-sonnet-5",
+      "linkedToParent": true
+    }
+  ],
   "exceptionCount": 0,
   "exceptions": [],
   "aiTraceCount": 1,

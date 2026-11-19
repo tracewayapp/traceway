@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: '4.2.1: hero carousel sized to the first photo'
+  age: 900h
+  author: Sofia Marin <sofia@example.com>
+head:
+  message: '4.3.0: show the seller on marketplace listings'
+  age: 230h
+  author: Noah Kim <noah@example.com>

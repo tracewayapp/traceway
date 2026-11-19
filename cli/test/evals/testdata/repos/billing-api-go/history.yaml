@@ -1,0 +1,9 @@
+commits:
+- dir: .history/01
+  message: 'v1.8.1: invoice page totals in the customer''s currency'
+  age: 400h
+  author: Sam Okafor <sam@example.com>
+head:
+  message: 'v1.8.2: show the billing address on the invoice page'
+  age: 30h40m
+  author: Rui Tanaka <rui@example.com>

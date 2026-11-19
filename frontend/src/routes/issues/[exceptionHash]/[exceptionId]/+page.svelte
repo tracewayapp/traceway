@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { api } from '$lib/api';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -8,6 +9,7 @@
 	import { formatDateTime } from '$lib/utils/formatters';
 	import { StackTraceCard, EventCard, EventsTable } from '$lib/components/issues';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
+	import { linkedTraceFrom } from '$lib/types/exceptions';
 	import type { ExceptionOccurrence, LinkedTrace, SessionRecording } from '$lib/types/exceptions';
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
@@ -50,7 +52,10 @@
 		occurrence ? `Event from ${formatDateTime(occurrence.recordedAt, { timezone })}` : 'Loading...'
 	);
 
+	let loadSequence = 0;
+
 	async function loadData() {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -64,7 +69,9 @@
 				data.recordedAt ? { recordedAt: data.recordedAt } : {},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== loadSequence) return;
 			occurrence = exceptionResponse.exception;
+			linkedTrace = linkedTraceFrom(exceptionResponse.relatedEntity);
 			sessionRecording = exceptionResponse.sessionRecording ?? null;
 			sessionId = exceptionResponse.sessionId ?? null;
 
@@ -85,45 +92,11 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
+			if (sequence !== loadSequence) return;
 			allOccurrences = response.occurrences || [];
 			total = response.pagination.total;
-
-			// Load linked trace if this occurrence has a traceId
-			if (occurrence.traceId) {
-				try {
-					const isTask = occurrence.traceType === 'task';
-					console.log('DEBUG linked trace:', {
-						traceId: occurrence.traceId,
-						traceType: occurrence.traceType,
-						isTask
-					});
-					const endpoint = isTask ? '/tasks' : '/endpoints';
-					const txResponse = await api.post(
-						`${endpoint}/${occurrence.traceId}`,
-						{},
-						{ projectId: projectsState.currentProjectId ?? undefined }
-					);
-					const txData = isTask ? txResponse.task : txResponse.endpoint;
-					if (txData) {
-						linkedTrace = {
-							id: txData.id,
-							endpoint: isTask ? txData.taskName : txData.endpoint,
-							duration: txData.duration,
-							statusCode: txData.statusCode || 0,
-							recordedAt: txData.recordedAt,
-							traceType: isTask ? 'task' : 'endpoint',
-							distributedTraceId: txData.distributedTraceId
-						};
-					}
-				} catch (txError) {
-					console.error('Failed to load linked trace:', {
-						error: txError,
-						traceId: occurrence.traceId,
-						traceType: occurrence.traceType
-					});
-				}
-			}
 		} catch (e) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			if (getErrorStatus(e) === 404) {
 				notFound = true;
@@ -131,7 +104,7 @@
 				error = getErrorMessage(e) || 'Failed to load exception details';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
@@ -155,7 +128,18 @@
 
 	$effect(() => {
 		void data.exceptionId;
-		loadData();
+		void data.exceptionHash;
+		void data.recordedAt;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			occurrence = null;
+			allOccurrences = [];
+			sessionId = null;
+			loadData();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 

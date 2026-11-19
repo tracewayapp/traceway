@@ -6,28 +6,32 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/sqlitetypes"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/sqlitetypes"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type sessionRow struct {
-	Id                 uuid.UUID                 `lit:"id"`
-	ProjectId          uuid.UUID                 `lit:"project_id"`
-	StartedAt          sqlitetypes.SQLiteTime    `lit:"started_at"`
-	EndedAt            *sqlitetypes.SQLiteTime   `lit:"ended_at"`
-	Duration           int64                     `lit:"duration"`
-	ClientIP           string                    `lit:"client_ip"`
-	Attributes         sqlitetypes.SQLiteJSONMap `lit:"attributes"`
-	AppVersion         string                    `lit:"app_version"`
-	ServerName         string                    `lit:"server_name"`
-	DistributedTraceId *uuid.UUID                `lit:"distributed_trace_id"`
+	Id         uuid.UUID                 `lit:"id"`
+	ProjectId  uuid.UUID                 `lit:"project_id"`
+	StartedAt  sqlitetypes.SQLiteTime    `lit:"started_at"`
+	EndedAt    *sqlitetypes.SQLiteTime   `lit:"ended_at"`
+	Duration   int64                     `lit:"duration"`
+	ClientIP   string                    `lit:"client_ip"`
+	Attributes sqlitetypes.SQLiteJSONMap `lit:"attributes"`
+	AppVersion string                    `lit:"app_version"`
+	ServerName string                    `lit:"server_name"`
+	TraceId    string                    `lit:"trace_id"`
+
+	LastActivity *sqlitetypes.SQLiteTime `lit:"last_activity"`
+	SpanActivity *sqlitetypes.SQLiteTime `lit:"span_activity"`
+	LastReceived *sqlitetypes.SQLiteTime `lit:"last_received"`
 }
 
 type sessionRowNaming struct{ lit.DefaultDbNamingStrategy }
@@ -44,14 +48,14 @@ func init() {
 
 func (row *sessionRow) toModel() models.Session {
 	s := models.Session{
-		Id:                 row.Id,
-		ProjectId:          row.ProjectId,
-		StartedAt:          row.StartedAt.Time,
-		Duration:           row.Duration,
-		ClientIP:           row.ClientIP,
-		AppVersion:         row.AppVersion,
-		ServerName:         row.ServerName,
-		DistributedTraceId: row.DistributedTraceId,
+		Id:         row.Id,
+		ProjectId:  row.ProjectId,
+		StartedAt:  row.StartedAt.Time,
+		Duration:   row.Duration,
+		ClientIP:   row.ClientIP,
+		AppVersion: row.AppVersion,
+		ServerName: row.ServerName,
+		TraceId:    row.TraceId,
 	}
 	if row.EndedAt != nil {
 		t := row.EndedAt.Time
@@ -60,8 +64,31 @@ func (row *sessionRow) toModel() models.Session {
 	if row.Attributes != nil {
 		s.Attributes = map[string]string(row.Attributes)
 	}
+	activity := sqlitetypes.SessionActivityResult{LastActivity: row.LastActivity, SpanActivity: row.SpanActivity, LastReceived: row.LastReceived}
+	shared.ResolveSessionEnd(&s, activity.Activity(), time.Now())
 	return s
 }
+
+var sessionActivityJoin = fmt.Sprintf(` LEFT JOIN (
+	SELECT r.session_id,
+		MAX(COALESCE(r.ended_at, r.recorded_at)) AS last_activity,
+		MAX(CASE WHEN COALESCE(r.ended_at, r.recorded_at) <= s.started_at + INTERVAL %d MINUTE THEN COALESCE(r.ended_at, r.recorded_at) END) AS span_activity,
+		MAX(r.recorded_at) AS last_received
+	FROM session_recordings AS r
+	JOIN sessions AS s ON s.id = r.session_id AND s.project_id = r.project_id
+	WHERE r.project_id = :project_id AND r.session_id IS NOT NULL AND r.recorded_at >= :rec_from AND r.recorded_at <= :rec_to
+	GROUP BY r.session_id
+) AS activity ON activity.session_id = sessions.id`, int(shared.SessionMaxSpan/time.Minute))
+
+var sessionLastActivity = fmt.Sprintf(`(CASE WHEN activity.last_activity > sessions.started_at + INTERVAL %d MINUTE
+	THEN COALESCE(activity.span_activity, sessions.started_at) ELSE activity.last_activity END)`, int(shared.SessionMaxSpan/time.Minute))
+
+var sessionDurationSortKey = strings.ReplaceAll(fmt.Sprintf(`CASE WHEN activity.last_activity IS NULL THEN least(CAST(sessions.duration // 1000000 AS BIGINT), %[2]d)
+	ELSE least(epoch_ms(CASE
+		WHEN sessions.ended_at > greatest({last}, sessions.started_at)
+			AND sessions.ended_at < greatest({last}, sessions.started_at) + INTERVAL %[1]d MINUTE
+		THEN sessions.ended_at ELSE greatest({last}, sessions.started_at) END) - epoch_ms(sessions.started_at), %[2]d) END`,
+	int(shared.SessionIdleTimeout/time.Minute), shared.SessionMaxSpan.Milliseconds()), "{last}", sessionLastActivity)
 
 type sessionRepository struct{}
 
@@ -72,16 +99,19 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 	if len(sessions) == 0 {
 		return nil
 	}
+	// The id is client-chosen and the ingest token is public in browser projects, so a session only ever takes an
+	// update from its own project; another project naming the same id writes nothing.
 	const stmt = `INSERT INTO sessions
-		(id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id)
-		VALUES (:id, :project_id, :started_at, :ended_at, :duration, :client_ip, :attributes, :app_version, :server_name, :distributed_trace_id)
+		(id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id)
+		VALUES (:id, :project_id, :started_at, :ended_at, :duration, :client_ip, :attributes, :app_version, :server_name, :trace_id)
 		ON CONFLICT (id) DO UPDATE SET
 			ended_at = COALESCE(excluded.ended_at, sessions.ended_at),
 			duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE sessions.duration END,
 			attributes = excluded.attributes,
 			app_version = excluded.app_version,
 			server_name = excluded.server_name,
-			distributed_trace_id = excluded.distributed_trace_id`
+			trace_id = excluded.trace_id
+		WHERE sessions.project_id = excluded.project_id`
 
 	tx, err := db.TelemetryDB.BeginTx(ctx, nil)
 	if err != nil {
@@ -103,22 +133,17 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 			t := s.EndedAt.UTC()
 			endedAt = &t
 		}
-		var distTraceId *string
-		if s.DistributedTraceId != nil {
-			v := s.DistributedTraceId.String()
-			distTraceId = &v
-		}
 		query, args, err := lit.ParseNamedQuery(db.Driver, stmt, lit.P{
-			"id":                   s.Id.String(),
-			"project_id":           s.ProjectId.String(),
-			"started_at":           s.StartedAt.UTC(),
-			"ended_at":             endedAt,
-			"duration":             s.Duration,
-			"client_ip":            s.ClientIP,
-			"attributes":           attrs,
-			"app_version":          s.AppVersion,
-			"server_name":          s.ServerName,
-			"distributed_trace_id": distTraceId,
+			"id":          s.Id.String(),
+			"project_id":  s.ProjectId.String(),
+			"started_at":  s.StartedAt.UTC(),
+			"ended_at":    endedAt,
+			"duration":    s.Duration,
+			"client_ip":   s.ClientIP,
+			"attributes":  attrs,
+			"app_version": s.AppVersion,
+			"server_name": s.ServerName,
+			"trace_id":    s.TraceId,
 		})
 		if err != nil {
 			return err
@@ -131,7 +156,7 @@ func (r *sessionRepository) Upsert(ctx context.Context, sessions []models.Sessio
 }
 
 func (r *sessionRepository) CountBetween(ctx context.Context, projectId uuid.UUID, start, end time.Time) (int64, error) {
-	result, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB,
+	result, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB),
 		"SELECT count(*) as count FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end",
 		lit.P{"project_id": projectId, "start": start.UTC(), "end": end.UTC()})
 	if err != nil {
@@ -155,7 +180,7 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	for k, v := range extraParams {
 		countParams[k] = v
 	}
-	countResult, err := lit.SelectSingleNamed[models.CountResult](db.TelemetryDB, countQuery, countParams)
+	countResult, err := lit.SelectSingleNamed[models.CountResult](shared.Traced(ctx, db.TelemetryDB), countQuery, countParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -164,12 +189,9 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 		count = int64(countResult.Count)
 	}
 
-	allowedOrderBy := map[string]bool{
-		"started_at": true,
-		"duration":   true,
-	}
-	if !allowedOrderBy[orderBy] {
-		orderBy = "started_at"
+	orderExpr := "sessions.started_at"
+	if orderBy == "duration" {
+		orderExpr = sessionDurationSortKey
 	}
 	sortDir := "DESC"
 	if sortDirection == "asc" {
@@ -177,19 +199,23 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	}
 
 	offset := (page - 1) * pageSize
-	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id FROM sessions WHERE project_id = :project_id AND started_at >= :start AND started_at <= :end" + whereExtra + " ORDER BY " + orderBy + " " + sortDir + " LIMIT :limit OFFSET :offset"
+	query := "SELECT sessions.id, sessions.project_id, sessions.started_at, sessions.ended_at, sessions.duration, sessions.client_ip, sessions.attributes, sessions.app_version, sessions.server_name, sessions.trace_id, activity.last_activity, activity.span_activity, activity.last_received FROM sessions" + sessionActivityJoin +
+		" WHERE sessions.project_id = :project_id AND sessions.started_at >= :start AND sessions.started_at <= :end" + whereExtra + " ORDER BY " + orderExpr + " " + sortDir + " LIMIT :limit OFFSET :offset"
 
+	recFrom, recTo := shared.SessionRecordingWindow(fromDate, toDate)
 	queryParams := lit.P{
 		"project_id": projectId,
 		"start":      fromDate.UTC(),
 		"end":        toDate.UTC(),
+		"rec_from":   recFrom.UTC(),
+		"rec_to":     recTo.UTC(),
 		"limit":      pageSize,
 		"offset":     offset,
 	}
 	for k, v := range extraParams {
 		queryParams[k] = v
 	}
-	rows, err := lit.SelectNamed[sessionRow](db.TelemetryDB, query, queryParams)
+	rows, err := lit.SelectNamed[sessionRow](shared.Traced(ctx, db.TelemetryDB), query, queryParams)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -201,29 +227,40 @@ func (r *sessionRepository) FindAll(ctx context.Context, projectId uuid.UUID, fr
 	return sessions, count, nil
 }
 
-// buildSessionFilterClauseDuckDB produces a WHERE fragment + named params
-// mirroring the ClickHouse helper: search must be a valid UUID for an exact
-// id match (anything else is ignored), and each attribute filter becomes an
-// exact match against `json_extract_string(attributes, '$.<key>')`.
 func buildSessionFilterClauseDuckDB(search string, filters []shared.SessionAttributeFilter) (string, lit.P) {
 	var sb strings.Builder
 	params := lit.P{}
 	if s := strings.TrimSpace(search); s != "" {
-		if id, err := uuid.Parse(s); err == nil {
-			sb.WriteString(" AND id = :search_id")
-			params["search_id"] = id
-		}
+		sb.WriteString(" AND (instr(lower(CAST(sessions.id AS TEXT)), lower(:search)) > 0 OR instr(lower(client_ip), lower(:search)) > 0 OR EXISTS (SELECT 1 FROM json_each(sessions.attributes) AS attr WHERE instr(lower(json_extract_string(attr.value, '$')), lower(:search)) > 0))")
+		params["search"] = s
 	}
 	for i, f := range filters {
+		if f.Key == "__recording_trigger" {
+			// One trigger id, or the ids of a rule's triggers separated by commas (an id cannot contain one).
+			names := make([]string, 0, 1)
+			for n, id := range strings.Split(f.Value, ",") {
+				key := fmt.Sprintf("reason_%d_%d", i, n)
+				names = append(names, ":"+key)
+				params[key] = id
+			}
+			sb.WriteString(" AND sessions.id IN (SELECT session_id FROM session_recording_reasons WHERE project_id = :project_id AND trigger_id IN (" + strings.Join(names, ", ") + "))")
+			continue
+		}
 		if f.Key == "" {
 			continue
 		}
 		keyParam := fmt.Sprintf("attr_k_%d", i)
 		valParam := fmt.Sprintf("attr_v_%d", i)
-		sb.WriteString(" AND json_extract_string(attributes, '$.\"' || :")
-		sb.WriteString(keyParam)
-		sb.WriteString(" || '\"') = :")
-		sb.WriteString(valParam)
+		sb.WriteString(" AND ")
+		if f.Exclude {
+			sb.WriteString("NOT ")
+		}
+		sb.WriteString("EXISTS (SELECT 1 FROM json_each(sessions.attributes) AS attr WHERE attr.key = :" + keyParam + " AND ")
+		if f.Contains {
+			sb.WriteString("instr(lower(json_extract_string(attr.value, '$')), lower(:" + valParam + ")) > 0)")
+		} else {
+			sb.WriteString("json_extract_string(attr.value, '$') = :" + valParam + ")")
+		}
 		params[keyParam] = f.Key
 		params[valParam] = f.Value
 	}
@@ -231,7 +268,7 @@ func buildSessionFilterClauseDuckDB(search string, filters []shared.SessionAttri
 }
 
 func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
-	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, distributed_trace_id FROM sessions WHERE project_id = :project_id AND id = :id"
+	query := "SELECT id, project_id, started_at, ended_at, duration, client_ip, attributes, app_version, server_name, trace_id FROM sessions WHERE project_id = :project_id AND id = :id"
 	params := lit.P{"project_id": projectId, "id": sessionId}
 	if startedAt != nil {
 		from, to := shared.TraceWindowBounds(*startedAt)
@@ -241,12 +278,23 @@ func (r *sessionRepository) FindById(ctx context.Context, projectId, sessionId u
 	}
 	query += " LIMIT 1"
 
-	row, err := lit.SelectSingleNamed[sessionRow](db.TelemetryDB, query, params)
+	row, err := lit.SelectSingleNamed[sessionRow](shared.Traced(ctx, db.TelemetryDB), query, params)
 	if err != nil {
 		return nil, err
 	}
 	if row == nil {
 		return nil, nil
+	}
+
+	from, to := shared.TraceWindowBounds(row.StartedAt.Time)
+	activity, err := lit.SelectSingleNamed[sqlitetypes.SessionActivityResult](shared.Traced(ctx, db.TelemetryDB),
+		"SELECT MAX(COALESCE(ended_at, recorded_at)) AS last_activity, MAX(CASE WHEN COALESCE(ended_at, recorded_at) <= :span_end THEN COALESCE(ended_at, recorded_at) END) AS span_activity, MAX(recorded_at) AS last_received FROM session_recordings WHERE project_id = :project_id AND session_id = :session_id AND recorded_at >= :from AND recorded_at <= :to",
+		lit.P{"project_id": projectId, "session_id": sessionId, "from": from.UTC(), "to": to.UTC(), "span_end": row.StartedAt.Time.Add(shared.SessionMaxSpan).UTC()})
+	if err != nil {
+		return nil, err
+	}
+	if activity != nil {
+		row.LastActivity, row.SpanActivity, row.LastReceived = activity.LastActivity, activity.SpanActivity, activity.LastReceived
 	}
 	s := row.toModel()
 	return &s, nil

@@ -15,6 +15,7 @@ type ActivePAT struct {
 	Id         string
 	UserId     int
 	Email      string
+	Scope      string
 	LastUsedAt *time.Time
 }
 

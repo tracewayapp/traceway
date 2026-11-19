@@ -9,9 +9,24 @@
 	import * as Alert from '$lib/components/ui/alert';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
-	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import {
+		projectsState,
+		isBrowserFramework,
+		isFrontendFramework
+	} from '$lib/state/projects.svelte';
+	import {
+		BROWSER_METRIC_NAMES,
+		MOBILE_METRIC_NAMES,
+		MOBILE_METRIC_PRESETS,
+		BROWSER_METRIC_PRESETS,
+		type BrowserMetricPreset
+	} from './browser-metric-presets';
 	import { ruleTypeOptions } from './rule-types';
 	import type { NotificationChannelConfig, NotificationRuleConfig } from '$lib/types/notifications';
+	import { BURN_RATE_PRESETS } from '$lib/utils/slo-math';
+	import { SLI_KIND_LABELS, type SLO } from '$lib/state/slos.svelte';
+	import { WarningCallout } from '$lib/components/ui/warning-callout';
+	import { resolve } from '$app/paths';
 
 	interface NotificationChannel {
 		id: number;
@@ -73,6 +88,21 @@
 	let operator = $state('gt');
 	let thresholdValue = $state(90);
 	let aggregation = $state('avg');
+	let metricMinCount = $state('');
+	let goodThreshold = $state('');
+	let regressionPercent = $state(20);
+	let regressionSplit = $state('');
+	const regressionSplits = [
+		{ value: '', label: 'The whole release (adjusted for device mix)' },
+		{ value: 'device.form_factor', label: 'Form factor' },
+		{ value: 'os.name', label: 'Operating system' },
+		{ value: 'browser.name', label: 'Browser' },
+		{ value: 'device.class', label: 'Device class' },
+		{ value: 'country', label: 'Country' },
+		{ value: 'network.type', label: 'Network type' }
+	];
+	let metricTags = $state('');
+	let metricGroupBy = $state('');
 	let dataType = $state('any');
 	let silenceMinutes = $state(10);
 	let thresholdCount = $state(100);
@@ -85,16 +115,110 @@
 	let thresholdCost = $state(0.5);
 	let conversationThresholdCost = $state(5);
 	let flaggedTermsFilter = $state('');
+	let sloId = $state('');
+	let longWindowMinutes = $state(60);
+	let shortWindowMinutes = $state(5);
+	let burnRateThreshold = $state(14.4);
+	let consumedPercent = $state(80);
+	let slos = $state<SLO[]>([]);
+	let slosLoaded = $state(false);
+	let slosStatus = $state<'loading' | 'loaded' | 'error'>('loading');
 
 	const isEditing = $derived(rule !== null);
+
+	const isSloRule = $derived(ruleType === 'slo_burn_rate' || ruleType === 'slo_budget_consumed');
+	const burnPreset = $derived(
+		BURN_RATE_PRESETS.find(
+			(p) =>
+				p.longWindowMinutes === longWindowMinutes &&
+				p.shortWindowMinutes === shortWindowMinutes &&
+				p.burnRateThreshold === burnRateThreshold
+		)?.id ?? 'custom'
+	);
+
+	const selectedSlo = $derived(slos.find((s) => String(s.id) === sloId));
+	const sloSliceMinutes = $derived(selectedSlo?.bucketMinutes ?? 1);
+	const roundsBurnWindows = $derived(
+		sloSliceMinutes > 1 &&
+			(shortWindowMinutes % sloSliceMinutes !== 0 || longWindowMinutes % sloSliceMinutes !== 0)
+	);
+
+	function roundUpToSlice(minutes: number): number {
+		return Math.ceil(minutes / sloSliceMinutes) * sloSliceMinutes;
+	}
+
+	async function loadSlos() {
+		slosStatus = 'loading';
+		try {
+			const response = await api.get('/slos', {
+				projectId: projectsState.currentProjectId ?? undefined
+			});
+			slos = response.slos ?? [];
+			slosStatus = 'loaded';
+		} catch {
+			slos = [];
+			slosStatus = 'error';
+		}
+	}
+
+	$effect(() => {
+		if (open && isSloRule && !slosLoaded) {
+			slosLoaded = true;
+			loadSlos();
+		}
+		if (!open) slosLoaded = false;
+	});
+
+	function windowLabel(minutes: number): string {
+		if (minutes >= 1440) return `${minutes / 1440}d`;
+		if (minutes >= 60) return `${minutes / 60}h`;
+		return `${minutes}m`;
+	}
+
+	function applyBurnPreset(id: string) {
+		const preset = BURN_RATE_PRESETS.find((p) => p.id === id);
+		if (!preset) return;
+		longWindowMinutes = preset.longWindowMinutes;
+		shortWindowMinutes = preset.shortWindowMinutes;
+		burnRateThreshold = preset.burnRateThreshold;
+	}
 
 	const isFrontendProject = $derived(
 		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
 
-	const visibleRuleTypes = $derived(
-		isFrontendProject ? [{ value: 'new_error', label: 'New Issue' }] : ruleTypeOptions
+	const isBrowserProject = $derived(
+		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
 	);
+
+	// Client projects have metrics too: the performance their SDKs measure, stored as distributions.
+	const frontendRuleTypes = new Set([
+		'new_error',
+		'slo_burn_rate',
+		'slo_budget_consumed',
+		'metric_threshold',
+		'metric_release_regression'
+	]);
+	const visibleRuleTypes = $derived(
+		isFrontendProject
+			? ruleTypeOptions.filter((o) => frontendRuleTypes.has(o.value))
+			: ruleTypeOptions
+	);
+	const metricPresets = $derived(isBrowserProject ? BROWSER_METRIC_PRESETS : MOBILE_METRIC_PRESETS);
+	const metricNames = $derived(isBrowserProject ? BROWSER_METRIC_NAMES : MOBILE_METRIC_NAMES);
+
+	function applyBrowserMetricPreset(preset: BrowserMetricPreset) {
+		metricName = preset.metricName;
+		aggregation = preset.aggregation;
+		operator = preset.operator;
+		thresholdValue = preset.thresholdValue;
+		lookbackMinutes = preset.lookbackMinutes;
+		metricGroupBy = preset.groupBy;
+		metricTags = '';
+		metricMinCount = '';
+		goodThreshold = '';
+		if (!name.trim()) name = preset.ruleName;
+	}
 
 	$effect(() => {
 		if (open && !visibleRuleTypes.some((o) => o.value === ruleType)) {
@@ -120,6 +244,10 @@
 		error_regression: 'Fires when an error that was previously archived (resolved) occurs again.',
 		check_down:
 			'Fires when a monitor transitions to down (after its failure threshold), and sends a recovery notice when it comes back up. Applies to every monitor in this project.',
+		slo_burn_rate:
+			'Fires when an SLO spends its error budget faster than the threshold over both the long and the short window (multi-window burn rate), and sends a recovery notice once the burn slows down.',
+		slo_budget_consumed:
+			"Fires when an SLO has used more than the configured share of its window's error budget, and sends a recovery notice when the budget recovers.",
 		error_rate_threshold:
 			'Fires when the percentage of requests returning 5xx across all endpoints exceeds the threshold within the lookback window.',
 		error_count_threshold:
@@ -134,6 +262,8 @@
 			'Fires when the Apdex satisfaction score drops below the threshold within the lookback window.',
 		metric_threshold:
 			'Fires when an aggregated metric value violates the configured comparison against the threshold within the lookback window.',
+		metric_release_regression:
+			'Fires once per release when the newest release is worse than the one before it by more than the allowed percentage, once it has enough observations to judge.',
 		no_data:
 			'Fires when no telemetry of the selected kind (endpoints, exceptions, metrics or tasks) has been received for the configured number of minutes.',
 		task_duration_threshold:
@@ -157,10 +287,23 @@
 		{ value: 'max', label: 'Maximum' },
 		{ value: 'min', label: 'Minimum' },
 		{ value: 'sum', label: 'Sum' },
+		{ value: 'count', label: 'Count' },
+		{ value: 'p50', label: 'P50' },
+		{ value: 'p75', label: 'P75' },
+		{ value: 'p90', label: 'P90' },
 		{ value: 'p95', label: 'P95' },
 		{ value: 'p99', label: 'P99' },
+		{ value: 'good_ratio', label: 'Good ratio (%)' },
 		{ value: 'last', label: 'Last' }
 	];
+	const regressionAggregations = aggregationOptions.filter(
+		(o) => o.value === 'avg' || /^p\d+$/.test(o.value)
+	);
+
+	function optionalNumber(value: string | number): number | undefined {
+		const n = typeof value === 'number' ? value : parseFloat(value);
+		return Number.isFinite(n) && n > 0 ? n : undefined;
+	}
 
 	const dataTypeOptions = [
 		{ value: 'any', label: 'Any' },
@@ -187,6 +330,9 @@
 		operator = 'gt';
 		thresholdValue = 90;
 		aggregation = 'avg';
+		metricTags = '';
+		metricGroupBy = '';
+		regressionSplit = '';
 		dataType = 'any';
 		silenceMinutes = 10;
 		thresholdCount = 100;
@@ -197,6 +343,11 @@
 		ignorePatterns = '';
 		traceName = '*';
 		thresholdCost = 0.5;
+		sloId = '';
+		longWindowMinutes = 60;
+		shortWindowMinutes = 5;
+		burnRateThreshold = 14.4;
+		consumedPercent = 80;
 	}
 
 	function populateFromRule(r: NotificationRule) {
@@ -229,7 +380,21 @@
 				operator = cfg.operator ?? 'gt';
 				thresholdValue = cfg.thresholdValue ?? 90;
 				aggregation = cfg.aggregation ?? 'avg';
+				metricTags = Object.entries(cfg.tags ?? {})
+					.map(([k, v]) => `${k}=${v}`)
+					.join(', ');
+				metricGroupBy = (cfg.groupBy ?? []).join(', ');
 				lookbackMinutes = cfg.lookbackMinutes ?? 5;
+				metricMinCount = cfg.minCount ? String(cfg.minCount) : '';
+				goodThreshold = cfg.goodThreshold ? String(cfg.goodThreshold) : '';
+				break;
+			case 'metric_release_regression':
+				metricName = cfg.metricName ?? '';
+				aggregation = cfg.aggregation ?? 'p75';
+				regressionPercent = cfg.thresholdPercent ?? 20;
+				regressionSplit = (cfg.groupBy ?? [])[0] ?? '';
+				metricMinCount = cfg.minCount ? String(cfg.minCount) : '';
+				lookbackMinutes = cfg.lookbackMinutes ?? 180;
 				break;
 			case 'no_data':
 				dataType = cfg.dataType ?? 'any';
@@ -279,7 +444,28 @@
 			case 'ai_flagged_content':
 				flaggedTermsFilter = (cfg.terms || []).join(', ');
 				break;
+			case 'slo_burn_rate':
+				sloId = cfg.sloId ? String(cfg.sloId) : '';
+				longWindowMinutes = cfg.longWindowMinutes ?? 60;
+				shortWindowMinutes = cfg.shortWindowMinutes ?? 5;
+				burnRateThreshold = cfg.burnRateThreshold ?? 14.4;
+				break;
+			case 'slo_budget_consumed':
+				sloId = cfg.sloId ? String(cfg.sloId) : '';
+				consumedPercent = cfg.consumedPercent ?? 80;
+				break;
 		}
+	}
+
+	function parseMetricTags(value: string): Record<string, string> {
+		const tags: Record<string, string> = {};
+		for (const part of value.split(',')) {
+			if (!part.trim()) continue;
+			const eq = part.indexOf('=');
+			const key = (eq === -1 ? part : part.slice(0, eq)).trim();
+			tags[key] = eq === -1 ? '' : part.slice(eq + 1).trim();
+		}
+		return tags;
 	}
 
 	function buildConfig(): NotificationRuleConfig {
@@ -292,7 +478,29 @@
 			case 'apdex_drop':
 				return { thresholdApdex, lookbackMinutes, minRequests };
 			case 'metric_threshold':
-				return { metricName, operator, thresholdValue, aggregation, lookbackMinutes, tags: {} };
+				return {
+					metricName,
+					operator,
+					thresholdValue,
+					aggregation,
+					lookbackMinutes,
+					tags: parseMetricTags(metricTags),
+					groupBy: metricGroupBy
+						.split(',')
+						.map((k) => k.trim())
+						.filter(Boolean),
+					minCount: optionalNumber(metricMinCount),
+					goodThreshold: aggregation === 'good_ratio' ? optionalNumber(goodThreshold) : undefined
+				};
+			case 'metric_release_regression':
+				return {
+					metricName,
+					aggregation,
+					thresholdPercent: regressionPercent,
+					minCount: optionalNumber(metricMinCount),
+					lookbackMinutes,
+					groupBy: regressionSplit ? [regressionSplit] : undefined
+				};
 			case 'no_data':
 				return { dataType, silenceMinutes };
 			case 'error_count_threshold':
@@ -327,6 +535,15 @@
 					.filter((t) => t);
 				return { terms };
 			}
+			case 'slo_burn_rate':
+				return {
+					sloId: parseInt(sloId) || 0,
+					longWindowMinutes,
+					shortWindowMinutes,
+					burnRateThreshold
+				};
+			case 'slo_budget_consumed':
+				return { sloId: parseInt(sloId) || 0, consumedPercent };
 			default:
 				return {};
 		}
@@ -426,7 +643,15 @@
 
 			<div class="space-y-2">
 				<Label for="rule-type">Rule Type</Label>
-				<Select.Root type="single" bind:value={ruleType}>
+				<Select.Root
+					type="single"
+					bind:value={ruleType}
+					onValueChange={(type) => {
+						// Releases are compared the way web vitals are read. A new rule would otherwise
+						// inherit the average the other rule types start from.
+						if (type === 'metric_release_regression' && !rule) aggregation = 'p75';
+					}}
+				>
 					<Select.Trigger class="w-full">
 						{ruleTypeOptions.find((o) => o.value === ruleType)?.label || 'Select type'}
 					</Select.Trigger>
@@ -504,10 +729,120 @@
 						<Label for="cfg-min-req-a">Min Requests</Label>
 						<Input id="cfg-min-req-a" type="number" bind:value={minRequests} min="1" />
 					</div>
+				{:else if ruleType === 'metric_release_regression'}
+					<div class="space-y-2">
+						<Label for="cfg-regression-metric">Metric Name</Label>
+						<Input
+							id="cfg-regression-metric"
+							bind:value={metricName}
+							placeholder={isFrontendProject ? metricNames[0] : 'http.server.request.duration'}
+							list={isFrontendProject ? 'cfg-client-metrics' : undefined}
+						/>
+						{#if isFrontendProject}
+							<datalist id="cfg-client-metrics">
+								{#each metricNames as metric (metric)}
+									<option value={metric}></option>
+								{/each}
+							</datalist>
+						{/if}
+						<p class="text-xs text-muted-foreground">
+							A distribution metric that carries the release as service.version.
+						</p>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-agg">Compared By</Label>
+						<Select.Root type="single" bind:value={aggregation}>
+							<Select.Trigger class="w-full">
+								{regressionAggregations.find((o) => o.value === aggregation)?.label || aggregation}
+							</Select.Trigger>
+							<Select.Content>
+								{#each regressionAggregations as option (option.value)}
+									<Select.Item value={option.value}>{option.label}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-split">Compare Within</Label>
+						<Select.Root type="single" bind:value={regressionSplit}>
+							<Select.Trigger id="cfg-regression-split" class="w-full">
+								{regressionSplits.find((o) => o.value === regressionSplit)?.label ||
+									regressionSplit}
+							</Select.Trigger>
+							<Select.Content>
+								{#each regressionSplits as option (option.value)}
+									<Select.Item value={option.value}>{option.label}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+						<p class="text-xs text-muted-foreground">
+							{regressionSplit
+								? 'Each value is compared with the same value of the earlier release and notifies on its own.'
+								: "The earlier release is weighted to the new release's mix of devices and operating systems."}
+							A percentile must be worse by more than chance explains.
+						</p>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-pct">Allowed Regression (%)</Label>
+						<Input id="cfg-regression-pct" type="number" bind:value={regressionPercent} min="1" />
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-min">Observations Before Judging</Label>
+						<Input
+							id="cfg-regression-min"
+							type="number"
+							bind:value={metricMinCount}
+							min="1"
+							placeholder="100"
+						/>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-lookback">Lookback (minutes)</Label>
+						<Input
+							id="cfg-regression-lookback"
+							type="number"
+							bind:value={lookbackMinutes}
+							min="60"
+							step="60"
+						/>
+					</div>
 				{:else if ruleType === 'metric_threshold'}
+					{#if isFrontendProject}
+						<div class="space-y-2">
+							<Label>Performance presets</Label>
+							<div class="flex flex-wrap gap-2">
+								{#each metricPresets as preset (preset.id)}
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onclick={() => applyBrowserMetricPreset(preset)}
+									>
+										{preset.label}
+									</Button>
+								{/each}
+							</div>
+							<p class="text-xs text-muted-foreground">
+								Performance metrics are aggregated on the device and stored as distributions, so a
+								percentile here is the one the dashboards show.
+							</p>
+						</div>
+					{/if}
 					<div class="space-y-2">
 						<Label for="cfg-metric">Metric Name</Label>
-						<Input id="cfg-metric" bind:value={metricName} placeholder="cpu.used_pcnt" />
+						<Input
+							id="cfg-metric"
+							bind:value={metricName}
+							placeholder={isFrontendProject ? metricNames[0] : 'cpu.used_pcnt'}
+							list={isFrontendProject ? 'cfg-browser-metrics' : undefined}
+						/>
+						{#if isFrontendProject}
+							<datalist id="cfg-browser-metrics">
+								{#each metricNames as metric (metric)}
+									<option value={metric}></option>
+								{/each}
+							</datalist>
+						{/if}
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-operator">Operator</Label>
@@ -539,9 +874,54 @@
 							</Select.Content>
 						</Select.Root>
 					</div>
+					{#if aggregation === 'good_ratio'}
+						<div class="space-y-2">
+							<Label for="cfg-good-threshold">Good At Or Under (optional)</Label>
+							<Input
+								id="cfg-good-threshold"
+								type="number"
+								bind:value={goodThreshold}
+								placeholder="The metric's own limit, e.g. 2500 for LCP"
+							/>
+							<p class="text-xs text-muted-foreground">
+								The threshold above is a percentage: 75 means three quarters of the observations
+								were good.
+							</p>
+						</div>
+					{/if}
 					<div class="space-y-2">
 						<Label for="cfg-lookback-m">Lookback (minutes)</Label>
 						<Input id="cfg-lookback-m" type="number" bind:value={lookbackMinutes} min="1" />
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-min-count">Minimum Observations (optional)</Label>
+						<Input
+							id="cfg-min-count"
+							type="number"
+							bind:value={metricMinCount}
+							min="1"
+							placeholder="10"
+						/>
+						<p class="text-xs text-muted-foreground">
+							For distribution metrics: a series with fewer observations in the window is not
+							judged.
+						</p>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-metric-tags">Tag Filters (optional, comma-separated)</Label>
+						<Input
+							id="cfg-metric-tags"
+							bind:value={metricTags}
+							placeholder="outcome=failed, host.name=web-1"
+						/>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-metric-group-by">Group By Tags (optional, comma-separated)</Label>
+						<Input id="cfg-metric-group-by" bind:value={metricGroupBy} placeholder="host.name" />
+						<p class="text-xs text-muted-foreground">
+							Evaluates every series separately, names the breaching one in the alert, and sends a
+							recovery notice (or resolves its page) once it is back within the threshold.
+						</p>
 					</div>
 				{:else if ruleType === 'no_data'}
 					<div class="space-y-2">
@@ -583,6 +963,105 @@
 						<Label for="cfg-lookback-td">Lookback (minutes)</Label>
 						<Input id="cfg-lookback-td" type="number" bind:value={lookbackMinutes} min="1" />
 					</div>
+				{:else if ruleType === 'slo_burn_rate' || ruleType === 'slo_budget_consumed'}
+					<div class="space-y-2">
+						<Label>SLO</Label>
+						<Select.Root type="single" bind:value={sloId}>
+							<Select.Trigger class="w-full">
+								{slos.find((s) => String(s.id) === sloId)?.name || 'Select an SLO'}
+							</Select.Trigger>
+							<Select.Content class="max-h-64 overflow-y-auto">
+								{#each slos as s (s.id)}
+									<Select.Item value={String(s.id)} label={s.name}>
+										{s.name}
+										<span class="ml-2 text-xs text-muted-foreground">
+											{SLI_KIND_LABELS[s.sliKind]} · {s.targetPercent}% / {s.windowDays}d
+										</span>
+									</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+						{#if slosStatus === 'error'}
+							<p class="text-xs text-destructive">
+								The SLOs could not be loaded.
+								<button
+									type="button"
+									class="underline underline-offset-2"
+									onclick={() => loadSlos()}
+								>
+									Retry
+								</button>
+							</p>
+						{:else if slosStatus === 'loaded' && slos.length === 0}
+							<p class="text-xs text-muted-foreground">
+								No SLOs in this project yet. Create one on the
+								<a class="text-primary underline-offset-2 hover:underline" href={resolve('/slos')}
+									>SLOs page</a
+								>.
+							</p>
+						{/if}
+					</div>
+					{#if ruleType === 'slo_burn_rate'}
+						<div class="space-y-2">
+							<Label>Preset</Label>
+							<div class="flex flex-wrap gap-2">
+								{#each BURN_RATE_PRESETS as preset (preset.id)}
+									<Button
+										type="button"
+										size="sm"
+										variant={burnPreset === preset.id ? 'secondary' : 'outline'}
+										onclick={() => applyBurnPreset(preset.id)}
+									>
+										{preset.label}
+										{preset.burnRateThreshold}x · {windowLabel(preset.longWindowMinutes)} / {windowLabel(
+											preset.shortWindowMinutes
+										)}
+									</Button>
+								{/each}
+							</div>
+						</div>
+						<div class="space-y-2">
+							<Label for="cfg-burn-long">Long window (minutes)</Label>
+							<Input id="cfg-burn-long" type="number" bind:value={longWindowMinutes} min="5" />
+						</div>
+						<div class="space-y-2">
+							<Label for="cfg-burn-short">Short window (minutes)</Label>
+							<Input id="cfg-burn-short" type="number" bind:value={shortWindowMinutes} min="1" />
+						</div>
+						<div class="space-y-2">
+							<Label for="cfg-burn-threshold">Burn rate threshold (x)</Label>
+							<Input
+								id="cfg-burn-threshold"
+								type="number"
+								bind:value={burnRateThreshold}
+								step="0.1"
+								min="0.1"
+							/>
+							<p class="text-xs text-muted-foreground">
+								Fires when both windows burn at or above this multiple of the rate that spends the
+								budget exactly over the SLO window.
+							</p>
+						</div>
+						{#if roundsBurnWindows}
+							<WarningCallout title="Windows are rounded up to whole slices">
+								This SLO is measured in {sloSliceMinutes}-minute slices, so the rule reads the last
+								{windowLabel(roundUpToSlice(shortWindowMinutes))} and {windowLabel(
+									roundUpToSlice(longWindowMinutes)
+								)}.
+							</WarningCallout>
+						{/if}
+					{:else}
+						<div class="space-y-2">
+							<Label for="cfg-budget-consumed">Budget consumed (%)</Label>
+							<Input
+								id="cfg-budget-consumed"
+								type="number"
+								bind:value={consumedPercent}
+								min="1"
+								max="100"
+							/>
+						</div>
+					{/if}
 				{:else if ruleType === 'task_failure_rate'}
 					<div class="space-y-2">
 						<Label for="cfg-task-f">Task Name (* for all)</Label>

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -33,11 +34,22 @@ func (a *GitHubAdapter) Validate() error {
 }
 
 func (a *GitHubAdapter) Send(ctx context.Context, msg Message) error {
+	// every send opens an issue, and an open issue saying the problem is over
+	// is noise nobody closes
+	if msg.Recovered {
+		return nil
+	}
+
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues", a.Owner, a.Repo)
+
+	issueBody := msg.Body
+	if isAbsoluteURL(msg.URL) && !strings.Contains(issueBody, msg.URL) {
+		issueBody += "\n\n[View in Traceway](" + msg.URL + ")"
+	}
 
 	payload := map[string]interface{}{
 		"title": msg.Subject,
-		"body":  msg.Body,
+		"body":  issueBody,
 	}
 	if len(a.Labels) > 0 {
 		payload["labels"] = a.Labels

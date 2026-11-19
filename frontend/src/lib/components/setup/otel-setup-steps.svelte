@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { resolveHref } from '$lib/utils/links';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import bash from 'svelte-highlight/languages/bash';
@@ -10,7 +11,12 @@
 	import csharp from 'svelte-highlight/languages/csharp';
 	import ruby from 'svelte-highlight/languages/ruby';
 	import yaml from 'svelte-highlight/languages/yaml';
-	import { OTEL_TARGETS, getOtelSteps, type OtelStepLanguage } from '$lib/utils/otel-setup';
+	import {
+		OTEL_TARGETS,
+		getOtelSteps,
+		type OtelStepLanguage,
+		type OtelTargetId
+	} from '$lib/utils/otel-setup';
 	import {
 		getOtelTarget,
 		setOtelTarget,
@@ -20,10 +26,23 @@
 	import CopyableCodeBlock from './copyable-code-block.svelte';
 	import SourceMapUploadCard from './source-map-upload-card.svelte';
 
-	let { backendUrl, token }: { backendUrl: string; token: string } = $props();
+	let {
+		backendUrl,
+		token,
+		initialTarget,
+		initialFramework
+	}: {
+		backendUrl: string;
+		token: string;
+		initialTarget?: OtelTargetId;
+		initialFramework?: string;
+	} = $props();
 
-	let target = $state(getOtelTarget());
-	let framework = $state(getOtelFramework());
+	// A project created for one language opens on it; the reader's last choice applies otherwise.
+	let target = $state(untrack(() => initialTarget ?? getOtelTarget()));
+	let framework = $state(
+		untrack(() => (initialTarget ? (initialFramework ?? null) : getOtelFramework()))
+	);
 
 	const highlightLanguages = {
 		bash,
@@ -101,7 +120,11 @@
 		</div>
 		{#if step.code}
 			<div class="p-4">
-				<CopyableCodeBlock code={step.code} language={languageFor(step.codeLanguage)} />
+				<CopyableCodeBlock
+					code={step.code}
+					language={languageFor(step.codeLanguage)}
+					secret={step.code.includes(token)}
+				/>
 				{#if step.link}
 					<p class="pt-2 text-xs text-muted-foreground">
 						<a

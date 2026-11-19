@@ -1,6 +1,9 @@
 package models
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,9 +57,20 @@ type Page struct {
 	UpdatedAt        time.Time  `json:"updatedAt" lit:"updated_at"`
 }
 
+// RulePageDedupKey is shared by escalation pages and the firing rows that close them.
+// PostgreSQL pages allow 300 characters. Keep the existing byte limit so old pages still match.
+func RulePageDedupKey(ruleID int, token string) string {
+	prefix := strconv.Itoa(ruleID) + "|"
+	if len(prefix)+len(token) <= 300 {
+		return prefix + token
+	}
+	sum := sha256.Sum256([]byte(token))
+	return prefix + hex.EncodeToString(sum[:16])
+}
+
 // IssueHash returns the exception hash a page was opened for, or "" when the
 // page is not issue-linked. New-error and regression rules carry the hash as
-// the dedup token after the "ruleId|" prefix (see oncall.pageDedupKey).
+// the dedup token after the "ruleId|" prefix (see RulePageDedupKey).
 func (p *Page) IssueHash() string {
 	if p.RuleType != "new_error" && p.RuleType != "error_regression" {
 		return ""

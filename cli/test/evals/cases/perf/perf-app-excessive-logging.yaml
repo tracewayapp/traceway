@@ -1,0 +1,89 @@
+id: perf-app-excessive-logging
+suite: perf
+title: A release that only turned on debug logs slows every endpoint and doubles CPU
+tags: [application, go, deploy]
+seed: perf/app-excessive-logging
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: Host CPU on both pods stepped from ~35% to ~78%, which reads like saturation and invites scaling out, but traffic at the same time of day is unchanged, the CPU step comes five minutes after release 5.3.1 rolled out, and from that release on every request writes ~15-20x as many log lines (one per decoded row or image), which is where the extra time per request goes.
+workspace: {repo: listings-api-go}
+prompt: |
+  /traceway perf listings-api
+  For the last day or so every endpoint on listings-api has been slower, p95 more than doubled, and CPU on its pods went from around a third to about 80%. Should we scale it out, or is something else going on?
+budget: {max_turns: 40, max_tool_calls: 34, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: excessive_logging_telemetry_in_the_hot_path
+    not: [cpu_saturation, undersized_noisy_neighbor_instance, cold_start_jit_connection_warmup, select_n_plus_1]
+    locus: {service: listings-api}
+    onset: {at: "{{seed.deployAt}}", tolerance_minutes: 30}
+  grounding:
+    - "decoded listing"
+    - "LOG_LEVEL=debug"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: metrics.query, args: {name: "~system\\.cpu"}}
+      - {op: logs.query}
+    any_of:
+      - [{op: endpoints.chart}]
+      - [{op: endpoints.list, args: {from: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 5
+    max_identical_repeats: 2
+judge:
+  expected: Excessive logging in the hot path. Release 5.3.1 (git - "debug logs on to chase the ranking complaints") changed only deploy/production.env, LOG_LEVEL=info to debug. From the deploy on, every endpoint's latency stepped up (GET /api/listings p95 ~18ms to ~42ms, GET /api/listings/{id} ~10ms to ~22ms) and five minutes later, once both pods had restarted, CPU went from ~35% to ~78%. Request counts at the same time of day did not change. A search request now writes 40-50 log lines (one "decoded listing" per row plus cache/query lines) against 2 before, and overall log volume per hour went up ~15-20x; with AddSource on at debug, each line costs about half a millisecond on the request path. It is not saturation from load - fix the config (LOG_LEVEL=info), and if debug detail is needed, sample it or enable it per request instead of logging per row.
+  rubric:
+    - Ties the latency step and the later CPU step to the 5.3.1 release, and shows from the logs that requests write many times more lines since then (per trace and in total).
+    - Rules out load-driven saturation with request counts at the same time of day before and after the release, and does not recommend scaling out as the fix.
+    - Proposes reverting LOG_LEVEL to info (or sampling / per-request debug) rather than adding capacity, and points at the per-row debug logging in the listings repo.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 8 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints chart --metric-type p95 --since 48h --interval-minutes 120 --output json
+      | jq '.series | group_by(.endpoint) | map({endpoint: .[0].endpoint, p95_ms: map("\(.timestamp[5:16]) \(.value|round)")})'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --group-by state --since 48h --interval-minutes 120 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[5:16]) \(.value * 100 | round)%"))'
+  - shell: >-
+      traceway endpoints list --from {{seed.beforeFrom}} --to {{seed.deployAt}} --output json
+      | jq '[.data[] | {endpoint, count, p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: >-
+      traceway endpoints list --from {{seed.afterFrom}} --to {{seed.afterTo}} --output json
+      | jq '[.data[] | {endpoint, count, p95_ms: (.p95Duration/1e6|round)}]'
+  - shell: traceway logs query --from {{seed.beforeHourFrom}} --to {{seed.beforeHourTo}} --page-size 1 --output json | jq '.pagination'
+  - shell: traceway logs query --from {{seed.afterHourFrom}} --to {{seed.afterHourTo}} --page-size 1 --output json | jq '.pagination'
+  - shell: >-
+      traceway logs query --trace-id {{seed.afterRequest.traceId}} --since 6h --page-size 100 --output json
+      | jq '{lines: .pagination.total, version: .data[0].resourceAttributes["service.version"], bodies: ([.data[] | "\(.severityText) \(.body)"] | group_by(.) | map({line: .[0], n: length}))}'
+  - shell: >-
+      traceway logs query --trace-id {{seed.beforeRequest.traceId}} --from {{seed.beforeFrom}} --to {{seed.deployAt}} --page-size 100 --output json
+      | jq '{lines: .pagination.total, version: .data[0].resourceAttributes["service.version"], bodies: [.data[] | "\(.severityText) \(.body)"]}'
+  - shell: git log -p -n 1 --date=iso-strict --format='%h %ad %an %s'
+  - submit:
+      checklist_item: excessive_logging_telemetry_in_the_hot_path
+      category: application
+      locus: {service: listings-api, span: "log writes between the spans of every request"}
+      onset: "{{seed.deployAt}}"
+      evidence:
+        - {call_id: c02, claim: "every endpoint's p95 stepped up in the same bucket and stayed there"}
+        - {call_id: c03, claim: "CPU stepped from ~35% to ~78% right after that"}
+        - {call_id: c04, claim: "in the six hours before the release every endpoint ran at its old p95"}
+        - {call_id: c05, claim: "the same six hours of the day after it served about the same request counts as before (c04), with p95 roughly doubled: no extra load"}
+        - {call_id: c06, claim: "an hour before the release, at the same time of day as c07, gives the baseline log volume"}
+        - {call_id: c07, claim: "the same hour of the day after the release wrote roughly 15-20 times as many lines"}
+        - {call_id: c08, claim: "one search request on 5.3.1 writes 40-50 lines, one 'decoded listing' DEBUG line per row"}
+        - {call_id: c09, claim: "a search request on 5.3.0 wrote two lines"}
+        - {call_id: c10, claim: "the release 5.3.1 commit changed only deploy/production.env: LOG_LEVEL=info to LOG_LEVEL=debug"}
+      ruled_out:
+        - {checklist_item: cpu_saturation, call_id: c05, reason: "request counts are flat; CPU rose because each request writes far more logs, right after the config release"}
+        - {checklist_item: cold_start_jit_connection_warmup, call_id: c02, reason: "latency stays elevated for a day instead of recovering after the rollout"}
+      fix: Set LOG_LEVEL back to info in deploy/production.env and roll it out; if the ranking investigation needs detail, sample the debug lines or enable debug per request instead of logging every decoded row.
+      confidence: high
+      report: |
+        listings-api is not short of capacity; release 5.3.1 turned on debug logging. The release (git - "debug logs on to chase the ranking complaints") only changed deploy/production.env from LOG_LEVEL=info to LOG_LEVEL=debug. From its deploy every endpoint got slower (GET /api/listings p95 from ~18ms to ~42ms) and CPU on both pods stepped from ~35% to ~78% five minutes later, once the rollout finished. Traffic at the same time of day is unchanged. A search request now writes ~45 log lines, one "decoded listing" DEBUG line per row plus cache and query lines, where it wrote 2 before; total log volume per hour went up about 15-20 times. Fix: set LOG_LEVEL back to info in deploy/production.env and roll it out; latency and CPU should return to their previous levels. Scaling out would only spread the logging cost. If the ranking investigation needs the detail, sample the debug lines or enable debug per request instead of logging every decoded row.

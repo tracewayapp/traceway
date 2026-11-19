@@ -1,0 +1,8 @@
+{
+  "name": "storefront",
+  "private": true,
+  "workspaces": ["api", "web"],
+  "scripts": {
+    "test": "node --test"
+  }
+}

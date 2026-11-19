@@ -1,145 +1,136 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"sync"
+	"net"
 	"time"
 
 	"github.com/coreos/go-systemd/v22/daemon"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
-// Boot can outlast systemd's default TimeoutStartSec=90s -- an index-building
-// migration is the usual reason, which is why the Helm chart budgets 300s for
-// its startup probe. Rather than ask operators to guess a TimeoutStartSec for
-// their largest migration, hold the deadline open while boot runs: every
-// EXTEND_TIMEOUT_USEC message pushes it out from the moment systemd receives
-// it.
-//
-// The window is several times the interval so that one late heartbeat -- a
-// stalled disk, a stop-the-world pause -- cannot let the deadline lapse.
-//
-// The total is bounded because these messages go out on a timer rather than on
-// boot progress: without a budget, a boot wedged against an unreachable
-// database would hold the deadline open forever, which deletes
-// TimeoutStartSec instead of deferring it. Once the budget is spent, systemd's
-// own timeout applies again.
 const (
-	bootExtendInterval = 10 * time.Second
-	bootExtendWindow   = 60 * time.Second
-	bootExtendBudget   = 30 * time.Minute
+	migrationHeartbeatInterval = 10 * time.Second
+	migrationExtensionWindow   = time.Minute
+	migrationExtensionBudget   = 30 * time.Minute
 )
 
-// beginBoot holds the service manager's startup timeout open, and returns the
-// function that ends the boot phase by reporting the service ready.
-//
-// Reporting ready is the same call so that no caller can leave a heartbeat
-// running past it: once the service is running, EXTEND_TIMEOUT_USEC extends
-// the *watchdog* deadline rather than the startup one, where a stray message
-// would paper over a hung process.
-//
-// All of it is a no-op when the process was not started by a service manager
-// (NOTIFY_SOCKET unset), which is every other way Traceway runs: Docker,
-// Kubernetes, go run.
-func beginBoot(interval, window, budget time.Duration) (ready func()) {
-	stop := startBootHeartbeat(interval, window, budget)
-
-	return sync.OnceFunc(func() {
-		stop()
-		notifyReady()
-	})
-}
-
-func startBootHeartbeat(interval, window, budget time.Duration) (stop func()) {
-	// Ask the environment rather than infer it from the first send: SdNotify
-	// also reports "not sent" for a transient socket error, and treating that
-	// as "no service manager" would abandon the heartbeat for the whole boot
-	// and hand the process back to the 90s default this exists to survive.
-	if os.Getenv("NOTIFY_SOCKET") == "" {
-		return func() {}
-	}
-
-	extendStartTimeout(window)
-
-	stopped := make(chan struct{})
+// A stalled migration must eventually fall back to the unit's startup timeout.
+// Cap even the last extension at the budget remaining when we send it.
+func startMigrationHeartbeat(extend func(time.Duration) error) func() {
+	deadline := time.Now().Add(migrationExtensionBudget)
+	stop := make(chan struct{})
 	done := make(chan struct{})
-
 	go func() {
-		defer traceway.Recover()
 		defer close(done)
-
-		ticker := time.NewTicker(interval)
+		defer traceway.Recover()
+		ticker := time.NewTicker(migrationHeartbeatInterval)
 		defer ticker.Stop()
-		spent := time.After(budget)
-
+		failed := false
 		for {
+			remaining := time.Until(deadline)
+			if remaining < time.Microsecond {
+				return
+			}
+			err := extend(min(remaining, migrationExtensionWindow))
+			if err != nil && !failed {
+				reportSystemdError(fmt.Errorf("extend systemd migration timeout: %w", err))
+			}
+			failed = err != nil
 			select {
+			case <-stop:
+				return
 			case <-ticker.C:
-				extendStartTimeout(window)
-			case <-spent:
-				config.Logf("No longer extending the systemd startup timeout: boot has taken %s", budget)
-				return
-			case <-stopped:
-				return
 			}
 		}
 	}()
-
-	return sync.OnceFunc(func() {
-		close(stopped)
+	return func() {
+		close(stop)
 		<-done
-	})
-}
-
-func extendStartTimeout(window time.Duration) {
-	if _, err := daemon.SdNotify(false, fmt.Sprintf("EXTEND_TIMEOUT_USEC=%d", window.Microseconds())); err != nil {
-		config.Logf("Failed to extend the systemd startup timeout: %v", err)
 	}
 }
 
-func notifyReady() {
+// SdNotify has no write deadline. A full notification socket must not hold up
+// the end of migrations while we join the heartbeat before reporting ready.
+func extendSystemdStartup(socket string, window time.Duration) error {
+	deadline := time.Now().Add(250 * time.Millisecond)
+	dialer := net.Dialer{Deadline: deadline}
+	conn, err := dialer.Dial("unixgram", socket)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := conn.SetWriteDeadline(deadline); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(conn, "EXTEND_TIMEOUT_USEC=%d", window.Microseconds())
+	return err
+}
+
+func notifySystemd(ctx context.Context) {
 	sent, err := daemon.SdNotify(false, daemon.SdNotifyReady)
 	if err != nil {
-		config.Logf("Failed to notify systemd: %v", err)
+		reportSystemdError(fmt.Errorf("notify systemd that service is ready: %w", err))
 	} else if sent {
 		config.Logln("Notified systemd that service is ready")
 	}
 
-	startWatchdog()
-}
-
-// startWatchdog pings the watchdog at the interval systemd asked for rather
-// than a fixed one: WatchdogSec=10s expects a ping every 5s, and the hardcoded
-// 15s this replaces would have had systemd kill a perfectly healthy process.
-func startWatchdog() {
-	ping, err := watchdogPingInterval()
+	interval, err := systemdWatchdogInterval()
 	if err != nil {
-		config.Logf("Failed to read the systemd watchdog interval: %v", err)
+		reportSystemdError(fmt.Errorf("read systemd watchdog configuration: %w", err))
 		return
 	}
-	if ping <= 0 {
+	if interval == 0 {
 		return
 	}
-
-	config.Logf("Pinging the systemd watchdog every %s", ping)
+	config.Logf("Systemd watchdog heartbeat interval: %s", interval)
 
 	go func() {
 		defer traceway.Recover()
-
-		ticker := time.NewTicker(ping)
-		defer ticker.Stop()
-		for range ticker.C {
-			daemon.SdNotify(false, daemon.SdNotifyWatchdog)
-		}
+		runSystemdWatchdog(ctx, interval, daemon.SdNotify)
 	}()
 }
 
-// watchdogPingInterval is half of WATCHDOG_USEC, the rate sd_notify(3) asks
-// for. It is 0 when the watchdog is disabled or another process is the watched
-// PID, in which case nothing should be sent at all.
-func watchdogPingInterval() (time.Duration, error) {
-	interval, err := daemon.SdWatchdogEnabled(false)
-	return interval / 2, err
+func systemdWatchdogInterval() (time.Duration, error) {
+	timeout, err := daemon.SdWatchdogEnabled(false)
+	if err != nil || timeout == 0 {
+		return 0, err
+	}
+	// Keep headroom for scheduling delays under load, even with a generous watchdog timeout.
+	return min(timeout/2, 5*time.Second), nil
+}
+
+func runSystemdWatchdog(ctx context.Context, interval time.Duration, notify func(bool, string) (bool, error)) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	failed := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sent, err := notify(false, daemon.SdNotifyWatchdog)
+			if err == nil && !sent {
+				err = fmt.Errorf("NOTIFY_SOCKET is unset")
+			}
+			if err != nil {
+				if !failed {
+					reportSystemdError(fmt.Errorf("send systemd watchdog heartbeat: %w", err))
+				}
+				failed = true
+				continue
+			}
+			if failed {
+				config.Logln("Systemd watchdog heartbeat delivery recovered")
+			}
+			failed = false
+		}
+	}
+}
+
+func reportSystemdError(err error) {
+	config.Logf("Systemd notification failed: %v", err)
+	traceway.CaptureException(err)
 }

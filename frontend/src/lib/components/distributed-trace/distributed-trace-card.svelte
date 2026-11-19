@@ -1,26 +1,29 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { gotoHref } from '$lib/utils/navigation';
 	import { api } from '$lib/api';
 	import * as Card from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
+	import SpanGraphNotice from '$lib/components/spans/span-graph-notice.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { formatDuration, getStatusColor } from '$lib/utils/formatters';
-	import { ArrowRight, GitBranch } from '@lucide/svelte';
+	import { ArrowRight, GitBranch, ChevronRight, ChevronDown } from '@lucide/svelte';
+	import { SvelteSet } from 'svelte/reactivity';
+	import { distributedTraceTree } from '$lib/utils/distributed-trace-tree';
 	import type {
 		DistributedTraceResponse,
 		DistributedTraceNode
 	} from '$lib/types/distributed-trace';
 
 	interface Props {
-		distributedTraceId: string;
+		traceId: string;
 		currentExceptionHash?: string;
 		currentNodeId?: string;
 		recordedAt?: string;
 	}
 
-	let { distributedTraceId, currentExceptionHash, currentNodeId, recordedAt }: Props = $props();
+	let { traceId, currentExceptionHash, currentNodeId, recordedAt }: Props = $props();
 
 	function isCurrentNode(node: DistributedTraceNode): boolean {
 		if (currentExceptionHash && node.traceType === 'exception') {
@@ -36,20 +39,32 @@
 		return false;
 	}
 
-	let response = $state<DistributedTraceResponse | null>(null);
+	let response = $state.raw<DistributedTraceResponse | null>(null);
 	let loading = $state(true);
+	const collapsed = new SvelteSet<string>();
+	const treeRows = $derived(distributedTraceTree(response?.nodes ?? [], collapsed));
+	function toggle(key: string) {
+		if (collapsed.has(key)) collapsed.delete(key);
+		else collapsed.add(key);
+	}
+
+	let loadSequence = 0;
 
 	async function loadTrace() {
+		const sequence = ++loadSequence;
 		loading = true;
 		try {
-			response = (await api.post(
-				`/distributed-traces/${distributedTraceId}`,
+			const result = (await api.post(
+				`/distributed-traces/${traceId}`,
 				recordedAt ? { recordedAt } : {}
 			)) as DistributedTraceResponse;
+			if (sequence !== loadSequence) return;
+			response = result;
 		} catch {
+			if (sequence !== loadSequence) return;
 			response = null;
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
@@ -72,8 +87,17 @@
 		}
 	}
 
-	onMount(() => {
-		loadTrace();
+	$effect(() => {
+		void traceId;
+		void recordedAt;
+		untrack(() => {
+			response = null;
+			collapsed.clear();
+			loadTrace();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 
@@ -103,54 +127,75 @@
 		</Card.Header>
 		<Card.Content>
 			<div class="space-y-3">
-				{#each response.nodes as node, i (i)}
-					<div class="flex items-center gap-3 rounded-md border p-3 {i > 0 ? 'ml-6' : ''}">
-						<div class="flex min-w-0 flex-1 items-center gap-3">
-							<Badge variant="outline" class="shrink-0">{node.projectName}</Badge>
-							<span class="truncate font-mono text-sm">
-								{#if node.traceType === 'task'}
-									{node.task?.taskName}
-								{:else if node.traceType === 'ai_trace'}
-									{node.aiTrace?.traceName}
-								{:else if node.traceType === 'exception'}
-									{node.exception?.stackTrace.split('\n')[0]}
-								{:else}
-									{node.endpoint?.endpoint}
-								{/if}
-							</span>
-							{#if node.traceType === 'endpoint' && node.endpoint}
-								<span class="shrink-0 font-mono text-sm {getStatusColor(node.endpoint.statusCode)}">
-									{node.endpoint.statusCode}
-								</span>
-							{/if}
-							{#if node.traceType === 'ai_trace' && node.aiTrace}
-								<Badge variant="secondary" class="shrink-0"
-									>{node.aiTrace.provider || node.aiTrace.model || 'AI'}</Badge
+				{#each treeRows as row (row.key)}
+					{@const node = row.node}
+					<div
+						class="flex flex-col gap-3 rounded-md border p-3"
+						style:margin-left={`${row.depth * 24}px`}
+					>
+						<div class="flex items-center gap-3">
+							{#if row.hasChildren}
+								<button
+									class="shrink-0 rounded p-1 hover:bg-muted"
+									onclick={() => toggle(row.key)}
+									aria-label={collapsed.has(row.key) ? 'Expand children' : 'Collapse children'}
+									aria-expanded={!collapsed.has(row.key)}
 								>
+									{#if collapsed.has(row.key)}<ChevronRight class="h-4 w-4" />{:else}<ChevronDown
+											class="h-4 w-4"
+										/>{/if}
+								</button>
 							{/if}
-							{#if node.traceType !== 'exception'}
-								<span class="shrink-0 font-mono text-sm text-muted-foreground">
-									{formatDuration(
-										node.traceType === 'task'
-											? (node.task?.duration ?? 0)
-											: node.traceType === 'ai_trace'
-												? (node.aiTrace?.duration ?? 0)
-												: (node.endpoint?.duration ?? 0)
-									)}
+							<div class="flex min-w-0 flex-1 items-center gap-3">
+								<Badge variant="outline" class="shrink-0">{node.projectName}</Badge>
+								<span class="truncate font-mono text-sm">
+									{#if node.traceType === 'task'}
+										{node.task?.taskName}
+									{:else if node.traceType === 'ai_trace'}
+										{node.aiTrace?.traceName}
+									{:else if node.traceType === 'exception'}
+										{node.exception?.stackTrace.split('\n')[0]}
+									{:else}
+										{node.endpoint?.endpoint}
+									{/if}
 								</span>
-							{/if}
-							{#if node.exception}
-								<Badge variant="destructive" class="shrink-0">Exception</Badge>
+								{#if node.traceType === 'endpoint' && node.endpoint}
+									<span
+										class="shrink-0 font-mono text-sm {getStatusColor(node.endpoint.statusCode)}"
+									>
+										{node.endpoint.statusCode}
+									</span>
+								{/if}
+								{#if node.traceType === 'ai_trace' && node.aiTrace}
+									<Badge variant="secondary" class="shrink-0"
+										>{node.aiTrace.provider || node.aiTrace.model || 'AI'}</Badge
+									>
+								{/if}
+								{#if node.traceType !== 'exception'}
+									<span class="shrink-0 font-mono text-sm text-muted-foreground">
+										{formatDuration(
+											node.traceType === 'task'
+												? (node.task?.duration ?? 0)
+												: node.traceType === 'ai_trace'
+													? (node.aiTrace?.duration ?? 0)
+													: (node.endpoint?.duration ?? 0)
+										)}
+									</span>
+								{/if}
+								{#if node.exception}
+									<Badge variant="destructive" class="shrink-0">Exception</Badge>
+								{/if}
+							</div>
+							{#if isCurrentNode(node)}
+								<Badge class="bg-blue-500 text-white hover:bg-blue-500">You're here</Badge>
+							{:else}
+								<Button variant="ghost" size="sm" onclick={() => navigateToNode(node)}>
+									View
+									<ArrowRight class="ml-1 h-3 w-3" />
+								</Button>
 							{/if}
 						</div>
-						{#if isCurrentNode(node)}
-							<Badge class="bg-blue-500 text-white hover:bg-blue-500">You're here</Badge>
-						{:else}
-							<Button variant="ghost" size="sm" onclick={() => navigateToNode(node)}>
-								View
-								<ArrowRight class="ml-1 h-3 w-3" />
-							</Button>
-						{/if}
+						<SpanGraphNotice status={node.spanGraphStatus} />
 					</div>
 				{/each}
 			</div>

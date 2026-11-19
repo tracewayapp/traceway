@@ -4,16 +4,15 @@ package notifications
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/hooks"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChannel, event hooks.ReportEvent) {
@@ -28,7 +27,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 
 		var count int64
 		err := db.TelemetryDB.QueryRowContext(ctx,
-			"SELECT COUNT(*) FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ?",
+			"SELECT COUNT(*) FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ?",
 			event.ProjectId.String(), hash).Scan(&count)
 		if err != nil {
 			traceway.CaptureException(fmt.Errorf("new_error check failed: %w", err))
@@ -46,7 +45,7 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 
 			var postArchiveCount int64
 			archErr = db.TelemetryDB.QueryRowContext(ctx,
-				"SELECT COUNT(*) FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? AND recorded_at > (SELECT MAX(archived_at) FROM archived_exceptions WHERE project_id = ? AND exception_hash = ?)",
+				"SELECT COUNT(*) FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ? AND recorded_at > (SELECT MAX(archived_at) FROM archived_exceptions WHERE project_id = ? AND exception_hash = ?)",
 				event.ProjectId.String(), hash, event.ProjectId.String(), hash).Scan(&postArchiveCount)
 			if archErr != nil {
 				traceway.CaptureException(fmt.Errorf("new_error post-archive count failed: %w", archErr))
@@ -58,18 +57,18 @@ func evaluateNewError(ctx context.Context, rule *models.NotificationRuleWithChan
 			}
 		}
 
-		details := getExceptionDetails(ctx, event.ProjectId, hash)
+		details := exceptionDetails(ctx, event, hash)
 
 		if shouldIgnore(details.ErrorType, cfg.IgnorePatterns) {
 			continue
 		}
 
-		projectName := getProjectName(rule.ProjectId)
+		projectName := getProjectName(ctx, rule.ProjectId)
 		msg := buildNewErrorMessage(details, projectName)
 		// Record before dispatch: a persistently failing dispatch retries once
 		// per cooldown window, never on every ingest event.
 		dedup.record(dedupKey)
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
@@ -93,59 +92,27 @@ func evaluateErrorRegression(ctx context.Context, rule *models.NotificationRuleW
 			continue
 		}
 
-		details := getExceptionDetails(ctx, event.ProjectId, hash)
-		projectName := getProjectName(rule.ProjectId)
+		details := exceptionDetails(ctx, event, hash)
+		projectName := getProjectName(ctx, rule.ProjectId)
 		msg := buildErrorRegressionMessage(details, projectName)
 		// Record before dispatch: a persistently failing dispatch retries once
 		// per cooldown window, never on every ingest event.
 		dedup.record(dedupKey)
-		dispatch(rule, msg)
+		dispatch(ctx, rule, msg)
 	}
 }
 
 func getExceptionDetails(ctx context.Context, projectId uuid.UUID, hash string) ExceptionDetails {
-	var idStr, stackTrace, traceType, appVersion, serverName, attributesJSON, recordedAtStr string
-	var traceIdStr sql.NullString
-
+	exception := models.ExceptionStackTrace{ProjectId: projectId, ExceptionHash: hash}
+	var idStr, attributesJSON, recordedAtStr string
 	err := db.TelemetryDB.QueryRowContext(ctx,
-		"SELECT id, trace_id, trace_type, stack_trace, attributes, app_version, server_name, recorded_at FROM exception_stack_traces WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
-		projectId.String(), hash).Scan(&idStr, &traceIdStr, &traceType, &stackTrace, &attributesJSON, &appVersion, &serverName, &recordedAtStr)
-
-	details := ExceptionDetails{
-		Hash: hash,
-	}
-
+		"SELECT id, trace_id, span_id, stack_trace, attributes, app_version, server_name, recorded_at FROM exceptions_v2 WHERE project_id = ? AND exception_hash = ? ORDER BY recorded_at DESC LIMIT 1",
+		projectId.String(), hash).Scan(&idStr, &exception.TraceId, &exception.SpanId, &exception.StackTrace, &attributesJSON, &exception.AppVersion, &exception.ServerName, &recordedAtStr)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			details.ErrorType = "Unknown Error"
-			return details
-		}
-		details.ErrorType = "Unknown Error"
-		return details
+		return unknownException(hash, err)
 	}
-
-	details.Id = idStr
-	details.StackTrace = stackTrace
-	details.AppVersion = appVersion
-	details.ServerName = serverName
-	details.RecordedAt, _ = time.Parse(time.RFC3339Nano, recordedAtStr)
-	details.TraceType = traceType
-
-	var traceId *uuid.UUID
-	if traceIdStr.Valid {
-		if parsed, parseErr := uuid.Parse(traceIdStr.String); parseErr == nil {
-			traceId = &parsed
-		}
-	}
-	details.TraceName = resolveTraceName(ctx, projectId, traceId, traceType, &details.RecordedAt)
-
-	if attributesJSON != "" && attributesJSON != "{}" {
-		attrs := make(map[string]string)
-		if jsonErr := json.Unmarshal([]byte(attributesJSON), &attrs); jsonErr == nil {
-			details.Attributes = attrs
-		}
-	}
-
-	details.ErrorType = extractErrorType(stackTrace)
-	return details
+	exception.Id, _ = uuid.Parse(idStr)
+	exception.RecordedAt, _ = time.Parse(time.RFC3339Nano, recordedAtStr)
+	exception.Attributes = parseStoredAttributes(attributesJSON)
+	return describeException(ctx, exception)
 }

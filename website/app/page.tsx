@@ -33,7 +33,7 @@ const PILLARS = [
   {
     icon: Network,
     title: "Traces",
-    description: "End-to-end span waterfalls across every service",
+    description: "Search OTel spans and follow cross-service waterfalls",
     href: "/product/traces",
   },
   {
@@ -44,9 +44,9 @@ const PILLARS = [
   },
   {
     icon: Video,
-    title: "Session replay",
-    description: "Web DOM capture, attached to exceptions",
-    href: "/product/session-replay",
+    title: "Real user monitoring",
+    description: "Page speed, errors and replay from real visitors",
+    href: "/product/rum",
   },
   {
     icon: Bug,
@@ -75,6 +75,40 @@ const STACK_ICONS = [
 export default function Home() {
   return (
     <main className="relative">
+      <aside aria-label="Traceway 2.0 release" className="wrap mt-6">
+        <Link
+          href="/blog/traceway-2-0"
+          aria-labelledby="v2-release-title v2-release-cta"
+          className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-x-5 gap-y-4 rounded-xl border border-white/10 bg-[#152e76] p-6 transition-colors hover:bg-[#193886] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-bright md:grid-cols-[96px_minmax(0,1fr)_auto] md:gap-x-8 md:gap-y-2 md:px-9 md:py-7"
+        >
+          <Image
+            src="/blog/traceway-2-0/party-popper.png"
+            alt=""
+            width={96}
+            height={96}
+            className="size-16 md:row-span-2 md:size-24"
+            priority
+          />
+          <p
+            id="v2-release-title"
+            className="text-2xl font-semibold leading-snug tracking-tight text-white md:text-3xl"
+          >
+            Traceway 2.0 is here.
+          </p>
+          <p className="col-span-2 max-w-2xl text-pretty text-base leading-relaxed text-[#d2e2ff] md:col-span-1 md:col-start-2">
+            More reliable traces, better OpenTelemetry compatibility, and a
+            clearer picture of your app.
+          </p>
+          <span
+            id="v2-release-cta"
+            className="col-span-2 inline-flex min-h-11 w-fit items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-[#152e76] md:col-span-1 md:col-start-3 md:row-span-2 md:row-start-1"
+          >
+            Read the V2 post
+            <ArrowRight className="size-4" aria-hidden />
+          </span>
+        </Link>
+      </aside>
+
       {/* HERO: centered chip, title, subhead, email form */}
       <section className="hero">
         <div className="wrap">
@@ -87,11 +121,10 @@ export default function Home() {
               className="mb-5"
             />
             <h1 className="mt-6">
-              The open-source APM <em>built on OpenTelemetry.</em>
+              Your <em>OpenTelemetry home.</em>
             </h1>
             <p className="hero-sub text-pretty">
-              Complete observability. Logs, traces, metrics, session replay,
-              and exceptions, all connected.
+              Bring your data. Get the whole picture.
             </p>
 
             <div className="mt-10 w-full">
@@ -335,12 +368,11 @@ export default function Home() {
               </h2>
               <p className="muted mt-4 max-w-[460px] text-pretty">
                 ClickHouse columnar storage compresses 1M daily events to ~2
-                GB/month. Pricing sized to your workload, no per-event gouging,
-                no per-seat fees.
+                GB/month. Fixed monthly tiers, no per-event gouging.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <Link href={getCalendlyUrl()} className="btn btn-accent">
-                  Talk to us about pricing
+                <Link href="/cloud" className="btn btn-accent">
+                  See pricing
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link

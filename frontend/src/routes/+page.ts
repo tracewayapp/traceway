@@ -1,9 +1,10 @@
 import { redirect } from '@sveltejs/kit';
 import { authState } from '$lib/state/auth.svelte';
+import { statusDomainSlug } from '$lib/status-domain';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = () => {
-	if (!authState.isAuthenticated) {
+	if (!authState.isAuthenticated && !statusDomainSlug) {
 		throw redirect(302, '/login');
 	}
 };

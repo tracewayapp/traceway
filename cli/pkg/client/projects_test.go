@@ -3,12 +3,11 @@ package client
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
 func TestListProjects_decodesData(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/projects" {
 			t.Errorf("path = %q", r.URL.Path)
 		}

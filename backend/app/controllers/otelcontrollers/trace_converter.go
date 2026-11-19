@@ -2,6 +2,7 @@ package otelcontrollers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,9 +10,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/controllers/clientcontrollers"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
+	"github.com/tracewayapp/traceway/backend/v2/app/controllers/clientcontrollers"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/contentflag"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -45,15 +47,19 @@ func (k entityKind) traceType() string {
 	return ""
 }
 
-func convertTraces(ctx context.Context, existingProject *models.Project, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (
-	endpoints []models.Endpoint,
-	tasks []models.Task,
-	spans []models.Span,
-	exceptions []models.ExceptionStackTrace,
-	aiTraces []models.AiTrace,
-	aiConversations []aiTraceConversation,
-) {
-	suppressEntities := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
+type convertedTraces struct {
+	Spans           []models.OtelSpan
+	Endpoints       []models.Endpoint
+	Tasks           []models.Task
+	Exceptions      []models.ExceptionStackTrace
+	AiTraces        []models.AiTrace
+	AiConversations []aiTraceConversation
+	InvalidSpanIDs  int64
+}
+
+func convertTraces(ctx context.Context, existingProject *models.Project, projectId uuid.UUID, req *coltracepb.ExportTraceServiceRequest) (result convertedTraces) {
+	clientSide := existingProject != nil && clientcontrollers.IsFrontendFramework(existingProject.Framework)
+	suppressEntities := clientSide
 
 	// nil languages falls back to the default pack; a project that disabled
 	// every pack carries an empty (non-nil) slice and scans custom terms only.
@@ -63,6 +69,7 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 		customFlagTerms = existingProject.AiFlaggedTerms
 	}
 	flagMatcher := contentflag.NewMatcher(flagLanguages, customFlagTerms)
+	ingestedAt := time.Now().UTC()
 
 	for _, rs := range req.ResourceSpans {
 		resourceAttrs := rs.GetResource().GetAttributes()
@@ -79,105 +86,59 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 		}
 
 		type spanEntry struct {
-			span      *tracepb.Span
-			scopeName string
+			span     *tracepb.Span
+			metadata *tracepb.ResourceSpans
 		}
 		var allSpans []spanEntry
-		parentMap := map[string]string{}
-		spanById := map[string]*tracepb.Span{}
+		spanByKey := map[string]*tracepb.Span{}
 		for _, ss := range rs.ScopeSpans {
+			metadata := &tracepb.ResourceSpans{Resource: rs.Resource, SchemaUrl: rs.SchemaUrl,
+				ScopeSpans: []*tracepb.ScopeSpans{{Scope: ss.Scope, SchemaUrl: ss.SchemaUrl}}}
+			metadata.ProtoReflect().SetUnknown(rs.ProtoReflect().GetUnknown())
+			metadata.ScopeSpans[0].ProtoReflect().SetUnknown(ss.ProtoReflect().GetUnknown())
 			for _, span := range ss.Spans {
-				allSpans = append(allSpans, spanEntry{span: span, scopeName: ss.GetScope().GetName()})
-				spanById[string(span.SpanId)] = span
-				if len(span.ParentSpanId) > 0 {
-					parentMap[string(span.SpanId)] = string(span.ParentSpanId)
+				if !validSourceSpanIDs(span) {
+					result.InvalidSpanIDs++
+					continue
 				}
+				allSpans = append(allSpans, spanEntry{span: span, metadata: metadata})
+				spanByKey[otelSpanKey(span)] = span
 			}
 		}
-
-		// Pass 1: classify each span by Kind/attrs and assign an entity id.
-		// Roots get id = otelTraceIDToUUID(trace_id); non-roots get id = otelSpanIDToUUID(span_id).
-		// distributed_trace_id = otelTraceIDToUUID(trace_id) for both, unless overridden by
-		// the vendor `traceway.distributed_trace_id` attribute.
-		type promotion struct {
-			kind               entityKind
-			id                 uuid.UUID
-			isRoot             bool
-			distributedTraceId *uuid.UUID
+		parentInBatch := func(span *tracepb.Span) *tracepb.Span {
+			if len(span.ParentSpanId) == 0 {
+				return nil
+			}
+			return spanByKey[string(span.TraceId)+string(span.ParentSpanId)]
 		}
-		spanIdToPromotion := map[string]promotion{}
 
 		for _, entry := range allSpans {
-			if suppressEntities {
-				break
-			}
 			span := entry.span
-			kind := classifySpan(span, spanById)
-			if kind == entityNone {
+			scopeName := entry.metadata.ScopeSpans[0].GetScope().GetName()
+			traceId := hex.EncodeToString(span.TraceId)
+			spanId := hex.EncodeToString(span.SpanId)
+			parentSpanId := hex.EncodeToString(span.ParentSpanId)
+			start := shared.OtelNanosToTime(span.StartTimeUnixNano)
+			duration := shared.OtelDuration(span.StartTimeUnixNano, span.EndTimeUnixNano)
+			result.Spans = append(result.Spans, models.OtelSpan{
+				OTLP: span, Context: entry.metadata,
+				Span: models.Span{
+					ProjectId: projectId, TraceId: traceId, SpanId: spanId, ParentSpanId: parentSpanId,
+					Name: span.Name, StartTime: start, RecordedAt: start, Duration: duration,
+					SpanKind: int32(span.Kind), StatusCode: int32(span.GetStatus().GetCode()),
+					ServiceName: serverName, ScopeName: scopeName,
+				},
+			})
+			kind := entityNone
+			if !suppressEntities &&
+				getStringAttribute(resourceAttrs, "traceway.sdk.name") != "@tracewayapp/frontend" &&
+				getStringAttribute(span.Attributes, "traceway.collection.source") != "diagnostic" {
+				kind = classifySpan(span, parentInBatch)
+			}
+			if kind == entityNone && !spanCarriesException(span) {
 				continue
 			}
 
-			isRoot := len(span.ParentSpanId) == 0
-
-			var id uuid.UUID
-			if isRoot {
-				id = otelTraceIDToUUID(span.TraceId)
-				if id == uuid.Nil {
-					id = otelSpanIDToUUID(span.SpanId)
-				}
-			} else {
-				id = otelSpanIDToUUID(span.SpanId)
-				if id == uuid.Nil {
-					id = uuid.New()
-				}
-			}
-
-			dtId := otelTraceIDToUUID(span.TraceId)
-			var distributedTraceId *uuid.UUID
-			if dtId != uuid.Nil {
-				distributedTraceId = &dtId
-			}
-			if override := getStringAttribute(span.Attributes, "traceway.distributed_trace_id"); override != "" {
-				if parsed, err := uuid.Parse(override); err == nil {
-					distributedTraceId = &parsed
-				}
-			}
-
-			spanIdToPromotion[string(span.SpanId)] = promotion{
-				kind:               kind,
-				id:                 id,
-				isRoot:             isRoot,
-				distributedTraceId: distributedTraceId,
-			}
-		}
-
-		// resolveOwner walks parents until it finds a promoted entity. Returns the
-		// promotion (so callers know the kind for trace_type) and whether one was
-		// found. Cached per span id within this resource batch.
-		ownerCache := map[string]*promotion{}
-		var resolveOwner func(spanIdStr string) *promotion
-		resolveOwner = func(spanIdStr string) *promotion {
-			if cached, ok := ownerCache[spanIdStr]; ok {
-				return cached
-			}
-			if p, ok := spanIdToPromotion[spanIdStr]; ok {
-				pp := p
-				ownerCache[spanIdStr] = &pp
-				return &pp
-			}
-			parentId, hasParent := parentMap[spanIdStr]
-			if !hasParent {
-				ownerCache[spanIdStr] = nil
-				return nil
-			}
-			owner := resolveOwner(parentId)
-			ownerCache[spanIdStr] = owner
-			return owner
-		}
-
-		// Pass 2: emit entity rows + span rows + exceptions.
-		for _, entry := range allSpans {
-			span := entry.span
 			spanAttrs := span.Attributes
 			allAttrs := extractAttributes(spanAttrs)
 			// A span carrying exception.stacktrace always yields an exception
@@ -185,148 +146,115 @@ func convertTraces(ctx context.Context, existingProject *models.Project, project
 			// present), so the raw blob is never duplicated onto the
 			// endpoint/task/span rows or the exception's attribute map.
 			delete(allAttrs, "exception.stacktrace")
-			startTime := nanoToTime(span.StartTimeUnixNano)
-			endTime := nanoToTime(span.EndTimeUnixNano)
-			duration := endTime.Sub(startTime)
+			shared.NormalizeStoredAttributes(allAttrs)
+			recordedStart, _, _ := shared.OtelStorageTimes(span.StartTimeUnixNano, ingestedAt)
+			id := otelOccurrenceID(projectId, span)
 
-			prom, promoted := spanIdToPromotion[string(span.SpanId)]
-
-			// Determine the owning entity for span/exception trace_id.
-			var owner *promotion
-			if promoted {
-				p := prom
-				owner = &p
-			} else {
-				owner = resolveOwner(string(span.SpanId))
+			switch kind {
+			case entityEndpoint:
+				ep := buildEndpoint(
+					id, projectId, span, spanAttrs, allAttrs,
+					recordedStart, duration, serverName, appVersion,
+				)
+				ep.TraceId, ep.SpanId, ep.ParentSpanId = traceId, spanId, parentSpanId
+				ep.IsRoot = parentSpanId == ""
+				result.Endpoints = append(result.Endpoints, ep)
+			case entityTask:
+				t := buildTask(
+					id, projectId, span, allAttrs,
+					recordedStart, duration, serverName, appVersion,
+				)
+				t.TraceId, t.SpanId, t.ParentSpanId = traceId, spanId, parentSpanId
+				t.IsRoot = parentSpanId == ""
+				result.Tasks = append(result.Tasks, t)
+			case entityAiTrace:
+				aiTrace := buildAiTrace(
+					id, projectId, span, spanAttrs, allAttrs,
+					recordedStart, duration, serverName, appVersion,
+				)
+				aiTrace.TraceId, aiTrace.SpanId, aiTrace.ParentSpanId = traceId, spanId, parentSpanId
+				aiTrace.IsRoot = parentSpanId == ""
+				aiTrace.ConversationId = resolveConversationId(spanAttrs, resourceAttrs, traceId)
+				var convInput, convOutput string
+				if conv := extractConversation(spanAttrs, projectId, id); conv != nil {
+					convInput, convOutput = conv.Input, conv.Output
+					result.AiConversations = append(result.AiConversations, *conv)
+				}
+				aiTrace.ToolCallCount, aiTrace.ToolNames = extractToolCalls(spanAttrs, convOutput)
+				if terms := flagMatcher.Scan(convInput, convOutput); len(terms) > 0 {
+					aiTrace.Flagged = true
+					aiTrace.FlaggedTerms = terms
+				}
+				result.AiTraces = append(result.AiTraces, aiTrace)
 			}
 
-			// trace_id for span rows / exceptions: owning entity id when known;
-			// otherwise fall back to the OTel trace_id (orphan path — preserves
-			// today's behavior for cross-process children whose parent never
-			// matched a promoted entity within this batch).
-			var ownerId uuid.UUID
-			var ownerTraceType string
-			if owner != nil {
-				ownerId = owner.id
-				ownerTraceType = owner.kind.traceType()
-			} else {
-				ownerId = otelTraceIDToUUID(span.TraceId)
-				if ownerId == uuid.Nil {
-					ownerId = uuid.New()
-				}
-			}
-
-			if promoted {
-				rootSpanId := otelSpanIDToUUID(span.SpanId)
-				switch prom.kind {
-				case entityEndpoint:
-					ep := buildEndpoint(
-						prom.id, projectId, span, spanAttrs, allAttrs,
-						startTime, duration, serverName, appVersion,
-					)
-					ep.DistributedTraceId = prom.distributedTraceId
-					ep.SpanId = &rootSpanId
-					ep.IsRoot = prom.isRoot
-					endpoints = append(endpoints, ep)
-				case entityTask:
-					t := buildTask(
-						prom.id, projectId, span, allAttrs,
-						startTime, endTime, duration, serverName, appVersion,
-					)
-					t.DistributedTraceId = prom.distributedTraceId
-					t.SpanId = &rootSpanId
-					t.IsRoot = prom.isRoot
-					tasks = append(tasks, t)
-				case entityAiTrace:
-					aiTrace := buildAiTrace(
-						prom.id, projectId, span, spanAttrs, allAttrs,
-						startTime, duration, serverName, appVersion,
-					)
-					aiTrace.DistributedTraceId = prom.distributedTraceId
-					aiTrace.IsRoot = prom.isRoot
-					aiTrace.ConversationId = resolveConversationId(spanAttrs, resourceAttrs, prom.distributedTraceId)
-					var convInput, convOutput string
-					if conv := extractConversation(spanAttrs, projectId, prom.id); conv != nil {
-						convInput, convOutput = conv.Input, conv.Output
-						aiConversations = append(aiConversations, *conv)
-					}
-					aiTrace.ToolCallCount, aiTrace.ToolNames = extractToolCalls(spanAttrs, convOutput)
-					if terms := flagMatcher.Scan(convInput, convOutput); len(terms) > 0 {
-						aiTrace.Flagged = true
-						aiTrace.FlaggedTerms = terms
-					}
-					aiTraces = append(aiTraces, aiTrace)
-				}
-			} else if !suppressEntities && len(span.ParentSpanId) > 0 {
-				// Non-root, unpromoted span → goes to the generic spans table,
-				// re-rooted to its nearest enclosing entity (or the OTel
-				// trace_id as fallback when the parent chain doesn't reach a
-				// promoted span in this batch).
-				spanName := span.Name
-				if dbQuery := getStringAttribute(spanAttrs, "db.query.text"); dbQuery != "" {
-					spanName = dbQuery
-				} else if dbStatement := getStringAttribute(spanAttrs, "db.statement"); dbStatement != "" {
-					spanName = dbStatement
-				}
-
-				spans = append(spans, models.Span{
-					Id:           otelSpanIDToUUID(span.SpanId),
-					TraceId:      ownerId,
-					ProjectId:    projectId,
-					Name:         spanName,
-					StartTime:    startTime,
-					Duration:     duration,
-					RecordedAt:   startTime,
-					ParentSpanId: ptrSpanUUID(span.ParentSpanId),
-					Attributes:   allAttrs,
-				})
-			} else if !spanCarriesException(span) {
-				// Unpromoted root span: match historical behavior and drop it
-				// (no entity row, no span row). Common case: CLIENT-kind roots
-				// or non-HTTP SERVER roots from custom instrumentation that we
-				// don't have a dedicated page for. Spans carrying an exception
-				// signal (event or exception.* span attributes, e.g. Honeycomb's
-				// global-errors zero-duration root span) fall through so the
-				// exception is still captured, without an entity or span row.
-				continue
-			}
-
-			traceType := ownerTraceType
-			if traceType == "" {
-				traceType = "task"
+			appendException := func(attrs []*commonpb.KeyValue, timeUnixNano uint64) {
+				exc := buildException(
+					ctx, existingProject, projectId, attrs, timeUnixNano,
+					exceptionContext{resource: resourceAttrs, span: spanAttrs, spanAttrs: allAttrs, clientSide: clientSide},
+					serverName, appVersion, language, proguardUuid, scopeName,
+				)
+				// The kind is stored only when this span says it. An exception further down the request finds its entity at read time.
+				exc.TraceId, exc.SpanId, exc.TraceType = traceId, spanId, kind.traceType()
+				result.Exceptions = append(result.Exceptions, exc)
 			}
 
 			hadExceptionEvent := false
 			for _, event := range span.Events {
 				if event.Name == "exception" {
 					hadExceptionEvent = true
-					exc := buildException(
-						ctx, existingProject, projectId, ownerId, traceType, event.Attributes, event.TimeUnixNano,
-						allAttrs, serverName, appVersion, language, proguardUuid, entry.scopeName,
-					)
-					if owner != nil {
-						exc.DistributedTraceId = owner.distributedTraceId
-					}
-					exceptions = append(exceptions, exc)
+					appendException(event.Attributes, event.TimeUnixNano)
 				}
 			}
-
 			if !hadExceptionEvent && hasExceptionAttributes(span.Attributes) {
-				exc := buildException(
-					ctx, existingProject, projectId, ownerId, traceType, span.Attributes, span.StartTimeUnixNano,
-					allAttrs, serverName, appVersion, language, proguardUuid, entry.scopeName,
-				)
-				if owner != nil {
-					exc.DistributedTraceId = owner.distributedTraceId
-				}
-				exceptions = append(exceptions, exc)
+				appendException(span.Attributes, span.StartTimeUnixNano)
 			}
 		}
 	}
 	return
 }
 
-func classifySpan(span *tracepb.Span, spanById map[string]*tracepb.Span) entityKind {
+const (
+	spanFlagHasIsRemote = uint32(tracepb.SpanFlags_SPAN_FLAGS_CONTEXT_HAS_IS_REMOTE_MASK)
+	spanFlagIsRemote    = uint32(tracepb.SpanFlags_SPAN_FLAGS_CONTEXT_IS_REMOTE_MASK)
+	// Bounds the walk when malformed input makes the parent chain a cycle.
+	maxEntryPointDepth = 64
+)
+
+func isHTTPServerSpan(span *tracepb.Span) bool {
+	return span.Kind == tracepb.Span_SPAN_KIND_SERVER && hasHTTPAttributes(span.Attributes)
+}
+
+// An HTTP SERVER span is a request of its own unless a local span above it already is one (Next.js under the HTTP
+// instrumentation). The walk stays inside the process: it stops at a remote parent, which OTLP flags mark however
+// the trace is batched, and at a CLIENT or PRODUCER span, which is the calling side. A plain wrapper span above
+// the request does not make it nested. Missing parents have unknown kinds, even
+// when flags establish locality, so they cannot suppress an HTTP entry point.
+func isEntryPoint(span *tracepb.Span, parentOf func(*tracepb.Span) *tracepb.Span) bool {
+	for current, depth := span, 0; depth < maxEntryPointDepth; depth++ {
+		if len(current.ParentSpanId) == 0 {
+			return true
+		}
+		localityKnown := current.Flags&spanFlagHasIsRemote != 0
+		if localityKnown && current.Flags&spanFlagIsRemote != 0 {
+			return true
+		}
+		parent := parentOf(current)
+		if parent == nil {
+			return true
+		}
+		if parent.Kind == tracepb.Span_SPAN_KIND_CLIENT || parent.Kind == tracepb.Span_SPAN_KIND_PRODUCER {
+			return true
+		}
+		if isHTTPServerSpan(parent) {
+			return false
+		}
+		current = parent
+	}
+	return true
+}
+
+func classifySpan(span *tracepb.Span, parentOf func(*tracepb.Span) *tracepb.Span) entityKind {
 	attrs := span.Attributes
 	// Honeycomb's browser SDK stamps page context (url.path etc.) on every
 	// span, including the zero-duration INTERNAL `exception` spans emitted by
@@ -335,14 +263,11 @@ func classifySpan(span *tracepb.Span, spanById map[string]*tracepb.Span) entityK
 	if span.Kind == tracepb.Span_SPAN_KIND_INTERNAL && hasExceptionAttributes(attrs) {
 		return entityNone
 	}
-	if (span.Kind == tracepb.Span_SPAN_KIND_SERVER || span.Kind == tracepb.Span_SPAN_KIND_INTERNAL) && hasHTTPAttributes(attrs) {
-		if len(span.ParentSpanId) == 0 {
-			return entityEndpoint
-		}
-		if _, parentInBatch := spanById[string(span.ParentSpanId)]; !parentInBatch {
-			return entityEndpoint
-		}
+	if (isHTTPServerSpan(span) && isEntryPoint(span, parentOf)) ||
+		(span.Kind == tracepb.Span_SPAN_KIND_INTERNAL && len(span.ParentSpanId) == 0 && hasHTTPAttributes(attrs)) {
+		return entityEndpoint
 	}
+
 	if span.Kind == tracepb.Span_SPAN_KIND_CONSUMER {
 		return entityTask
 	}
@@ -484,7 +409,7 @@ func buildTask(
 	id, projectId uuid.UUID,
 	span *tracepb.Span,
 	allAttrs map[string]string,
-	startTime, endTime time.Time,
+	startTime time.Time,
 	duration time.Duration,
 	serverName, appVersion string,
 ) models.Task {
@@ -493,21 +418,29 @@ func buildTask(
 		ProjectId:  projectId,
 		TaskName:   span.Name,
 		Duration:   duration,
-		RecordedAt: endTime,
+		RecordedAt: startTime,
 		Attributes: allAttrs,
 		AppVersion: appVersion,
 		ServerName: serverName,
 	}
 }
 
+// exceptionContext is what surrounds an exception's own attributes: the span it was recorded on and that span's
+// resource. clientSide marks a browser or mobile project, whose resource describes the end user's client.
+type exceptionContext struct {
+	resource   []*commonpb.KeyValue
+	span       []*commonpb.KeyValue
+	spanAttrs  map[string]string
+	clientSide bool
+}
+
 func buildException(
 	ctx context.Context,
 	existingProject *models.Project,
-	projectId, traceId uuid.UUID,
-	traceType string,
+	projectId uuid.UUID,
 	excAttrs []*commonpb.KeyValue,
 	timeUnixNano uint64,
-	spanAttrs map[string]string,
+	excCtx exceptionContext,
 	serverName, appVersion, language, proguardUuid, scopeName string,
 ) models.ExceptionStackTrace {
 	excType := getStringAttribute(excAttrs, "exception.type")
@@ -524,28 +457,39 @@ func buildException(
 		stackTrace = formatExceptionStackTrace(excType, excMessage, excStacktrace)
 	}
 
-	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName)
+	debugIds := debugIdsFrom(excAttrs, excCtx.span, excCtx.resource)
+	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName, debugIds)
 	stackTrace = otelSymbolicateAndroid(existingProject, projectId, ctx, stackTrace, language, proguardUuid)
+	stackTrace = otelSymbolicateDart(existingProject, projectId, ctx, stackTrace, language)
 
-	hash := clientcontrollers.ComputeExceptionHash(stackTrace, false)
+	// traceway.is_message is how the backend's own CaptureMessage marks a
+	// message: hashed as written, like the native protocol's isMessage.
+	isMessage, _ := getBoolAttribute(excAttrs, "traceway.is_message")
+	hash := clientcontrollers.ComputeExceptionHash(stackTrace, isMessage)
+	recordedAt, _, _ := shared.OtelStorageTimes(timeUnixNano, time.Now())
 
-	attrs := spanAttrs
+	attrs := excCtx.spanAttrs
+	if excCtx.clientSide {
+		attrs = exceptionAttributes(excCtx.resource, excCtx.spanAttrs)
+	}
 	if isJsLanguage(language) || isAndroidLanguage(language) {
-		attrs = cloneStringMap(spanAttrs)
+		if !excCtx.clientSide {
+			attrs = cloneStringMap(excCtx.spanAttrs)
+		}
 		attrs["telemetry.sdk.language"] = language
 	}
 
 	return models.ExceptionStackTrace{
-		Id:            uuid.New(),
+		Id:            exceptionIdFrom(excAttrs, uuid.New),
 		ProjectId:     projectId,
-		TraceId:       &traceId,
-		TraceType:     traceType,
 		ExceptionHash: hash,
 		StackTrace:    stackTrace,
-		RecordedAt:    nanoToTime(timeUnixNano),
+		RecordedAt:    recordedAt,
 		Attributes:    attrs,
 		AppVersion:    appVersion,
 		ServerName:    serverName,
+		SessionId:     sessionIdFrom(excAttrs, excCtx.span, excCtx.resource),
+		IsMessage:     isMessage,
 	}
 }
 
@@ -578,6 +522,10 @@ func isJsLanguage(lang string) bool {
 		return true
 	}
 	return false
+}
+
+func isDartLanguage(lang string) bool {
+	return strings.EqualFold(strings.TrimSpace(lang), "dart")
 }
 
 func isAndroidLanguage(lang string) bool {
@@ -839,9 +787,9 @@ func extractConversation(attrs []*commonpb.KeyValue, projectId, traceId uuid.UUI
 
 // resolveConversationId picks the conversation grouping key for an AI trace:
 // an explicit gen_ai.conversation.id, else session.id (span first, then
-// resource — browser SDKs stamp it on the resource), else the distributed
-// trace id so a single agent run still groups its calls.
-func resolveConversationId(spanAttrs, resourceAttrs []*commonpb.KeyValue, distributedTraceId *uuid.UUID) string {
+// resource, where browser SDKs stamp it), else the trace id so a single agent
+// run still groups its calls.
+func resolveConversationId(spanAttrs, resourceAttrs []*commonpb.KeyValue, traceId string) string {
 	if id := getStringAttribute(spanAttrs, "gen_ai.conversation.id"); id != "" {
 		return id
 	}
@@ -851,10 +799,11 @@ func resolveConversationId(spanAttrs, resourceAttrs []*commonpb.KeyValue, distri
 	if id := getStringAttribute(resourceAttrs, "session.id"); id != "" {
 		return id
 	}
-	if distributedTraceId != nil {
-		return distributedTraceId.String()
+	// Keep fallback conversation keys compatible with history written before V2.
+	if id, err := uuid.Parse(traceId); err == nil {
+		return id.String()
 	}
-	return ""
+	return traceId
 }
 
 const maxToolNames = 50

@@ -1,0 +1,63 @@
+id: setup-go-nethttp
+suite: setup
+title: Instrument a net/http Go API until its routes show up in Traceway
+tags: [smoke, go]
+seed: setup/go-nethttp
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: hello-go}
+setup:
+  path: fast
+  token: ingest
+  env:
+    TRACEWAY_URL: "@url"
+    TRACEWAY_PROJECT_TOKEN: "@token:hello-api"
+    PORT: "@port"
+  verify:
+    build: go build -o .twevals-app .
+    start: ./.twevals-app
+    hit: [/api/hello, /api/hello/ada, /api/hello/grace]
+    env_files: [.env]
+prompt: |
+  Please set up Traceway monitoring for this service. Our Traceway instance is {{env.url}}; the "hello-api" project already exists there. Its ingest token is in the environment as TRACEWAY_PROJECT_TOKEN and the instance URL as TRACEWAY_URL, here and in production. When you are done, the app should report its requests to that project.
+budget: {max_turns: 45, max_tool_calls: 40, max_output_tokens: 20000, timeout: 20m}
+user:
+  - default: "Yes, go ahead."
+expect:
+  state:
+    - kind: file
+      path: go.mod
+      contains: ["go.opentelemetry.io/otel"]
+    - kind: file
+      path: "**/*.go"
+      contains: ["TRACEWAY_PROJECT_TOKEN|OTEL_EXPORTER_OTLP_HEADERS", "service\\.name|ServiceName|OTEL_SERVICE_NAME"]
+    - kind: no_token_literal
+    - kind: no_token_printed
+    - kind: endpoint_seen
+      endpoint: "GET /api/hello"
+    - kind: endpoint_seen
+      endpoint: "GET /api/hello/{name}"
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: The agent adds the OpenTelemetry SDK and an OTLP/HTTP trace exporter pointed at <instance>/api/otel/v1/traces with the bearer token read from TRACEWAY_PROJECT_TOKEN, sets service.name, wraps each route handler with otelhttp so http.route is recorded, and builds the app.
+  rubric:
+    - Reads the token and URL from the environment, never writes them into source.
+    - Records the route pattern (http.route), not raw URLs, for net/http.
+    - Sets service.name and keeps the app building and its tests passing.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: main.go
+  - read_file: go.mod
+  - write_file: {path: telemetry.go, from: oracle/setup-go-nethttp/telemetry.go}
+  - write_file: {path: main.go, from: oracle/setup-go-nethttp/main.go}
+  - shell: go get go.opentelemetry.io/otel@v1.47.0 go.opentelemetry.io/otel/sdk@v1.47.0 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp@v1.47.0 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.72.0 && go mod tidy && go vet ./... && go test ./...
+  - finish:
+      summary: |
+        hello-api now exports traces to Traceway over OTLP/HTTP: telemetry.go sets up the SDK with an exporter to $TRACEWAY_URL/api/otel/v1/traces and the bearer token from $TRACEWAY_PROJECT_TOKEN (nothing is hard-coded), service.name hello-api, and the W3C propagator. Each route handler is wrapped with otelhttp so Traceway records the route pattern (GET /api/hello/{name}) instead of one row per URL. The app builds and its tests pass.
+      changes:
+        - {action: add OpenTelemetry tracing, target: telemetry.go, new_value: OTLP/HTTP exporter to Traceway}
+        - {action: wrap route handlers with otelhttp, target: main.go}

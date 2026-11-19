@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
@@ -12,6 +12,7 @@
 	import { toast } from 'svelte-sonner';
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import OncallOwner from '$lib/components/traceway/oncall-owner.svelte';
+	import { linkedTraceFrom } from '$lib/types/exceptions';
 	import type {
 		ExceptionGroup,
 		ExceptionOccurrence,
@@ -53,7 +54,10 @@
 		latestOccurrence?.stackTrace.split('\n')[0] || 'Exception'
 	);
 
+	let loadSequence = 0;
+
 	async function loadData() {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -74,40 +78,15 @@
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
 
+			if (sequence !== loadSequence) return;
 			group = response.group;
 			occurrences = response.occurrences || [];
 			total = response.pagination.total;
 			sessionRecording = response.sessionRecording ?? null;
 			sessionId = response.sessionId ?? null;
-
-			// Load linked trace if the latest occurrence has a traceId
-			const firstOccurrence = occurrences[0];
-			if (firstOccurrence?.traceId) {
-				try {
-					const isTask = firstOccurrence.traceType === 'task';
-					const endpoint = isTask ? '/tasks' : '/endpoints';
-					const txResponse = await api.post(
-						`${endpoint}/${firstOccurrence.traceId}`,
-						{},
-						{ projectId: projectsState.currentProjectId ?? undefined }
-					);
-					const txData = isTask ? txResponse.task : txResponse.endpoint;
-					if (txData) {
-						linkedTrace = {
-							id: txData.id,
-							endpoint: isTask ? txData.taskName : txData.endpoint,
-							duration: txData.duration,
-							statusCode: txData.statusCode || 0,
-							recordedAt: txData.recordedAt,
-							traceType: isTask ? 'task' : 'endpoint',
-							distributedTraceId: txData.distributedTraceId
-						};
-					}
-				} catch (txError) {
-					console.warn('Could not load linked trace:', txError);
-				}
-			}
+			linkedTrace = linkedTraceFrom(response.relatedEntity);
 		} catch (e) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			if (getErrorStatus(e) === 404) {
 				notFound = true;
@@ -115,7 +94,7 @@
 				error = getErrorMessage(e) || 'Failed to load exception details';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
@@ -137,8 +116,18 @@
 		}
 	}
 
-	onMount(() => {
-		loadData();
+	$effect(() => {
+		void page.params.exceptionHash;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			group = null;
+			occurrences = [];
+			total = 0;
+			loadData();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 

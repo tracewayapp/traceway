@@ -1,0 +1,115 @@
+# Agent Write Access
+
+import { Callout } from "nextra/components";
+
+AI agents can do more than read your telemetry. With write access they can make the routine changes an on-call engineer makes: archive an issue once it is fixed, acknowledge and resolve pages, snooze a noisy alert, run a monitor to confirm a fix, write the post-mortem, and mark an endpoint as expected-slow. They can build dashboards, configure alert channels and rules, manage teams, schedules and escalation policies, and configure their own contact methods and notification chains. They can also change what browser apps collect, through the [remote SDK config](/learn/remote-config) rules of a browser project.
+
+Writes are off by default and opt-in at three levels. All three have to agree before an agent can change anything:
+
+| Level | What it means | Who decides |
+|---|---|---|
+| **Credential** | Only write credentials can write: a `tww_` token, a `traceway-write` login, or the `/mcp/write` server. Everything else is read only. | The person creating the token or logging in |
+| **Organization** | An admin turns on **Settings > Agent Access**. Until then every agent write is refused. | Organization owners and admins |
+| **Role** | The write runs with the role of the person who created the credential, under the same rules as the dashboard. A `readonly` member's write token cannot archive issues, change alerts, run monitors, edit post-mortems or change remote SDK config rules. Like in the dashboard, any member can acknowledge and resolve pages. | Existing roles and per-project overrides |
+
+Every write a write credential makes in the organization is recorded in its agent activity log, including the writes refused because Agent Access is off.
+
+## What agents can change
+
+| Action | `traceway-write` command | MCP tool |
+|---|---|---|
+| Create or replace dashboards and apply to the selected project | `dashboards import --file F [--mode create\|upsert]` | `import_dashboards` |
+| Configure channels and project alert rules | `channels create/update/delete/test`, `alerts create/update/delete` | Notification channel/rule tools |
+| Create, change, pause or delete SLOs | `slos create/update/delete` | `create_slo`, `update_slo`, `delete_slo` |
+| Configure organization on-call routing | `teams`, `schedules`, `escalation-policies` | Team, on-call schedule/override and escalation-policy tools |
+| Configure own delivery methods and urgency chains | `contact-methods`, `notification-chains replace` | Contact-method tools, `set_user_notification_rules` |
+| Archive or unarchive issues | `exceptions archive <hash>...` / `unarchive` | `archive_exceptions` / `unarchive_exceptions` |
+| Acknowledge a page | `pages ack <id>` | `acknowledge_page` |
+| Resolve a page, optionally archiving its issue | `pages resolve <id> [--archive-issue]` | `resolve_page` |
+| Turn an alert rule on or off | `alerts enable <id>` / `alerts disable <id>` | `set_notification_rule_enabled` |
+| Snooze an alert rule | `alerts snooze <id> --minutes N` | `snooze_notification_rule` |
+| Run a monitor now | `monitors run <id>` | `run_check` |
+| Create or edit a post-mortem | `post-mortems create` / `update <id>` | `create_post_mortem` / `update_post_mortem` |
+| Mark an endpoint as expected-slow | `endpoints mark-slow <endpoint> --offset-ms N` | `set_slow_endpoint` |
+| Create, replace, reorder or delete remote SDK config rules (a browser project's **Data Collection** rules) | `opamp rules create` / `update <id>` / `reorder <id>...` / `delete <id>` | `create_sdk_config_rule` / `update_sdk_config_rule` / `reorder_sdk_config_rules` / `delete_sdk_config_rule` |
+
+<Callout type="warning">
+  Remote SDK config rules decide what the browsers of a React, Vue, Svelte or jQuery project running the 2.x SDK send. A write credential can therefore switch signals off, stream console lines, requests and clicks for every visitor, turn on full-session replay, and set `maskAllInputs: false`, which records what users type into input fields. The only limits are the ceilings the app sets in `init()` (for example `sessionRecording: false`) and the organization's plan. Turn Agent Access on only for organizations where that is acceptable, and review these writes in the agent activity log.
+</Callout>
+
+Other routes remain restricted, including creating monitors, status pages and public incident updates, member and invitation mutations, tokens, other project settings and targeted SDK captures. A new route is never reachable by an agent until it is added to the agent allowlist on purpose.
+
+Organization teams, schedules and escalation policies require an owner or admin. Any organization member can create a schedule override; its creator, covering responder or an admin can delete it. Contact methods and personal notification chains are always scoped to the authenticated person. Organization and personal writes still need a selected project for the Agent Access check and audit attribution; an organization path must match that project's organization. Organization member discovery is admin-only.
+
+See [Alerts](/learn/alerts#configure-alerting-with-the-cli-or-mcp) for channel and rule examples, and [On-Call](/learn/on-call#configure-on-call-with-the-cli-or-mcp) for routing and personal delivery. Channel/contact tests send real notifications, and escalation-channel tests open real pages. Configuration validation does not test delivery.
+
+Dashboard imports require write access to the organization and selected project. Upsert replaces the entire dashboard matched by organization-wide name, affecting all assigned projects. Agent imports cannot override the organization or apply-to project list. See [building dashboards from code](/learn/dashboards#build-dashboards-with-the-cli-or-an-ai-agent) for discovery, offline validation and the shared-chart workflow.
+
+## Turning it on
+
+An organization owner or admin opens **Settings**, finds the **Agent Access** card, and switches on **Allow agent writes**. The same card lists every agent write: when, who, which credential, which project, the action and the result. Turn the switch off at any time and agent writes stop immediately. Read access is not affected.
+
+The log keeps 90 days of history.
+
+## Write credentials
+
+### Write tokens
+
+In **Account > Personal Access Tokens**, choose **Access: Read and write** when creating a token. Write tokens start with `tww_` instead of `twp_`, so they stand out in logs and secret scanners. They must expire within 90 days.
+
+Read tokens (`twp_`) are the default. Tokens created before agent write access existed are read only. Create a new write token where an automation needs to write.
+
+### The traceway-write CLI
+
+`traceway-write` is a separate binary with its own login and its own config directory (`$XDG_CONFIG_HOME/traceway-write`, `$XDG_STATE_HOME/traceway-write`), so a read-only `traceway` install can never be upgraded to write in place.
+
+```bash
+curl -fsSL https://cli.tracewayapp.com/install.sh | sh -s -- --write
+traceway-write login --url https://<your-instance>
+traceway-write projects use <project-id>
+```
+
+Its browser login asks for read and write access, and the approval page says so. `traceway-write` has every read command of `traceway`, plus the write commands in the table above. Each write prints what it is about to change and needs `--yes` (or `TRACEWAY_ASSUME_YES=1`) outside an interactive terminal.
+
+The read-only `traceway` CLI answers the write commands with a `write_required` error pointing here.
+
+### The write MCP server
+
+Every backend serves two MCP endpoints:
+
+- `/mcp` is read only. It never lists a write tool, even for a write token.
+- `/mcp/write` adds the write tools and only accepts write credentials. A read token gets `403` with a `scope="traceway:write"` challenge, which OAuth clients use to ask for the right scope.
+
+```bash
+# Claude Code, remote
+claude mcp add --transport http traceway-write https://<your-instance>/mcp/write
+
+# Claude Code, local (uses the traceway-write login)
+claude mcp add traceway-write -- traceway-write mcp
+```
+
+The OAuth consent page shows a **Read and write access** warning when a client asks for the write scope.
+
+### The traceway-write skill
+
+The `traceway-write` skill starts with an index of writable areas and how telemetry, rules, channels, policies, schedules, pages and personal delivery interact. Focused Markdown references explain each area, including alert configuration, on-call routing, personal notification chains, dashboard building, incident actions, browser collection and setup. `npx skills add tracewayapp/skills --all` installs it with the other skills. In Claude Code it is its own plugin, `tw-write`, separate from the read-only `tw` plugin. The skill alone changes nothing: writes still need the `traceway-write` CLI or a write token, and an admin who turned on Agent Access. For how each part of Traceway works, it relies on the read-only `traceway-learn` skill (see [MCP Server](/learn/mcp#the-product-guide)).
+
+```
+/plugin marketplace add tracewayapp/skills
+/plugin install tw-write@traceway
+```
+
+Other agents can copy the skill folder from [`plugins/tw-write/skills/traceway-write`](https://github.com/tracewayapp/skills/tree/main/plugins/tw-write/skills/traceway-write).
+
+<Callout type="info">
+  The binary, the MCP endpoint and the skill make write access an explicit, separate choice. The server is what enforces it: scopes on the credential, the agent route allowlist and the organization switch are all checked on every request, whatever client sent it.
+</Callout>
+
+## Upgrading
+
+- **Existing personal access tokens become read only**, and existing CLI and MCP logins keep working as read only. Dashboard sessions are unaffected.
+- **Every token, CLI login and MCP client is limited to the agent routes**, the reads plus the writes listed above, even for reading. A script that used a personal access token for anything else, such as creating projects, managing members, or deleting post-mortems, now gets `403` and has to move to the dashboard.
+- **`traceway exceptions archive` and `unarchive` moved to `traceway-write`.** The read-only CLI answers them with a `write_required` error.
+- **Password logins from the CLI** now receive a token scoped like the CLI that asked for it, not a full dashboard session: a 15-minute access token the CLI refreshes on its own, revoked by `logout`.
+
+To give an automation write access, create a write token or log in with `traceway-write`, and have an admin turn on Agent Access.

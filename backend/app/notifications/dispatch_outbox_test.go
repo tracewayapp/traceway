@@ -3,17 +3,19 @@
 package notifications
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 type dispatchFixture struct {
@@ -84,7 +86,7 @@ func outboxRows(t *testing.T) []*models.OutboxDelivery {
 func TestDispatchEnqueuesSnapshot(t *testing.T) {
 	fixture := setupDispatchDB(t)
 
-	if !dispatch(fixture.Rule, Message{Subject: "s", Body: "b", Severity: SeverityCritical}) {
+	if !dispatch(context.Background(), fixture.Rule, Message{Subject: "s", Body: "b", Severity: SeverityCritical}) {
 		t.Fatal("dispatch should report a durable enqueue")
 	}
 	rows := outboxRows(t)
@@ -120,7 +122,7 @@ func TestDispatchFailureLeavesNoCooldown(t *testing.T) {
 	fixture := setupDispatchDB(t)
 	fixture.Rule.ChannelId = 99999
 
-	if dispatch(fixture.Rule, Message{Subject: "s"}) {
+	if dispatch(context.Background(), fixture.Rule, Message{Subject: "s"}) {
 		t.Fatal("dispatch with a dangling channel should fail")
 	}
 	if len(outboxRows(t)) != 0 {
@@ -131,10 +133,55 @@ func TestDispatchFailureLeavesNoCooldown(t *testing.T) {
 	}
 }
 
+func TestDispatchChannelLoadFailureRecordsAppliedSeverityAndURL(t *testing.T) {
+	fixture := setupDispatchDB(t)
+	fixture.Rule.ChannelId = 99999
+	fixture.Rule.Severity = "warning"
+	setAppBaseURL(t, "https://traceway.example.com/")
+
+	if dispatch(context.Background(), fixture.Rule, Message{
+		Subject:  "s",
+		Severity: SeverityCritical,
+		URL:      "/issues/0123456789abcdef",
+	}) {
+		t.Fatal("dispatch with a dangling channel should fail")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	var rows []*models.NotificationHistoryEntry
+	for {
+		var err error
+		rows, _, err = telemetry.FiredNotificationRepository.FindByProject(context.Background(), fixture.Rule.ProjectId, 1, 10, "", nil, nil)
+		if err != nil {
+			t.Fatalf("load history: %v", err)
+		}
+		if len(rows) > 0 || !time.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 history row, got %d", len(rows))
+	}
+	row := rows[0]
+	if row.Severity != "warning" {
+		t.Errorf("severity = %q, want warning", row.Severity)
+	}
+	if row.URL != "https://traceway.example.com/issues/0123456789abcdef" {
+		t.Errorf("URL = %q, want https://traceway.example.com/issues/0123456789abcdef", row.URL)
+	}
+	if row.Status != "failed" {
+		t.Errorf("status = %q, want failed", row.Status)
+	}
+	if row.ErrorMessage != "failed to load channel" {
+		t.Errorf("error = %q, want failed to load channel", row.ErrorMessage)
+	}
+}
+
 func TestSeedCooldownsIncludesOutbox(t *testing.T) {
 	fixture := setupDispatchDB(t)
 
-	if !dispatch(fixture.Rule, Message{Subject: "s"}) {
+	if !dispatch(context.Background(), fixture.Rule, Message{Subject: "s"}) {
 		t.Fatal("dispatch failed")
 	}
 	// Fresh tracker simulating a restart before any terminal outcome exists.
@@ -192,7 +239,7 @@ func TestDispatchDashboardLinks(t *testing.T) {
 			setAppBaseURL(t, tc.base)
 
 			details := ExceptionDetails{Hash: "0123456789abcdef", ErrorType: "RuntimeError"}
-			if !dispatch(fixture.Rule, buildNewErrorMessage(details, "api")) {
+			if !dispatch(context.Background(), fixture.Rule, buildNewErrorMessage(details, "api")) {
 				t.Fatal("dispatch failed")
 			}
 			msg := queuedMessage(t)
@@ -201,6 +248,41 @@ func TestDispatchDashboardLinks(t *testing.T) {
 			}
 			if !strings.Contains(msg.Body, "View details: "+tc.want) {
 				t.Errorf("body lacks %q:\n%s", tc.want, msg.Body)
+			}
+		})
+	}
+}
+
+// Issue #383: a recovery took the rule's severity, so it reached Slack in the
+// alert's color; under Auto it was plain info blue.
+func TestDispatchedCheckRecoveryIsInfoAndGreenInSlack(t *testing.T) {
+	check := &models.SyntheticCheck{Id: 7, Name: "api health"}
+	recovered := buildCheckRecoveredMessage(check, "api")
+	cases := []struct {
+		name         string
+		ruleSeverity string
+		msg          Message
+		wantSeverity Severity
+		wantColor    string
+	}{
+		{"recovery under a critical rule", "critical", recovered, SeverityInfo, "#4CAF50"},
+		{"recovery under an Auto rule", "", recovered, SeverityInfo, "#4CAF50"},
+		{"alert under a warning rule", "warning", buildCheckDownMessage(check, "connection refused", "api"), SeverityWarning, "#FF9800"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := setupDispatchDB(t)
+			fixture.Rule.RuleType, fixture.Rule.Severity = "check_down", tc.ruleSeverity
+
+			if !dispatch(context.Background(), fixture.Rule, tc.msg) {
+				t.Fatal("dispatch failed")
+			}
+			msg := queuedMessage(t)
+			if msg.Severity != tc.wantSeverity {
+				t.Errorf("queued severity = %q, want %q", msg.Severity, tc.wantSeverity)
+			}
+			if color := sentSlackColor(t, msg); color != tc.wantColor {
+				t.Errorf("Slack color = %s, want %s", color, tc.wantColor)
 			}
 		})
 	}

@@ -7,15 +7,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/oncall"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/oncall"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 type pageController struct{}
@@ -225,7 +225,7 @@ func (c *pageController) Resolve(ctx *gin.Context) {
 			return
 		}
 		if role == "readonly" || role == "" {
-			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Read-only access. Archiving the issue is not permitted."})
+			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Your role in this project is read-only, so archiving the issue is not permitted."})
 			return
 		}
 		if err := telemetry.ExceptionStackTraceRepository.ArchiveByHashes(ctx, page.ProjectId, []string{hash}); err != nil {
@@ -353,7 +353,7 @@ func (c *pageController) BulkResolve(ctx *gin.Context) {
 			return
 		}
 		if role == "readonly" || role == "" {
-			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Read-only access. Archiving the issues is not permitted."})
+			ctx.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Your role in this project is read-only, so archiving the issues is not permitted."})
 			return
 		}
 		hashes := make([]string, 0, len(hashSet))

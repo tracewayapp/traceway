@@ -4,14 +4,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/oncall"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/oncall"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/gin-gonic/gin"
-	traceway "go.tracewayapp.com"
 )
 
 type userNotificationRuleController struct{}

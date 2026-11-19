@@ -1,16 +1,43 @@
+// traceId, spanId and parentSpanId are the ids the span arrived with, as lowercase hex: 32 characters for a trace, 16
+// for an OTel span, 32 for a span of the native protocol.
 export type Span = {
-	id: string;
-	traceId: string;
 	projectId: string;
+	traceId: string;
+	spanId: string;
+	parentSpanId?: string;
 	name: string;
 	startTime: string; // ISO datetime
 	duration: number; // nanoseconds
 	recordedAt: string;
-	parentSpanId?: string;
+	spanKind?: number;
+	statusCode?: number;
+	serviceName?: string;
+	scopeName?: string;
 	attributes?: Record<string, string> | null;
+	attributesOmitted?: boolean;
+	dbStatement?: string;
 };
 
-export type TraceDetail = {
+export type TraceIdentity = {
+	traceId: string;
+	spanId: string;
+	parentSpanId?: string;
+};
+
+export type SpanAttributes = {
+	attributes: Record<string, string>;
+	attributesOmitted?: boolean;
+};
+
+export type SpanAttributeLoader = (span: Span) => Promise<SpanAttributes>;
+
+export type SpanGraphStatus = {
+	state: 'complete' | 'partial' | 'unavailable';
+	reasons?: string[];
+	omittedAttributes?: number;
+};
+
+export type TraceDetail = TraceIdentity & {
 	id: string;
 	projectId: string;
 	endpoint: string;
@@ -22,8 +49,6 @@ export type TraceDetail = {
 	attributes: Record<string, string> | null;
 	appVersion: string;
 	serverName: string;
-	distributedTraceId?: string;
-	spanId?: string;
 };
 
 export type ExceptionInfo = {
@@ -41,6 +66,7 @@ export type MessageInfo = {
 };
 
 export type TraceDetailResponse = {
+	spanGraphStatus?: SpanGraphStatus;
 	endpoint: TraceDetail;
 	spans: Span[];
 	hasSpans: boolean;

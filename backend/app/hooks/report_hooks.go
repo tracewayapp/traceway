@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type AiTraceInfo struct {
@@ -25,7 +26,11 @@ type ReportEvent struct {
 	TelemetryBytes  int
 	RecordingBytes  int
 	ExceptionHashes []string
-	AiTraces        []AiTraceInfo
+	// Exceptions are the stored rows behind ExceptionHashes. Notification rules describe an exception from them:
+	// a read right after the insert is not guaranteed to find the rows, and a miss sent "New error: Unknown Error"
+	// with no details.
+	Exceptions []models.ExceptionStackTrace
+	AiTraces   []AiTraceInfo
 }
 
 var (

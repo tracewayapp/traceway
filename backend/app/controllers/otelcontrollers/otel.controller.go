@@ -2,29 +2,36 @@ package otelcontrollers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientlogs"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/hooks"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/monitoring"
-	"github.com/tracewayapp/traceway/backend/app/profiling"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/services"
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/jsstack"
-	traceway "go.tracewayapp.com"
+	"github.com/tracewayapp/traceway/backend/v2/app/captureprogress"
+	"github.com/tracewayapp/traceway/backend/v2/app/hooks"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/monitoring"
+	"github.com/tracewayapp/traceway/backend/v2/app/profiling"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/jsstack"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
 func msSince(t time.Time) float64 {
 	return float64(time.Since(t).Microseconds()) / 1000.0
 }
 
-func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, scopeName string) string {
+func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, scopeName string, debugIds map[string]string) string {
 	if !isJsTelemetry(language, scopeName) {
 		return stackTrace
 	}
@@ -32,7 +39,7 @@ func otelSymbolicateJs(existingProject *models.Project, projectId uuid.UUID, ctx
 	if existingProject == nil || existingProject.SourceMapToken == nil {
 		return canonical
 	}
-	return services.ResolveStackTrace(ctx, projectId, canonical, nil)
+	return services.ResolveStackTrace(ctx, projectId, canonical, debugIds)
 }
 
 func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language, proguardUuid string) string {
@@ -45,7 +52,42 @@ func otelSymbolicateAndroid(existingProject *models.Project, projectId uuid.UUID
 	return services.ResolveAndroidStackTrace(ctx, projectId, stackTrace, proguardUuid)
 }
 
+// otelSymbolicateDart resolves an obfuscated Flutter build's trace against the project's uploaded symbols, the
+// same as the native report protocol does. A readable trace passes through untouched.
+func otelSymbolicateDart(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language string) string {
+	if !isDartLanguage(language) {
+		return stackTrace
+	}
+	if existingProject == nil || existingProject.SourceMapToken == nil {
+		return stackTrace
+	}
+	return services.ResolveDartStackTrace(ctx, projectId, stackTrace)
+}
+
 type otelController struct{}
+
+var traceStore = struct {
+	spans      func(context.Context, []models.OtelSpan) ([]shared.SpanOwner, error)
+	endpoints  func(context.Context, []models.Endpoint) error
+	tasks      func(context.Context, []models.Task) error
+	exceptions func(context.Context, []models.ExceptionStackTrace) error
+	aiTraces   func(context.Context, []models.AiTrace) error
+}{
+	spans:      telemetry.OtelSpanRepository.InsertWithRejections,
+	endpoints:  telemetry.EndpointRepository.InsertAsync,
+	tasks:      telemetry.TaskRepository.InsertAsync,
+	exceptions: telemetry.ExceptionStackTraceRepository.InsertAsync,
+	aiTraces:   telemetry.AiTraceRepository.InsertAsync,
+}
+
+func abortIngestStorage(c *gin.Context, stage string, err error) {
+	status := http.StatusInternalServerError
+	if telemetry.IsTransientStorageError(err) {
+		status = http.StatusServiceUnavailable
+		c.Header("Retry-After", "2")
+	}
+	c.AbortWithError(status, traceway.NewStackTraceErrorf("error inserting OTEL %s: %w", stage, err))
+}
 
 var OtelController = otelController{}
 
@@ -69,9 +111,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	hasOrg := project != nil && project.OrganizationId != nil
 	if hasOrg {
 		orgId = *project.OrganizationId
-		if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-			attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
-		}
+		traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
 	}
 	perm := hooks.IngestPermission{Exceptions: true, Data: true, Replay: true}
 	if hasOrg {
@@ -84,18 +124,35 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	}
 
 	convertStart := time.Now()
-	endpoints, tasks, spans, exceptions, aiTraces, aiConversations := convertTraces(c, project, projectId, req)
-
-	var droppedHealthchecks int
-	endpoints, spans, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, spans, exceptions)
-	if droppedHealthchecks > 0 {
-		monitoring.RecordHealthchecksDropped(monitoring.SignalTraces, droppedHealthchecks)
+	result := convertTraces(c, project, projectId, req)
+	endpoints, tasks, exceptions := result.Endpoints, result.Tasks, result.Exceptions
+	aiTraces, aiConversations := result.AiTraces, result.AiConversations
+	canonicalSpans := result.Spans
+	if !perm.Data {
+		canonicalSpans = nil
+	}
+	var droppedHealthchecks map[string]bool
+	endpoints, droppedHealthchecks = services.FilterHealthchecks(project, endpoints, exceptions)
+	if len(droppedHealthchecks) > 0 {
+		retained := make(map[string]bool)
+		for _, endpoint := range endpoints {
+			retained[services.SpanKey(endpoint.TraceId, endpoint.SpanId)] = true
+		}
+		for _, task := range tasks {
+			retained[services.SpanKey(task.TraceId, task.SpanId)] = true
+		}
+		for _, ai := range aiTraces {
+			retained[services.SpanKey(ai.TraceId, ai.SpanId)] = true
+		}
+		canonicalSpans = services.DropSpanSubtrees(canonicalSpans, func(span models.OtelSpan) (string, string, string) {
+			return span.TraceId, span.SpanId, span.ParentSpanId
+		}, droppedHealthchecks, retained)
+		monitoring.RecordHealthchecksDropped(monitoring.SignalTraces, len(droppedHealthchecks))
 	}
 
 	if !perm.Data {
 		endpoints = nil
 		tasks = nil
-		spans = nil
 		aiTraces = nil
 		aiConversations = nil
 	}
@@ -110,33 +167,64 @@ func (o otelController) ExportTraces(c *gin.Context) {
 
 	insertStart := time.Now()
 
-	if len(endpoints) > 0 {
-		if err := telemetry.EndpointRepository.InsertAsync(c, endpoints); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL endpoints: %w", err))
-			return
-		}
-	}
-
-	if len(tasks) > 0 {
-		if err := telemetry.TaskRepository.InsertAsync(c, tasks); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL tasks: %w", err))
-			return
-		}
-	}
-
-	if err := telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL exceptions: %w", err))
+	// Spans are the source the other rows are projected from, so a failed span write must not leave projections behind.
+	notStored, err := traceStore.spans(c, canonicalSpans)
+	if err != nil {
+		abortIngestStorage(c, "spans", err)
 		return
 	}
 
-	if err := telemetry.SpanRepository.InsertAsync(c, spans); err != nil {
-		c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL spans: %w", err))
+	rejectedSpans := make(map[shared.SpanOwner]bool, len(notStored))
+	for _, owner := range notStored {
+		rejectedSpans[owner] = true
+	}
+	captureMetadata := []string{}
+	for _, span := range canonicalSpans {
+		if !rejectedSpans[shared.SpanOwner{ProjectId: projectId, TraceId: span.TraceId, SpanId: span.SpanId}] && span.OTLP != nil {
+			if ids := getStringAttribute(span.OTLP.Attributes, "traceway.capture.ids"); ids != "" {
+				captureMetadata = append(captureMetadata, ids)
+			}
+		}
+	}
+	markCaptureDataReceived(projectId, captureMetadata)
+
+	if len(notStored) > 0 {
+		rejected := make(map[shared.SpanOwner]bool, len(notStored))
+		for _, span := range notStored {
+			rejected[span] = true
+		}
+		hasRejectedSource := func(traceId, spanId string) bool {
+			return rejected[shared.SpanOwner{ProjectId: projectId, TraceId: traceId, SpanId: spanId}]
+		}
+		endpoints = slices.DeleteFunc(endpoints, func(row models.Endpoint) bool { return hasRejectedSource(row.TraceId, row.SpanId) })
+		tasks = slices.DeleteFunc(tasks, func(row models.Task) bool { return hasRejectedSource(row.TraceId, row.SpanId) })
+		exceptions = slices.DeleteFunc(exceptions, func(row models.ExceptionStackTrace) bool { return hasRejectedSource(row.TraceId, row.SpanId) })
+		aiTraces = slices.DeleteFunc(aiTraces, func(row models.AiTrace) bool { return hasRejectedSource(row.TraceId, row.SpanId) })
+		storedConversations := map[string]bool{}
+		for _, row := range aiTraces {
+			storedConversations[row.StorageKey] = true
+		}
+		aiConversations = slices.DeleteFunc(aiConversations, func(row aiTraceConversation) bool { return !storedConversations[row.StorageKey] })
+	}
+
+	if err := traceStore.endpoints(c, endpoints); err != nil {
+		abortIngestStorage(c, "endpoints", err)
+		return
+	}
+
+	if err := traceStore.tasks(c, tasks); err != nil {
+		abortIngestStorage(c, "tasks", err)
+		return
+	}
+
+	if err := traceStore.exceptions(c, exceptions); err != nil {
+		abortIngestStorage(c, "exceptions", err)
 		return
 	}
 
 	if len(aiTraces) > 0 {
-		if err := telemetry.AiTraceRepository.InsertAsync(c, aiTraces); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL ai traces: %w", err))
+		if err := traceStore.aiTraces(c, aiTraces); err != nil {
+			abortIngestStorage(c, "ai traces", err)
 			return
 		}
 
@@ -155,7 +243,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 	}
 
 	insertMs := msSince(insertStart)
-	totalSize := len(endpoints) + len(tasks) + len(spans) + len(exceptions) + len(aiTraces)
+	totalSize := len(endpoints) + len(tasks) + len(canonicalSpans) + len(exceptions) + len(aiTraces)
 	monitoring.RecordIngestBatch(monitoring.SignalTraces, "traces", convertMs, insertMs, totalSize, bodyBytes)
 
 	var exceptionHashes []string
@@ -189,11 +277,12 @@ func (o otelController) ExportTraces(c *gin.Context) {
 		if perm.Exceptions {
 			ev.ErrorCount = len(exceptions)
 			ev.ExceptionHashes = exceptionHashes
+			ev.Exceptions = exceptions
 		}
 		hooks.BroadcastReport(ev)
 	}
 
-	writeTraceResponse(c)
+	writeTraceResponse(c, result.InvalidSpanIDs, int64(len(notStored)))
 }
 
 func (o otelController) ExportMetrics(c *gin.Context) {
@@ -208,12 +297,14 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 
 	orgId := 0
 	hasOrg := false
+	var clientProject *models.Project
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
-			orgId = *p.OrganizationId
-			hasOrg = true
-			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
+		if p, ok := project.(*models.Project); ok {
+			clientProject = p
+			if p.OrganizationId != nil {
+				orgId = *p.OrganizationId
+				hasOrg = true
+				traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
 			}
 		}
 	}
@@ -222,7 +313,12 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		perm = hooks.IngestPermissionFor(orgId)
 	}
 
-	req, bodyBytes, err := decodeMetricsRequest(c)
+	if clientlogs.IsClient(clientProject) {
+		o.exportClientMetrics(c, projectId, orgId, hasOrg, perm)
+		return
+	}
+
+	req, bodyBytes, err := decodeMetricsRequest(c, maxBodySize)
 	if err != nil {
 		writeDecodeError(c, err)
 		return
@@ -235,6 +331,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	if !perm.Data {
 		result.Points = nil
 		result.Entries = nil
+		result.Histograms = nil
 		if hasOrg {
 			monitoring.RecordRateLimited(orgId)
 		}
@@ -244,13 +341,25 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	if len(result.Points) > 0 {
 		insertStart := time.Now()
 		if err := telemetry.MetricPointRepository.InsertAsync(c, result.Points); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL metric points: %w", err))
+			abortIngestStorage(c, "metric points", err)
 			return
 		}
 		insertMs = msSince(insertStart)
 
 		if len(result.Entries) > 0 {
-			go services.AutoRegisterMetricsWithUnits(projectId, result.Entries)
+			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
+		}
+	}
+
+	// After the write that can answer 503: the exporter sends the request again, and histograms added to
+	// memory by the failed attempt would be counted twice.
+	if len(result.Histograms) > 0 {
+		now := time.Now()
+		for _, h := range result.Histograms {
+			services.ClientMetrics().AddSeriesHistogram(projectId, h.Name, h.At, h.Tags, h.Hist, h.Cumulative, now)
+		}
+		if len(result.Points) == 0 && len(result.Entries) > 0 {
+			go services.AutoRegisterMetricsWithUnits(context.WithoutCancel(c.Request.Context()), projectId, result.Entries)
 		}
 	}
 
@@ -267,6 +376,38 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 	writeMetricsResponse(c)
 }
 
+// exportClientMetrics takes the metrics of a browser or mobile project. Nothing is
+// written here: the samples are merged into the in-memory cells and the request
+// ends, so the cost of a request does not depend on storage and storage does not
+// see one write per client.
+func (o otelController) exportClientMetrics(c *gin.Context, projectId uuid.UUID, orgId int, hasOrg bool, perm hooks.IngestPermission) {
+	req, bodyBytes, err := decodeMetricsRequest(c, clientmetrics.MaxBodyBytes)
+	if err != nil {
+		writeDecodeError(c, err)
+		return
+	}
+	if !perm.Data {
+		if hasOrg {
+			monitoring.RecordRateLimited(orgId)
+		}
+		writeMetricsResponse(c)
+		return
+	}
+
+	start := time.Now()
+	result := services.ClientMetrics().IngestOTLP(projectId, req, services.ClientOf(c.GetHeader, c.ClientIP()), start)
+	monitoring.RecordIngestBatch(monitoring.SignalMetrics, "metric_histograms", msSince(start), 0, result.Accepted, bodyBytes)
+
+	if hasOrg {
+		hooks.BroadcastReport(hooks.ReportEvent{
+			OrganizationId: orgId,
+			ProjectId:      projectId,
+			TelemetryBytes: bodyBytes,
+		})
+	}
+	writeMetricsResponse(c)
+}
+
 func (o otelController) ExportLogs(c *gin.Context) {
 	monitoring.IngestStarted()
 	defer monitoring.IngestFinished()
@@ -280,12 +421,12 @@ func (o otelController) ExportLogs(c *gin.Context) {
 	orgId := 0
 	hasOrg := false
 	if project, exists := c.Get(middleware.ProjectContextKey); exists {
-		if p, ok := project.(*models.Project); ok && p.OrganizationId != nil {
+		if p, ok := project.(*models.Project); ok {
 			existingProject = p
-			orgId = *p.OrganizationId
-			hasOrg = true
-			if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-				attrs.SetTag("organization_id", fmt.Sprintf("%d", orgId))
+			if p.OrganizationId != nil {
+				orgId = *p.OrganizationId
+				hasOrg = true
+				traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", orgId))
 			}
 		}
 	}
@@ -300,38 +441,95 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		return
 	}
 
+	droppedLogs, review := throttleLogs(existingProject, projectId, c.ClientIP(), req)
 	convertStart := time.Now()
-	records := convertLogs(existingProject, c, projectId, req)
+	result := convertLogs(c, existingProject, projectId, c.ClientIP(), req)
+	records, sessions, exceptions := result.Records, result.Sessions, result.Exceptions
 	convertMs := msSince(convertStart)
+	if review != nil {
+		exceptions = append(exceptions, *review)
+	}
 
 	if !perm.Data {
 		records = nil
-		if hasOrg {
-			monitoring.RecordRateLimited(orgId)
-		}
+	}
+	if !perm.Exceptions {
+		exceptions = nil
+	}
+	if hasOrg && (!perm.Data || !perm.Exceptions) {
+		monitoring.RecordRateLimited(orgId)
 	}
 
-	insertMs := 0.0
+	insertStart := time.Now()
+	// Every write that can fail runs in the order that makes a retried export harmless. The reasons are an
+	// upsert, so they go before the log records, which a second attempt would store twice.
+	if err := telemetry.StoreSessionRecordingReasons(c, records); err != nil {
+		abortIngestStorage(c, "session recording reasons", err)
+		return
+	}
 	if len(records) > 0 {
-		insertStart := time.Now()
 		if err := telemetry.LogRecordRepository.InsertAsync(c, records); err != nil {
-			c.AbortWithError(500, traceway.NewStackTraceErrorf("error inserting OTEL log records: %w", err))
+			abortIngestStorage(c, "log records", err)
 			return
 		}
-		insertMs = msSince(insertStart)
+	}
+	monitoring.RecordLogsAccepted(len(records))
+	if len(sessions) > 0 {
+		if err := telemetry.SessionRepository.Upsert(c, sessions); err != nil {
+			abortIngestStorage(c, "sessions", err)
+			return
+		}
+	}
+	// Exceptions go last: a failure before them is retried by the exporter, and a retry must not find them written.
+	captureMetadata := []string{}
+	for _, record := range records {
+		if strings.HasPrefix(record.LogAttributes["event.name"], "traceway.capture.") {
+			continue
+		}
+		if ids := record.LogAttributes["traceway.capture.ids"]; ids != "" {
+			captureMetadata = append(captureMetadata, ids)
+		}
+	}
+	markCaptureDataReceived(projectId, captureMetadata)
+
+	if len(exceptions) > 0 {
+		if err := telemetry.ExceptionStackTraceRepository.InsertAsync(c, exceptions); err != nil {
+			abortIngestStorage(c, "exceptions", err)
+			return
+		}
+	}
+	insertMs := msSince(insertStart)
+
+	if perm.Data && len(result.Observations) > 0 {
+		// Into memory only, and only once nothing above can still answer 503: a retried export would
+		// observe the same events again.
+		now, client := time.Now(), services.ClientOf(c.GetHeader, c.ClientIP())
+		for _, observation := range result.Observations {
+			services.ClientMetrics().ObserveEvent(projectId, observation.Name, observation.Value, observation.At, observation.Resource, observation.Attrs, client, now)
+		}
 	}
 
 	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
 
-	if hasOrg && perm.Data {
-		hooks.BroadcastReport(hooks.ReportEvent{
+	if hasOrg && (perm.Data || len(exceptions) > 0) {
+		ev := hooks.ReportEvent{
 			OrganizationId: orgId,
 			ProjectId:      projectId,
-			TelemetryBytes: bodyBytes,
-		})
+		}
+		if perm.Data {
+			ev.TelemetryBytes = bodyBytes
+		}
+		if perm.Exceptions {
+			ev.ErrorCount = len(exceptions)
+			ev.Exceptions = exceptions
+			for _, ex := range exceptions {
+				ev.ExceptionHashes = append(ev.ExceptionHashes, ex.ExceptionHash)
+			}
+		}
+		hooks.BroadcastReport(ev)
 	}
 
-	writeLogsResponse(c)
+	writeLogsResponse(c, droppedLogs)
 }
 
 func (o otelController) ExportProfiles(c *gin.Context) {
@@ -351,9 +549,7 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 		}
 	}
 	if project != nil && project.OrganizationId != nil {
-		if attrs := traceway.GetAttributesFromContext(c); attrs != nil {
-			attrs.SetTag("organization_id", fmt.Sprintf("%d", *project.OrganizationId))
-		}
+		traceway.SetAttribute(c, "organization_id", fmt.Sprintf("%d", *project.OrganizationId))
 	}
 
 	payload, bodyBytes, err := decodeProfilesPayload(c)
@@ -398,4 +594,28 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 	monitoring.RecordIngestBatch(monitoring.SignalProfiles, "profiling_samples", convertMs, insertMs, len(samples), bodyBytes)
 
 	writeProfilesResponse(c)
+}
+
+func markCaptureDataReceived(projectId uuid.UUID, metadata []string) {
+	ids := map[uuid.UUID]bool{}
+	for _, raw := range metadata {
+		if raw == "" || len(raw) > 4096 {
+			continue
+		}
+		var values []string
+		if json.Unmarshal([]byte(raw), &values) != nil {
+			continue
+		}
+		for _, value := range values {
+			if len(ids) >= 20 {
+				break
+			}
+			if id, err := uuid.Parse(value); err == nil {
+				ids[id] = true
+			}
+		}
+	}
+	for id := range ids {
+		captureprogress.Mark(projectId, id, captureprogress.Received)
+	}
 }

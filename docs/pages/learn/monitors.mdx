@@ -23,6 +23,54 @@ Two properties matter operationally:
 - **A probe never runs late.** A queued run that outlives its window (the check's interval, capped at five minutes) is recorded as `missed`, not executed. A stale "is it up" answer would corrupt the uptime timeline.
 - **Downtime of Traceway itself shows as a gap, not as uptime.** If the backend was off, no runs existed, and the charts show unknown rather than a fabricated 100%.
 
+## Keeping monitors out of your analytics
+
+Monitor traffic is not real user traffic, so you usually want it out of Google Analytics and similar tools.
+
+**HTTP checks** do not run JavaScript, so a client-side analytics tag never fires for them. Every HTTP probe also sends two headers you can match on:
+
+```
+User-Agent: Traceway-Synthetics/1.0
+X-Traceway-Synthetics: 1
+```
+
+A custom `User-Agent` on the check replaces the default one. `X-Traceway-Synthetics` is always sent. Use it to skip server-side analytics, or to drop monitor requests from your access logs.
+
+**Browser checks** run a real Chromium, so the page's analytics tag runs and every run counts as a visit. Traceway does not add the header to browser checks automatically. A header added to every request would also go to third-party APIs the page calls, and a cross-origin request carrying an unknown header fails its CORS preflight. That would break the page you are trying to monitor.
+
+Instead, add the header in your script, scoped to your own origin:
+
+```ts
+import { test, expect } from '@playwright/test';
+
+test('homepage loads', async ({ page }) => {
+  await page.route('https://example.com/**', (route) =>
+    route.continue({
+      headers: { ...route.request().headers(), 'x-traceway-synthetics': '1' },
+    })
+  );
+  await page.goto('https://example.com/');
+  await expect(page).toHaveTitle(/Example/);
+});
+```
+
+Your server can then leave the analytics snippet out of the page when the header is present. For example, in a server-rendered template:
+
+```js
+const isMonitor = req.headers['x-traceway-synthetics'] === '1';
+// render the Google Analytics <script> only when !isMonitor
+```
+
+If you would rather not touch the server, block analytics requests from the script itself. The tag still loads, but nothing reaches Google:
+
+```ts
+await page.route(/google-analytics\.com|googletagmanager\.com|analytics\.google\.com/, (route) =>
+  route.abort()
+);
+```
+
+Do not rely on Google Analytics' built-in bot filtering. It works from a list of known bots and often lets headless Chrome through.
+
 ## Alerting
 
 Add a notification rule of type **Monitor Down** on the Alerts page. It fires when any monitor in the project crosses its failure threshold, and sends a recovery notice when the check comes back. Pointing the rule at an escalation channel opens an on-call page instead; the page deduplicates per check, and recovery resolves it automatically, so a blip at night that recovers by itself never needs a human.
@@ -31,15 +79,76 @@ Add a notification rule of type **Monitor Down** on the Alerts page. It fires wh
 
 A status page publishes the uptime of selected monitors at `/status/<slug>`: a branded light page with 90 days of per-day uptime bars (green operational, amber partial outage, red major outage, gray no data), incident history, and no login required. Create one under the **Status Pages** tab on the Monitors page (organization admins only), pick the monitors, choose a slug, and toggle it public. Branding: a title, an optional description, and an uploaded PNG/JPEG logo. Latency numbers stay internal; the public payload only carries availability.
 
-### Custom domains
+### Serving a status page on your own domain
 
-Each status page can carry a custom domain (for example `status.acme.com`):
+Every public status page is always available at `/status/<slug>` on your Traceway instance. On Traceway Cloud that is `https://cloud.tracewayapp.com/status/<slug>`. To show it on a domain of your own, such as `status.acme.com`, there are two paths:
 
-1. Set the domain on the status page.
-2. Create a DNS CNAME from that hostname to your Traceway instance's hostname.
-3. Terminate TLS for the vanity hostname at your reverse proxy (Caddy and Traefik can issue certificates for it automatically; with nginx use certbot).
+| | Path 1: CNAME | Path 2: iframe |
+|---|---|---|
+| Works on | Self-hosted Traceway | Traceway Cloud and self-hosted |
+| What you host | Nothing, DNS points at Traceway | One static HTML file |
+| Who provides HTTPS for `status.acme.com` | A reverse proxy with SSL in front of Traceway, such as Cloudflare | Whatever hosts the HTML file |
+| Custom domain field on the status page | Set to `status.acme.com` | Left empty |
 
-Anonymous visitors hitting the instance under that Host are routed to the status page automatically (the backend maps the Host header to the page via `/api/status-domains/resolve`).
+Both paths need the status page to be public.
+
+#### Path 1: CNAME to your Traceway instance
+
+Use this when you run Traceway yourself. Traceway does not handle HTTPS itself, so this path needs a reverse proxy with SSL in front of it. That proxy holds the certificate for `status.acme.com` and forwards requests to Traceway. Traceway Cloud does not issue certificates for your hostnames, so on Cloud use path 2.
+
+Any of these proxies works:
+
+- **Cloudflare.** Put `status.acme.com` on Cloudflare and turn the proxy on for the record (the orange cloud). Cloudflare serves the certificate to visitors. Your server still has to answer HTTPS for Cloudflare's connection: with SSL/TLS set to **Full** any certificate is accepted, and with **Full (strict)** install a Cloudflare Origin CA certificate that covers `status.acme.com`.
+- **Caddy or Traefik** on your server. Both issue a Let's Encrypt certificate for the new hostname automatically.
+- **nginx** on your server, with a certificate from certbot.
+
+Then:
+
+1. Set **Custom domain** on the status page to `status.acme.com`.
+2. Create a DNS CNAME record from `status.acme.com` to your Traceway instance's hostname.
+3. Add `status.acme.com` to your reverse proxy with its certificate. The proxy must pass the original `Host` header through, since that is how Traceway recognizes the domain. Cloudflare, Caddy and Traefik do this by default. With nginx, set `proxy_set_header Host $host;`.
+
+Anyone who opens `https://status.acme.com` sees the status page at `/`, whether or not they are logged in to Traceway. The dashboard is never served on a status domain, and every other path redirects to `/`. The custom domain can't be the hostname Traceway itself runs on.
+
+#### Path 2: embed the page in an iframe
+
+Use this on Traceway Cloud, or on a self-hosted instance when you would rather not touch the proxy. Status pages are allowed to be framed by any site, so you host one small HTML file that fills the whole window with the status page.
+
+1. Leave **Custom domain** empty on the status page and note its slug.
+2. Save the file below as `index.html` and replace `acme` with your slug. On a self-hosted instance, also replace `https://cloud.tracewayapp.com` with your own Traceway URL.
+3. Host it at `status.acme.com` on any static host with HTTPS, such as Cloudflare Pages, Netlify, GitHub Pages, or an S3 bucket behind CloudFront.
+
+```html filename="index.html"
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Acme status</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe src="https://cloud.tracewayapp.com/status/acme" title="Acme status"></iframe>
+  </body>
+</html>
+```
+
+The iframe takes the full window with no padding or border, and the status page scrolls inside it. The page keeps refreshing on its own, so the file never needs to change. Search engines and link previews see only this file, so set its `<title>` to something meaningful.
 
 ## Incidents and post-mortems
 

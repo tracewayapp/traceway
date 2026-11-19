@@ -3,7 +3,7 @@ package shared
 import (
 	"strings"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 func NormalizeSeriesPoints(points []models.TimeSeriesPoint, normalize, isGauge bool, intervalMinutes int) {

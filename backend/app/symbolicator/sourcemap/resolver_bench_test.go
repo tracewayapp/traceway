@@ -3,7 +3,7 @@ package sourcemap
 import (
 	"testing"
 
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap/scopes"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/scopes"
 )
 
 func BenchmarkBuildTW(b *testing.B) {

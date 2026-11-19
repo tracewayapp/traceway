@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 )
 
 // SQLiteTime handles scanning time.Time from SQLite DATETIME text columns
@@ -125,10 +126,34 @@ type FilePathResult struct {
 	FilePath string `lit:"file_path"`
 }
 
+type SessionActivityResult struct {
+	LastActivity *SQLiteTime `lit:"last_activity"`
+	SpanActivity *SQLiteTime `lit:"span_activity"`
+	LastReceived *SQLiteTime `lit:"last_received"`
+}
+
+func (r SessionActivityResult) Activity() shared.SessionActivity {
+	var activity shared.SessionActivity
+	if r.LastActivity != nil {
+		t := r.LastActivity.Time
+		activity.LastActivity = &t
+	}
+	if r.SpanActivity != nil {
+		t := r.SpanActivity.Time
+		activity.LastActivityInSpan = &t
+	}
+	if r.LastReceived != nil {
+		t := r.LastReceived.Time
+		activity.LastReceived = &t
+	}
+	return activity
+}
+
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[TimeSeriesResult](driver)
 		lit.RegisterModel[GroupedTimeSeriesResult](driver)
 		lit.RegisterModel[FilePathResult](driver)
+		lit.RegisterModel[SessionActivityResult](driver)
 	})
 }

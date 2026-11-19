@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/storage"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/sourcemap"
-	"github.com/tracewayapp/traceway/backend/app/symbolicator/twcache"
+	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/twcache"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 
 	"github.com/google/uuid"
-	traceway "go.tracewayapp.com"
 )
 
 const sourceMapLoadTimeout = 5 * time.Second
@@ -62,6 +62,8 @@ type SourceMapCacheStats struct {
 	StoreHits     uint64
 	Builds        uint64
 	DiskEvictions uint64
+	WarmupDropped uint64
+	WarmupBacklog int
 }
 
 func SourceMapStats() SourceMapCacheStats {
@@ -81,6 +83,8 @@ func SourceMapStats() SourceMapCacheStats {
 		LastParseMs:     s.LastParseMs,
 		StoreHits:       smStoreHits.Load(),
 		Builds:          smBuilds.Load(),
+		WarmupDropped:   twDropped.Load(),
+		WarmupBacklog:   SourceMapWarmupBacklog(),
 	}
 	if s.Mode == "disk" {
 		out.DiskEnabled = true

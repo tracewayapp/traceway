@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tracewayapp/traceway/cli/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
 )
 
 func newTasksCmd() *cobra.Command {
@@ -73,9 +73,7 @@ func runTasksShow(cmd *cobra.Command, args []string) error {
 				formatDuration(t.Duration),
 				pickStr(t.ServerName, "-"), pickStr(t.AppVersion, "-"),
 			)
-			if t.DistributedTraceId != nil {
-				_, _ = fmt.Fprintf(out, "TRACE ID:     %s\n", t.DistributedTraceId.String())
-			}
+			renderTraceId(out, t.TraceId)
 		}
 		renderSpansTable(out, resp.Spans)
 		renderLinkedErrors(out, resp.Exception, resp.Messages)

@@ -14,13 +14,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/middleware"
-	"github.com/tracewayapp/traceway/backend/app/migrations"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/app/services"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/migrations"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
 	_ "modernc.org/sqlite"
 )
 
@@ -62,6 +62,20 @@ func setupSetupControllerDB(t *testing.T) {
 	if err := migrations.Run("sqlite"); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
+}
+
+func initRegistrationJWT(t *testing.T) {
+	t.Helper()
+	prevSecret := config.Config.JWTSecret
+	config.Config.JWTSecret = strings.Repeat("s", 32)
+	if err := services.InitJWT(); err != nil {
+		t.Fatalf("init jwt: %v", err)
+	}
+	services.InitTurnstile()
+	t.Cleanup(func() {
+		config.Config.JWTSecret = prevSecret
+		_ = services.InitJWT()
+	})
 }
 
 func createSetupTestAccount(t *testing.T, tx *sql.Tx, email, role string) (userId int, orgId int) {
@@ -246,16 +260,7 @@ func TestBatchCreateProjectsLimitHookAbortsBatch(t *testing.T) {
 func TestRegisterWithoutProject(t *testing.T) {
 	setupSetupControllerDB(t)
 
-	prevSecret := config.Config.JWTSecret
-	config.Config.JWTSecret = strings.Repeat("s", 32)
-	if err := services.InitJWT(); err != nil {
-		t.Fatalf("init jwt: %v", err)
-	}
-	services.InitTurnstile()
-	t.Cleanup(func() {
-		config.Config.JWTSecret = prevSecret
-		_ = services.InitJWT()
-	})
+	initRegistrationJWT(t)
 
 	register := func(t *testing.T, body string) (*httptest.ResponseRecorder, map[string]any) {
 		t.Helper()

@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/tracewayapp/traceway/backend/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
 )
 
 const (
@@ -18,6 +18,7 @@ const (
 	authCodeTTL        = 5 * time.Minute
 	cliClientID        = "traceway-cli"
 	mcpClientID        = "traceway-mcp"
+	cliWriteClientID   = "traceway-cli-write"
 
 	// reuseGrace is the window during which re-presenting a just-used refresh
 	// token is treated as a benign concurrent retry (two CLI processes racing,

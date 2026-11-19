@@ -1,0 +1,247 @@
+# AI SRE BENCH
+
+import { Callout } from "nextra/components";
+
+AI SRE BENCH is Traceway's open benchmark for AI site reliability engineering. It measures how well models diagnose incidents, fix code and carry out operational tasks with real observability tools. This page documents the methodology and test cases; [view the results](https://tracewayapp.com/benchmarks) to compare models.
+
+## Bring your own AI
+
+Traceway has a strict bring-your-own-AI policy. We don't ship a model, pick one for you, or send your data to an AI vendor on your behalf, and every Traceway instance works without any LLM configured. You use the AI you already trust, under your own account, and Traceway gives it the tools: an [agent skill](https://github.com/tracewayapp/skills/tree/main/skills/traceway) for the [CLI](/learn/cli) and an [MCP server](/learn/mcp).
+
+That raises a fair question: which models actually do well with those tools? AI SRE BENCH exists to answer it in the open. Our eval harness, in the repository at [`cli/test/evals`](https://github.com/tracewayapp/traceway/tree/main/cli/test/evals), hands models the kind of production problems an on-call engineer gets and grades what they do. Below is how it works and every case it runs. The results also show us where our own skill and MCP server fall short.
+
+### Take part
+
+The harness is open source, and we welcome help in two ways:
+
+- **Benchmark a new model.** Add it to `cli/test/evals/models.yaml` with an exact OpenRouter model id and the same settings as the other models, run the suites ([Run it yourself](#run-it-yourself)), and open a pull request with the generated `summary.md` and `results.json`.
+- **Add a test case.** A case is a YAML file plus a seed, and it needs an oracle that passes before it can be merged. The harness [README](https://github.com/tracewayapp/traceway/tree/main/cli/test/evals#adding-a-case) explains the format. Production failures you have debugged yourself make the best cases.
+
+When sharing an AI SRE BENCH score, link to the [results](https://tracewayapp.com/benchmarks) and include the exact model version, suite, setup and run date. Keep those details alongside the score so readers can compare like for like.
+
+<Callout type="info">
+The published results are local runs with one run per case, so any single case × setup cell is noisy. Trust the suite-level rates more than any one cell. Failures caused by our own cases or skill count as failures too; the benchmarks page lists the known ones.
+</Callout>
+
+## What an eval is
+
+An eval is a test for an AI agent. Instead of checking a function's return value, it hands an agent a realistic task, lets it work with the same tools a person would use, and then checks the outcome with code. A **case** is one such task: a broken system plus a prompt. A **run** is one attempt at a case by one model on one setup. Running every case on every setup gives a pass rate per model that we can compare, and re-run after every change to the skill, the CLI or the MCP server.
+
+## Models and the API
+
+Every model call goes through [OpenRouter](https://openrouter.ai), with one API key, using its Chat Completions API. That gives every model the same request format, the same tool-calling interface and per-call cost accounting, and it lets us add a model without writing a new client. The judge goes through OpenRouter too. `models.yaml` pins each model to an exact OpenRouter id, asks OpenRouter to route it to the model's own vendor first, and records which provider actually served each run. Agent spend on the results page is the cost OpenRouter reported for each call, estimated from live prices when a response leaves it out.
+
+## Where the results are
+
+This page explains how we measure. The results live on [AI SRE BENCH](https://tracewayapp.com/benchmarks): pass rates per model, suite and setup, what the runs cost, and every case's outcome for every model.
+
+## What one run is
+
+Every run is a fresh, isolated Traceway instance with one broken system in it:
+
+1. **A hermetic backend.** The harness starts the standalone backend in SQLite mode, registers an organization, and seeds it through the real ingest endpoints (OTLP and `/api/report`): weeks of traces, metrics, logs, issues, deploys and dashboard objects, ending at a fixed "now".
+2. **One defect, one distractor.** The seed breaks the system in exactly one way (an N+1 query, pool exhaustion, a noisy neighbor, a cache stampede, GC pauses, a missing index, ...) and plants one named distractor that looks like a plausible cause but isn't.
+3. **A prompt like a real one.** The agent gets the kind of message a person would send: "checkout got slow this week, find out why", a pasted alert, a dashboard URL, or a request to archive the errors from last week's incident.
+4. **Real tools only.** The agent works through real `traceway` commands in a sandboxed shell, or through the MCP server's tools. Nothing else knows the answer.
+5. **A structured answer.** The agent submits a diagnosis (or finishes a write task) with a report, citing the tool calls (`c04`, `c11`) its evidence comes from.
+6. **Deterministic grading.** The graders below score the run. A model never decides whether a run passed.
+
+## Suites
+
+| Suite | Cases | Measures |
+|---|---|---|
+| perf | 35 | Diagnosing latency: every row of the skill's bottleneck checklist, plus controls (a healthy endpoint, an endpoint inside its slow allowance, one past it, an onset outside the chart's top 5, an alert hand-off, the metric "p95" trap) and cross-surface cases where browser, Android and iOS crashes have a backend cause |
+| debug | 14 | Debugging an issue to its root cause and fixing the code, in Go, Python, Node, Android, iOS and Flutter. Hidden tests check the fix |
+| write | 13 | The write playbooks (pages, alerts, monitors, archiving, post-mortems including a concurrent-edit conflict, slow marks) and the 403 policy (agent access off, a read-only token, a read-only member) |
+| setup | 6 | Instrumenting an app with the setup skill until its telemetry arrives: Go net/http, Express, FastAPI, Next.js, a React SPA and a Go + React monorepo |
+
+## The test cases
+
+Every case is a YAML file in [`cli/test/evals/cases`](https://github.com/tracewayapp/traceway/tree/main/cli/test/evals/cases). The descriptions below say what the agent is told or what it sees, not the answer. Some names give away the category, and that is fine: the agent never sees the case file.
+
+### Performance
+
+Each perf case seeds one bottleneck and one distractor. The control cases test judgment: a healthy endpoint, endpoints that are slow on purpose, a misleading metric, a pasted alert and an onset to pin down. Several have nothing to fix.
+
+| Group | Case | What the agent gets |
+|---|---|---|
+| App code | `perf-app-cpu-serialization` | The transaction export burns seconds of CPU building its JSON body |
+| App code | `perf-app-excessive-logging` | A release that only turned on debug logs slows every endpoint and doubles CPU |
+| App code | `perf-app-large-alloc` | The retention report loads every event of the range into the JVM heap |
+| App code | `perf-app-quadratic` | Quotes for large carts take seconds while small carts are instant |
+| App code | `perf-app-sync-background` | Generating a statement holds the request open while the PDF renders |
+| Caching | `perf-cache-cold-start` | Pricing times out for a few minutes after every release |
+| Caching | `perf-cache-no-cache` | The catalog endpoint keeps the database busy all day |
+| Caching | `perf-cache-stampede` | Home page requests stall for seconds in bursts |
+| Controls and traps | `perf-ctl-alert-handoff` | A p95 latency alert pasted in from email: what happened, and does it need action? |
+| Controls and traps | `perf-ctl-healthy` | Search "feels slow" but the endpoint is healthy and stable |
+| Controls and traps | `perf-ctl-marked-slow-ok` | Ledger export is the slowest endpoint but sits inside its marked-slow allowance |
+| Controls and traps | `perf-ctl-marked-slow-regressed` | Marked-slow invoice export regressed past its allowance after a release |
+| Controls and traps | `perf-ctl-metric-p95-trap` | Search gets sluggish every afternoon, and ops says the hosts' p95 CPU looks fine |
+| Controls and traps | `perf-ctl-onset-bisect` | The account page has felt slower for a few days: when did it start, and what changed? |
+| Database | `perf-db-expensive-join` | The revenue report takes two seconds every time, busy or quiet |
+| Database | `perf-db-lock-contention` | Stock reservations stall and fail during the evening product drop |
+| Database | `perf-db-missing-index` | The user lookup gets slower every week as the users table grows |
+| Database | `perf-db-missing-query-cache` | Every storefront endpoint is slower than it should be, even a single-row read |
+| Database | `perf-db-n-plus-1` | Orders endpoint slows down as customers accumulate orders |
+| Database | `perf-db-over-fetching` | The category grid got slow when products gained a large column |
+| Database | `perf-db-pool-exhaustion` | Checkout stalls for seconds at the lunch and evening rushes |
+| Database | `perf-db-unbounded-result` | The admin audit log gets slower every week as organizations accumulate events |
+| Infrastructure | `perf-infra-cpu-saturation` | Traffic tripled and every endpoint slowed down with the CPU pinned |
+| Infrastructure | `perf-infra-disk-io` | Every query got several times slower while the database host's disk queue filled up |
+| Infrastructure | `perf-infra-memory-gc` | The heap climbs to its limit every seven hours and every endpoint stalls until the pod restarts |
+| Infrastructure | `perf-infra-noisy-neighbor` | One of three VMs loses a third of its CPU to steal and serves every request slowly |
+| Network and upstreams | `perf-net-chatty-fanout` | Cart page slows down with the size of the cart |
+| Network and upstreams | `perf-net-large-payload` | The feed is slow, worst on phones |
+| Network and upstreams | `perf-net-no-conn-reuse` | Store finder spends most of its time in calls to the maps provider |
+| Network and upstreams | `perf-net-retries` | Shipping quotes occasionally take 6 to 13 seconds |
+| Network and upstreams | `perf-net-sequential` | Portal dashboard is slow although every service behind it is fast |
+| Network and upstreams | `perf-net-slow-third-party` | Checkout hangs every day or so, then recovers |
+| Cross-stack and mobile | `perf-xs-android-timeouts` | The Android app crashes at checkout since the sale went live |
+| Cross-stack and mobile | `perf-xs-frontend-timeouts` | Product search on the web shop spins, then says it is taking too long |
+| Cross-stack and mobile | `perf-xs-ios-watchdog` | iOS users see the app freeze on the splash screen and close |
+
+### Debug
+
+Each debug case seeds an issue and a repository with the bug in it. The agent finds the root cause through Traceway and fixes the code. Hidden tests, copied in after the run, check the fix.
+
+| Case | What the agent gets |
+|---|---|
+| `debug-android-npe` | Android feed crashes while scrolling since the 5.8.0 rollout |
+| `debug-dashboard-url` | A pasted dashboard link to one occurrence of the invoice-page panic |
+| `debug-flutter-null-check` | Flutter product pages fail with a null check on listings without photos |
+| `debug-go-nil-regression` | Nil-pointer panic on the invoice page since the last release |
+| `debug-go-task-panic` | A pasted new-error email for a panic inside the label worker's consumer |
+| `debug-insufficient-evidence` | A rare 500 on the export endpoint |
+| `debug-ios-force-unwrap` | iOS app traps when customers open live chat in Help |
+| `debug-js-contract-rename` | The order history page crashes after the API renamed a field |
+| `debug-log-only-error` | 500s on one endpoint with no exception attached |
+| `debug-mixed-group` | One recurring issue to explain and fix |
+| `debug-no-writes` | "Look into it and clean up" with a write credential: fix the code, change nothing in Traceway |
+| `debug-py-keyerror-webhook` | Payment webhooks fail for guest payments since the account-linking release |
+| `debug-race-duplicate` | Checkout shows an error although the order went through |
+| `debug-timeout-downstream` | Cart quotes fail since the release that lowered the pricing call's timeout |
+
+### Write
+
+Each write case asks the agent to change something in Traceway, or to refuse when it should not. The state grader checks the backend afterwards.
+
+| Case | What the agent gets |
+|---|---|
+| `write-alert-disable` | Turn off the alert for a gateway that is being decommissioned |
+| `write-alert-snooze` | Quiet a flapping alert during a known third-party incident |
+| `write-archive-ambiguous` | Archive last week's checkout errors |
+| `write-investigate-only` | Look into a page without changing anything |
+| `write-mark-slow` | Mark an endpoint that is slow by design as expected-slow |
+| `write-monitor-confirm-fix` | Confirm a fix by re-running the checkout monitor |
+| `write-optin-off` | Agent writes are turned off for the organization |
+| `write-page-ack` | Acknowledge the checkout page the user is working on |
+| `write-page-resolve-archive` | Close out a page after a rollback and archive its issue |
+| `write-postmortem-conflict` | Add a follow-up to a post-mortem a teammate is editing |
+| `write-postmortem-create` | Write the post-mortem for a checkout outage |
+| `write-readonly-member` | Asked to archive with a readonly member's write token |
+| `write-readonly-token` | Asked to archive with a read-only credential |
+
+### Setup
+
+Each setup case hands the agent an uninstrumented app in a container. It passes when the app builds, starts and its telemetry arrives in Traceway.
+
+| Case | What the agent gets |
+|---|---|
+| `setup-go-nethttp` | Instrument a net/http Go API until its routes show up in Traceway |
+| `setup-monorepo-plan` | Propose a project map for a Go API + React web monorepo, submit it as a setup plan, then instrument both |
+| `setup-nextjs` | Instrument the server side of a Next.js App Router app until its API route shows up in Traceway |
+| `setup-node-express` | Instrument an ES-module Express API until its routes show up in Traceway |
+| `setup-python-fastapi` | Instrument a FastAPI service run by uvicorn until its routes show up in Traceway |
+| `setup-react-browser` | Add the Traceway browser SDK to a React + Vite SPA, with debug IDs and source map upload in CI |
+
+## Setups
+
+Each case runs on several setups, so the skill and the two surfaces can be compared on the same cases:
+
+| Setup | The agent gets |
+|---|---|
+| `cli+skill` | The `traceway` CLI and the `traceway` skill |
+| `cli-noskill` | The CLI and nothing else: the control group for skill uplift |
+| `mcp` | The MCP server's tools and knowledge |
+| `cli-write+skill`, `mcp-write` | The write edition of the CLI with the `traceway-write` skill, or the `/mcp/write` server |
+| `cli+setup-skill` | The setup skill and a container shell with the app's toolchain |
+
+**Skill uplift** is the `cli+skill` pass rate minus `cli-noskill`, on the same cases, computed per suite (perf and debug both have the control arm). **CLI vs MCP** is `cli+skill` minus `mcp`, and `cli-write+skill` minus `mcp-write` for the write arms.
+
+## Graders
+
+| Grader | Gates | Checks |
+|---|---|---|
+| `answer` | yes | The diagnosis: the right checklist row and not the distractor, the right endpoint or service, the onset within tolerance. For debug cases, the category, culprit file, symbol and line. The line is read against the file before the fix, and a line reported in the edited file is mapped back through the edit. An empty issue hash is accepted when the prompt or the answer names the group; a different hash is a different group and fails |
+| `grounding` | yes | Every cited call exists and succeeded, and the output of a cited call contains the deciding signal. A call whose output was cut at the tool's size cap is evidence for the part the model saw and for nothing past the cut. An id the model invented fails the run |
+| `trajectory` | yes | Required, forbidden and ordered operations, such as opening one slow request, never writing on a read-only task, or asking before an ambiguous bulk write. CLI and MCP calls map to the same operations, and many cases accept more than one route to the same evidence |
+| `report` | yes | Statements the report must make, such as naming the figure that decides the case |
+| `state` | yes | After a write or setup run, the backend and the workspace are exactly as expected: the right two issues archived, not three |
+| `hidden_tests` | per case | Debug fixes: hidden tests copied in after the run pass, and the diff touches the culprit |
+| `setup_verify` | yes | The instrumented app builds, starts against the backend and serves traffic |
+| `efficiency` | no | Call counts, failed calls and repeated calls, reported in their own table |
+| `judge` | no | Claude Haiku 5.5 scores the report from 0 to 1 against the case's rubric. It does not gate until it agrees with human labels on at least 85% of runs |
+
+### What counts as a pass
+
+A run passes when its answer is right, its evidence is grounded, its writes are safe and, where it fixed code, the hidden tests pass. How the agent got there is not graded: re-running a command to check a JSON shape is not a wrong answer, so call counts are reported, never gated. Each case still has a hard budget (turns, tool calls, wall-clock time); a run that exhausts it counts as a fail.
+
+A run that hits an infrastructure error, or stops at the spending cap, is left out of the pass rates and can be resumed.
+
+The benchmarks page also shows **right answer and evidence**: runs whose answer, grounding, report and state graders all passed, whatever the trajectory grader said.
+
+## Keeping it honest
+
+- **The answer key never reaches the agent.** The cases live in `cli/test/evals`, never in a skill directory, because everything there ships to the agent under test. The seed's exposed ids, the rubric and the expected answer are shown only to the graders and the judge.
+- **No hints in the data.** A leakage lint fails the build when a seeded string (a span name, an attribute, a log line, a stack trace) or a prompt names the answer: `n+1`, `stampede`, `missing index`, `gc pause` and similar. Seeds use real library messages such as SQLAlchemy's `QueuePool limit of size 5 overflow 10 reached`.
+- **Every case is passable.** Each case has an oracle: a reference trajectory played by a fake model. It must pass on every setup the case lists, for $0, before the case is added, and `just eval-harness` replays every oracle after a harness change.
+- **A sandbox, not a host shell.** The agent's shell is an interpreter with the setup's `traceway` binary, `jq`, `awk`, read-only text utilities confined to the workspace and read-only `git`. Tool processes get a scrubbed environment, so no key or secret reaches them.
+- **The same conditions for every model.** `models.yaml` pins exact OpenRouter model ids, never a floating alias, with the same reasoning effort (medium), the same per-turn token limit (16k), the same prompts, tools and budgets. Requests go to the model's own vendor first, and every run records which provider served it.
+- **Compare like with like.** Results are only compared between runs on the same commit and the same graders. When a grader changes, saved transcripts are re-scored instead of comparing old numbers with new ones: `twevals regrade <run-dir>` runs the answer, trajectory, grounding and report graders again over the stored records, keeps the hidden-test, state and judge verdicts, and recomputes each run's status. A change to a skill cannot be re-scored, because it changes what the model does; the affected setups are run again and replace the earlier runs (`twevals report --merge --replace`), and the page names the batch they came from.
+
+## Spending controls
+
+Evals cost real money, so nothing runs them automatically:
+
+- The CLI Evals workflow has a single trigger, `workflow_dispatch`, and the paid job waits for a required reviewer. A test fails the build if the workflow gains any other trigger or anything else starts it.
+- `--max-cost-usd` is required and has no default. Each run reserves its share before it starts and stops before a model call that would cross it.
+- A local paid run needs `yes` typed on a terminal, after a free preflight that prints the live-price estimate.
+
+## What is not measured yet
+
+| Missing | Size | Why |
+|---|---|---|
+| The setup suite | 6 cases, 6 runs per model | Needs a Linux Docker host. The setup container runs on the host network and reaches the run's backend at `127.0.0.1`, which a Docker VM on macOS (Colima, Docker Desktop) does not share with the host. The debug suite's hidden tests only need a container with no network, so they run on macOS too |
+| GPT-6 Astra | every suite | It is configured in `models.yaml` but has never run |
+| Repeats | every case | Each case ran once per setup, so there is no variance estimate yet |
+| Workflow baselines | every suite | The published runs were made locally, not by the CLI Evals workflow |
+
+The judge's 0 to 1 score is reported but does not gate any run yet. It starts gating once it agrees with human labels on at least 85% of runs. The judge is Claude Haiku 5.5 for every model, including when it grades its own runs.
+
+## Run it yourself
+
+### Environment variables
+
+| Variable | Needed for | What it does |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Every paid run | Your OpenRouter API key. All model and judge calls use it. The free commands below never read it, and the harness keeps it out of the agent's tools and shell |
+| `TWEVALS_HOST_TESTS` | Optional | Set to `1` to run the debug suite's hidden tests on the host when Docker is missing. Without it, and without Docker, those tests are skipped |
+| `TWEVALS_ROOT` | Optional | The `cli/test/evals` directory, when you run `twevals` from somewhere else |
+
+Export the key in your shell for a local run, for example `export OPENROUTER_API_KEY=sk-or-...`, and never put it in the repository. Check your OpenRouter credit before a long run: when it runs out, every call fails and the unfinished runs end as infrastructure errors. In GitHub the key lives only in the `evals` environment, never as a repository or organization secret.
+
+### Commands
+
+From `cli/` in a checkout of the repository:
+
+| Command | Cost | What it does |
+|---|---|---|
+| `just eval-harness` | $0 | The harness tests, then every case's oracle on every setup, with the fake model |
+| `just eval-plan --preset smoke --max-cost-usd 30` | $0 | The run matrix and a cost estimate from live OpenRouter prices |
+| `just eval-dispatch -f preset=smoke -f max_cost_usd=30` | paid | Starts the CLI Evals workflow, which still waits for approval |
+| `just eval-local --preset full --suites perf --models haiku --max-cost-usd 5` | paid | A local run. Needs `OPENROUTER_API_KEY` and `yes` typed on a terminal |
+
+The debug and setup suites need Docker: it runs the hidden tests of a model's fix with no network, and it hosts the setup suite's toolchains. The debug suite works with Colima or Docker Desktop on macOS; the setup suite needs a Linux host (see above). Pass `--out` as an absolute path, since each run's backend resolves its SQLite path from its own working directory. Each run writes a `summary.md` (pass rates, skill uplift, CLI vs MCP, model vs model, efficiency, cost) and keeps every transcript. `twevals report <dir>... --out DIR` merges runs into one comparison.
+
+See the harness [README](https://github.com/tracewayapp/traceway/tree/main/cli/test/evals) for the case format, the seed DSL and how to add a case.

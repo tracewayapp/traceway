@@ -325,7 +325,13 @@ main table,
 .nextra-content table {
   border: 1px solid var(--hair);
   border-radius: 8px;
-  overflow: hidden;
+  /* Wide tables scroll sideways inside their own box on narrow screens.
+     position: relative keeps Nextra's absolutely positioned screen-reader
+     spans (external links) inside that box, so they cannot widen the page. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+  max-width: 100%;
 }
 
 main th,
@@ -643,6 +649,14 @@ li:has(> .sdk-selector) > span:first-child {
   border-radius: 8px;
   box-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.7);
   z-index: 100;
+}
+
+/* In the mobile menu the selector sits inside Nextra's collapsible section,
+   which is overflow: hidden, so a floating dropdown is clipped. Lay it out in
+   the flow there and let the section grow. */
+.nextra-menu-mobile .sdk-selector-dropdown {
+  position: static;
+  margin: 4px 0 0;
 }
 
 .sdk-selector-search {

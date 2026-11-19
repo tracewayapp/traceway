@@ -15,12 +15,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
-	"github.com/tracewayapp/traceway/backend/app/config"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/dbtest"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry"
-	"github.com/tracewayapp/traceway/backend/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/config"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/dbtest"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 )
 
 func setupSyntheticsDB(t *testing.T) uuid.UUID {
@@ -205,7 +205,9 @@ func TestScheduleSkipsBrowserChecksWhenModeOff(t *testing.T) {
 
 func TestExecuteHttpCheckRecordsUp(t *testing.T) {
 	projectId := setupSyntheticsDB(t)
+	var syntheticsHeader atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		syntheticsHeader.Store(r.Header.Get("X-Traceway-Synthetics"))
 		w.WriteHeader(200)
 		fmt.Fprint(w, "hello world")
 	}))
@@ -216,6 +218,10 @@ func TestExecuteHttpCheckRecordsUp(t *testing.T) {
 
 	ScheduleOnce(context.Background(), now)
 	ExecuteOnce(context.Background(), now)
+
+	if got := syntheticsHeader.Load(); got != "1" {
+		t.Errorf("X-Traceway-Synthetics = %v, want 1", got)
+	}
 
 	if runs := allRuns(t); len(runs) != 0 {
 		t.Fatalf("expected run row deleted after execution, got %d rows", len(runs))

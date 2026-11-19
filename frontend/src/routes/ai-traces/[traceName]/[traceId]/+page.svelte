@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { untrack } from 'svelte';
+	import SpanWaterfall from '$lib/components/spans/span-waterfall.svelte';
+	import SpanGraphNotice from '$lib/components/spans/span-graph-notice.svelte';
+	import type { Span, SpanGraphStatus, TraceIdentity } from '$lib/types/spans';
 	import { api } from '$lib/api';
 	import { formatDuration, formatDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
@@ -13,14 +16,13 @@
 	import { createSmartBackHandler } from '$lib/utils/back-navigation';
 	import { resolve } from '$app/paths';
 	import TraceLogsPanel from '$lib/components/trace-logs/trace-logs-panel.svelte';
-	import { traceIdUuidToHex } from '$lib/utils/span-id';
 	import { formatCost } from '$lib/utils/ai-format';
 	import { extractMessages, formatConversationContent } from '$lib/utils/ai-conversation';
 	import ConversationMessages from '$lib/components/ai/conversation-messages.svelte';
 	import FlaggedBadge from '$lib/components/ai/flagged-badge.svelte';
 	import { addStickyParamsToHref } from '$lib/utils/navigation';
 
-	type AiTrace = {
+	type AiTrace = TraceIdentity & {
 		id: string;
 		recordedAt: string;
 		duration: number;
@@ -43,7 +45,6 @@
 		serverName: string;
 		appVersion: string;
 		attributes: Record<string, string> | null;
-		distributedTraceId?: string;
 		conversationId?: string;
 		toolCallCount?: number;
 		toolNames?: string[] | null;
@@ -52,6 +53,8 @@
 	};
 
 	type AiTraceDetailResponse = {
+		spanGraphStatus?: SpanGraphStatus;
+		spans?: Span[];
 		aiTrace: AiTrace;
 		conversation?: {
 			input: string;
@@ -63,14 +66,18 @@
 
 	const timezone = $derived(getTimezone());
 
-	let response = $state<AiTraceDetailResponse | null>(null);
+	// Raw on purpose: the response can carry 20,000 spans and is only ever replaced, never edited.
+	let response = $state.raw<AiTraceDetailResponse | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let notFound = $state(false);
 
 	let showRawJson = $state(false);
 
+	let loadSequence = 0;
+
 	async function loadData() {
+		const sequence = ++loadSequence;
 		loading = true;
 		error = '';
 		notFound = false;
@@ -81,8 +88,10 @@
 				data.recordedAt ? { recordedAt: data.recordedAt } : {},
 				{ projectId: projectsState.currentProjectId ?? undefined }
 			);
+			if (sequence !== loadSequence) return;
 			response = result;
 		} catch (e: unknown) {
+			if (sequence !== loadSequence) return;
 			console.error(e);
 			const err = e as { status?: number; message?: string };
 			if (err.status === 404) {
@@ -91,12 +100,22 @@
 				error = err.message || 'Failed to load AI trace details';
 			}
 		} finally {
-			loading = false;
+			if (sequence === loadSequence) loading = false;
 		}
 	}
 
-	onMount(() => {
-		loadData();
+	$effect(() => {
+		void data.traceId;
+		void data.recordedAt;
+		void projectsState.currentProjectId;
+		untrack(() => {
+			response = null;
+			showRawJson = false;
+			loadData();
+		});
+		return () => {
+			loadSequence++;
+		};
 	});
 </script>
 
@@ -228,6 +247,24 @@
 			</Card.Root>
 		{/if}
 
+		{#if response.spans?.length || (response.spanGraphStatus && response.spanGraphStatus.state !== 'complete')}
+			<Card.Root>
+				<Card.Header><Card.Title>Spans</Card.Title></Card.Header>
+				<Card.Content class="space-y-3">
+					<SpanGraphNotice status={response.spanGraphStatus} />
+					{#if response.spans?.length}
+						<SpanWaterfall
+							spans={response.spans}
+							traceDuration={trace.duration}
+							traceStartTime={trace.recordedAt}
+							traceId={trace.traceId}
+							rootSpanId={trace.spanId}
+						/>
+					{/if}
+				</Card.Content>
+			</Card.Root>
+		{/if}
+
 		{#if response.conversation}
 			{@const conv = response.conversation}
 			{@const chatMessages = extractMessages(conv.input, conv.output)}
@@ -284,9 +321,9 @@
 
 		<TraceLogsPanel
 			projectId={projectsState.currentProjectId ?? ''}
-			traceId={traceIdUuidToHex(trace.id)}
-			distributedTraceId={trace.distributedTraceId ?? null}
-			spans={[]}
+			traceId={trace.traceId}
+			spans={response.spans ?? []}
+			rootSpan={{ spanId: trace.spanId, name: trace.traceName }}
 			traceRecordedAt={trace.recordedAt}
 		/>
 	{/if}

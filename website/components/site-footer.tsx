@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Github } from "lucide-react";
 import { DiscordIcon } from "@/components/discord-icon";
 import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
+import { CookieSettingsLink } from "@/components/cookie-settings-link";
 
 type Column = {
   heading: string;
@@ -16,9 +17,10 @@ const COLUMNS: Column[] = [
       { label: "Logs", href: "/product/logs" },
       { label: "Traces", href: "/product/traces" },
       { label: "Metrics", href: "/product/metrics" },
-      { label: "Session Replay", href: "/product/session-replay" },
+      { label: "Real User Monitoring", href: "/product/rum" },
       { label: "Exceptions / Stack Traces", href: "/product/stack-traces" },
       { label: "Monitors", href: "/product/monitors" },
+      { label: "SLOs", href: "/product/slos" },
       { label: "On-Call", href: "/product/on-call" },
       { label: "Fleet Overview", href: "/product/fleet" },
     ],
@@ -31,7 +33,10 @@ const COLUMNS: Column[] = [
       { label: "AI Tracing", href: "/product/ai-tracing" },
       { label: "Dashboards as Code", href: "/product/dashboards" },
       { label: "Performance", href: "/product/performance" },
-      { label: "Flutter Session Replay", href: "/product/flutter-session-replay" },
+      {
+        label: "Flutter Session Replay",
+        href: "/product/flutter-session-replay",
+      },
       { label: "Symbolicator", href: "/product/symbolication" },
     ],
   },
@@ -40,6 +45,7 @@ const COLUMNS: Column[] = [
     links: [
       { label: "Blog", href: "/blog" },
       { label: "Release Notes", href: "/releases" },
+      { label: "AI SRE BENCH", href: "/benchmarks" },
       { label: "Docs", href: "https://docs.tracewayapp.com", external: true },
       { label: "GitHub", href: GITHUB_URL, external: true },
       { label: "Discord", href: DISCORD_URL, external: true },
@@ -49,14 +55,20 @@ const COLUMNS: Column[] = [
     heading: "Hosting",
     links: [
       { label: "Cloud", href: "/cloud" },
-      { label: "Self-host", href: "https://docs.tracewayapp.com", external: true },
+      { label: "Services", href: "/services" },
+      {
+        label: "Self-host",
+        href: "https://docs.tracewayapp.com",
+        external: true,
+      },
     ],
   },
   {
-    heading: "About",
+    heading: "Legal",
     links: [
       { label: "Privacy Policy", href: "/privacy-policy" },
       { label: "Terms of Use", href: "/terms-of-use" },
+      { label: "Data Processing Addendum", href: "/dpa" },
       { label: "Contact", href: "/contact" },
     ],
   },
@@ -65,7 +77,9 @@ const COLUMNS: Column[] = [
 export function SiteFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer style={{ borderTop: "1px solid var(--hair)", padding: "50px 0 40px" }}>
+    <footer
+      style={{ borderTop: "1px solid var(--hair)", padding: "50px 0 40px" }}
+    >
       <div className="wrap">
         <div className="footer-grid grid gap-10 md:gap-9 grid-cols-2 md:grid-cols-[1.2fr_repeat(5,1fr)]">
           <div className="col-span-2 md:col-span-1">
@@ -82,7 +96,8 @@ export function SiteFooter() {
               className="mt-4 text-[13px] leading-relaxed max-w-xs"
               style={{ color: "var(--fg-2)", fontFamily: "var(--font-mono)" }}
             >
-              Observability that tells you what to fix first. Open source. Self-host or cloud.
+              Observability that tells you what to fix first. Open source.
+              Self-host or cloud.
             </p>
             <div className="mt-5 flex items-center gap-2">
               <Link
@@ -119,7 +134,9 @@ export function SiteFooter() {
                   <li key={l.href}>
                     <Link
                       href={l.href}
-                      {...(l.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                      {...(l.external
+                        ? { target: "_blank", rel: "noopener noreferrer" }
+                        : {})}
                       className="text-[13px] inline-block py-1 transition-colors hover:text-[color:var(--fg-0)]"
                       style={{ color: "var(--fg-1)" }}
                     >
@@ -127,6 +144,14 @@ export function SiteFooter() {
                     </Link>
                   </li>
                 ))}
+                {col.heading === "Legal" ? (
+                  <li>
+                    <CookieSettingsLink
+                      className="text-[13px] inline-block py-1 transition-colors hover:text-[color:var(--fg-0)] cursor-pointer"
+                      style={{ color: "var(--fg-1)" }}
+                    />
+                  </li>
+                ) : null}
               </ul>
             </div>
           ))}

@@ -1,0 +1,77 @@
+id: debug-mixed-group
+suite: debug
+title: One issue hash, two different failures behind it
+tags: [go, grouping]
+seed: debug/mixed-group
+arms: [cli+skill, cli-noskill, mcp]
+invoke: slash
+distractor: The group's firstSeen, most of its count and its oldest occurrences are a missing carrier rate table ("no rate table for zone 5", six to two days ago), dormant since the table was loaded; the latest occurrences are a different error that began with v3.8.0.
+workspace: {repo: shipping-api-go}
+prompt: |
+  /traceway debug {{seed.hash}}
+  This issue went quiet for a couple of days and now it's back on the shipments API. Find out why and fix it.
+budget: {max_turns: 40, max_tool_calls: 30, max_output_tokens: 14000, timeout: 10m}
+user:
+  - default: "I only know it is happening again now. Please fix it."
+expect:
+  answer:
+    issue_hash: "{{seed.hash}}"
+    culprit: {file: internal/shipments/address.go, symbol: validateAddress, line: 21, line_tolerance: 10}
+    needs_instrumentation: false
+    mentions_all: ["postal ?code|postcode|zip", "rate table|zone[ -]?5"]
+  grounding:
+    - "is not valid for"
+  calls:
+    required:
+      - {op: exceptions.show, args: {hash: "{{seed.hash}}"}}
+    forbidden:
+      - {op: "*", write: true}
+      - {op: "edit_file:internal/rates/*"}
+      - {op: "write_file:internal/rates/*"}
+    order:
+      - [exceptions.show, write_file]
+      - [exceptions.show, edit_file]
+    max_failed_calls: 5
+    max_identical_repeats: 2
+  code:
+    hidden_tests: debug-mixed-group
+    command: go test ./...
+    gating: true
+    touches_culprit: true
+    must_not_change: [internal/rates/rates.go, internal/httpx/errors.go]
+judge:
+  expected: >-
+    Every POST /api/shipments error is recorded by httpx.Error with the same stack, so two failures share the hash. The older cluster (six to two days ago, "rate shipment: carrier dhl-express has no rate table for zone 5", 500s) stopped by itself when the rate table was loaded. The latest occurrences, since the v3.8.0 deploy about 20 hours ago, are "validate address: invalid request: postal code ... is not valid for GB/CA/NL/AU/JP" (422s) from the US-only ZIP pattern in validateAddress (internal/shipments/address.go:21), which rejects every other country's format. The fix applies the ZIP pattern to US addresses only (or uses per-country formats), keeping the other checks.
+  rubric:
+    - Notices the group is mixed by comparing occurrences (distinct first lines, timing, versions) and anchors on the latest occurrences.
+    - Ties the postal-code rejections to the v3.8.0 change in validateAddress, and names the rate-table cluster as a separate, dormant failure without fixing it.
+    - Fixes validateAddress so non-US postal codes pass while invalid US ZIPs are still rejected as 422.
+oracle:
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 30 --output json
+      | jq '{group: (.group | {exceptionHash, firstSeen, lastSeen, count, top: (.stackTrace | split("\n")[0])}),
+      latest: (.occurrences | sort_by(.recordedAt) | last | {recordedAt, appVersion, message: (.stackTrace | split("\n")[0]), attributes}),
+      clusters: ([.occurrences[] | {m: (.stackTrace | split("\n")[0]), v: .appVersion}] | group_by(.m) | map({message: .[0].m, count: length, versions: (map(.v) | unique)}))}'
+  - shell: >-
+      traceway exceptions show {{seed.hash}} --page-size 30 --page 2 --output json
+      | jq '[.occurrences[] | {at: .recordedAt, v: .appVersion, m: (.stackTrace | split("\n")[0])}] | group_by(.m) | map({message: .[0].m, count: length, first: (map(.at) | min), last: (map(.at) | max), versions: (map(.v) | unique)})'
+  - shell: git log --format='%h %ad %s' --date=iso -5
+  - shell: git show HEAD --stat --format='%h %s'
+  - read_file: internal/shipments/address.go
+  - write_file: {path: internal/shipments/address.go, from: oracle/debug-mixed-group/address.go}
+  - submit:
+      issue_hash: "{{seed.hash}}"
+      occurrence_id: "{{seed.latest.id}}"
+      category: logic
+      culprit: {file: internal/shipments/address.go, symbol: validateAddress, line: 21}
+      evidence:
+        - {call_id: c01, claim: "the latest occurrences, all on 3.8.0, are 'validate address: invalid request: postal code ... is not valid for' GB, CA, NL, AU and JP"}
+        - {call_id: c02, claim: "the older occurrences are a different error, 'rate shipment: carrier dhl-express has no rate table for zone 5', on 3.7.4, which stopped two days ago"}
+        - {call_id: c03, claim: "v3.8.0, deployed about 20 hours ago, added postal-code validation"}
+        - {call_id: c05, claim: "validateAddress matches every postal code against the US ZIP pattern"}
+      fix_summary: validateAddress checks the ZIP pattern only for US addresses; other countries need a non-empty postal code, as before v3.8.0.
+      files_changed: [internal/shipments/address.go]
+      needs_instrumentation: false
+      confidence: high
+      report: |
+        The hash bundles two failures, because every shipments error is recorded by httpx.Error with the same stack and the message is not part of the hash. The older cluster (six to two days ago, 500s) was "rate shipment: carrier dhl-express has no rate table for zone 5"; it stopped when the rate table was loaded and is not touched here. The latest occurrences, since v3.8.0 was deployed about 20 hours ago, are 422s: "validate address: invalid request: postal code ... is not valid for GB / CA / NL / AU / JP". v3.8.0 matches every postal code against the US ZIP pattern in validateAddress (internal/shipments/address.go:21). I limited that pattern to US addresses; other countries need a non-empty postal code as before.

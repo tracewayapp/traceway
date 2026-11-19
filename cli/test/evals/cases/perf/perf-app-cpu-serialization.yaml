@@ -1,0 +1,77 @@
+id: perf-app-cpu-serialization
+suite: perf
+title: The transaction export burns seconds of CPU building its JSON body
+tags: [application, dotnet]
+seed: perf/app-cpu-serialization
+arms: [cli+skill, cli-noskill, mcp]
+invoke: natural
+distractor: The export bodies are large (0.1-4.7MB, logged with every export), which reads like a payload problem, but the time is a gap between the transactions SELECT and the export_audit INSERT, before a single byte of the body is sent, and the body is written in a few milliseconds afterwards. Each row costs ~0.35ms of CPU, while the paged transaction list serializes 50 of the same rows in about 2ms.
+workspace: {repo: accounts-api-dotnet}
+prompt: |
+  Finance keeps complaining that the transaction export in the accounts dashboard takes several seconds for big accounts, sometimes most of ten, and the accounts-api CPU graph jumps whenever someone runs one. The query itself is supposed to be fast. Can you look at it in Traceway and tell me what's going on and how to fix it?
+budget: {max_turns: 40, max_tool_calls: 32, max_output_tokens: 12000, timeout: 10m}
+user:
+  - default: "I don't know more than that, please investigate."
+expect:
+  answer:
+    checklist_item: cpu_bound_serialization
+    not: [large_request_response_payloads, no_pagination_unbounded_result_set, over_fetching, cpu_saturation]
+    locus: {endpoint: "GET /api/accounts/{accountId}/transactions/export"}
+  grounding:
+    - "INSERT export_audit"
+    - "Exported"
+  calls:
+    required:
+      - {op: endpoints.list}
+      - {op: metrics.query, args: {name: "~system\\.cpu"}}
+    any_of:
+      - [{op: endpoints.show, args: {recorded_at: present}}]
+      - [{op: traces.show, args: {recorded_at: present}}]
+    forbidden:
+      - {op: "*", write: true}
+    max_failed_calls: 4
+    max_identical_repeats: 2
+judge:
+  expected: CPU-bound serialization. In the export's waterfall the transactions SELECT returns in tens to a couple of hundred milliseconds, then nothing happens on the trace for 0.3-7s until the export_audit INSERT, and the body goes out a few ms later. That gap is the endpoint building the JSON body in memory - ~0.35ms of CPU per row, so it scales with the account's row count (p50 ~1.3s, p95 ~4s) - and CPU jumps while it runs. The code creates a new JsonSerializerOptions for every row (no metadata cache), parses each row's metadata with JsonDocument, resolves the currency culture by enumerating every culture for every amount, and indents the output, all into one string. The bodies are 0.1-4.7MB but are written in milliseconds after the gap, so it is not a transfer problem; the paged list endpoint serializes 50 rows in ~2ms. Fix - one static JsonSerializerOptions (or a source-generated context), cache the culture, write the metadata raw, and stream rows with Utf8JsonWriter to the response body instead of building a string.
+  rubric:
+    - Locates the time in the untraced gap between the transactions SELECT and the export_audit INSERT and identifies it as in-process JSON building, with CPU up while it runs.
+    - Rules out the payload size as the cause (the gap happens before anything is sent, sending takes milliseconds) and a slow query (the SELECT is short).
+    - Proposes reusing one JsonSerializerOptions or a source-generated context, caching the currency culture, and streaming rows with Utf8JsonWriter instead of building the body per row.
+oracle:
+  - shell: >-
+      traceway endpoints list --since 24h --order-by p95 --page-size 8 --output json
+      | jq '[.data[] | {endpoint, count, p50_ms: (.p50Duration/1e6|round), p95_ms: (.p95Duration/1e6|round), p99_ms: (.p99Duration/1e6|round)}]'
+  - shell: traceway logs query --since 24h --search Exported --page-size 15 --output json | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: traceway logs query --since 24h --search transactions/export --page-size 15 --output json | jq -r '.data[] | "\(.timestamp) \(.traceId) \(.body)"'
+  - shell: >-
+      traceway endpoints show {{seed.slowRequest.id}} --recorded-at {{seed.slowRequest.recordedAt}} --output json
+      | jq '{endpoint: .endpoint.endpoint, started: .endpoint.recordedAt[11:23], total_ms: (.endpoint.duration/1e6|round),
+      spans: [.spans[] | {start: .startTime[11:23], ms: (.duration/1e6|round), name, query: .attributes["db.query.text"]}]}'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --tag state=user --from {{seed.slowFrom}} --to {{seed.slowTo}} --interval-minutes 1 --output json
+      | jq '.results[0].series | map_values(map("\(.timestamp[11:16]) \(.value * 100 | round)%"))'
+  - shell: >-
+      traceway metrics query --name system.cpu.utilization --aggregation avg --group-by state --since 24h --interval-minutes 360 --output json
+      | jq '.results[0].series | map_values(map(.value * 100 | round))'
+  - read_file: src/AccountsApi/Exports/TransactionExportEndpoints.cs
+  - read_file: src/AccountsApi/Serialization/MoneyConverter.cs
+  - submit:
+      checklist_item: cpu_bound_serialization
+      category: application
+      locus: {endpoint: "GET /api/accounts/{accountId}/transactions/export", span: "gap between SELECT transactions and INSERT export_audit", service: accounts-api}
+      onset: null
+      evidence:
+        - {call_id: c01, claim: "the export is the only slow endpoint, with a p50 over a second and a p95 of several seconds"}
+        - {call_id: c02, claim: "exports log from hundreds to over ten thousand rows each, with bodies of up to a few MB"}
+        - {call_id: c03, claim: "matched to c02 by trace id, export durations grow with the logged row counts, about a third of a millisecond per row"}
+        - {call_id: c04, claim: "in the slowest export of the day the transactions SELECT returns in under 200ms, then the trace is idle for over six seconds until INSERT export_audit; the body goes out right after"}
+        - {call_id: c05, claim: "user CPU jumps from ~13% to ~50% in the minute the export was serializing, and only in minutes with an export"}
+        - {call_id: c06, claim: "average CPU is low over the day (~20% busy), so the host is not saturated"}
+      ruled_out:
+        - {checklist_item: large_request_response_payloads, call_id: c04, reason: "the time is spent before anything is sent; the response is written within milliseconds after the audit insert"}
+        - {checklist_item: no_pagination_unbounded_result_set, call_id: c04, reason: "the full-period read is what an export is for, and the SELECT itself is short"}
+        - {checklist_item: cpu_saturation, call_id: c06, reason: "average CPU is low; the spikes are the exports themselves"}
+      fix: Reuse one JsonSerializerOptions (or a source-generated JsonSerializerContext), resolve the currency culture once, write each row's metadata raw instead of parsing it, drop the indentation, and stream the rows with Utf8JsonWriter straight to the response body instead of building a string per row.
+      confidence: high
+      report: |
+        The export is slow because it builds its JSON body row by row on the CPU. In the slowest export of the day (~6.5s) the transactions SELECT took ~160ms, then the trace shows nothing for ~6.3s until INSERT export_audit, and the body went out within milliseconds after that. The gap grows with the logged row count (about 0.35ms per row) and user CPU jumps from ~13% to ~50% in the minute it runs; average CPU is ~20%. TransactionExportEndpoints.SerializeRow creates a new JsonSerializerOptions for every row, so System.Text.Json rebuilds its type metadata each time, parses every row's metadata with JsonDocument, and MoneyConverter enumerates every specific culture for every amount. The multi-MB bodies are not the problem: nothing is sent until the gap is over. Fix: stream the rows with one Utf8JsonWriter (and one static JsonSerializerOptions or a source-generated context) straight to the response, write the metadata raw, drop the indentation and resolve the currency culture once.

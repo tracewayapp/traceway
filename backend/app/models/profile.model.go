@@ -61,21 +61,20 @@ type ProfileSeriesGroup struct {
 }
 
 type Profile struct {
-	Id                 uuid.UUID         `json:"id" ch:"id"`
-	ProjectId          uuid.UUID         `json:"projectId" ch:"project_id"`
-	RecordedAt         time.Time         `json:"recordedAt" ch:"recorded_at"`
-	Duration           time.Duration     `json:"duration" ch:"duration"`
-	ServiceName        string            `json:"serviceName" ch:"service_name"`
-	ProfileType        string            `json:"profileType" ch:"profile_type"`
-	Unit               string            `json:"unit" ch:"unit"`
-	IsGauge            bool              `json:"isGauge" ch:"is_gauge"`
-	SampleCount        uint64            `json:"sampleCount" ch:"sample_count"`
-	TotalValue         int64             `json:"totalValue" ch:"total_value"`
-	ServerName         string            `json:"serverName" ch:"server_name"`
-	AppVersion         string            `json:"appVersion" ch:"app_version"`
-	Attributes         map[string]string `json:"attributes" ch:"attributes"`
-	StorageKey         string            `json:"storageKey" ch:"storage_key"`
-	TraceId            string            `json:"traceId" ch:"trace_id"`
-	SpanId             string            `json:"spanId" ch:"span_id"`
-	DistributedTraceId *uuid.UUID        `json:"distributedTraceId,omitempty" ch:"distributed_trace_id"`
+	Id          uuid.UUID         `json:"id" ch:"id"`
+	ProjectId   uuid.UUID         `json:"projectId" ch:"project_id"`
+	RecordedAt  time.Time         `json:"recordedAt" ch:"recorded_at"`
+	Duration    time.Duration     `json:"duration" ch:"duration"`
+	ServiceName string            `json:"serviceName" ch:"service_name"`
+	ProfileType string            `json:"profileType" ch:"profile_type"`
+	Unit        string            `json:"unit" ch:"unit"`
+	IsGauge     bool              `json:"isGauge" ch:"is_gauge"`
+	SampleCount uint64            `json:"sampleCount" ch:"sample_count"`
+	TotalValue  int64             `json:"totalValue" ch:"total_value"`
+	ServerName  string            `json:"serverName" ch:"server_name"`
+	AppVersion  string            `json:"appVersion" ch:"app_version"`
+	Attributes  map[string]string `json:"attributes" ch:"attributes"`
+	StorageKey  string            `json:"storageKey" ch:"storage_key"`
+	TraceId     string            `json:"traceId" ch:"trace_id"`
+	SpanId      string            `json:"spanId" ch:"span_id"`
 }

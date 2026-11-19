@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/services/contentflag"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/contentflag"
+	"github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
@@ -195,6 +196,9 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 		return nil, err
 	}
 
+	if err := dashboards.EnsureBrowserDefault(tx, project); err != nil {
+		return nil, err
+	}
 	return project, nil
 }
 
@@ -303,6 +307,8 @@ func (p *projectRepository) Delete(tx *sql.Tx, id uuid.UUID) error {
 		"source_maps",
 		"metric_registry",
 		"project_user_roles",
+		"sdk_config_rules",
+		"sdk_captures",
 	}
 	for _, table := range related {
 		if err := lit.DeleteNamed(db.Driver, tx, "DELETE FROM "+table+" WHERE project_id = :project_id", lit.P{"project_id": id}); err != nil {

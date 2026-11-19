@@ -41,17 +41,23 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 {{- end }}
 
-{{/* Resolves the image tag based on the variant when not explicitly set */}}
+{{/* Release images are tagged v<version>[-<variant>]; the full variant has no suffix */}}
 {{- define "traceway.imageTag" -}}
 {{- if .Values.image.tag -}}
 {{ .Values.image.tag }}
-{{- else if eq .Values.variant "sqlite" -}}
-{{ .Chart.AppVersion }}-sqlite
-{{- else if eq .Values.variant "minimal" -}}
-{{ .Chart.AppVersion }}-minimal
 {{- else -}}
-{{ .Chart.AppVersion }}
+{{- $version := printf "v%s" (trimPrefix "v" .Chart.AppVersion) -}}
+{{- if eq .Values.variant "full" -}}
+{{ $version }}
+{{- else -}}
+{{ $version }}-{{ .Values.variant }}
 {{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/* Variants that keep their databases as local files under /data */}}
+{{- define "traceway.embeddedDB" -}}
+{{- if has .Values.variant (list "sqlite" "duckdb") -}}true{{- end -}}
 {{- end }}
 
 {{/* Name of the Secret to mount — either an existing one or the one we create */}}

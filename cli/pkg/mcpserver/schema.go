@@ -48,3 +48,7 @@ func allowNullMaps(s *jsonschema.Schema) {
 	allowNullMaps(s.Items)
 	allowNullMaps(s.AdditionalProperties)
 }
+
+// passThroughSchema describes the tools whose result is the server's JSON
+// passed through unchanged: always an object, shape owned by the backend.
+var passThroughSchema = &jsonschema.Schema{Type: "object"}

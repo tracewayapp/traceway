@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/tracewayapp/traceway/backend/app/db"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/db"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 
 	"github.com/tracewayapp/lit/v2"
 )
@@ -47,6 +47,18 @@ func (r *postMortemRepository) Create(tx *sql.Tx, postMortem *models.PostMortem)
 
 func (r *postMortemRepository) Update(tx *sql.Tx, postMortem *models.PostMortem) error {
 	return lit.UpdateNamed(tx, postMortem, "id = :id AND project_id = :project_id", lit.P{"id": postMortem.Id, "project_id": postMortem.ProjectId})
+}
+
+// LockForUpdate takes the row lock before a read-check-write, so on Postgres
+// a concurrent update of the same document waits for this transaction and
+// then sees its result. SQLite serializes writers already, where this is a
+// no-op.
+func (r *postMortemRepository) LockForUpdate(tx *sql.Tx, id int, projectId uuid.UUID) error {
+	q, a, err := lit.ParseNamedQuery(db.Driver, "UPDATE post_mortems SET id = id WHERE id = :id AND project_id = :project_id", lit.P{"id": id, "project_id": projectId})
+	if err != nil {
+		return err
+	}
+	return lit.UpdateNative(tx, q, a...)
 }
 
 func (r *postMortemRepository) Delete(tx *sql.Tx, id int, projectId uuid.UUID) error {

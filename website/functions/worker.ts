@@ -16,6 +16,10 @@ export default {
 			return handleSubscribe(request, env);
 		}
 
+		if (url.pathname === "/api/geo" && request.method === "GET") {
+			return handleGeo(request);
+		}
+
 		return new Response("Not Found", { status: 404 });
 	},
 };
@@ -149,4 +153,25 @@ async function handleSubscribe(request: Request, env: Env): Promise<Response> {
 			}
 		);
 	}
+}
+
+// EEA, United Kingdom and Switzerland: the only places where analytics
+// cookies need opt-in consent before they are set.
+const CONSENT_REQUIRED_COUNTRIES = new Set([
+	"AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+	"HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
+	"SI", "ES", "SE", "IS", "LI", "NO", "GB", "CH",
+]);
+
+function handleGeo(request: Request): Response {
+	const cf = (request as Request & { cf?: { country?: string } }).cf;
+	const country = (request.headers.get("CF-IPCountry") ?? cf?.country ?? "").toUpperCase();
+	const consentRequired = country === "" || CONSENT_REQUIRED_COUNTRIES.has(country);
+	return new Response(JSON.stringify({ country, consentRequired }), {
+		status: 200,
+		headers: {
+			"Content-Type": "application/json",
+			"Cache-Control": "no-store",
+		},
+	});
 }

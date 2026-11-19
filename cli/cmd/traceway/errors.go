@@ -4,10 +4,11 @@ import (
 	"errors"
 	"io"
 
-	"github.com/tracewayapp/traceway/cli/internal/errclass"
-	"github.com/tracewayapp/traceway/cli/internal/exitcode"
-	"github.com/tracewayapp/traceway/cli/internal/output"
-	"github.com/tracewayapp/traceway/cli/pkg/client"
+	"github.com/tracewayapp/traceway/cli/v2/internal/appdir"
+	"github.com/tracewayapp/traceway/cli/v2/internal/errclass"
+	"github.com/tracewayapp/traceway/cli/v2/internal/exitcode"
+	"github.com/tracewayapp/traceway/cli/v2/internal/output"
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 // cliError carries an exit code alongside an error message. Command runners
@@ -50,7 +51,7 @@ func classifyError(err error, loginContext bool) output.ErrorEnvelope {
 	}
 	c := errclass.Classify(err)
 	if c.Code == "token_expired" && flagProfile != "" {
-		c.Hint = "traceway login --profile " + flagProfile
+		c.Hint = appdir.Binary + " login --profile " + flagProfile
 	}
 	return output.ErrorEnvelope{
 		Code:     c.Code,

@@ -10,6 +10,11 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { Plus, Check, X } from '@lucide/svelte';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
+	import {
+		GOOD_RATIO,
+		PERCENTILE_AGGREGATIONS,
+		isDistributionAggregation
+	} from '$lib/utils/metric-widgets';
 	import type {
 		DashboardWidget,
 		DashboardWidgetConfig,
@@ -113,9 +118,16 @@
 		const wasValueType = widgetType === 'gauge' || widgetType === 'single_value';
 		const isValueType = newType === 'gauge' || newType === 'single_value';
 		widgetType = newType;
+		if (newType === 'rating_bar') {
+			for (const s of sources) {
+				s.aggregation = 'count';
+				s.groupBy = 'rating';
+			}
+			return;
+		}
 		if (isValueType && !wasValueType) {
 			for (const s of sources) {
-				if (s.aggregation === 'avg') s.aggregation = 'last';
+				if (s.aggregation === 'avg' && !isDistribution(s.name)) s.aggregation = 'last';
 			}
 		} else if (!isValueType && wasValueType) {
 			for (const s of sources) {
@@ -127,6 +139,13 @@
 	function getMetricTagKeys(metricName: string): string[] {
 		const m = availableMetrics.find((m: DiscoveredMetric) => m.name === metricName);
 		return m?.tagKeys ?? [];
+	}
+
+	function isDistribution(metricName: string): boolean {
+		return (
+			availableMetrics.find((m: DiscoveredMetric) => m.name === metricName)?.metricType ===
+			'histogram'
+		);
 	}
 
 	function getMetricUnit(metricName: string): string {
@@ -148,6 +167,13 @@
 
 	function handleMetricChange(index: number, value: string) {
 		sources[index].name = value;
+		const aggregation = sources[index].aggregation;
+		if (isDistribution(value)) {
+			// The web vitals convention: a distribution is read at its 75th percentile.
+			if (aggregation === 'avg' || aggregation === 'last') sources[index].aggregation = 'p75';
+		} else if (isDistributionAggregation(aggregation)) {
+			sources[index].aggregation = 'avg';
+		}
 		if (!unitManuallySet) {
 			unit = getMetricUnit(value);
 		}
@@ -229,7 +255,9 @@
 								bar_chart: 'Bar Chart',
 								single_value: 'Single Value',
 								gauge: 'Gauge',
-								table: 'Table'
+								table: 'Table',
+								rating_bar: 'Rating Bar',
+								breakdown_table: 'Breakdown Table'
 							} as Record<string, string>
 						)[widgetType] ?? widgetType}
 					</Select.Trigger>
@@ -241,6 +269,8 @@
 						<Select.Item value="single_value">Single Value</Select.Item>
 						<Select.Item value="gauge">Gauge</Select.Item>
 						<Select.Item value="table">Table</Select.Item>
+						<Select.Item value="rating_bar">Rating Bar</Select.Item>
+						<Select.Item value="breakdown_table">Breakdown Table</Select.Item>
 					</Select.Content>
 				</Select.Root>
 			</div>
@@ -401,18 +431,39 @@
 								if (v) sources[i].aggregation = v;
 							}}
 						>
-							<Select.Trigger class="w-20">{source.aggregation}</Select.Trigger>
+							<Select.Trigger class="w-28">{source.aggregation}</Select.Trigger>
 							<Select.Content>
-								<Select.Item value="last">last</Select.Item>
+								{#if !isDistribution(source.name)}
+									<Select.Item value="last">last</Select.Item>
+								{/if}
 								<Select.Item value="avg">avg</Select.Item>
 								<Select.Item value="min">min</Select.Item>
 								<Select.Item value="max">max</Select.Item>
 								<Select.Item value="sum">sum</Select.Item>
 								<Select.Item value="count">count</Select.Item>
 								<Select.Item value="rate">rate</Select.Item>
+								{#if isDistribution(source.name)}
+									{#each PERCENTILE_AGGREGATIONS as percentile (percentile)}
+										<Select.Item value={percentile}>{percentile}</Select.Item>
+									{/each}
+									<Select.Item value={GOOD_RATIO}>good ratio</Select.Item>
+								{/if}
 							</Select.Content>
 						</Select.Root>
 					</div>
+
+					{#if source.aggregation === GOOD_RATIO}
+						<Input
+							type="number"
+							value={source.threshold ?? ''}
+							oninput={(e) => {
+								const value = parseFloat(e.currentTarget.value);
+								sources[i].threshold = Number.isFinite(value) ? value : undefined;
+							}}
+							placeholder="Good at or under (web vitals have a default)"
+							class="h-8 text-xs"
+						/>
+					{/if}
 
 					<Input
 						bind:value={sources[i].label}

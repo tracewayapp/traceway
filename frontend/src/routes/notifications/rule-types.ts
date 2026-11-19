@@ -11,6 +11,7 @@ export const ruleTypeOptions = [
 	{ value: 'endpoint_error_rate', label: 'Endpoint Error Rate' },
 	{ value: 'apdex_drop', label: 'Apdex Drop' },
 	{ value: 'metric_threshold', label: 'Metric Threshold' },
+	{ value: 'metric_release_regression', label: 'Release Regression' },
 	{ value: 'no_data', label: 'No Data' },
 	{ value: 'task_duration_threshold', label: 'Task Duration' },
 	{ value: 'task_failure_rate', label: 'Task Failure Rate' },
@@ -18,7 +19,9 @@ export const ruleTypeOptions = [
 	{ value: 'ai_trace_cost', label: 'AI Trace Cost' },
 	{ value: 'ai_conversation_cost', label: 'AI Conversation Cost' },
 	{ value: 'ai_flagged_content', label: 'AI Flagged Content' },
-	{ value: 'check_down', label: 'Monitor Down' }
+	{ value: 'check_down', label: 'Monitor Down' },
+	{ value: 'slo_burn_rate', label: 'SLO Burn Rate' },
+	{ value: 'slo_budget_consumed', label: 'SLO Budget Consumed' }
 ];
 
 export const ruleTypeLabels: Record<string, string> = Object.fromEntries(

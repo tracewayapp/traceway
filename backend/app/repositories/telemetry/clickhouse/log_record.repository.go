@@ -4,13 +4,16 @@ package clickhouse
 
 import (
 	"context"
-	"github.com/tracewayapp/traceway/backend/app/repositories/telemetry/shared"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
-	"github.com/tracewayapp/traceway/backend/app/chdb"
-	"github.com/tracewayapp/traceway/backend/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
 
 type logRecordRepository struct{}
@@ -20,52 +23,47 @@ func (r *logRecordRepository) InsertAsync(ctx context.Context, records []models.
 		return nil
 	}
 
-	batch, err := chdb.Conn.PrepareBatch(
-		chdb.BatchCtx(),
-		"INSERT INTO log_records (id, project_id, timestamp, trace_id, span_id, trace_flags, severity_text, severity_number, service_name, body, resource_schema_url, resource_attributes, scope_schema_url, scope_name, scope_version, scope_attributes, log_attributes)",
-	)
-	if err != nil {
-		return err
-	}
+	// SendBatch retries a dead pooled connection; a bare PrepareBatch turned
+	// each one into a 503 for the exporter and an issue in self-monitoring.
+	return chdb.SendBatch(ctx, "INSERT INTO log_records (id, project_id, timestamp, trace_id, span_id, trace_flags, severity_text, severity_number, service_name, body, resource_schema_url, resource_attributes, scope_schema_url, scope_name, scope_version, scope_attributes, log_attributes)", func(batch driver.Batch) error {
+		for _, lr := range records {
+			resAttrs := lr.ResourceAttributes
+			if resAttrs == nil {
+				resAttrs = map[string]string{}
+			}
+			scopeAttrs := lr.ScopeAttributes
+			if scopeAttrs == nil {
+				scopeAttrs = map[string]string{}
+			}
+			logAttrs := lr.LogAttributes
+			if logAttrs == nil {
+				logAttrs = map[string]string{}
+			}
 
-	for _, lr := range records {
-		resAttrs := lr.ResourceAttributes
-		if resAttrs == nil {
-			resAttrs = map[string]string{}
+			if err := batch.Append(
+				lr.Id,
+				lr.ProjectId,
+				lr.Timestamp,
+				lr.TraceId,
+				lr.SpanId,
+				lr.TraceFlags,
+				lr.SeverityText,
+				lr.SeverityNumber,
+				lr.ServiceName,
+				lr.Body,
+				lr.ResourceSchemaUrl,
+				resAttrs,
+				lr.ScopeSchemaUrl,
+				lr.ScopeName,
+				lr.ScopeVersion,
+				scopeAttrs,
+				logAttrs,
+			); err != nil {
+				return err
+			}
 		}
-		scopeAttrs := lr.ScopeAttributes
-		if scopeAttrs == nil {
-			scopeAttrs = map[string]string{}
-		}
-		logAttrs := lr.LogAttributes
-		if logAttrs == nil {
-			logAttrs = map[string]string{}
-		}
-
-		if err := batch.Append(
-			lr.Id,
-			lr.ProjectId,
-			lr.Timestamp,
-			lr.TraceId,
-			lr.SpanId,
-			lr.TraceFlags,
-			lr.SeverityText,
-			lr.SeverityNumber,
-			lr.ServiceName,
-			lr.Body,
-			lr.ResourceSchemaUrl,
-			resAttrs,
-			lr.ScopeSchemaUrl,
-			lr.ScopeName,
-			lr.ScopeVersion,
-			scopeAttrs,
-			logAttrs,
-		); err != nil {
-			return err
-		}
-	}
-
-	return batch.Send()
+		return nil
+	})
 }
 
 func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearchParams) ([]models.LogRecord, int64, error) {
@@ -73,7 +71,10 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 
 	countQuery := "SELECT count() FROM log_records WHERE " + where
 	var count uint64
-	if err := chdb.Conn.QueryRow(ctx, countQuery, args...).Scan(&count); err != nil {
+	countCtx, countSpan := traceway.StartSpan(ctx, "logs.count")
+	err := chdb.Conn.QueryRow(countCtx, countQuery, args...).Scan(&count)
+	countSpan.End()
+	if err != nil {
 		return nil, 0, err
 	}
 	if count == 0 {
@@ -104,7 +105,9 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 
 	args = append(args, params.PageSize, offset)
 
-	rows, err := chdb.Conn.Query(ctx, query, args...)
+	fetchCtx, fetchSpan := traceway.StartSpan(ctx, "logs.fetch")
+	defer fetchSpan.End()
+	rows, err := chdb.Conn.Query(fetchCtx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -140,12 +143,33 @@ func (r *logRecordRepository) Search(ctx context.Context, params shared.LogSearc
 	return records, int64(count), nil
 }
 
+// Histogram counts the logs Search would match per step-second bucket and level.
+func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSearchParams, step int64) ([]shared.LogHistogramRow, error) {
+	where, args := r.buildWhere(params)
+	query := `SELECT ` + epochBucket("timestamp", int(step)) + ` AS bucket,
+		toUInt8(` + shared.LogLevelSQL + `) AS level, count() AS count
+	FROM log_records WHERE ` + where + `
+	GROUP BY bucket, level`
+	rows, err := chdb.Conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []shared.LogHistogramRow
+	for rows.Next() {
+		var bucket int64
+		var level uint8
+		var count uint64
+		if err := rows.Scan(&bucket, &level, &count); err != nil {
+			return nil, err
+		}
+		out = append(out, shared.LogHistogramRow{Bucket: bucket, Level: int(level), Count: int64(count)})
+	}
+	return out, rows.Err()
+}
+
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
-	query := `SELECT id, project_id, timestamp, trace_id, span_id, trace_flags,
-		severity_text, severity_number, service_name, body,
-		resource_schema_url, resource_attributes,
-		scope_schema_url, scope_name, scope_version, scope_attributes,
-		log_attributes
+	query := `SELECT ` + chLogRecordColumns + `
 	FROM log_records
 	WHERE project_id = ? AND trace_id = ?
 	ORDER BY timestamp ASC`
@@ -155,7 +179,41 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 		return nil, err
 	}
 	defer rows.Close()
+	return scanChLogRecords(rows)
+}
 
+// FindBySessionId returns a browser session's log records in a time window, oldest first; it reads through the
+// materialized session_id column and its bloom filter.
+func (r *logRecordRepository) FindBySessionId(ctx context.Context, q shared.SessionBreadcrumbQuery) ([]models.LogRecord, error) {
+	// timestamp_date prunes partitions, timestamp alone cannot; the day of slack is the same as in buildWhere.
+	query := `SELECT ` + chLogRecordColumns + `
+	FROM log_records
+	WHERE project_id = ? AND session_id = ? AND timestamp_date >= ? AND timestamp_date <= ?
+		AND timestamp >= ? AND timestamp <= ?
+		AND log_attributes['event.name'] NOT IN (` + shared.SessionTimelineSkippedEventsSQL + `)
+	ORDER BY timestamp ` + q.Order() + ` LIMIT ?`
+
+	rows, err := chdb.Conn.Query(ctx, query, q.ProjectId, q.SessionId,
+		q.From.UTC().AddDate(0, 0, -1).Format(time.DateOnly), q.To.UTC().AddDate(0, 0, 1).Format(time.DateOnly),
+		q.From.UTC(), q.To.UTC(), q.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	records, err := scanChLogRecords(rows)
+	if err != nil {
+		return nil, err
+	}
+	return shared.SessionBreadcrumbsChronological(q, records), nil
+}
+
+const chLogRecordColumns = `id, project_id, timestamp, trace_id, span_id, trace_flags,
+		severity_text, severity_number, service_name, body,
+		resource_schema_url, resource_attributes,
+		scope_schema_url, scope_name, scope_version, scope_attributes,
+		log_attributes`
+
+func scanChLogRecords(rows driver.Rows) ([]models.LogRecord, error) {
 	var records []models.LogRecord
 	for rows.Next() {
 		var lr models.LogRecord
@@ -188,6 +246,24 @@ func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.
 func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string, []interface{}) {
 	clauses := []string{"project_id = ?", "timestamp >= ?", "timestamp <= ?"}
 	args := []interface{}{params.ProjectId, params.FromDate, params.ToDate}
+	if len(params.ProjectIds) > 0 {
+		placeholders := make([]string, len(params.ProjectIds))
+		args = make([]interface{}, 0, len(params.ProjectIds)+2)
+		for i, id := range params.ProjectIds {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		clauses[0] = "project_id IN (" + strings.Join(placeholders, ", ") + ")"
+		args = append(args, params.FromDate, params.ToDate)
+	}
+
+	// log_records is partitioned by the stored timestamp_date column, which a
+	// filter on timestamp alone cannot prune. The day of slack on each side
+	// absorbs any timezone difference between this and the insert-time toDate.
+	clauses = append(clauses, "timestamp_date >= ?", "timestamp_date <= ?")
+	args = append(args,
+		params.FromDate.UTC().AddDate(0, 0, -1).Format(time.DateOnly),
+		params.ToDate.UTC().AddDate(0, 0, 1).Format(time.DateOnly))
 
 	if params.MinSeverity > 0 {
 		clauses = append(clauses, "severity_number >= ?")
@@ -258,7 +334,7 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		default:
 			// Prefer hasToken() for single-word searches — it actually uses the
 			// tokenbf_v1 index on body. Fall back to ILIKE when the term is not
-			// a single alphanumeric token (multi-word, punctuation, etc.).
+			// a single alphanumeric token (multi-word, punctuation, underscores, etc.).
 			if isSingleToken(params.Search) {
 				clauses = append(clauses, "hasToken(body, ?)")
 				args = append(args, params.Search)
@@ -285,14 +361,16 @@ func attrColumn(scope string) string {
 	}
 }
 
-// isSingleToken reports whether s is a single alphanumeric/underscore token —
-// the only shape that tokenbf_v1 on body can accelerate via hasToken().
+// isSingleToken reports whether s is a single ASCII alphanumeric token, the
+// only shape hasToken() accepts: it treats every other ASCII character,
+// underscore included, as a separator and fails the query (code 36) on a
+// needle that contains one.
 func isSingleToken(s string) bool {
 	if s == "" {
 		return false
 	}
 	for _, r := range s {
-		if !(r == '_' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
 			return false
 		}
 	}

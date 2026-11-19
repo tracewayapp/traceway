@@ -82,12 +82,12 @@ func (s *server) getSession(ctx context.Context, req *mcp.CallToolRequest, in ge
 }
 
 type getTraceIn struct {
-	ID         string `json:"id" jsonschema:"The distributed trace UUID, from an occurrence's or request's distributedTraceId."`
+	ID         string `json:"id" jsonschema:"The trace id: 32 hex characters, from an occurrence's or request's traceId. A dashed UUID is accepted too."`
 	RecordedAt string `json:"recorded_at" jsonschema:"REQUIRED for a fast lookup: any participating record's timestamp, RFC3339. Approximate is fine (within 48h for traces). Reuse the occurrence's recordedAt that gave you the trace id. Never pass the current time for an old trace."`
 }
 
 func (s *server) getTrace(ctx context.Context, req *mcp.CallToolRequest, in getTraceIn) (*mcp.CallToolResult, any, error) {
-	if err := validateUUID("id", in.ID); err != nil {
+	if err := validateTraceID("id", in.ID); err != nil {
 		return nil, nil, err
 	}
 	recordedAt, err := parseTimestamp("recorded_at", in.RecordedAt)

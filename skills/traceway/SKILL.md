@@ -1,6 +1,6 @@
 ---
 name: traceway
-description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue <hash|url|title>", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
+description: 'Operate a Traceway observability instance through the traceway CLI: log in, query exceptions, logs, endpoints, and metrics, investigate browser RUM and release regressions, and debug production issues down to root cause. Use when the user invokes /traceway with a subcommand, e.g. "/traceway login", "/traceway debug issue HASH", "/traceway what''s broken in prod", or whenever they want to investigate errors, crashes, slowness, or logs from an app monitored by Traceway.'
 ---
 <!-- GENERATED FILE: assembled from cli/pkg/mcpserver/knowledge by cli/tools/skillgen. Edit the chunks there and run just gen-skills in cli/. -->
 
@@ -18,11 +18,13 @@ Drive a Traceway instance from the terminal with the `traceway` CLI. The first w
 
 > The CLI is under active development. If a flag documented here does not appear in `traceway <command> --help`, trust the binary.
 > If a `traceway` MCP server is connected, prefer its tools over shelling out to the CLI: they wrap the same API with the same semantics, and this skill's knowledge is available as its resources. The server is this same binary (`traceway mcp`).
+> This skill only reads. To change anything (archive issues, acknowledge or resolve pages, snooze alerts, run monitors, write post-mortems, create or change SLOs, change remote SDK config rules), the user installs the separate `traceway-write` CLI and the `traceway-write` skill.
+> When the user asks how a part of Traceway works (schedules, escalation, status pages, alert rules, impact score and the rest), use the `traceway-learn` skill. It is the full product guide.
 
 ## Ground Rules (All Flows)
 
 - **Reads are safe**: any `list` / `show` / `query` subcommand may run freely; they never mutate server state.
-- **Writes require explicit user instruction**: `exceptions archive` / `unarchive` are the only mutating data commands; only run them when the user asks by name, with `--yes` in non-interactive contexts. "Look at this error" means read it, not archive it.
+- **This CLI is read only**: `traceway` has no mutating commands, and its login can only read. Changes (archiving issues, acknowledging pages, snoozing alerts, editing post-mortems) need the separate `traceway-write` CLI and the `traceway-write` skill. "Look at this error" means read it, never change it.
 - **Output**: piped output defaults to JSON (table on a TTY). Prefer JSON + `jq`, and `--fields a,b,c` to trim responses. Keep `--page-size` at 10 to 20 for triage.
 - **Time windows**: always bound queries, default `--since 1h` for "now" questions, `--since 24h` otherwise. `--since` accepts `s`, `m`, `h`, lowercase `Nd` (no `1w`, no `7d2h`). Absolute windows via `--from` / `--to` (RFC3339).
 - **Exit codes**: 0 ok, 1 generic/API, 2 usage, 3 connection, 4 auth, 5 not found, 6 rate limited, 7 server 5xx. Errors emit `{"error":"<stable_id>","message":"...","hint":"...","exit_code":N}` on stderr; branch on the `error` field.
@@ -37,14 +39,14 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 |---|---|---|
 | `/issues/<hash>` and `/issues/<hash>/events` | Exception group (hash = 16 hex chars) | `traceway exceptions show <hash>` |
 | `/issues/<hash>/<occurrenceId>` (UUID) | One occurrence within the group | `traceway exceptions occurrence <occurrenceId> --recorded-at <t>` where `t` is the URL's `?t=` param. Direct and fast; also returns the occurrence's `sessionId` and session recording. No URL? get `recordedAt` from `traceway exceptions show <hash>` occurrences |
-| `/endpoints/<endpoint>` | Endpoint group; the segment is the URL-encoded endpoint name (`GET%20%2Fapi%2Fusers%2F%3Aid` is `GET /api/users/:id`) | Decode it, then `traceway endpoints list --search "<decoded name>"` (the group has no id; `endpoints show` is for one request — next row) |
+| `/endpoints/<endpoint>` | Endpoint group; the segment is the URL-encoded endpoint name (`GET%20%2Fapi%2Fusers%2F%3Aid` is `GET /api/users/:id`) | Decode it, then `traceway endpoints list --search "<decoded name>"` (the group has no id; `endpoints show` is for one request, see the next row) |
 | `/endpoints/<endpoint>/<endpointId>` | One request (transaction) of that endpoint | `traceway endpoints show <endpointId> --recorded-at <t>` (`t` = the URL's `?t=` param). Returns the request, its span waterfall, and any linked exception/messages |
 | `/tasks/<task>` | Background task group | No CLI for the group; for one run use the next row |
 | `/tasks/<task>/<taskId>` | Single task run | `traceway tasks show <taskId> --recorded-at <t>` (`t` = the URL's `?t=` param) |
 | `/sessions/<sessionId>` | Session (the exceptions that fired during it; replay stays dashboard-only) | `traceway sessions show <sessionId> --started-at <t>`. The URL has no `?t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the window). Occurrences reference sessions via their `sessionId` |
 | `/ai-traces/<traceName>` | AI trace group | No CLI for the group; for one trace use the next row |
-| `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <traceId> --recorded-at <t>` (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
-| `/logs` | Logs page (its filters are not stored in the URL) | `traceway logs query` with flags taken from the user's description |
+| `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <aiTraceId> --recorded-at <t>` (the UUID in the URL, not a 32 hex trace id) (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
+| `/logs` | Logs page. Its filters are URL params: `service=`, `minSeverity=`, `traceId=`, `spanId=`, `scopeName=`, `body=` (exact body), `search=` with `searchType=` (`body` by default, `service` or `trace`), and repeated `attr=<scope>.<key><op><value>` (`scope` is `resource`, `scope` or `log`; `op` is `=`, `!=`, `~=` contains or `!~=` not contains) | `traceway logs query` with `--service` (exact, from `service=`), `--min-severity`, `--trace-id` (from `traceId=` or a `searchType=trace` search) and `--search` (a body search). The CLI has no span, scope, exact-body, attribute or service-substring filter, so check those against the returned records |
 | `/issues`, `/endpoints`, `/metrics`, `/` | List and dashboard pages | The matching `list` / `query` command |
 
 **Time window**: most dashboard URLs carry `?preset=<p>` or `?from=<iso>&to=<iso>` (sticky across pages); honor them instead of the default window.
@@ -53,27 +55,27 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 - `from`/`to` are ISO timestamps; pass via `--from`/`--to`, appending `Z` (or the correct offset) when missing, since the CLI requires RFC3339.
 - No time params means the page was on its default; pick `--since` per the ground rules.
 
-`preset`/`from`/`to` set the *window* for list/group views. Detail URLs additionally carry **`?t=<iso>`** — the single record's timestamp, URL-encoded. That `t` value is exactly what the by-id commands need as `--recorded-at` (or `--started-at` for sessions). See "Fast by-id lookups" next.
+`preset`/`from`/`to` set the *window* for list/group views. Detail URLs additionally carry **`?t=<iso>`**, the single record's timestamp, URL-encoded. That `t` value is exactly what the by-id commands need as `--recorded-at` (or `--started-at` for sessions). See "Fast by-id lookups" next.
 
 ## Fast by-id lookups (always pass the timestamp)
 
-The by-id detail commands — `exceptions occurrence`, `endpoints show`, `tasks show`, `ai-traces show`, `sessions show`, `traces show` — **require** the record's timestamp (`--recorded-at`, or `--started-at` for sessions). Telemetry tables are partitioned by day: with the timestamp the lookup is bounded to a small window and ClickHouse prunes to a few partitions; without it the server scans every partition (slow cold load). The flag is mandatory for exactly this reason — never omit it. It can be approximate (within ±24h), and you can recover or estimate it when it isn't handed to you; see "When you don't have the timestamp" below.
+The by-id detail commands (`exceptions occurrence`, `endpoints show`, `tasks show`, `ai-traces show`, `sessions show`, `traces show`) **require** the record's timestamp (`--recorded-at`, or `--started-at` for sessions). Telemetry tables are partitioned by day: with the timestamp the lookup is bounded to a small window and ClickHouse prunes to a few partitions; without it the server scans every partition (slow cold load). The flag is mandatory for exactly this reason, so never omit it. It can be approximate (within ±24h), and you can recover or estimate it when it isn't handed to you; see "When you don't have the timestamp" below.
 
 Where the timestamp comes from, in order of preference:
 
-1. **A dashboard URL** — the `?t=<iso>` param is the record's `recordedAt`; URL-decode it and pass it verbatim. (Sessions have no `t`; use the session start, `from=`, or a linked occurrence's `recordedAt`.)
-2. **A list/group you already fetched** — every `exceptions show` occurrence carries `recordedAt`. Capture the id and its `recordedAt` together, then drill in.
-3. **A notification** — see below.
+1. **A dashboard URL**: the `?t=<iso>` param is the record's `recordedAt`; URL-decode it and pass it verbatim. (Sessions have no `t`; use the session start, `from=`, or a linked occurrence's `recordedAt`.)
+2. **A list/group you already fetched**: every `exceptions show` occurrence carries `recordedAt`. Capture the id and its `recordedAt` together, then drill in.
+3. **A notification**: see below.
 
 Query order when you hold an id: resolve its `recordedAt` first (URL, group, or notification), then call the by-id command with it.
 
 ### When you don't have the timestamp
 
-The flag is required, so you must supply *something* — but it can be approximate. The lookup window is **±24h** around what you pass (**±48h** for `traces show`), and if the record isn't in that window the server falls back to an unbounded scan. So a timestamp within a day of the truth stays fast; a wrong guess still returns the right record, just slower. Resolve it in this order:
+The flag is required, so you must supply *something*, but it can be approximate. The lookup window is **±24h** around what you pass (**±48h** for `traces show`), and if the record isn't in that window the server falls back to an unbounded scan. So a timestamp within a day of the truth stays fast; a wrong guess still returns the right record, just slower. Resolve it in this order:
 
-1. **Recover it from an API.** For an occurrence whose hash you know (e.g. `/issues/<hash>/<occurrenceId>` pasted without `?t=`), run `traceway exceptions show <hash>` and read that occurrence's `recordedAt` — the hash endpoint needs no timestamp. A group's `firstSeen`/`lastSeen` from `exceptions list` bound when its occurrences happened (`lastSeen` ≈ the most recent one).
-2. **Estimate from context.** A notification's send time, the issue's `firstSeen`/`lastSeen`, or the URL's `preset`/`from` window all put you inside ±24h — good enough for a fast lookup.
-3. **Ask the user.** If nothing pins it down (e.g. a bare occurrence/endpoint id with no hash, no time, and no list to recover from), ask roughly when it happened — "around when did this fire? within a day is enough" — and pass that. Don't invent a placeholder like "now" when the issue is old; that defeats the pruning and can miss the ±24h window entirely.
+1. **Recover it from an API.** For an occurrence whose hash you know (e.g. `/issues/<hash>/<occurrenceId>` pasted without `?t=`), run `traceway exceptions show <hash>` and read that occurrence's `recordedAt`. The hash endpoint needs no timestamp. A group's `firstSeen`/`lastSeen` from `exceptions list` bound when its occurrences happened (`lastSeen` ≈ the most recent one).
+2. **Estimate from context.** A notification's send time, the issue's `firstSeen`/`lastSeen`, or the URL's `preset`/`from` window all put you inside ±24h. That is good enough for a fast lookup.
+3. **Ask the user.** If nothing pins it down (e.g. a bare occurrence/endpoint id with no hash, no time, and no list to recover from), ask roughly when it happened ("around when did this fire? within a day is enough") and pass that. Don't invent a placeholder like "now" when the issue is old; that defeats the pruning and can miss the ±24h window entirely.
 
 ## Resolving a notification
 
@@ -92,7 +94,7 @@ So from a notification, go straight to the occurrence (fast), then pivot reusing
 
 ```bash
 traceway exceptions occurrence <Exception ID> --recorded-at <Occurred at → RFC3339> --output json
-# the result carries distributedTraceId and sessionId → traces show / sessions show below
+# the result carries traceId, relatedEntity and sessionId → traces show / endpoints show / sessions show below
 ```
 
 ### Performance notification (an endpoint became slow or critical)
@@ -104,7 +106,7 @@ These fire from latency/throughput rules, not from an error. There is no hash, n
 | `endpoint_p95_threshold` / `endpoint_p99_threshold` | `P95 latency 1250ms on <endpoint>` · "reached 1250ms over the last N minutes (threshold: 1000ms)" | `/endpoints?from=<iso>&to=<iso>` |
 | `apdex_drop` | `Apdex dropped to 0.62 (threshold: 0.80)` · "across N requests over the last N minutes" | `/endpoints?from=<iso>&to=<iso>` |
 | `impact_score_critical\|high\|medium` | `Endpoint <endpoint> impact became critical` · "impact score: 0.82. Reason: <reason>" | `/endpoints?from=<iso>&to=<iso>` |
-| `metric_threshold` | `Metric <name> is <value> (threshold: gt 100)` | `/metrics?preset=1h` |
+| `metric_threshold` | `Metric <name> is <value> (threshold: gt 100)`, or `Metric <name>{<tag>=<value>} is ...` per breaching series when the rule sets `groupBy`. A grouped series that is back within the threshold sends `Metric <name>{<tag>=<value>} recovered: <value> ...`, which needs no investigation, and one silent for an hour sends `Metric <name>{<tag>=<value>} stopped reporting, alert closed` | `/metrics?preset=1h` |
 
 What the body gives you: the **endpoint name** (parse it from the subject/body; it is not a separate field), the **metric/percentile**, the **current value**, the **threshold**, and the **lookback window**. The `/endpoints?from=&to=` link is only a ~3-minute window around the fire time, so treat the fire time as the onset hint, not the incident window.
 
@@ -112,7 +114,7 @@ To resolve, hand straight to the **Performance flow** scoped to that endpoint, u
 
 ```bash
 # 1. confirm the alert against current stats for that endpoint
-traceway endpoints list --search "<endpoint>" --since 1h --output json | jq '.data[0] | {p50, p95, p99, count, impact, impactReason}'
+traceway endpoints list --search "<endpoint>" --since 1h --output json | jq '.data[0] | {p50_ms: (.p50Duration / 1e6), p95_ms: (.p95Duration / 1e6), p99_ms: (.p99Duration / 1e6), count, impact, impactReason}'
 # 2. is this an accepted baseline? check whether an operator marked it slow
 traceway endpoints slow "<endpoint>" --output json    # {offsetMs, reason}; offsetMs 0 = not marked
 # 3. find when it crossed the threshold, then a slow trace (see Flow: Performance)
@@ -211,10 +213,10 @@ traceway exceptions list --since 7d --search "checkout" --output json \
 ### 2. Drill into the issue
 
 ```bash
-traceway exceptions show <hash>
+traceway exceptions show <hash> --page-size 5
 ```
 
-This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `distributedTraceId` / `sessionId` per occurrence. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
+This is the high-value call: full stack trace, occurrence list with `recordedAt`, `attributes` (user IDs, app versions, request context), and optional `traceId` / `spanId` / `sessionId` per occurrence. Occurrences come newest first, and each carries its own full stack trace, so the default page of 50 runs to well over 100k characters and gets cut off by any tool output limit; `--page-size 5` keeps the group header plus the five newest occurrences, which is what a first read needs. Keep the default page only when you pipe the JSON through `jq` to reduce it, as below. `traceId` is the OpenTelemetry trace id (32 hex characters), the same id the request's logs and spans carry. The response also has `relatedEntity`: the endpoint, task or AI trace the newest occurrence happened in, with the `id` and `recordedAt` that `endpoints show` / `tasks show` / `ai-traces show` take. `firstSeen` correlates with deploys: a group that first appeared right after a release points at that release's diff. A bogus hash exits 5 with `not_found`; fall back to search.
 
 **When the user gave an issue URL (or hash), fix the LAST occurrence — not "the group".** A single hash can bundle *several distinct errors*: the hash is computed from a normalized stack trace with the message stripped, so two unrelated failures that share their top frames (e.g. both captured at the same middleware/recovery frame) collapse into one group. The group's representative stack trace and `firstSeen` may belong to a different, now-dormant error than the one the user is looking at. Anchor on the most recent occurrence and fix that specific failure path:
 
@@ -222,7 +224,7 @@ This is the high-value call: full stack trace, occurrence list with `recordedAt`
 # The occurrence the user actually wants: the latest one. Pin its exact message + attributes + trace.
 traceway exceptions show <hash> --output json \
   | jq '.occurrences | sort_by(.recordedAt) | last
-        | {recordedAt, message: (.stackTrace | split("\n")[0]), attributes, traceId, distributedTraceId}'
+        | {recordedAt, message: (.stackTrace | split("\n")[0]), attributes, traceId, spanId}'
 
 # Then confirm whether the group is homogeneous or mixed — distinct first lines = distinct bugs:
 traceway exceptions show <hash> --output json \
@@ -241,7 +243,7 @@ traceway exceptions list --since 24h --order-by lastSeen        # what is errori
 traceway logs query --since 24h --min-severity 17               # errors and worse
 traceway logs query --since 24h --search "payment declined"     # search log bodies
 traceway logs query --since 24h --service checkout-api --min-severity 13
-traceway endpoints list --since 24h --search "checkout"         # latency p50/p95/p99 and error counts, --order-by impact|count|p95|lastSeen
+traceway endpoints list --since 24h --search "checkout"         # latency p50/p95/p99, count and impact, --order-by impact|count|p95|lastSeen
 ```
 
 Severity is an OTel number, not a name: 1 TRACE, 5 DEBUG, 9 INFO, 13 WARN, 17 ERROR, 21 FATAL. The flag is `--min-severity 17`, never `--severity error`.
@@ -249,7 +251,7 @@ Severity is an OTel number, not a name: 1 TRACE, 5 DEBUG, 9 INFO, 13 WARN, 17 ER
 **Correlate by trace**: when an occurrence or log line carries a trace ID, pull the whole request timeline; this is usually the fastest route to a root cause:
 
 ```bash
-traceway exceptions show $HASH --output json | jq -r '.occurrences[0].distributedTraceId' \
+traceway exceptions show $HASH --output json | jq -r '.occurrences[0].traceId' \
   | xargs -I{} traceway logs query --trace-id {} --output json
 ```
 
@@ -258,22 +260,22 @@ Pull the whole cross-service trace and the user's session, reusing the occurrenc
 ```bash
 OCC=$(traceway exceptions show $HASH --output json | jq -c '.occurrences[0]')
 TS=$(jq -r '.recordedAt' <<<"$OCC")
-DT=$(jq -r '.distributedTraceId // empty' <<<"$OCC")
+DT=$(jq -r '.traceId // empty' <<<"$OCC")
 SID=$(jq -r '.sessionId // empty' <<<"$OCC")
-[ -n "$DT" ]  && traceway traces show "$DT" --recorded-at "$TS"      # every endpoint/task/ai-trace/exception node across services
+[ -n "$DT" ]  && traceway traces show "$DT" --recorded-at "$TS"      # available endpoint/task/ai-trace/exception nodes across services
 [ -n "$SID" ] && traceway sessions show "$SID" --started-at "$TS"    # the session + the exceptions that fired in it
 ```
 
-`traces show` is usually the single highest-value RCA call: it stitches one logical request together end to end across services.
+`traces show` connects available nodes across services. Inspect each node's `spanGraphStatus` (the `GRAPH` column in table output): time windows, retention and read limits can leave spans and their related exceptions absent.
 
 **Check metrics for systemic causes** (spikes lining up with `firstSeen` suggest saturation rather than a code bug):
 
 ```bash
-traceway metrics query --name system.cpu.utilization --aggregation max --since 24h
+traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min --since 24h   # busy = 1 - idle
 traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
 ```
 
-The CLI also accepts `p50|p95|p99`, but the server has no quantile aggregation for metric points and silently computes `avg` for them — never present those as percentiles. Latency percentiles come from `traceway endpoints list`, computed from raw request durations. There is no `metrics list`; a bogus name returns an empty `series: {}` cleanly, so probing names is safe. Host metrics from the Traceway OTel Agent live under `system.*` names, and OTLP histogram metrics are stored as two series, `<name>.avg` and `<name>.count`.
+Current servers compute CLI p50/p95/p99 for distribution metrics; point metrics cannot yield percentiles. MCP query validation still rejects these aggregations. Use endpoint statistics for request-population percentiles and [rum.md](rum.md) for browser distributions and query limits. Discover names with `traceway metrics discover`; no `metrics list` exists. Host metrics use `system.*`; explicit-bound backend histograms retain `.avg`/`.count` alongside distributions. An empty series can mean missing data or an unsupported query; inspect errors before drawing conclusions.
 
 ### 4. Correlate with the code
 
@@ -335,18 +337,22 @@ The loop, using the read commands documented in this skill:
 
 1. **Quantify and localize.** `traceway endpoints list --since 24h --order-by p95` (or `impact`). Read the latency shape first: p50 already high means every request pays it (systemic: query, index, algorithm); p99 much greater than p50 means a tail (contention, pool exhaustion, GC, retries, a flaky dependency). Note that `impact`/`impactReason` are offset-adjusted for marked-slow endpoints but the raw p50/p95/p99 are not.
 2. **Check the accepted baseline.** Before calling an endpoint slow, run `traceway endpoints slow "<endpoint>"`. A non-zero `offsetMs` means an operator accepted that much latency (with a `reason`), so only latency *beyond* the offset is a real regression; `offsetMs 0` means default thresholds apply. Skip this only for a clearly systemic, multi-endpoint slowdown.
-3. **Pinpoint when it started: adjust the window down.** Do not investigate the default window blindly; narrow it until it brackets the onset. `traceway endpoints chart --metric-type p95 --interval-minutes <n>` returns latency over time for the top endpoints (`{timestamp, endpoint, value}` in ms): read down one endpoint's buckets for the step where p95 jumps. Confirm the cause with `traceway metrics query --name <metric> --interval-minutes <n>` (the infra/runtime curve). For a specific route not in the top 5, bisect `traceway endpoints list --search <name> --from <a> --to <b>` over adjacent windows. See `performance.md`, "Pinpointing when the slowness started".
-4. **Get a representative slow trace.** `traceway endpoints show <endpointId> --recorded-at <t>` for one request's span waterfall, or `traceway traces show <distributedTraceId> --recorded-at <t>` for the cross-service timeline. Take the trace from inside the slow window you just found; find the long pole.
+3. **Pinpoint when it started: adjust the window down.** Do not investigate the default window blindly; narrow it until it brackets the onset. `traceway endpoints chart --metric-type p95 --interval-minutes <n>` returns latency over time for the top endpoints (`{timestamp, endpoint, value}` in ms): read down one endpoint's buckets for the first one where p95 has jumped. Timestamps are bucket starts, so the onset is inside that bucket, not before it: re-run just that bucket with `--from`/`--to` and an interval of 15 minutes or less before you report the time. Confirm the cause with `traceway metrics query --name <metric> --interval-minutes <n>` (the infra/runtime curve). For a specific route not in the top 5, bisect `traceway endpoints list --search <name> --from <a> --to <b>` over adjacent windows. See `performance.md`, "Pinpointing when the slowness started".
+4. **Get a representative slow trace.** `traceway endpoints show <endpointId> --recorded-at <t>` for one request's span waterfall, or `traceway traces show <traceId> --recorded-at <t>` (the `traceId` that `endpoints show` prints) for the cross-service timeline. Take the trace from inside the slow window you just found; find the long pole.
 5. **Match the long pole to the checklist.** Is the dominant span a database call, an external call, in-process compute, or a *gap* before work starts (queueing / lock wait / pool exhaustion)? Look it up in `performance.md`.
-6. **Separate code from saturation.** Pull infra/runtime metrics over the same window: `traceway metrics query --name system.cpu.utilization --aggregation max`, then `mem.used`, `go.gc_pause`. A spike that lines up with the latency onset points at saturation, not a code bug.
+6. **Separate code from saturation.** Pull infra/runtime metrics over the same window: `traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min` (busy is 1 minus idle; the metric is split by `state`, so never read it unfiltered), then `system.memory.utilization` with `state=used` and the runtime's heap and GC metrics (`jvm.*`, `go.*`, `v8js.*`). A spike that lines up with the latency onset points at saturation, not a code bug.
 7. **Correlate with code and deploys.** With the onset time from step 3, check what shipped then: `git log --since '<onset - 30m>' --until '<onset + 30m>'` or the deploy history. A jump at a release is a regression; a gradual ramp with no deploy is data growth (N+1, missing index, no pagination).
 8. **Report.** The bottleneck, the evidence (endpoint percentiles, the onset time, the dominating span, any correlated metric anomaly), the root cause mapped to a checklist item, and a concrete fix, with the `endpoints show` / `traces show` references so the user can verify. If the endpoint is marked slow, state whether the latency exceeded the accepted offset.
 
 If the waterfall does not localize the cost, stop before proposing a fix. An unexplained gap, one fat span covering the whole handler, or a tail you cannot reproduce all mean the same thing: the trace is too coarse to act on. Add child spans around the suspect steps inside that handler, then wait for the next slow request to point at the real one. See "When the evidence is not enough" in the Debug flow.
 
+## Browser RUM investigations
+
+For Web Vitals, frontend release regressions, affected users or slow browser journeys, read [rum.md](rum.md) first. It covers distributions, segments, SLOs, session exemplars and the current CLI/MCP limitations. Do not route a browser experience question solely through backend endpoint latency.
+
 ## Flow: Query
 
-For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "show errors for service X"), use the read commands directly. A request specifically about latency or slowness routes to the Performance flow above.
+For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "show errors for service X"), use the read commands directly. Backend latency or slowness routes to the Performance flow above; browser experience routes to the RUM reference.
 
 ### Command reference
 
@@ -356,7 +362,6 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway exceptions list` | Grouped exceptions; `--search`, `--search-type text\|regex`, `--order-by lastSeen\|firstSeen\|count`, `--include-archived` |
 | `traceway exceptions show <hash>` | One group: full stack trace + occurrences |
 | `traceway exceptions occurrence <id> --recorded-at <t>` | One occurrence by id (fast): full detail + `sessionId` + recording |
-| `traceway exceptions archive/unarchive <hash>...` | Mutating; explicit user request + `--yes` only |
 | `traceway logs query` | Logs; `--search` (`--search-type body\|attribute`), `--service`, `--min-severity <n>`, `--trace-id` |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 and counts; `--search`, `--order-by impact\|count\|p95\|lastSeen` |
 | `traceway endpoints chart` | Latency over time for the top endpoints; `--metric-type total_time\|p50\|p95\|p99`, `--interval-minutes`. Use to find when latency changed |
@@ -367,11 +372,20 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway sessions show <id> --started-at <t>` | One session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | Distributed trace: every service node sharing the id |
 | `traceway metrics query --name <metric>` | Time series; `--aggregation`, `--tag`, `--group-by`, `--interval-minutes` |
+| `traceway pages list` / `pages show <id>` | On-call pages; `--status active\|open\|acknowledged\|resolved` |
+| `traceway alerts list` | Alert rules: type, enabled, snoozed until |
+| `traceway monitors list` / `monitors show <id>` | Uptime monitors, their status and incidents |
+| `traceway slos list` / `slos show <id>` | Service level objectives: definition, `status` (`ok`, `breached`, `no_data`), `currentSli` (percent), `budgetRemaining`, `burnRate1h`/`burnRate6h`; a disabled SLO is paused; `show` adds the alert rules that read the SLO |
+| `traceway slos series <id> --file range.json` | `good` and `total` per bucket for `{"fromDate", "toDate"}` (RFC 3339, at most 91 days, optional `intervalMinutes`) |
+| `traceway slos preview --file slo.json` | What an SLO definition `{"sliKind", "sliConfig"}` would measure over the last 24h (`good`, `total`, `sli`), without saving |
+| `traceway post-mortems list` / `post-mortems show <id>` | Post-mortem documents; `--search`, `--tag` |
+| `traceway opamp rules list` | Browser projects only: the remote SDK config (OpAMP) rules in order, with conditions, settings and `updatedAt`. Later matching rules win |
+| `traceway opamp preview --file client.json` | The settings document the saved rules give a client described by `{"attributes":{...},"instanceUid":"..."}` (`--file -` reads stdin): matched rules and captures, plan limits applied, config hash. Not proof that a browser applied it |
 | `traceway profiles {list,use}`, `login`, `logout`, `version` | Profile and session management |
 
 The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above.
 
-Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list/discover`.
+Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list`. Metric discovery is available as `metrics discover`.
 
 ### Recipes
 

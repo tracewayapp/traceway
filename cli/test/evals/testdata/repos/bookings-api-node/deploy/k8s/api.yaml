@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookings-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: bookings-api}
+  template:
+    metadata:
+      labels: {app: bookings-api}
+    spec:
+      containers:
+        - name: bookings-api
+          image: registry.example.com/bookings-api:6.4.1
+          env:
+            - {name: OTEL_SERVICE_NAME, value: bookings-api}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4318"}
+          envFrom: [{secretRef: {name: bookings-api}}]
+          resources:
+            requests: {cpu: 500m, memory: 512Mi}
+            limits: {cpu: "1", memory: 1Gi}

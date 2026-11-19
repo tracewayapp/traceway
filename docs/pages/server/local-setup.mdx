@@ -81,6 +81,7 @@ POSTGRES_SSLMODE=disable
 | `OAUTH_SESSION_SECRET` | Optional. Cookie signing secret for the OAuth round-trip. Falls back to `JWT_SECRET` when unset. |
 | `SESSION_RECORDING_RETENTION_DAYS` | Optional. Days to keep session recording files on disk under `STORAGE_PATH/recordings/`. Defaults to `30`. Worker runs hourly and on startup. `0` disables; no effect when `STORAGE_TYPE=s3`. |
 | `SQLITE_RETENTION_DAYS` | Optional. Days to keep SQLite telemetry rows. Defaults to `30`. `0` disables. Only applies when running with `DB_TYPE=sqlite`. |
+| `SQLITE_CACHE_SIZE_MB` | Optional. Page cache of the SQLite telemetry database in megabytes, per connection. Defaults to `512`. Up to 4 connections are open and each megabyte costs about two, so the caches can take up to 8 times the value. Lower it on a memory-constrained machine; see [Memory sizing](/server/sqlite#memory-sizing). Only applies to SQLite telemetry (the default build with `DB_TYPE=sqlite`). |
 | `DUCKDB_RETENTION_DAYS` | Optional. Days to keep telemetry rows on the DuckDB backend (`-tags telemetry_duckdb` build). Defaults to `30`, falling back to `SQLITE_RETENTION_DAYS` when unset. `0` disables. Pruning runs hourly, so expired rows can linger between runs. |
 | `LOG_RECORDS_MAX_ROWS` | Optional. Caps the log table via a cleanup task that runs every minute and keeps only the newest N rows. Not a hard limit: ingesting more than N rows within a minute exceeds the cap until the next run. Unset or `0` disables. Only applies when running with `DB_TYPE=sqlite` (SQLite or DuckDB telemetry). |
 

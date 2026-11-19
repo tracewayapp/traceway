@@ -1,0 +1,240 @@
+# RUM Best Practices
+
+import BrowserSdkBeta from "../../components/BrowserSdkBeta";
+
+<BrowserSdkBeta />
+
+The browser SDK collects five kinds of data. Each one answers a different question, and each one is collected in a different way. This page explains what each kind represents, which one to use for what, how to set up a frontend app so the data is useful, and how to get more detail when you need it.
+
+For what RUM is and how it works, start with [Real User Monitoring](/learn/rum).
+
+## The five kinds of data
+
+| Kind | What it represents | When it is uploaded | The question it answers |
+|---|---|---|---|
+| **Metrics** | Numbers measured on every visit and added up across all visitors: page load time, how fast the page reacts to a click, your own timings and counts | Always, as a small summary per visit | Is it slow? For how many people? Since which release? |
+| **Sessions** | One visit: a browser tab from its first page until 15 minutes without activity, or 60 minutes at most | Always: when it started and ended, and its attributes | Who was it? What did this person go through? |
+| **Exceptions** | Something broke: an uncaught error, a rejected promise, or an error you reported yourself | Always, right away | What is broken, and where in the code? |
+| **Logs and events** | What happened, in order: console output, clicks, page changes, requests, and events you name | Kept in the browser. Uploaded with an error, a trigger or a capture | What led up to it? |
+| **Replay** | A recording of the page as the user saw it | Kept in the browser. A 30 second clip is uploaded with an error | What did the user see? |
+
+Metrics, sessions and exceptions are always sent, so they describe every visit. Logs, events and replay stay in the browser until something asks for them. That is why a visit with no problems has metrics and a session on the server, but no logs and no replay.
+
+## What each kind represents
+
+### Metrics: numbers about all visits
+
+A metric describes all visits together, never one visitor. Each browser adds its measurements to a running total and uploads the total when the page is hidden, at the end of the session, and every five minutes on a long visit. The upload carries no user, session or device id.
+
+- You can split a metric by release, page, browser, device and country.
+- You cannot look up the metric of one user. To see one person's visit, open a [session](#sessions-one-visit).
+- Read a timing as a percentile. The 75th percentile (p75) is the value three out of four visits stay under, and it is how the Core Web Vitals are judged.
+- Use metrics for trends, release comparisons, [alerts](/learn/alerts) and [SLOs](/learn/slos).
+
+The SDK measures page load, the Core Web Vitals (LCP, INP, CLS), route changes, requests and errors on its own. Add your own numbers with `metric()` and `count()`:
+
+```javascript
+import { metric, count } from "@tracewayapp/frontend";
+
+metric("checkout.render", 412, { step: "payment" }); // how long something took
+count("search.empty_result");                         // how often something happened
+```
+
+A project can have 50 custom metric names, each with two dimensions and 50 values per dimension. The full list of built-in metrics and limits is on [Client Metrics](/learn/client-metrics).
+
+### Sessions: one visit
+
+A session is one visit in one browser tab. It continues across page loads and ends after 15 minutes without activity or after 60 minutes. Every session is reported, whether or not anything went wrong.
+
+A session carries attributes: the browser, the URL, the language, the screen size, and anything your app adds, such as the user id. The **Sessions** page lists every session and lets you search by attribute.
+
+A session is also what ties the other kinds of data together. Its page shows the exceptions that happened during the visit, the logs and events that were uploaded, and the replay if one was recorded. See [Sessions & Replay](/learn/sessions).
+
+### Exceptions: something broke
+
+An exception is a single failure with a stack trace. Traceway groups identical exceptions into one [issue](/learn/issues), so a bug that hits a thousand users is one row with a count of a thousand.
+
+- Uncaught errors and unhandled promise rejections are reported automatically. The React and Vue packages also report errors thrown while rendering.
+- Call `captureException(error)` where your code catches the error itself, such as inside a `try`/`catch`.
+- Every exception arrives with up to 10 minutes of the logs and events before it and a 30 second replay clip.
+- Network failures, timeouts and 4xx responses are ignored by default, because they are usually expected. Set `captureHttpServerErrors: true` to report 5xx responses.
+
+`captureMessage("...")` creates an issue from a text instead of an error. Use it for a failure that does not throw but that someone should look at. Do not use it for ordinary events: every message becomes a row in the Issues list.
+
+### Logs and events: what happened, in order
+
+Logs and events are the steps of a visit:
+
+- **Console output**: what your app writes to the console at info level and above. `console.debug` lines are left out by default.
+- **Clicks and page changes**: recorded automatically.
+- **Requests**: every `fetch` and XHR call with its duration and status. Each one links to the trace of the backend work it caused.
+- **Your own events**: `track("checkout_failed", { step: "payment" })` marks a moment that matters in your app.
+
+The browser keeps the last 10 minutes or 2 MB of them, whichever is reached first, and drops the oldest when it is full. This store is called the ring buffer. Nothing in it is uploaded while a visit is going well. An error, a [trigger](/learn/remote-config/trigger-sequences) or a [capture](/learn/remote-config#captures) uploads what it holds.
+
+So logs and events are context around a problem. They are not a record of everything every user did. Once uploaded, they appear on the session page, on the issue page, and on the **Logs** page.
+
+### Replay: what the user saw
+
+Replay is a recording of the page itself, rebuilt in the dashboard so you can watch the visit. It follows the same rule as logs and events: it stays in the browser, and a 30 second clip is uploaded with each error. Text typed into form fields is hidden by default. See [Session Replay](/client/js-sdk/session-replay).
+
+## Which one to use
+
+| You want to | Use | Why |
+|---|---|---|
+| Know how long something takes across all users | `metric("name", ms)` | Counts every visit, cheap to store, works with alerts and SLOs |
+| Count how often something happens | `count("name")` | Same as above. A log line would only be counted on visits that had a problem |
+| Report a failure your code caught | `captureException(error)` | Becomes an issue with a stack trace and the history before it |
+| Report a failure that does not throw | `captureMessage("...")`, sparingly | Becomes an issue someone will see |
+| Mark a business moment: a failed payment, a completed signup | `track("event_name", { ... })` | Shows on the session timeline, and a trigger can react to it |
+| Leave detail for debugging | `console.info` / `console.warn` / `console.error` | Free while the visit is healthy, there when an error happens |
+| Know who a visit belonged to | `setAttribute("user.id", id)` | Stored on the session and on every exception |
+| Split metrics by plan or tenant tier | `setMetricDimension("plan", "pro")` | A small, fixed set of values. Never an id |
+| Follow one action across several requests | `startInteraction("checkout")` | Groups the requests into one trace. See [Distributed Tracing](/client/js-sdk/distributed-tracing) |
+
+## Set up the app
+
+### 1. Initialize once, early, with a release
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init("your-token@https://traceway.example.com/api/report", {
+  version: "2.4.0",
+  environment: "production",
+});
+```
+
+Call `init()` before the rest of the app starts, so early errors and the page load are measured. Always set `version` to your release. Without it you cannot compare releases, get a release regression alert, or set a target per release. All options are on [Initialization](/client/js-sdk/initialization).
+
+### 2. Upload source maps on every build
+
+A production stack trace points into a minified bundle. Upload the source maps from CI and every error points to your original file and line instead. See [Source Map Upload](/client/js-sdk/sourcemap-upload).
+
+### 3. Name your routes
+
+Metrics are grouped by page. The SDK replaces id-like parts of a URL on its own (`/orders/8841` becomes `/orders/:id`), but your router knows the real names. Use `useTracewayRoute` in React, `trackRouter` in Vue, `trackRoute` in Svelte, or call `setRoute("/orders/:id")` yourself.
+
+### 4. Identify the user after sign-in
+
+Set `user.id` once you know who is signed in, and remove it on sign-out. The next section shows how, and how to find that user's sessions afterwards.
+
+### 5. Name the moments that matter
+
+Add a `track()` call for the important steps of your product, especially the ones that can fail without an error: a declined payment, a search with no results, a form the user gave up on. Named events make a session readable, and they let a [recording trigger](/learn/remote-config/trigger-sequences) upload the history when one happens.
+
+### 6. Measure what matters to your product
+
+The built-in metrics tell you whether pages are fast. They do not know that checkout has four steps or that search should answer within a second. Add a `metric()` for the few timings you would put on a dashboard, and a `count()` for the outcomes you want to watch.
+
+### 7. Connect the browser to the backend
+
+Requests to your own origin carry the W3C `traceparent` header automatically, so the browser request and the backend work appear as one trace. If your API is on another origin, list it in `propagateTraceHeaderCorsUrls` and allow the `traceparent` header in the API's CORS settings. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
+
+### 8. Decide what must never be collected
+
+The `capture*` options of `init()` are hard limits. What you switch off in code cannot be switched on from the dashboard.
+
+```javascript
+init("your-token@https://traceway.example.com/api/report", {
+  captureLogs: false,       // console output never leaves the page
+  sessionRecording: false,  // replay never runs
+});
+```
+
+Use them for data your app must not collect. For everything else, leave the defaults and adjust from the **Data Collection** page.
+
+### 9. Keep environments apart
+
+Use a separate project for development and staging, so test traffic does not change your production numbers and alerts.
+
+## Identify users and find their sessions
+
+Set the user id as an attribute after sign-in:
+
+```javascript
+import { setAttribute, removeAttribute, refreshConfig } from "@tracewayapp/frontend";
+
+// After sign-in
+setAttribute("user.id", user.id);
+await refreshConfig(); // optional: fetch the collection settings for this user now
+
+// After sign-out
+removeAttribute("user.id");
+```
+
+- **Use the key `user.id`.** It is the name the capture dialog and the collection rules look for.
+- **Use a stable internal id**, not a name or an email address. The value is stored with every session and exception.
+- **Values are strings.** Convert a numeric id with `String(id)`.
+- The attribute is added to the open session at once, and to every session and exception after it.
+
+Other attributes work the same way. `setAttributes({ "tenant.id": "acme", plan: "pro" })` sets several, and `clearAttributes()` removes everything your app added. The React, Vue and Svelte packages have helpers that follow your app's state: see [React](/client/react/provider), [Vue](/client/vue/plugin) and [Svelte](/client/svelte/context).
+
+### Find a user's sessions
+
+1. Open **Sessions**.
+2. Paste the user id into the search box. Search matches the session id, the IP address and any attribute value.
+3. For an exact match, click **Add filter**, enter the key `user.id`, choose **Equals** and enter the id. You can also click the attribute on any session row to filter by it.
+
+Filters can be **Equals**, **Not equals**, **Contains** or **Not contains**, and several filters combine with AND. They are stored in the URL, so you can share the filtered list.
+
+The same attribute is shown on every exception, so an issue page tells you which users hit the error.
+
+### User ids do not belong in metrics
+
+Metrics carry no identity, on purpose. A user id as a metric dimension would create one series per user, hit the limit of 50 values, and be stored as `other`. To split a metric by a group of users, use a small set of values:
+
+```javascript
+import { setMetricDimension } from "@tracewayapp/frontend";
+
+setMetricDimension("plan", "pro");
+```
+
+## Get more data when you need it
+
+The defaults collect little from a visit with no problems. When you need more, pick the smallest step that answers your question.
+
+| Situation | What to do |
+|---|---|
+| An error happened | Nothing. The error already has up to 10 minutes of history and a replay clip |
+| A failure that does not throw an error | Add a `track()` call for it, then create a trigger from the **Custom event** template. The browser uploads what led up to the event |
+| One customer reports a problem | Start a **capture** for that user |
+| A release, a tenant or a share of users needs watching | Create a rule on the **Data Collection** page that sends console output and requests right away, or records full replay, for that group only |
+| You want a small sample of visits with no problems | Set `baselineSampleRate: 0.01` in `init()`, or click **Use 1% baseline** in the rule editor |
+| A chart shows slow values | Click **Slow sessions** on the chart to open the visits behind them |
+| You need a number you do not have | Add a `metric()` or `count()`. Data already stored cannot be split by a dimension that was not recorded |
+| Too much is being collected | Create a rule that keeps a kind of data in the browser or switches it off. A rule can also stop all collection for a broken release |
+
+### Capture one user
+
+1. Make sure the app sets `user.id` (see above).
+2. Open the **Data Collection** page and click **New Capture**. Choose **User (user.id)** and enter the id. You can also click **Capture this device** on a session page, or **Capture** on an issue.
+3. Choose how long to capture, how far back to upload, and whether to include replay.
+
+The browser picks the capture up the next time it checks in, which is every five minutes by default. It then uploads what it has kept and sends everything until the capture ends. A capture can run for up to 24 hours, and a project can have 20 active captures.
+
+### What the dashboard cannot do
+
+- It cannot turn on what `init()` switched off.
+- It cannot bring back what the browser no longer holds. The history covers the last 10 minutes, and the replay buffer does not survive a full page load.
+- It cannot raise the upload limit of a session: 50 MiB or 10,000 events, whichever is reached first.
+
+Rules, triggers and captures are explained on [Remote SDK Config](/learn/remote-config), with a step by step guide on [Set up remote config](/learn/remote-config/setup).
+
+## Common mistakes
+
+- **A user id, an email or an order id as a metric dimension.** Put it on the session with `setAttribute` instead.
+- **`captureMessage` for ordinary events.** It fills the Issues list. Use `track()`.
+- **Counting with log lines.** Logs from visits with no problems never reach the server, so the count is too low. Use `count()`.
+- **Your own `window` error listener that calls `captureException`.** The SDK already listens, so every error would be reported twice.
+- **No `version`.** Release comparisons, regression alerts and per-release targets all need it.
+- **Secrets or personal data in console output, attributes or event names.** They are uploaded with the next error. Keep them out, or set `captureLogs: false`.
+- **Turning on full recording for everyone to debug one user.** Start a capture for that user instead.
+
+## Related pages
+
+- [Real User Monitoring](/learn/rum): what RUM is and how it works
+- [Client Metrics](/learn/client-metrics): metric names, dimensions and limits
+- [Sessions & Replay](/learn/sessions): the session page, attributes and filters
+- [Remote SDK Config](/learn/remote-config): rules, triggers and captures
+- [JS SDK reference](/client/js-sdk): installation and every option

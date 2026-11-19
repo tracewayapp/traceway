@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tracewayapp/traceway/backend/app/models"
-	"github.com/tracewayapp/traceway/backend/app/netguard"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/netguard"
 )
 
 // maxProbeBodyBytes caps how much of the response body is read for
@@ -63,6 +63,7 @@ func probeHttp(ctx context.Context, check *models.SyntheticCheck) Outcome {
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", "Traceway-Synthetics/1.0")
 	}
+	req.Header.Set("X-Traceway-Synthetics", "1")
 
 	transport := &http.Transport{
 		TLSClientConfig:   &tls.Config{InsecureSkipVerify: cfg.SkipTlsVerify},

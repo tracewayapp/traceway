@@ -2,23 +2,25 @@
 	import { onMount } from 'svelte';
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import type { LoadEmbedWidget } from '$lib/utils/dashboard-embed';
 	import type { DashboardWidget, MetricQueryResponse } from '$lib/types/dashboard';
 
 	type EmbedDashboard = {
 		name: string;
 		from: string;
 		to: string;
-		expiresAt: string;
+		expiresInSeconds: number;
 		widgets: DashboardWidget[];
 	};
 
-	let dashboard = $state<EmbedDashboard | null>(null);
+	// The dashboard and the reader holding its token change together, so a renewed
+	// link replaces what is on screen in one step instead of blanking the frame.
+	let view = $state.raw<{ dashboard: EmbedDashboard; load: LoadEmbedWidget } | null>(null);
 	let error = $state('');
 	let href = $state('');
 	onMount(() => {
 		href = window.location.href;
 	});
-	let loadEmbedWidget = $state<(id: string | number) => Promise<MetricQueryResponse>>();
 
 	$effect(() => {
 		// Assigning a renewed iframe src can be a same-document fragment navigation.
@@ -26,15 +28,20 @@
 		const url = new URL(href);
 		const uuid = url.searchParams.get('dashboard');
 		const token = new URLSearchParams(url.hash.slice(1)).get('token');
-		dashboard = null;
 		error = '';
 		if (!uuid || !token) {
+			view = null;
 			error = 'This dashboard link is incomplete.';
 			return;
 		}
 		const endpoint = `/api/embedded-dashboards/${encodeURIComponent(uuid)}`;
 		const controller = new AbortController();
 		let timer: ReturnType<typeof setTimeout>;
+		function fail(message: string) {
+			if (controller.signal.aborted) return;
+			view = null;
+			error = message;
+		}
 		async function read<T>(path: string): Promise<T> {
 			const response = await fetch(endpoint + path, {
 				headers: { Authorization: `Bearer ${token}` },
@@ -43,27 +50,31 @@
 				signal: controller.signal
 			});
 			if (!response.ok) {
-				if (response.status === 401 && !controller.signal.aborted)
-					error = 'This dashboard link is invalid or has expired.';
-				throw new Error('Could not load the shared dashboard.');
+				if (response.status === 401) fail('This dashboard link is invalid or has expired.');
+				throw Object.assign(new Error('Could not load the shared dashboard.'), {
+					status: response.status
+				});
 			}
 			return response.json();
 		}
-		loadEmbedWidget = (id) => read<MetricQueryResponse>(`/widgets/${encodeURIComponent(id)}`);
+		const load: LoadEmbedWidget = (id) =>
+			read<MetricQueryResponse>(`/widgets/${encodeURIComponent(id)}`);
 		read<EmbedDashboard>('')
-			.then((result) => {
+			.then((dashboard) => {
 				if (controller.signal.aborted) return;
-				dashboard = result;
+				view = { dashboard, load };
 				timer = setTimeout(
-					() => {
-						dashboard = null;
-						error = 'This dashboard link has expired.';
-					},
-					Math.max(0, Date.parse(result.expiresAt) - Date.now())
+					() => fail('This dashboard link has expired.'),
+					dashboard.expiresInSeconds * 1000
 				);
 			})
-			.catch(() => {
-				if (!error && !controller.signal.aborted) error = 'Could not load the shared dashboard.';
+			.catch((e: { status?: number }) => {
+				if (e.status === 401) return;
+				fail(
+					e.status === 404
+						? 'This dashboard is no longer shared.'
+						: 'Could not load the shared dashboard.'
+				);
 			});
 		return () => {
 			controller.abort();
@@ -74,12 +85,13 @@
 
 <svelte:window onhashchange={() => (href = window.location.href)} />
 
-<svelte:head><title>{dashboard?.name ?? 'Shared Dashboard'} · Traceway</title></svelte:head>
+<svelte:head><title>{view?.dashboard.name ?? 'Shared Dashboard'} · Traceway</title></svelte:head>
 
 <div class="min-h-full bg-background p-4 text-foreground">
 	{#if error}
 		<p role="alert" class="text-sm text-muted-foreground">{error}</p>
-	{:else if dashboard && loadEmbedWidget}
+	{:else if view}
+		{@const dashboard = view.dashboard}
 		<header class="mb-4">
 			<h1 class="text-xl font-semibold">{dashboard.name}</h1>
 			<p class="text-sm text-muted-foreground">
@@ -92,7 +104,7 @@
 				fromDateUTC={dashboard.from}
 				toDateUTC={dashboard.to}
 				timeDomain={[new Date(dashboard.from), new Date(dashboard.to)]}
-				{loadEmbedWidget}
+				loadEmbedWidget={view.load}
 			/>
 		{:else}
 			<p class="text-sm text-muted-foreground">This dashboard has no widgets.</p>

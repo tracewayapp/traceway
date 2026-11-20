@@ -39,6 +39,8 @@ Every write a write credential makes in the organization is recorded in its agen
 
 Other routes remain restricted, including creating monitors, status pages and public incident updates, member and invitation mutations, tokens, other project settings and targeted SDK captures. A new route is never reachable by an agent until it is added to the agent allowlist on purpose.
 
+One allowlisted write has no CLI command or MCP tool: issuing a [shared dashboard link](/learn/dashboards#share-and-embed-a-dashboard). A host application calls it with a write token to embed a dashboard for its own users, and every link it issues appears in the agent activity log like any other agent write.
+
 Organization teams, schedules and escalation policies require an owner or admin. Any organization member can create a schedule override; its creator, covering responder or an admin can delete it. Contact methods and personal notification chains are always scoped to the authenticated person. Organization and personal writes still need a selected project for the Agent Access check and audit attribution; an organization path must match that project's organization. Organization member discovery is admin-only.
 
 See [Alerts](/learn/alerts#configure-alerting-with-the-cli-or-mcp) for channel and rule examples, and [On-Call](/learn/on-call#configure-on-call-with-the-cli-or-mcp) for routing and personal delivery. Channel/contact tests send real notifications, and escalation-channel tests open real pages. Configuration validation does not test delivery.

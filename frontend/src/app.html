@@ -9,8 +9,15 @@
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<script>
 			// Default to dark; honor stored preference if the user has set one.
+			// An embedded dashboard takes ?theme= from the page that frames it.
 			try {
-				var stored = localStorage.getItem('traceway_theme');
+				var stored =
+					location.pathname === '/embed/dashboard'
+						? new URLSearchParams(location.search).get('theme')
+						: null;
+				if (stored !== 'light' && stored !== 'dark') {
+					stored = localStorage.getItem('traceway_theme');
+				}
 				if (stored === 'light') {
 					document.documentElement.classList.remove('dark');
 					document.documentElement.style.colorScheme = 'light';

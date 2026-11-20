@@ -19,26 +19,37 @@ Each tab on the Dashboards page is one dashboard applied to the current project.
 - **Rename Dashboard**: names are unique within the organization
 - **Edit as JSON**: edit the whole dashboard as one document
 - **Export JSON**: download the dashboard for versioning or sharing
-- **Share Dashboard** opens a read-only link for the current project and selected time range.
+- **Share Dashboard**: copy a read-only link to this dashboard for the current project, time range and filters
 - **Apply to Projects**: choose which projects show this dashboard
 - **Remove from this Project**: unassign it here; it stays available everywhere else
 - **Delete Dashboard**: remove it from every project, permanently
 
-## Embed KPIs in your application
+## Share and embed a dashboard
 
-To share a dashboard once, select the project, time range and filters you want the viewer to see. Open the active dashboard tab’s menu, choose **Share Dashboard**, then **Copy link**. You need write access to the project. Anyone with the full link can view the configured widgets for five minutes without signing in to Traceway.
+A shared dashboard is a read-only page at `/embed/dashboard` that opens without a Traceway account, directly or inside an iframe. It shows the dashboard's name, the time range and its widgets. The project, time range and filters are signed into the link, so a viewer cannot change them, and every link stops working five minutes after it was issued.
+
+### Share a link
+
+Select the project, time range and filters you want the viewer to see. Open the active dashboard tab's menu, choose **Share Dashboard**, then **Copy Link**. You need write access to the project. Anyone with the full link can view the dashboard for five minutes; once it has expired, **New Link** in the same dialog issues another.
 
 ### Issue a link from your backend
 
-For a customer admin panel, issue a fresh link after your application authorizes the viewer. The share dialog shows the exact endpoint for the current dashboard and project.
+To show KPIs inside your own application, such as a customer admin panel, issue a fresh link each time your application has authorized a viewer. The share dialog shows the exact endpoint for the current dashboard and project.
 
 ```http
 POST /api/dashboards/{dashboardId}/embed-token?projectId={projectId}
 ```
 
-Use the dashboard’s **numeric ID** and the project’s **UUID**. The dashboard must already be applied to that project. Create a **Read and write** personal access token in **Account → Personal Access Tokens** and keep it on your backend. Its owner needs effective write access to the project, and an organization owner or admin must enable **Settings → Agent Access → Allow agent writes**. [Agent write access](/learn/agent-write-access)
+Use the dashboard's **numeric ID** and the project's **UUID**. The dashboard must already be applied to that project. Create a **Read and write** personal access token in **Account > Personal Access Tokens** and keep it on your backend. Its owner needs write access to the project, and an organization owner or admin must switch on **Allow agent writes** in **Settings > Agent Access**. Write tokens expire within 90 days, so plan to rotate it, and every link issued with one is recorded in the organization's agent activity log. See [Agent write access](/learn/agent-write-access).
 
-Each KPI in this example carries an `account_id` tag. The backend chooses the dashboard and project from its configuration and the account from the authorized viewer’s session. This keeps a customer from selecting another account through a browser parameter.
+The JSON body is optional and takes these fields.
+
+| Field | Meaning |
+| --- | --- |
+| `from`, `to` | RFC 3339 timestamps of the window to show. Send both, or neither for the 24 hours ending at issuance. The window stays fixed for the life of the link. |
+| `tagFilters` | Tag values every widget is limited to, such as `{"account_id": "acme"}`. At most 20, each with a non-empty tag and value. They apply to every widget source and win over a filter the dashboard saved on the same tag. |
+
+Each KPI in this example carries an `account_id` tag. The backend takes the dashboard and project from its configuration and the account from the authorized viewer's session. This keeps a customer from selecting another account through a browser parameter.
 
 ```js
 // Inside your application's authenticated account-KPIs route.
@@ -54,38 +65,52 @@ const response = await fetch(url, {
   body: JSON.stringify({ tagFilters: { account_id: String(viewer.accountId) } })
 });
 if (!response.ok) throw new Error(`Traceway returned ${response.status}`);
-const { embedPath, expiresAt } = await response.json();
+const { embedPath, expiresInSeconds } = await response.json();
 return Response.json(
-  { src: new URL(embedPath, tracewayOrigin).href, expiresAt },
+  { src: new URL(embedPath, tracewayOrigin).href, expiresInSeconds },
   { headers: { 'Cache-Control': 'no-store' } }
 );
 ```
-
-Omit `from` and `to` for the 24 hours ending at issuance, or send both as RFC 3339 timestamps. The selected window stays fixed for the life of the link. The signed `tagFilters` apply to every widget source and take precedence when a saved source filters on the same tag.
 
 A successful request returns **201 Created** with these fields.
 
 | Field | Meaning |
 | --- | --- |
-| `dashboardUuid` | Stable identifier for this dashboard in this project. Applying the dashboard to a second project gives it a different embed UUID there. |
-| `token` | Five-minute signed JWT granting read access to this dashboard view. |
-| `embedPath` | Ready-to-use path in the form `/embed/dashboard?dashboard=<uuid>#token=<jwt>`. Resolve it against the Traceway origin that the viewer’s browser can reach. |
-| `expiresAt` | Timestamp when the link expires. |
+| `embedPath` | Ready-to-use path in the form `/embed/dashboard?dashboard=<uuid>#token=<jwt>`. Resolve it against the Traceway origin that the viewer's browser can reach. |
+| `expiresInSeconds` | How long the link still works. Use it to schedule the renewal, since it does not depend on your clock matching Traceway's. |
+| `expiresAt` | The same moment as a UTC timestamp. |
+| `token` | The five-minute signed JWT that grants read access to this view. It is already part of `embedPath`. |
+| `dashboardUuid` | Stable identifier of this dashboard in this project, also already part of `embedPath`. The same dashboard applied to a second project has a different one there. |
 
 ### Display and renew the iframe
 
-Add an iframe such as `<iframe id="account-kpis" title="Account KPIs"></iframe>` to your admin panel. If your backend serves the example above at `/account/kpis/embed`, the browser can set its source when the panel opens.
+Add an iframe such as `<iframe id="account-kpis" title="Account KPIs"></iframe>` to your admin panel. If your backend serves the example above at `/account/kpis/embed`, the browser sets the source when the panel opens and again shortly before each link expires.
 
 ```js
-const response = await fetch('/account/kpis/embed');
-if (!response.ok) throw new Error('Could not load account KPIs');
-const { src } = await response.json();
-document.querySelector('#account-kpis').src = src;
+async function showAccountKpis() {
+  const response = await fetch('/account/kpis/embed');
+  if (!response.ok) throw new Error('Could not load account KPIs');
+  const { src, expiresInSeconds } = await response.json();
+  document.querySelector('#account-kpis').src = src;
+  setTimeout(showAccountKpis, (expiresInSeconds - 30) * 1000);
+}
+showAccountKpis();
 ```
 
-For a long-running panel, repeat the authorized request before `expiresAt` and assign the fresh URL to the same iframe. Traceway reads the JWT from the URL fragment and validates it with each request for the dashboard or its widgets. Neither backend needs to store an embed session.
+A renewed link for the same dashboard replaces what is on screen without a blank frame, and the charts move to the new link's time range. The dashboard is dark unless the URL says otherwise: for a light page, call `searchParams.set('theme', 'light')` on the URL your backend builds from `embedPath`.
 
-If issuance returns **403**, check the token’s write scope, the organization’s **Allow agent writes** switch and the token owner’s project role. A **404** can mean the dashboard is no longer applied to the selected project. Removing that assignment stops further reads through existing links. If the iframe reports an invalid or expired link, request a fresh one for the authorized viewer.
+Traceway reads the JWT from the URL fragment, which browsers do not send to servers or include in the `Referer` header, and validates it on every request for the dashboard or its widgets. Neither backend stores an embed session. A link cannot be revoked on its own before it expires; removing the dashboard from the project stops every link for that project at once.
+
+### When something goes wrong
+
+| Symptom | Cause |
+| --- | --- |
+| Issuance returns **403** | The token is read-only, **Allow agent writes** is off for the organization, or the token's owner cannot write to the project. |
+| Issuance returns **404** | The dashboard is not applied to the project in `projectId`. |
+| Issuance returns **422** | Only one of `from` and `to` was sent, the range is reversed or longer than 731 days, or a tag filter is empty. The message names the problem. |
+| The iframe says the link is invalid or has expired | Request a fresh link for the authorized viewer. |
+| The iframe says the dashboard is no longer shared | The dashboard was removed from the project or deleted. |
+| The frame stays empty | The `src` must be the `/embed/dashboard` URL built from `embedPath`. The rest of the Traceway dashboard refuses to load inside an iframe. |
 
 ## Adding dashboards: the command palette
 
@@ -172,7 +197,7 @@ Widget `id`s are server-generated stable strings; keep them when editing so home
 
 ## Applying across projects
 
-**Apply to Projects** controls exactly which projects show a dashboard. Because the definition is shared, a fix made in one project is instantly live in all of them. Unchecking a project removes its tab and stops reads through its embed links.
+**Apply to Projects** controls exactly which projects show a dashboard. Because the definition is shared, a fix made in one project is instantly live in all of them. Unchecking a project removes its tab there and stops every shared link issued for that project.
 
 <img src="/dashboards/dashboards-apply.png" alt="Apply to Projects" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 

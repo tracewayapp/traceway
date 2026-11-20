@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -19,13 +20,38 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/v2/app/services"
 	dashboardsvc "github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
+	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
+
+func validateEmbedView(view *services.DashboardEmbedView) string {
+	if view.From.IsZero() != view.To.IsZero() {
+		return "Send both from and to, or neither for the last 24 hours"
+	}
+	if view.From.IsZero() {
+		view.To = time.Now().UTC()
+		view.From = view.To.Add(-24 * time.Hour)
+	}
+	if msg := validateMetricRange(view.From, view.To); msg != "" {
+		return msg
+	}
+	if len(view.TagFilters) > metricQueryMaxTagFilters {
+		return fmt.Sprintf("a maximum of %d tag filters can be applied", metricQueryMaxTagFilters)
+	}
+	// An empty value is an account the host failed to resolve, and ClickHouse would
+	// match it against every row that lacks the tag.
+	for key, value := range view.TagFilters {
+		if key == "" || value == "" {
+			return "tag filters need a non-empty tag and value"
+		}
+	}
+	return ""
+}
 
 func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 	ctx.Header("Cache-Control", "no-store")
 	projectId, err := middleware.GetProjectId(ctx)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
 		return
 	}
 	id, err := strconv.Atoi(ctx.Param("id"))
@@ -46,17 +72,13 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		middleware.RejectBindError(ctx, err, "Expected a single embed options object")
 		return
 	}
-	if view.To.IsZero() && view.From.IsZero() {
-		view.To = time.Now().UTC()
-		view.From = view.To.Add(-24 * time.Hour)
-	}
-	if view.From.IsZero() || view.To.IsZero() || validateMetricRange(view.From, view.To) != "" || len(view.TagFilters) > metricQueryMaxTagFilters {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Invalid embed time range or tag filters"})
+	if msg := validateEmbedView(&view); msg != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": msg})
 		return
 	}
 	dashboard, err := transactional.DashboardRepository.FindAppliedDashboard(db.GetTx(ctx), projectId, id)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load dashboard %d for embedding: %w", id, err))
 		return
 	}
 	if dashboard == nil {
@@ -65,15 +87,22 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 	}
 	claims, token, err := services.GenerateDashboardEmbed(id, projectId, view)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to sign the embed token of dashboard %d: %w", id, err))
 		return
 	}
 	ctx.JSON(http.StatusCreated, gin.H{
-		"dashboardUuid": claims.Subject,
-		"token":         token,
-		"expiresAt":     claims.ExpiresAt.Time,
-		"embedPath":     "/embed/dashboard?dashboard=" + claims.Subject + "#token=" + token,
+		"dashboardUuid":    claims.Subject,
+		"token":            token,
+		"expiresAt":        claims.ExpiresAt.Time.UTC(),
+		"expiresInSeconds": embedSecondsLeft(claims),
+		"embedPath":        "/embed/dashboard?dashboard=" + claims.Subject + "#token=" + token,
 	})
+}
+
+// The viewer's clock decides nothing: a browser that runs minutes ahead would
+// otherwise treat a fresh link as expired.
+func embedSecondsLeft(claims *services.DashboardEmbedClaims) int {
+	return max(0, int(time.Until(claims.ExpiresAt.Time).Seconds()))
 }
 
 func loadEmbeddedDashboard(ctx *gin.Context) (*services.DashboardEmbedClaims, *models.Dashboard, *models.DashboardDefinition) {
@@ -88,7 +117,7 @@ func loadEmbeddedDashboard(ctx *gin.Context) (*services.DashboardEmbedClaims, *m
 		return transactional.DashboardRepository.FindAppliedDashboard(tx, claims.ProjectId, claims.DashboardId)
 	})
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to load embedded dashboard %d: %w", claims.DashboardId, err))
 		return nil, nil, nil
 	}
 	if dashboard == nil {
@@ -104,11 +133,12 @@ func (c *dashboardsController) GetEmbed(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, gin.H{
-		"name":      dashboard.Name,
-		"widgets":   def.Widgets,
-		"from":      claims.From,
-		"to":        claims.To,
-		"expiresAt": claims.ExpiresAt.Time,
+		"name":             dashboard.Name,
+		"widgets":          def.Widgets,
+		"from":             claims.From,
+		"to":               claims.To,
+		"expiresAt":        claims.ExpiresAt.Time.UTC(),
+		"expiresInSeconds": embedSecondsLeft(claims),
 	})
 }
 

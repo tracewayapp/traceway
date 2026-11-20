@@ -53,16 +53,20 @@ Editing dashboards and widgets needs an organization role above `readonly`. Star
 
 ## Sharing and embedding a dashboard
 
-For a one-off link, select the project, time range and filters, open the active dashboard tab’s menu, then choose **Share Dashboard → Copy link**. This requires effective write access to the project. Anyone with the full link can view the saved widgets for five minutes without a Traceway account.
+A shared dashboard is a read-only page at `/embed/dashboard` that needs no Traceway account and may be framed. The project, time range and filters are signed into the link, so the viewer cannot change them, and every link stops working five minutes after it was issued.
+
+For a one-off link, select the project, time range and filters, open the active dashboard tab's menu, then choose **Share Dashboard > Copy Link**. This requires effective write access to the project. Once the link has expired, **New Link** in the same dialog issues another.
 
 To embed KPIs in a customer admin panel, use the following flow.
 
-1. After authorizing the viewer, the host backend calls `POST /api/dashboards/{numericDashboardId}/embed-token?projectId={projectUuid}`. The share dialog shows the endpoint. The dashboard must be applied to that project. Use a server-side **Read and write** personal access token whose owner can write to the project, with **Settings → Agent Access → Allow agent writes** enabled.
-2. Choose the dashboard, project and filters on the server. For account-specific KPIs tagged with `account_id`, send a body such as `{"tagFilters":{"account_id":"acme"}}` using the signed-in viewer’s authorized account. These filters apply to every widget source and override a saved filter on the same key. An empty object uses the last 24 hours. To fix another range, send both `from` and `to` as RFC 3339 timestamps.
-3. The **201** response contains `dashboardUuid` (stable per dashboard and project), `token` (the signed JWT), `embedPath` and `expiresAt`. Resolve `embedPath` against the browser-facing Traceway origin and send that URL and expiry to the client with `Cache-Control: no-store`. Set the iframe’s `src` to the complete URL, including its `#token=` fragment. Keep the personal access token on the backend.
-4. To keep the panel visible, authorize the viewer again and replace the iframe URL before `expiresAt`. Traceway verifies the JWT on each read without storing an embed session. Removing the dashboard from the project stops further reads. An expired link requires a fresh JWT.
+1. After authorizing the viewer, the host backend calls `POST /api/dashboards/{numericDashboardId}/embed-token?projectId={projectUuid}`. The share dialog shows the endpoint. The dashboard must be applied to that project. Use a server-side **Read and write** personal access token (`tww_`, expires within 90 days, so it needs rotating) whose owner can write to the project, with **Settings > Agent Access > Allow agent writes** enabled.
+2. Choose the dashboard, project and filters on the server. For account-specific KPIs tagged with `account_id`, send a body such as `{"tagFilters":{"account_id":"acme"}}` using the signed-in viewer's authorized account. These filters apply to every widget source and override a saved filter on the same key; at most 20, and an empty tag or value is refused. An empty body uses the last 24 hours. To fix another range, send both `from` and `to` as RFC 3339 timestamps.
+3. The **201** response contains `embedPath`, `expiresInSeconds`, `expiresAt`, `token` (the signed JWT) and `dashboardUuid` (stable per dashboard and project); the last two are already part of `embedPath`. Resolve `embedPath` against the browser-facing Traceway origin and send that URL and `expiresInSeconds` to the client with `Cache-Control: no-store`. Set the iframe's `src` to the complete URL, including its `#token=` fragment. Keep the personal access token on the backend.
+4. To keep the panel visible, authorize the viewer again and assign a fresh URL to the same iframe shortly before the link expires; the dashboard is replaced in place. Traceway verifies the JWT on each read without storing an embed session. A single link cannot be revoked; removing the dashboard from the project stops every link for that project.
 
-Use the dashboard menu for interactive sharing and the HTTP endpoint for application integration. CLI and MCP dashboard exports return the widget definition. [Dashboard integration example](https://docs.tracewayapp.com/learn/dashboards#embed-kpis-in-your-application)
+The page is dark by default; add `theme=light` to the URL's query (before the fragment) for a light host page. Issuance answers 403 for a read-only token, a switched-off **Allow agent writes** or a token owner without write access to the project, 404 when the dashboard is not applied to the project, and 422 with a message for half a range, a reversed range or an empty filter.
+
+Use the dashboard menu for interactive sharing and the HTTP endpoint for application integration; the CLI and MCP have no command for it, and their dashboard exports return the widget definition. [Dashboard integration example](https://docs.tracewayapp.com/learn/dashboards#share-and-embed-a-dashboard)
 
 ## Reading it from an agent
 

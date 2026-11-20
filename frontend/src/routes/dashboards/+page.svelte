@@ -47,6 +47,7 @@
 		Download,
 		Upload,
 		Share2,
+		Link2,
 		CircleMinus,
 		ChartNoAxesCombined,
 		Search
@@ -1252,7 +1253,7 @@
 												Export JSON
 											</DropdownMenu.Item>
 											<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
-												<Share2 class="mr-2 h-4 w-4" />
+												<Link2 class="mr-2 h-4 w-4" />
 												Share Dashboard
 											</DropdownMenu.Item>
 											<DropdownMenu.Item onclick={openApplyDialog}>
@@ -1307,7 +1308,7 @@
 								Export JSON
 							</DropdownMenu.Item>
 							<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
-								<Share2 class="mr-2 h-4 w-4" />
+								<Link2 class="mr-2 h-4 w-4" />
 								Share Dashboard
 							</DropdownMenu.Item>
 							<DropdownMenu.Item onclick={openApplyDialog}>

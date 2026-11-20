@@ -14,6 +14,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
+	"github.com/tracewayapp/traceway/backend/v2/app/services"
 )
 
 func TestEmbeddedDashboard(t *testing.T) {
@@ -38,13 +39,24 @@ func TestEmbeddedDashboard(t *testing.T) {
 	if rec := f.do(t, writer, http.MethodPost, issue+f.project.Id.String(), map[string]any{"filters": map[string]string{"account": "one"}}); rec.Code != 400 {
 		t.Fatalf("unknown filter accepted: %d", rec.Code)
 	}
+	for name, invalid := range map[string]map[string]any{
+		"half a range":       {"from": time.Now().Add(-time.Hour)},
+		"reversed range":     {"from": time.Now(), "to": time.Now().Add(-time.Hour)},
+		"empty filter value": {"tagFilters": map[string]string{"account": ""}},
+		"empty filter tag":   {"tagFilters": map[string]string{"": "one"}},
+	} {
+		if rec := f.do(t, writer, http.MethodPost, issue+f.project.Id.String(), invalid); rec.Code != 422 {
+			t.Fatalf("%s: %d %s", name, rec.Code, rec.Body)
+		}
+	}
 	rec = f.do(t, writer, http.MethodPost, issue+f.project.Id.String(), view)
 	var link struct {
-		DashboardUUID uuid.UUID
-		Token         string
-		ExpiresAt     time.Time
+		DashboardUUID    uuid.UUID
+		Token            string
+		ExpiresAt        time.Time
+		ExpiresInSeconds int
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &link); rec.Code != 201 || err != nil || link.Token == "" || link.DashboardUUID == uuid.Nil || time.Until(link.ExpiresAt) > 5*time.Minute || time.Until(link.ExpiresAt) < 4*time.Minute || rec.Header().Get("Cache-Control") != "no-store" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &link); rec.Code != 201 || err != nil || link.Token == "" || link.DashboardUUID == uuid.Nil || time.Until(link.ExpiresAt) > 5*time.Minute || time.Until(link.ExpiresAt) < 4*time.Minute || link.ExpiresInSeconds > 300 || link.ExpiresInSeconds < 240 || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("bad issuance response: %d (%v)", rec.Code, err)
 	}
 
@@ -92,5 +104,37 @@ func TestEmbeddedDashboard(t *testing.T) {
 		if rec := f.do(t, link.Token, http.MethodGet, path+suffix, nil); rec.Code != 404 {
 			t.Fatalf("unassigned dashboard: %d", rec.Code)
 		}
+	}
+}
+
+func TestEmbedWidgetQueryMatchesTheDashboardPage(t *testing.T) {
+	view := services.DashboardEmbedView{TagFilters: map[string]string{"account": "one"}}
+	for _, tc := range []struct {
+		widgetType, sources string
+		wholeRange          bool
+		aggregations        []string
+	}{
+		{"line_chart", `[{"name":"a","aggregation":"p95"},{"name":"b"}]`, false, []string{"p95", ""}},
+		{"single_value", `[{"name":"a","aggregation":"p95"}]`, true, []string{"p95"}},
+		{"gauge", `[{"name":"a","aggregation":"avg"}]`, false, []string{"avg"}},
+		{"rating_bar", `[{"name":"a","aggregation":"count","groupBy":"rating"}]`, true, []string{"count"}},
+		{"breakdown_table", `[{"name":"a","aggregation":"p75","groupBy":"url.path"},{"name":"b"}]`, true, []string{"p75", "count"}},
+		{"breakdown_table", `[{"name":"a","aggregation":"sum","groupBy":"url.path"}]`, true, []string{"sum"}},
+	} {
+		widget := models.DashboardWidget{WidgetType: tc.widgetType, Config: json.RawMessage(`{"sources":` + tc.sources + `}`)}
+		req, err := embedWidgetQuery(widget, view)
+		if err != nil || req.WholeRange != tc.wholeRange || len(req.Queries) != len(tc.aggregations) {
+			t.Fatalf("%s %s: %+v (%v)", tc.widgetType, tc.sources, req, err)
+		}
+		for i, q := range req.Queries {
+			if q.Aggregation != tc.aggregations[i] || q.TagFilters["account"] != "one" {
+				t.Fatalf("%s query %d: %+v", tc.widgetType, i, q)
+			}
+		}
+	}
+	saved := models.DashboardWidget{WidgetType: "line_chart", Config: json.RawMessage(`{"sources":[{"name":"a","tagFilters":{"account":"two","state":"paid"}}]}`)}
+	req, err := embedWidgetQuery(saved, view)
+	if err != nil || req.Queries[0].TagFilters["account"] != "one" || req.Queries[0].TagFilters["state"] != "paid" {
+		t.Fatalf("signed filter must win over a saved one: %+v (%v)", req, err)
 	}
 }

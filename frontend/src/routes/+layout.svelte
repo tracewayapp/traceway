@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '$lib/polyfills';
+	import { dashboardStorage, embedPage } from '$lib/utils/dashboard-embed';
 	import { browser } from '$app/environment';
 	import { resolve } from '$app/paths';
 	import './layout.css';
@@ -90,7 +91,7 @@
 	}
 
 	const SIDEBAR_OPEN_KEY = 'traceway_sidebar_open';
-	let sidebarOpen = $state(localStorage.getItem(SIDEBAR_OPEN_KEY) !== 'false');
+	let sidebarOpen = $state(dashboardStorage()?.getItem(SIDEBAR_OPEN_KEY) !== 'false');
 	let CrossSiteNotificationBanner = $state<Component<{ organizationId: number }> | null>(null);
 
 	const contextOrganizationId = $derived(
@@ -124,6 +125,7 @@
 	}
 
 	const PUBLIC_PATHS = new Set([
+		embedPage,
 		'/login',
 		'/register',
 		'/auth/callback',
@@ -237,6 +239,7 @@
 
 	onMount(() => {
 		document.getElementById('splash')?.remove();
+		if (page.url.pathname === embedPage) return;
 		initTheme();
 		window.captureException = captureException;
 
@@ -358,7 +361,7 @@
 	{:else if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
 		<Sidebar.SidebarProvider
 			bind:open={sidebarOpen}
-			onOpenChange={(open) => localStorage.setItem(SIDEBAR_OPEN_KEY, String(open))}
+			onOpenChange={(open) => dashboardStorage()?.setItem(SIDEBAR_OPEN_KEY, String(open))}
 		>
 			<AppSidebar />
 			<Sidebar.SidebarInset>

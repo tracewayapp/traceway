@@ -218,6 +218,10 @@ func (c *metricQueryController) Query(ctx *gin.Context) {
 		middleware.RejectBindError(ctx, err, "Invalid request body")
 		return
 	}
+	executeMetricQuery(ctx, projectId, req)
+}
+
+func executeMetricQuery(ctx *gin.Context, projectId uuid.UUID, req MetricQueryRequest) {
 	if msg := validateMetricQuery(&req); msg != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": msg})
 		return

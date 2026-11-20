@@ -641,6 +641,18 @@ func createSPAHandler(staticFS fs.FS) gin.HandlerFunc {
 			return
 		}
 
+		// An older bundled frontend has no embed route. Never fall back to the
+		// authenticated app shell on a path that permits cross-origin framing.
+		if path == "/embed/dashboard" {
+			data, err := fs.ReadFile(staticFS, "embed/dashboard.html")
+			if err != nil {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+			return
+		}
+
 		indexData, err := fs.ReadFile(staticFS, "index.html")
 		if err != nil {
 			c.JSON(404, gin.H{"error": "Not found"})

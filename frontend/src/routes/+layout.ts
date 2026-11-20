@@ -1,10 +1,11 @@
+import { embedPage } from '$lib/utils/dashboard-embed';
 import { browser } from '$app/environment';
 
 export const ssr = false;
 export const prerender = true;
 
 export const load = async ({ url }) => {
-	if (browser) {
+	if (browser && url.pathname !== embedPage) {
 		const projectId = url.searchParams.get('projectId');
 		if (projectId) {
 			const { projectsState } = await import('$lib/state/projects.svelte');

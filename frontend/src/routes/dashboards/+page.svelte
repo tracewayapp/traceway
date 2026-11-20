@@ -10,6 +10,7 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as Tabs from '$lib/components/ui/tabs';
+	import ShareDashboardDialog from '$lib/components/dashboard/share-dashboard-dialog.svelte';
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import WidgetConfigPanel from '$lib/components/dashboard/widget-config-panel.svelte';
 	import DashboardCommand from '$lib/components/dashboard/dashboard-command.svelte';
@@ -116,6 +117,7 @@
 	let jsonSaving = $state(false);
 	let jsonError = $state('');
 
+	let showShareDialog = $state(false);
 	let showApplyDialog = $state(false);
 	let applySelection = $state<Record<string, boolean>>({});
 	let applying = $state(false);
@@ -1249,6 +1251,10 @@
 												<Download class="mr-2 h-4 w-4" />
 												Export JSON
 											</DropdownMenu.Item>
+											<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
+												<Share2 class="mr-2 h-4 w-4" />
+												Share Dashboard
+											</DropdownMenu.Item>
 											<DropdownMenu.Item onclick={openApplyDialog}>
 												<Share2 class="mr-2 h-4 w-4" />
 												Apply to Projects
@@ -1299,6 +1305,10 @@
 							<DropdownMenu.Item onclick={exportDashboard}>
 								<Download class="mr-2 h-4 w-4" />
 								Export JSON
+							</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
+								<Share2 class="mr-2 h-4 w-4" />
+								Share Dashboard
 							</DropdownMenu.Item>
 							<DropdownMenu.Item onclick={openApplyDialog}>
 								<Share2 class="mr-2 h-4 w-4" />
@@ -1490,6 +1500,15 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
+
+{#if showShareDialog && projectsState.currentProjectId}
+	<ShareDashboardDialog
+		dashboardId={activeTabId}
+		projectId={projectsState.currentProjectId}
+		view={{ from: getFromDateTimeUTC(), to: getToDateTimeUTC(), tagFilters: scopeTagFilters }}
+		onClose={() => (showShareDialog = false)}
+	/>
+{/if}
 
 <AlertDialog.Root
 	bind:open={showApplyDialog}

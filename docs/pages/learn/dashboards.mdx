@@ -23,6 +23,36 @@ Each tab on the Dashboards page is one dashboard applied to the current project.
 - **Remove from this Project**: unassign it here; it stays available everywhere else
 - **Delete Dashboard**: remove it from every project, permanently
 
+## Embed KPIs in your application
+
+Choose **Share Dashboard** in the active tab’s menu to copy a five-minute view of that dashboard for the current project, time range and filters. The link opens directly or as an iframe. Viewers can inspect charts without a Traceway account.
+
+For an admin panel, mint a fresh link after your application authorizes the viewer. The share dialog shows the issuance endpoint for the selected dashboard and project. Keep a write-scoped Traceway personal access token on your backend and enable **Settings → Agent Access** for the organization. The token owner needs write access to the project.
+
+```js
+// Runs on your server after checking the signed-in viewer's access.
+if (!viewer.accountId) throw new Error('An account is required');
+const url = new URL(`/api/dashboards/${dashboardId}/embed-token`, tracewayOrigin);
+url.searchParams.set('projectId', projectId);
+const response = await fetch(url, {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${process.env.TRACEWAY_WRITE_TOKEN}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ tagFilters: { account_id: viewer.accountId } })
+});
+if (!response.ok) throw new Error(`Traceway returned ${response.status}`);
+const { embedPath, expiresAt } = await response.json();
+return { src: new URL(embedPath, tracewayOrigin).href, expiresAt };
+```
+
+Choose the project, dashboard and any account filter on your server. In this example, each KPI carries an `account_id` tag. An empty options object shows the last 24 hours. To choose a different window, send both `from` and `to` as RFC 3339 timestamps. The signed filters apply to every widget.
+
+Set the `src` of an iframe with a descriptive title, such as `<iframe title="Account KPIs"></iframe>`, to the URL returned by your backend. Request a new URL before `expiresAt` to keep a long-running panel visible. Return the URL to authorized viewers with `Cache-Control: no-store`.
+
+Traceway returns the signed JWT in `token` and a stable `dashboardUuid` for the dashboard–project pair. The ready-to-use `embedPath` puts the JWT in the URL fragment. The iframe sends it to Traceway as a bearer credential. Anyone who receives the full link can read the configured widgets until expiry. Removing the dashboard from the project stops further reads. Traceway verifies each request without storing an embed session.
+
 ## Adding dashboards: the command palette
 
 Press <kbd>⌘K</kbd> (<kbd>Ctrl K</kbd> on Windows/Linux), or click **Add or find dashboards...** in the header. One search box covers your organization's dashboards, the built-in template marketplace, and every metric name seen across your organization's projects:

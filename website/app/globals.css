@@ -1227,7 +1227,7 @@
   }
   .blog-body strong {
     color: var(--fg-0);
-    font-weight: 600;
+    font-weight: 800;
   }
   .blog-body code {
     font-family: var(--font-mono);

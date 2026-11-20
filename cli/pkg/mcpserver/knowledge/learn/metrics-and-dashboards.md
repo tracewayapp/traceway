@@ -25,7 +25,7 @@ Distribution queries support p50/p75/p90/p95/p99 and `good_ratio`; point metrics
 
 A dashboard is a set of metric widgets that belongs to the **organization**, not to one project. It is applied to any number of projects and shows as a tab on each of them. An edit made in one project is live in all of them.
 
-The active tab's menu: **Rename Dashboard** (names are unique in the organization), **Edit as JSON**, **Export JSON**, **Apply to Projects**, **Remove from this Project** (it stays elsewhere), **Delete Dashboard** (everywhere, permanently).
+The active tab's menu: **Rename Dashboard** (names are unique in the organization), **Edit as JSON**, **Export JSON**, **Share Dashboard**, **Apply to Projects**, **Remove from this Project** (it stays elsewhere), **Delete Dashboard** (everywhere, permanently).
 
 **Adding**: ⌘K (Ctrl K) or **Add or find dashboards...** opens one search over the dashboards of every organization the user belongs to (selecting one applies it here, or copies it in from another organization), the template marketplace (selecting one installs a copy) and every metric name seen in the organization (selecting one opens the widget editor prefilled). An empty project shows **Browse Dashboards & Templates**.
 
@@ -49,6 +49,19 @@ The active tab's menu: **Rename Dashboard** (names are unique in the organizatio
 **Grafana import**: paste a Grafana export. Time series and graph panels become line charts, stat becomes single value, gauge stays a gauge, and Prometheus queries become metric sources. Anything that does not convert faithfully is listed as a warning, never silently dropped.
 
 Editing dashboards and widgets needs an organization role above `readonly`. Starring, tab order and home page layout follow the effective project role. Browser projects receive Web Performance on creation; mobile projects offer Mobile Performance on the empty dashboard page. Client dashboards filter by release, OS and country (when configured), rather than server instance. Slow sessions opens retained distribution exemplars, which may have element attribution and session links.
+
+## Sharing and embedding a dashboard
+
+For a one-off link, select the project, time range and filters, open the active dashboard tab’s menu, then choose **Share Dashboard → Copy link**. This requires effective write access to the project. Anyone with the full link can view the saved widgets for five minutes without a Traceway account.
+
+To embed KPIs in a customer admin panel, use the following flow.
+
+1. After authorizing the viewer, the host backend calls `POST /api/dashboards/{numericDashboardId}/embed-token?projectId={projectUuid}`. The share dialog shows the endpoint. The dashboard must be applied to that project. Use a server-side **Read and write** personal access token whose owner can write to the project, with **Settings → Agent Access → Allow agent writes** enabled.
+2. Choose the dashboard, project and filters on the server. For account-specific KPIs tagged with `account_id`, send a body such as `{"tagFilters":{"account_id":"acme"}}` using the signed-in viewer’s authorized account. These filters apply to every widget source and override a saved filter on the same key. An empty object uses the last 24 hours. To fix another range, send both `from` and `to` as RFC 3339 timestamps.
+3. The **201** response contains `dashboardUuid` (stable per dashboard and project), `token` (the signed JWT), `embedPath` and `expiresAt`. Resolve `embedPath` against the browser-facing Traceway origin and send that URL and expiry to the client with `Cache-Control: no-store`. Set the iframe’s `src` to the complete URL, including its `#token=` fragment. Keep the personal access token on the backend.
+4. To keep the panel visible, authorize the viewer again and replace the iframe URL before `expiresAt`. Traceway verifies the JWT on each read without storing an embed session. Removing the dashboard from the project stops further reads. An expired link requires a fresh JWT.
+
+Use the dashboard menu for interactive sharing and the HTTP endpoint for application integration. CLI and MCP dashboard exports return the widget definition. [Dashboard integration example](https://docs.tracewayapp.com/learn/dashboards#embed-kpis-in-your-application)
 
 ## Reading it from an agent
 

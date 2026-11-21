@@ -14,10 +14,7 @@
 				var stored =
 					location.pathname === '/embed/dashboard'
 						? new URLSearchParams(location.search).get('theme')
-						: null;
-				if (stored !== 'light' && stored !== 'dark') {
-					stored = localStorage.getItem('traceway_theme');
-				}
+						: localStorage.getItem('traceway_theme');
 				if (stored === 'light') {
 					document.documentElement.classList.remove('dark');
 					document.documentElement.style.colorScheme = 'light';

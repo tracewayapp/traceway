@@ -59,7 +59,7 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid dashboard id"})
 		return
 	}
-	var view services.DashboardEmbedView
+	view := new(services.DashboardEmbedView)
 	// Keep the signed view small enough to travel in a bearer header and an iframe URL.
 	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 2048)
 	decoder := json.NewDecoder(ctx.Request.Body)
@@ -72,7 +72,11 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		middleware.RejectBindError(ctx, err, "Expected a single embed options object")
 		return
 	}
-	if msg := validateEmbedView(&view); msg != "" {
+	if view == nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Expected an embed options object"})
+		return
+	}
+	if msg := validateEmbedView(view); msg != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": msg})
 		return
 	}
@@ -85,7 +89,7 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Dashboard is not applied to this project"})
 		return
 	}
-	claims, token, err := services.GenerateDashboardEmbed(id, projectId, view)
+	claims, token, err := services.GenerateDashboardEmbed(id, projectId, *view)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to sign the embed token of dashboard %d: %w", id, err))
 		return

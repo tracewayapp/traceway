@@ -36,7 +36,7 @@
 		}
 		const endpoint = `/api/embedded-dashboards/${encodeURIComponent(uuid)}`;
 		const controller = new AbortController();
-		let timer: ReturnType<typeof setTimeout>;
+
 		function fail(message: string) {
 			if (controller.signal.aborted) return;
 			view = null;
@@ -62,11 +62,8 @@
 		read<EmbedDashboard>('')
 			.then((dashboard) => {
 				if (controller.signal.aborted) return;
+				error = '';
 				view = { dashboard, load };
-				timer = setTimeout(
-					() => fail('This dashboard link has expired.'),
-					dashboard.expiresInSeconds * 1000
-				);
 			})
 			.catch((e: { status?: number }) => {
 				if (e.status === 401) return;
@@ -76,10 +73,16 @@
 						: 'Could not load the shared dashboard.'
 				);
 			});
-		return () => {
-			controller.abort();
-			clearTimeout(timer);
-		};
+		return () => controller.abort();
+	});
+	// Keep the displayed view's deadline even while its replacement is loading.
+	$effect(() => {
+		if (!view) return;
+		const timer = setTimeout(() => {
+			view = null;
+			error = 'This dashboard link has expired.';
+		}, view.dashboard.expiresInSeconds * 1000);
+		return () => clearTimeout(timer);
 	});
 </script>
 
@@ -99,13 +102,15 @@
 			</p>
 		</header>
 		{#if dashboard.widgets?.length}
-			<WidgetGrid
-				widgets={dashboard.widgets.map((widget, position) => ({ ...widget, position }))}
-				fromDateUTC={dashboard.from}
-				toDateUTC={dashboard.to}
-				timeDomain={[new Date(dashboard.from), new Date(dashboard.to)]}
-				loadEmbedWidget={view.load}
-			/>
+			{#key view}
+				<WidgetGrid
+					widgets={dashboard.widgets.map((widget, position) => ({ ...widget, position }))}
+					fromDateUTC={dashboard.from}
+					toDateUTC={dashboard.to}
+					timeDomain={[new Date(dashboard.from), new Date(dashboard.to)]}
+					loadEmbedWidget={view.load}
+				/>
+			{/key}
 		{:else}
 			<p class="text-sm text-muted-foreground">This dashboard has no widgets.</p>
 		{/if}

@@ -39,6 +39,18 @@ func TestEmbeddedDashboard(t *testing.T) {
 	if rec := f.do(t, writer, http.MethodPost, issue+f.project.Id.String(), map[string]any{"filters": map[string]string{"account": "one"}}); rec.Code != 400 {
 		t.Fatalf("unknown filter accepted: %d", rec.Code)
 	}
+	for _, tc := range []struct {
+		body any
+		want int
+	}{
+		{nil, http.StatusCreated},
+		{map[string]any{}, http.StatusCreated},
+		{json.RawMessage("null"), http.StatusBadRequest},
+	} {
+		if got := f.do(t, writer, http.MethodPost, issue+f.project.Id.String(), tc.body).Code; got != tc.want {
+			t.Errorf("embed options %v: status %d, want %d", tc.body, got, tc.want)
+		}
+	}
 	for name, invalid := range map[string]map[string]any{
 		"half a range":       {"from": time.Now().Add(-time.Hour)},
 		"reversed range":     {"from": time.Now(), "to": time.Now().Add(-time.Hour)},

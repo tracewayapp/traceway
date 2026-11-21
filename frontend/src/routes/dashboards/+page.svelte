@@ -1252,10 +1252,12 @@
 												<Download class="mr-2 h-4 w-4" />
 												Export JSON
 											</DropdownMenu.Item>
-											<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
-												<Link2 class="mr-2 h-4 w-4" />
-												Share Dashboard
-											</DropdownMenu.Item>
+											{#if projectsState.canWriteCurrentProject}
+												<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
+													<Link2 class="mr-2 h-4 w-4" />
+													Share Dashboard
+												</DropdownMenu.Item>
+											{/if}
 											<DropdownMenu.Item onclick={openApplyDialog}>
 												<Share2 class="mr-2 h-4 w-4" />
 												Apply to Projects
@@ -1307,10 +1309,12 @@
 								<Download class="mr-2 h-4 w-4" />
 								Export JSON
 							</DropdownMenu.Item>
-							<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
-								<Link2 class="mr-2 h-4 w-4" />
-								Share Dashboard
-							</DropdownMenu.Item>
+							{#if projectsState.canWriteCurrentProject}
+								<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
+									<Link2 class="mr-2 h-4 w-4" />
+									Share Dashboard
+								</DropdownMenu.Item>
+							{/if}
 							<DropdownMenu.Item onclick={openApplyDialog}>
 								<Share2 class="mr-2 h-4 w-4" />
 								Apply to Projects
@@ -1502,7 +1506,7 @@
 	</AlertDialog.Content>
 </AlertDialog.Root>
 
-{#if showShareDialog && projectsState.currentProjectId}
+{#if showShareDialog && projectsState.currentProjectId && projectsState.canWriteCurrentProject}
 	<ShareDashboardDialog
 		dashboardId={activeTabId}
 		projectId={projectsState.currentProjectId}

@@ -25,7 +25,7 @@
 	import { Toaster, toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import { defaultAuthenticatedPath, gotoHref } from '$lib/utils/navigation';
-	import { DEFAULT_IGNORE_PATTERNS, captureException, init } from '@tracewayapp/frontend';
+	import { DEFAULT_IGNORE_PATTERNS, captureException, init, setRoute } from '@tracewayapp/frontend';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Component } from 'svelte';
 	import StatusPageView from '$lib/components/traceway/status-page-view.svelte';
@@ -58,6 +58,12 @@
 
 	$effect(() => {
 		startMonitoring(page.url);
+	});
+
+	$effect(() => {
+		// Every navigation is a view to name, also between two pages of one route, hence the URL.
+		void page.url;
+		setRoute(page.route.id);
 	});
 
 	const projectViewAvailable = $derived(

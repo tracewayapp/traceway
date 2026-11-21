@@ -28,13 +28,21 @@ func newIngestAdmission(capacity int, wait time.Duration) gin.HandlerFunc {
 	return newAdmissionGate("ingest", capacity, wait, "ingest saturated, retry later", db.RecordIngestRejected, "2")
 }
 
+const (
+	admissionWaitersPerSlot = 16
+	admissionMinWaiters     = 64
+)
+
 // Each gate reports, per export interval and under its name, the largest share
 // of its slots that was in use and the longest a request waited for one. Both
 // rise before the first rejection, which is the only thing the reject counter
 // can show.
 func newAdmissionGate(name string, capacity int, wait time.Duration, message string, onReject func(), retryAfter string) gin.HandlerFunc {
 	slots := make(chan struct{}, capacity)
-	waiters := make(chan struct{}, max(4*capacity, 16))
+	// A waiter holds a connection and a timer, no body, so the room is sized by how many
+	// requests the slots can serve inside the wait window, not by memory: at 4x capacity a
+	// burst of small requests was turned away within 400ms of a 5s window.
+	waiters := make(chan struct{}, max(admissionWaitersPerSlot*capacity, admissionMinWaiters))
 	tags := map[string]string{"gate": name}
 	admitted := func(waited time.Duration) {
 		traceway.CaptureMetricMax("traceway.admission.in_use_pcnt", 100*float64(len(slots))/float64(capacity), tags)

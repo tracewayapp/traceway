@@ -37,7 +37,7 @@ Every HTTP request a backend serves, grouped by method and route template (`GET 
 | Medium | 0.25 and up |
 | Good | below 0.25 |
 
-Every endpoint has an **impact reason** naming the dominant factor: "P99 latency is 9.2s", "N errors with X% error rate", "X% of requests returning 4xx errors", "X% of requests are slow or failing", or "Endpoint is healthy". Stream endpoints get error-only versions such as "Streaming endpoint is healthy".
+Every endpoint has an **impact reason** naming the dominant factor: "P99 latency is 9.2s", "N slow or failing requests (X%)", "X% of requests returning 4xx errors", "X% of requests are slow or failing", or "Endpoint is healthy". Stream endpoints get error-only versions such as "Streaming endpoint is healthy".
 
 **Apdex** uses fixed bands: satisfied up to 750 ms and not a 5xx, tolerating up to 1500 ms, anything slower or a 5xx is frustrated. Apdex = (satisfied + tolerating / 2) / total. 1.0 is perfect. Below about 0.85, users notice.
 

@@ -73,7 +73,11 @@ A value past its cap, longer than 64 bytes, or outside a fixed set becomes `othe
 
 `custom.<key>` dimensions are yours: `setMetricDimension("plan", "pro")` or the `metricDimensions` option of `init()` puts up to two of them on every metric the page sends. Use them for a plan, a tenant tier or an experiment arm, never for an id. They are the way to slice by something the fixed dimensions do not cover; data already stored cannot be sliced by a dimension it was not recorded with.
 
-`url.path` is the route template when the app names it (`setRoute("/orders/:id")`, or the router helpers of the React, Vue and Svelte packages). Otherwise path segments that are numbers, UUIDs, or long hex or token strings become `:id`, on the device and again at ingest.
+`url.path` is the route template when the app names it (`setRoute("/orders/:id")`, or the router helpers of the React, Vue and Svelte packages). Browser SDKs 2.0.1 and later also read it from the app's router without any code: React Router in framework mode, Remix, TanStack Router, the Next.js Pages Router, Vue Router and Nuxt. Otherwise path segments that are numbers, UUIDs, long hex or token strings, or that carry a percent-encoded ASCII character such as a space (`%20`) become `:id` (encoded non-ASCII letters, as in `/caf%C3%A9`, stay), on the device and again at ingest.
+
+Explicit `setRoute` names take precedence over automatic detection. Pass a React Router data router to `trackRouter(router)` or the React provider's `router` prop. React Router's declarative mode and the Next.js App Router use [`useTracewayRoute(pathname, params)`](/client/react/hooks#usetracewayroute); SvelteKit uses [`trackRoute`](/client/svelte/context#route-names). Set `detectRoutes: false` in `init()` to disable automatic router detection.
+
+Since 2.0.1, page-load measurements (Web Vitals, navigation timing and the initial session count) pick up the landing view's route name when the next batch is exported. This allows a router initialized after the first measurements to name those metrics. Already exported measurements are not renamed.
 
 ## Reading them
 

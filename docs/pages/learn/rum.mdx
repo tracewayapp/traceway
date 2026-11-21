@@ -97,7 +97,7 @@ The dashboard brings together:
 
 Use p75 to track Web Vitals and p95 to inspect the tail. Read observation volume alongside a percentile. A few slow samples deserve investigation, but are different evidence from a regression across thousands of observed interactions.
 
-Name your routes so the breakdown reads the way your app is built: `setRoute("/orders/:id")`, or the router helpers of the framework packages (`useTracewayRoute` in React, `trackRouter` in Vue, `trackRoute` in Svelte). Without a name, path segments that look like ids are replaced with `:id`.
+Name your routes so the breakdown reads the way your app is built: `setRoute("/orders/:id")`, or the router helpers of the framework packages (`useTracewayRoute` in React, `trackRouter` in Vue, `trackRoute` in Svelte). Browser SDKs 2.0.1 and later take the names from the router themselves for React Router in framework mode, Remix, TanStack Router, the Next.js Pages Router, Vue Router and Nuxt. Without a name, path segments that look like ids are replaced with `:id`.
 
 ## Find the population that changed
 

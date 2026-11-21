@@ -28,6 +28,8 @@ The provider calls `init()` once, in its constructor, so both props are read whe
 
 ## Options
 
+Since 2.0.1, the optional `router` prop accepts a React Router data router or a TanStack Router instance and names performance metrics by its route templates. See [route setup](/client/react/hooks#usetracewayroute). Pass it directly to `<TracewayProvider router={router}>`.
+
 `options` is the same object `init()` of `@tracewayapp/frontend` takes. The ones used most:
 
 | Option | Type | Default | Description |

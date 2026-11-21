@@ -113,7 +113,52 @@ function PayButton({ order }) {
 
 ## useTracewayRoute
 
-Names the page being shown by its route template, so [performance metrics](/learn/client-metrics) group by route (`/orders/:id`) and not by URL. Call it from the component a route renders:
+[Performance metrics](/learn/client-metrics) are grouped by page, and a page is named by its route template (`/orders/:id`), not by its URL. Most routers need no code for it, because the SDK reads the router from the page:
+
+| Router | What names the route |
+| --- | --- |
+| React Router in framework mode, Remix | Nothing to do |
+| TanStack Router | Nothing to do |
+| Next.js Pages Router | Nothing to do |
+| React Router `createBrowserRouter` | `<TracewayProvider router={router}>`, or `trackRouter(router)` |
+| React Router `<BrowserRouter>` and `<Routes>` | `useTracewayRoute(useLocation().pathname, useParams())` in a layout route |
+| Next.js App Router | `useTracewayRoute(usePathname(), useParams())` in a client component of the root layout |
+
+Reading the router and the two-argument `useTracewayRoute` need a browser SDK version 2.0.1 or later; on 2.0.0 name routes with a template as shown at the end of this section.
+
+A router created with `createBrowserRouter` is handed over once:
+
+```jsx
+const router = createBrowserRouter(routes);
+
+<TracewayProvider connectionString="..." router={router}>
+  <RouterProvider router={router} />
+</TracewayProvider>;
+```
+
+Where the router only hands out a path and its params, pass both and the hook rebuilds the template (`/orders/8841` and `{ id: "8841" }` give `/orders/:id`):
+
+```jsx
+// React Router with <Routes>: a layout route sees the params of the page below it
+function Layout() {
+  useTracewayRoute(useLocation().pathname, useParams());
+  return <Outlet />;
+}
+```
+
+```jsx
+// Next.js App Router: app/traceway-route.jsx, rendered once in app/layout.jsx
+"use client";
+import { usePathname, useParams } from "next/navigation";
+import { useTracewayRoute } from "@tracewayapp/react";
+
+export function TracewayRoute() {
+  useTracewayRoute(usePathname(), useParams());
+  return null;
+}
+```
+
+To name a route yourself, call the hook with a template from the component the route renders. That name wins over the router's:
 
 ```jsx
 import { useTracewayRoute } from "@tracewayapp/react";
@@ -125,7 +170,7 @@ function OrderPage() {
 }
 ```
 
-The name applies to the current view and is cleared by the next route change, so each routed component names its own. Pass `null` to name nothing. Without a name the SDK replaces id-like path segments itself (`/orders/8841` becomes `/orders/:id`).
+The name applies to the current view and is cleared by the next route change, so each routed component names its own. Going from one page of a route to another (`/orders/8841` to `/orders/8842`) usually keeps the component mounted, and the second page is then not named again: where the router is not read from the page, prefer the path-and-params form above, which names every page. Pass `null` to name nothing. With no router and no name the SDK replaces id-like path segments itself (`/orders/8841` becomes `/orders/:id`).
 
 ## useTracewayAttributes
 
@@ -162,6 +207,8 @@ count("cart.item_added");
 | `metric(name, value, dims?)`, `count(name, n?, dims?)` | Custom [performance metrics](/learn/client-metrics), aggregated on the device |
 | `setMetricDimension(key, value)` | A dimension of your own on every performance metric; `null` removes it |
 | `setRoute(template)` | What `useTracewayRoute` calls |
+| `routeFromParams(pathname, params)` | Infer a route template from router params; used by the two-argument hook since 2.0.1 |
+| `trackRouter(router)` | Name every page from a `createBrowserRouter` or TanStack router, see [useTracewayRoute](#usetracewayroute) |
 | `setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes` | Global attributes, see [Custom Attributes](/client/react/provider#custom-attributes) |
 | `startInteraction(name)` | Trace a whole interaction, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
 | `refreshConfig()` | Fetch this client's remote collection settings now instead of at the next poll |

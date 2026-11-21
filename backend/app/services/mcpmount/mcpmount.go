@@ -26,6 +26,12 @@ const (
 
 const patExpiryHorizon = time.Hour
 
+// The SDK keeps every session, with its own server instance, until the client deletes it,
+// and most clients never do: a client that reconnects every few seconds grew the process by
+// about 50 MB an hour. A session idle this long is closed; its next request answers 404 and
+// the client initializes a new one. A var so the test can shorten it.
+var sessionIdleTimeout = time.Hour
+
 // GinHandler serves the read-only server at Path, or with write set the server
 // at WritePath that also registers the mutating tools and refuses tokens
 // without the write scope.
@@ -51,7 +57,7 @@ func GinHandler(engine *gin.Engine, version string, write bool) gin.HandlerFunc 
 			AllowWrite:       write,
 			AuthHint:         "the access token was rejected; re-authenticate this MCP connection from your client (OAuth clients refresh automatically; PAT setups need a new token)",
 		})
-	}, nil)
+	}, &mcp.StreamableHTTPOptions{SessionTimeout: sessionIdleTimeout})
 
 	return func(c *gin.Context) {
 		issuer := authserver.IssuerBaseURLFromRequest(c)

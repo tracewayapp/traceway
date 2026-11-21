@@ -37,10 +37,14 @@ Select the project, time range and filters you want the viewer to see. Open the 
 To show KPIs inside your own application, such as a customer admin panel, issue a fresh link each time your application has authorized a viewer. The share dialog shows the exact endpoint for the current dashboard and project.
 
 ```http
-POST /api/dashboards/{dashboardId}/embed-token?projectId={projectId}
+POST /api/dashboards/{dashboardId}/embed-token?projectId={projectId}&timeframe=7d
 ```
 
 Use the dashboard's **numeric ID** and the project's **UUID**. The dashboard must already be applied to that project. Create a **Read and write** personal access token in **Account > Personal Access Tokens** and keep it on your backend. Its owner needs write access to the project, and an organization owner or admin must switch on **Allow agent writes** in **Settings > Agent Access**. Write tokens expire within 90 days, so plan to rotate it, and every link issued with one is recorded in the organization's agent activity log. See [Agent write access](/learn/agent-write-access).
+
+Use the optional `timeframe` query parameter to choose how much history every widget displays. Omit it for the **last 42 hours**. Use a positive whole number followed by `m` (minutes), `h` (hours) or `d` (24-hour days), up to 731 days. For example, `timeframe=30m`, `timeframe=42h` and `timeframe=7d` show the last half hour, 42 hours and week respectively. The `last` prefix is also accepted, as in `timeframe=last42h`.
+
+Traceway resolves the window when your backend requests the token and signs its start and end into the link. To change the timeframe, request a new link and assign its URL to the iframe. Renewing with the same relative timeframe moves the window forward. Each link grants access for five minutes regardless of how much history it displays.
 
 Optionally add `&theme=light` or `&theme=dark` to this request. Traceway includes that choice in the returned iframe URL. Dark is the default.
 
@@ -48,7 +52,7 @@ The JSON body is optional and takes these fields.
 
 | Field | Meaning |
 | --- | --- |
-| `from`, `to` | RFC 3339 timestamps of the window to show. Send both, or neither for the 24 hours ending at issuance. The window stays fixed for the life of the link. |
+| `from`, `to` | RFC 3339 timestamps of the window to show. Send both for a fixed interval such as a reporting week, and omit `timeframe`. Use the same timestamps on renewal to keep the same interval. |
 | `tagFilters` | Tag values every widget is limited to, such as `{"account_id": "acme"}`. At most 20, each with a non-empty tag and value. They apply to every widget source and win over a filter the dashboard saved on the same tag. |
 
 Each KPI in this example carries an `account_id` tag. The backend takes the dashboard and project from its configuration and the account from the authorized viewer's session. This keeps a customer from selecting another account through a browser parameter.
@@ -59,6 +63,7 @@ if (!viewer.accountId) throw new Error('An account is required');
 const url = new URL(`/api/dashboards/${dashboardId}/embed-token`, tracewayOrigin);
 url.searchParams.set('projectId', projectId);
 url.searchParams.set('theme', 'light');
+url.searchParams.set('timeframe', '7d');
 const response = await fetch(url, {
   method: 'POST',
   headers: {
@@ -110,7 +115,7 @@ Traceway reads the JWT from the URL fragment, which browsers do not send to serv
 | --- | --- |
 | Issuance returns **403** | The token is read-only, **Allow agent writes** is off for the organization, or the token's owner cannot write to the project. |
 | Issuance returns **404** | The dashboard is not applied to the project in `projectId`. |
-| Issuance returns **422** | Only one of `from` and `to` was sent, the range is reversed or longer than 731 days, or a tag filter is empty. The message names the problem. |
+| Issuance returns **422** | Check the error message. Common causes include a malformed or repeated `timeframe`, mixing `timeframe` with timestamps, a missing or reversed range boundary, a window over 731 days, or an empty tag filter. |
 | The iframe says the link is invalid or has expired | Request a fresh link for the authorized viewer. |
 | The iframe says the dashboard is no longer shared | The dashboard was removed from the project or deleted. |
 | The frame stays empty | The `src` must be the `/embed/dashboard` URL built from `embedPath`. The rest of the Traceway dashboard refuses to load inside an iframe. |

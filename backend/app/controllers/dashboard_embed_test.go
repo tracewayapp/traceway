@@ -51,6 +51,53 @@ func TestEmbeddedDashboard(t *testing.T) {
 			t.Errorf("embed options %v: status %d, want %d", tc.body, got, tc.want)
 		}
 	}
+	fixed := time.Now().UTC().Truncate(time.Second).Add(-7 * 24 * time.Hour)
+	fixedView := map[string]any{"from": fixed.Add(-time.Hour), "to": fixed}
+	for _, tc := range []struct {
+		query  string
+		body   any
+		window time.Duration
+	}{
+		{"", nil, 42 * time.Hour},
+		{"&timeframe=30m", view, 30 * time.Minute},
+		{"&timeframe=last42h", view, 42 * time.Hour},
+		{"&timeframe=7d", view, 7 * 24 * time.Hour},
+		{"&timeframe=731d", nil, metricQueryMaxRange},
+		{"", fixedView, time.Hour},
+		{"&timeframe=7d", fixedView, 0},
+		{"&timeframe=1h&timeframe=2h", nil, 0},
+		{"&timeframe=", nil, 0},
+		{"&timeframe=0m", nil, 0},
+		{"&timeframe=-1h", nil, 0},
+		{"&timeframe=week", nil, 0},
+		{"&timeframe=732d", nil, 0},
+		{"&timeframe=999999999999999999999d", nil, 0},
+	} {
+		before := time.Now()
+		rec := f.do(t, writer, http.MethodPost, issue+f.project.Id.String()+tc.query, tc.body)
+		if tc.window == 0 {
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Errorf("invalid timeframe %q: status %d", tc.query, rec.Code)
+			}
+			continue
+		}
+		var issued struct{ DashboardUUID, Token string }
+		if err := json.Unmarshal(rec.Body.Bytes(), &issued); err != nil || rec.Code != http.StatusCreated {
+			t.Fatalf("issue timeframe %q: status %d, err %v", tc.query, rec.Code, err)
+		}
+		rec = f.do(t, issued.Token, http.MethodGet, "/api/embedded-dashboards/"+issued.DashboardUUID, nil)
+		var actual services.DashboardEmbedView
+		if err := json.Unmarshal(rec.Body.Bytes(), &actual); rec.Code != http.StatusOK || err != nil || actual.To.Sub(actual.From) != tc.window {
+			t.Fatalf("read timeframe %q: status %d, range %v to %v", tc.query, rec.Code, actual.From, actual.To)
+		}
+		if tc.body != nil && tc.query == "" {
+			if !actual.To.Equal(fixed) {
+				t.Errorf("fixed end = %v, want %v", actual.To, fixed)
+			}
+		} else if actual.To.Before(before) || actual.To.After(time.Now()) {
+			t.Errorf("relative timeframe ended outside issuance: %v", actual.To)
+		}
+	}
 	for _, theme := range []string{"", "light", "dark"} {
 		path := issue + f.project.Id.String()
 		if theme != "" {
@@ -82,7 +129,7 @@ func TestEmbeddedDashboard(t *testing.T) {
 			t.Fatalf("%s: %d %s", name, rec.Code, rec.Body)
 		}
 	}
-	rec = f.do(t, writer, http.MethodPost, issue+f.project.Id.String(), view)
+	rec = f.do(t, writer, http.MethodPost, issue+f.project.Id.String()+"&timeframe=1h", view)
 	var link struct {
 		DashboardUUID    uuid.UUID
 		Token            string
@@ -108,7 +155,9 @@ func TestEmbeddedDashboard(t *testing.T) {
 
 	now := time.Now().Add(-time.Minute)
 	point := models.MetricPoint{ProjectId: f.project.Id, Name: "orders", Value: 7, Tags: map[string]string{"state": "paid", "account": "one"}, RecordedAt: now}
-	points := []models.MetricPoint{point}
+	older := point
+	older.RecordedAt = now.Add(-2 * time.Hour)
+	points := []models.MetricPoint{point, older}
 	for _, tags := range []map[string]string{{"state": "paid", "account": "two"}, {"state": "pending", "account": "one"}} {
 		other := point
 		other.Tags, other.Value = tags, 123

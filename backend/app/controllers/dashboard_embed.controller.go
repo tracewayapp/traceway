@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -24,13 +25,31 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
-func validateEmbedView(view *services.DashboardEmbedView) string {
+var embedTimeframePattern = regexp.MustCompile(`^([0-9]+)([mhd])$`)
+
+func validateEmbedView(view *services.DashboardEmbedView, timeframes []string) string {
+	window := 42 * time.Hour
+	if len(timeframes) > 0 {
+		if len(timeframes) != 1 || !view.From.IsZero() || !view.To.IsZero() {
+			return "Send one timeframe or an explicit from and to range"
+		}
+		parts := embedTimeframePattern.FindStringSubmatch(strings.TrimPrefix(timeframes[0], "last"))
+		if parts == nil {
+			return "timeframe must be a positive duration such as 30m, 42h or 7d"
+		}
+		unit := map[string]time.Duration{"m": time.Minute, "h": time.Hour, "d": 24 * time.Hour}[parts[2]]
+		count, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil || count == 0 || count > uint64(metricQueryMaxRange/unit) {
+			return fmt.Sprintf("timeframe must be positive and at most %d days", metricQueryMaxRange/(24*time.Hour))
+		}
+		window = time.Duration(count) * unit
+	}
 	if view.From.IsZero() != view.To.IsZero() {
-		return "Send both from and to, or neither for the last 24 hours"
+		return "Send both from and to, or neither for a relative timeframe"
 	}
 	if view.From.IsZero() {
 		view.To = time.Now().UTC()
-		view.From = view.To.Add(-24 * time.Hour)
+		view.From = view.To.Add(-window)
 	}
 	if msg := validateMetricRange(view.From, view.To); msg != "" {
 		return msg
@@ -82,7 +101,7 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Expected an embed options object"})
 		return
 	}
-	if msg := validateEmbedView(view); msg != "" {
+	if msg := validateEmbedView(view, ctx.Request.URL.Query()["timeframe"]); msg != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": msg})
 		return
 	}

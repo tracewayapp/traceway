@@ -51,6 +51,27 @@ func TestEmbeddedDashboard(t *testing.T) {
 			t.Errorf("embed options %v: status %d, want %d", tc.body, got, tc.want)
 		}
 	}
+	for _, theme := range []string{"", "light", "dark"} {
+		path := issue + f.project.Id.String()
+		if theme != "" {
+			path += "&theme=" + theme
+		}
+		rec := f.do(t, writer, http.MethodPost, path, view)
+		var link struct{ DashboardUUID, EmbedPath, Token string }
+		if err := json.Unmarshal(rec.Body.Bytes(), &link); rec.Code != http.StatusCreated || err != nil || link.Token == "" {
+			t.Fatalf("issue dashboard with theme %q: status %d, err %v", theme, rec.Code, err)
+		}
+		want := "/embed/dashboard?dashboard=" + link.DashboardUUID
+		if theme != "" {
+			want += "&theme=" + theme
+		}
+		if link.EmbedPath != want+"#token="+link.Token {
+			t.Errorf("incorrect iframe URL for theme %q", theme)
+		}
+	}
+	if rec := f.do(t, writer, http.MethodPost, issue+f.project.Id.String()+"&theme=sepia", view); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid theme: status %d", rec.Code)
+	}
 	for name, invalid := range map[string]map[string]any{
 		"half a range":       {"from": time.Now().Add(-time.Hour)},
 		"reversed range":     {"from": time.Now(), "to": time.Now().Add(-time.Hour)},

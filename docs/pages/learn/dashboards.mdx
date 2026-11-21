@@ -42,6 +42,8 @@ POST /api/dashboards/{dashboardId}/embed-token?projectId={projectId}
 
 Use the dashboard's **numeric ID** and the project's **UUID**. The dashboard must already be applied to that project. Create a **Read and write** personal access token in **Account > Personal Access Tokens** and keep it on your backend. Its owner needs write access to the project, and an organization owner or admin must switch on **Allow agent writes** in **Settings > Agent Access**. Write tokens expire within 90 days, so plan to rotate it, and every link issued with one is recorded in the organization's agent activity log. See [Agent write access](/learn/agent-write-access).
 
+Optionally add `&theme=light` or `&theme=dark` to this request. Traceway includes that choice in the returned iframe URL. Dark is the default.
+
 The JSON body is optional and takes these fields.
 
 | Field | Meaning |
@@ -56,6 +58,7 @@ Each KPI in this example carries an `account_id` tag. The backend takes the dash
 if (!viewer.accountId) throw new Error('An account is required');
 const url = new URL(`/api/dashboards/${dashboardId}/embed-token`, tracewayOrigin);
 url.searchParams.set('projectId', projectId);
+url.searchParams.set('theme', 'light');
 const response = await fetch(url, {
   method: 'POST',
   headers: {
@@ -97,7 +100,7 @@ async function showAccountKpis() {
 showAccountKpis();
 ```
 
-A renewed link for the same dashboard replaces what is on screen without a blank frame, and the charts move to the new link's time range. The dashboard is dark unless the URL says otherwise: for a light page, call `searchParams.set('theme', 'light')` on the URL your backend builds from `embedPath`.
+A renewed link for the same dashboard replaces what is on screen without a blank frame, and the charts move to the new link's time range. You can also change the theme on an existing link without requesting a new token. Set `theme` in the query before the fragment, for example `/embed/dashboard?dashboard=<uuid>&theme=dark#token=<jwt>`.
 
 Traceway reads the JWT from the URL fragment, which browsers do not send to servers or include in the `Referer` header, and validates it on every request for the dashboard or its widgets. Neither backend stores an embed session. A link cannot be revoked on its own before it expires; removing the dashboard from the project stops every link for that project at once.
 

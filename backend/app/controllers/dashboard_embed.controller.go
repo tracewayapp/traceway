@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +60,11 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid dashboard id"})
 		return
 	}
+	theme := ctx.Query("theme")
+	if theme != "" && theme != "light" && theme != "dark" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "theme must be light or dark"})
+		return
+	}
 	view := new(services.DashboardEmbedView)
 	// Keep the signed view small enough to travel in a bearer header and an iframe URL.
 	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 2048)
@@ -94,12 +100,16 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to sign the embed token of dashboard %d: %w", id, err))
 		return
 	}
+	query := url.Values{"dashboard": {claims.Subject}}
+	if theme != "" {
+		query.Set("theme", theme)
+	}
 	ctx.JSON(http.StatusCreated, gin.H{
 		"dashboardUuid":    claims.Subject,
 		"token":            token,
 		"expiresAt":        claims.ExpiresAt.Time.UTC(),
 		"expiresInSeconds": embedSecondsLeft(claims),
-		"embedPath":        "/embed/dashboard?dashboard=" + claims.Subject + "#token=" + token,
+		"embedPath":        "/embed/dashboard?" + query.Encode() + "#token=" + token,
 	})
 }
 

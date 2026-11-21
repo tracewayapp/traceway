@@ -198,7 +198,10 @@ Performance metrics are grouped by page. Call `trackRoute` with the route id so 
     connectionString: "your-token@https://traceway.example.com/api/report",
   });
 
-  $effect(() => trackRoute(page.route.id));
+  $effect(() => {
+    page.url.pathname; // Run again for another URL with the same route id.
+    trackRoute(page.route.id);
+  });
 </script>
 
 {@render children()}

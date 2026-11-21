@@ -93,7 +93,7 @@ func ComputeImpactReason(
 		p99Duration := time.Duration(p99Ns)
 		return fmt.Sprintf("P99 latency is %s", formatDurationHuman(p99Duration))
 	case volumeScore >= maxScore:
-		return fmt.Sprintf("%s errors with %.1f%% error rate", formatCount(badCount), badRate*100)
+		return fmt.Sprintf("%s slow or failing requests (%.1f%%)", formatCount(badCount), badRate*100)
 	case clientErrorScore >= maxScore:
 		return fmt.Sprintf("%.0f%% of requests returning 4xx errors", clientF/totalF*100)
 	case errorRateScore >= maxScore:

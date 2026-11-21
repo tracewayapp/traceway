@@ -109,7 +109,7 @@ A production stack trace points into a minified bundle. Upload the source maps f
 
 ### 3. Name your routes
 
-Metrics are grouped by page. The SDK replaces id-like parts of a URL on its own (`/orders/8841` becomes `/orders/:id`), but your router knows the real names. Use `useTracewayRoute` in React, `trackRouter` in Vue, `trackRoute` in Svelte, or call `setRoute("/orders/:id")` yourself.
+Metrics are grouped by page. The SDK replaces id-like parts of a URL on its own (`/orders/8841` becomes `/orders/:id`), but your router knows the real names. Browser SDKs 2.0.1 and later read them from the router without any code for React Router in framework mode, Remix, TanStack Router, the Next.js Pages Router, Vue Router and Nuxt. For the rest, and on 2.0.0, use [`useTracewayRoute`](/client/react/hooks#usetracewayroute) in React, `trackRouter` in Vue, `trackRoute` in Svelte, or call `setRoute("/orders/:id")` yourself. Check the route breakdown of a dashboard once: a row per order or per user means a route is still unnamed.
 
 ### 4. Identify the user after sign-in
 

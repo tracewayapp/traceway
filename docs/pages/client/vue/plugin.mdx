@@ -129,7 +129,9 @@ app.config.errorHandler = (err, instance, info) => {
 
 ## Route Names
 
-Performance metrics are grouped by page. Pass your `vue-router` instance to `trackRouter` once, after creating it, and every navigation reports its matched route pattern (`/orders/:id`), so metrics group by route and not by URL:
+Performance metrics are grouped by page, and a page is named by its matched route pattern (`/orders/:id`), not by its URL. With a browser SDK version 2.0.1 or later there is nothing to set up: the plugin takes Vue Router from the app it is installed in, whichever of the two is installed first, and Nuxt works the same way. Nuxt writes the patterns of its file routes with a trailing `()` (`pages/orders/[id].vue` is `/orders/:id()`, a catch-all is `/docs/:slug(.*)*`), and that is the name the page gets.
+
+On 2.0.0, or for a router that is not installed in the app, pass your `vue-router` instance to `trackRouter` once, after creating it:
 
 ```javascript
 import { createApp } from "vue";

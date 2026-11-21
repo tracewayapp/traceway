@@ -11,7 +11,7 @@ import (
 func TestDashboardEmbedTokenBoundaries(t *testing.T) {
 	preserveJWTConfig(t)
 	jwtSecret = []byte(t.Name() + "-test-signing-key")
-	claims, token, err := GenerateDashboardEmbed(1, uuid.New(), DashboardEmbedView{})
+	claims, token, err := GenerateDashboardEmbed(1, uuid.New(), DashboardEmbedView{}, time.Now().Add(5*time.Minute), false)
 	if err != nil {
 		t.Fatal(err)
 	}

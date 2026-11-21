@@ -67,6 +67,35 @@ func validateEmbedView(view *services.DashboardEmbedView, timeframes []string) s
 	return ""
 }
 
+type embedOptions struct {
+	services.DashboardEmbedView
+	ExpiresAt     *time.Time `json:"expiresAt"`
+	ExpiresInDays *int64     `json:"expiresInDays"`
+}
+
+func (o *embedOptions) expiry(now time.Time) (time.Time, string) {
+	switch {
+	case o.ExpiresAt != nil && o.ExpiresInDays != nil:
+		return time.Time{}, "Send expiresAt or expiresInDays, not both"
+	case o.ExpiresAt != nil:
+		end := o.ExpiresAt.UTC().Truncate(time.Second)
+		if !end.After(now) || end.Year() > 9999 {
+			return time.Time{}, "expiresAt must be a future RFC 3339 timestamp"
+		}
+		return end, ""
+	case o.ExpiresInDays != nil:
+		// The API returns the deadline as an RFC 3339 timestamp (four-digit year).
+		last := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+		days := *o.ExpiresInDays
+		if days < 1 || days > (last.Unix()-now.Unix())/86400 {
+			return time.Time{}, "expiresInDays must be positive and produce a valid expiry date"
+		}
+		return now.AddDate(0, 0, int(days)), ""
+	default:
+		return now.Add(5 * time.Minute), ""
+	}
+}
+
 func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 	ctx.Header("Cache-Control", "no-store")
 	projectId, err := middleware.GetProjectId(ctx)
@@ -84,12 +113,12 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "theme must be light or dark"})
 		return
 	}
-	view := new(services.DashboardEmbedView)
+	opts := new(embedOptions)
 	// Keep the signed view small enough to travel in a bearer header and an iframe URL.
 	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 2048)
 	decoder := json.NewDecoder(ctx.Request.Body)
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&view); err != nil && !errors.Is(err, io.EOF) {
+	if err := decoder.Decode(&opts); err != nil && !errors.Is(err, io.EOF) {
 		middleware.RejectBindError(ctx, err, "Invalid embed options")
 		return
 	}
@@ -97,11 +126,17 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		middleware.RejectBindError(ctx, err, "Expected a single embed options object")
 		return
 	}
-	if view == nil {
+	if opts == nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Expected an embed options object"})
 		return
 	}
-	if msg := validateEmbedView(view, ctx.Request.URL.Query()["timeframe"]); msg != "" {
+	expiresAt, msg := opts.expiry(time.Now().UTC())
+	if msg != "" {
+		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": msg})
+		return
+	}
+	rolling := opts.From.IsZero() && (opts.ExpiresAt != nil || opts.ExpiresInDays != nil)
+	if msg := validateEmbedView(&opts.DashboardEmbedView, ctx.Request.URL.Query()["timeframe"]); msg != "" {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": msg})
 		return
 	}
@@ -114,7 +149,7 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Dashboard is not applied to this project"})
 		return
 	}
-	claims, token, err := services.GenerateDashboardEmbed(id, projectId, *view)
+	claims, token, err := services.GenerateDashboardEmbed(id, projectId, opts.DashboardEmbedView, expiresAt, rolling)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to sign the embed token of dashboard %d: %w", id, err))
 		return
@@ -134,8 +169,8 @@ func (c *dashboardsController) CreateEmbedToken(ctx *gin.Context) {
 
 // The viewer's clock decides nothing: a browser that runs minutes ahead would
 // otherwise treat a fresh link as expired.
-func embedSecondsLeft(claims *services.DashboardEmbedClaims) int {
-	return max(0, int(time.Until(claims.ExpiresAt.Time).Seconds()))
+func embedSecondsLeft(claims *services.DashboardEmbedClaims) int64 {
+	return max(0, claims.ExpiresAt.Unix()-time.Now().Unix())
 }
 
 func loadEmbeddedDashboard(ctx *gin.Context) (*services.DashboardEmbedClaims, *models.Dashboard, *models.DashboardDefinition) {
@@ -157,6 +192,11 @@ func loadEmbeddedDashboard(ctx *gin.Context) (*services.DashboardEmbedClaims, *m
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Dashboard is no longer available"})
 		return nil, nil, nil
 	}
+	if claims.Rolling {
+		window := claims.To.Sub(claims.From)
+		claims.To = time.Now().UTC()
+		claims.From = claims.To.Add(-window)
+	}
 	return claims, dashboard, dashboardDefinitionOrError(ctx, dashboard)
 }
 
@@ -165,14 +205,24 @@ func (c *dashboardsController) GetEmbed(ctx *gin.Context) {
 	if def == nil {
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"name":             dashboard.Name,
 		"widgets":          def.Widgets,
 		"from":             claims.From,
 		"to":               claims.To,
 		"expiresAt":        claims.ExpiresAt.Time.UTC(),
 		"expiresInSeconds": embedSecondsLeft(claims),
-	})
+	}
+	if claims.Rolling {
+		// Pin every widget in this open page to the exact range shown in its header.
+		_, token, err := services.GenerateDashboardEmbed(claims.DashboardId, claims.ProjectId, claims.DashboardEmbedView, claims.ExpiresAt.Time, false)
+		if err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+		response["widgetToken"] = token
+	}
+	ctx.JSON(http.StatusOK, response)
 }
 
 func (c *dashboardsController) GetEmbedWidget(ctx *gin.Context) {

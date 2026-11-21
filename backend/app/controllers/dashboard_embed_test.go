@@ -51,6 +51,49 @@ func TestEmbeddedDashboard(t *testing.T) {
 			t.Errorf("embed options %v: status %d, want %d", tc.body, got, tc.want)
 		}
 	}
+	t.Run("share expiry and viewer-relative presets", func(t *testing.T) {
+		issueURL := issue + f.project.Id.String() + "&timeframe=7d"
+		deadline := time.Now().UTC().Add(72 * time.Hour).Truncate(time.Second)
+		for _, invalid := range []any{
+			map[string]any{"expiresAt": time.Now().Add(-time.Hour)},
+			map[string]any{"expiresInDays": 0},
+			map[string]any{"expiresInDays": -1},
+			map[string]any{"expiresInDays": 99999999},
+			map[string]any{"expiresAt": deadline, "expiresInDays": 3},
+		} {
+			if rec := f.do(t, writer, http.MethodPost, issueURL, invalid); rec.Code != http.StatusUnprocessableEntity {
+				t.Errorf("invalid expiry %v: status %d", invalid, rec.Code)
+			}
+		}
+		for _, opts := range []map[string]any{{"expiresAt": deadline}, {"expiresInDays": 3}} {
+			opts["tagFilters"] = map[string]string{"account": "one"}
+			rec := f.do(t, writer, http.MethodPost, issueURL, opts)
+			var issued struct {
+				DashboardUUID, Token string
+				ExpiresAt            time.Time
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &issued); err != nil || rec.Code != http.StatusCreated || issued.ExpiresAt.Sub(deadline).Abs() > time.Second {
+				t.Fatalf("three-day share: status %d, expires %v", rec.Code, issued.ExpiresAt)
+			}
+			var previous time.Time
+			for range 2 {
+				opened := time.Now()
+				rec = f.do(t, issued.Token, http.MethodGet, "/api/embedded-dashboards/"+issued.DashboardUUID, nil)
+				var meta struct {
+					From, To, ExpiresAt time.Time
+					WidgetToken         string
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &meta); err != nil || rec.Code != http.StatusOK || meta.To.Before(opened) || !meta.To.After(previous) || meta.To.Sub(meta.From) != 7*24*time.Hour {
+					t.Fatalf("opened share: status %d, range %v to %v", rec.Code, meta.From, meta.To)
+				}
+				previous = meta.To
+				widget, err := services.ValidateDashboardEmbed(meta.WidgetToken, issued.DashboardUUID)
+				if err != nil || widget.Rolling || !widget.From.Equal(meta.From) || !widget.To.Equal(meta.To) || !widget.ExpiresAt.Equal(issued.ExpiresAt) || !meta.ExpiresAt.Equal(issued.ExpiresAt) || widget.TagFilters["account"] != "one" || widget.ProjectId != f.project.Id {
+					t.Fatal("widget token did not preserve the resolved view and original expiry")
+				}
+			}
+		}
+	})
 	fixed := time.Now().UTC().Truncate(time.Second).Add(-7 * 24 * time.Hour)
 	fixedView := map[string]any{"from": fixed.Add(-time.Hour), "to": fixed}
 	for _, tc := range []struct {
@@ -64,6 +107,7 @@ func TestEmbeddedDashboard(t *testing.T) {
 		{"&timeframe=7d", view, 7 * 24 * time.Hour},
 		{"&timeframe=731d", nil, metricQueryMaxRange},
 		{"", fixedView, time.Hour},
+		{"", map[string]any{"from": fixed.Add(-time.Hour), "to": fixed, "expiresInDays": 7}, time.Hour},
 		{"&timeframe=7d", fixedView, 0},
 		{"&timeframe=1h&timeframe=2h", nil, 0},
 		{"&timeframe=", nil, 0},

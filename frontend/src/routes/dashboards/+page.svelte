@@ -1510,7 +1510,7 @@
 	<ShareDashboardDialog
 		dashboardId={activeTabId}
 		projectId={projectsState.currentProjectId}
-		view={{ from: getFromDateTimeUTC(), to: getToDateTimeUTC(), tagFilters: scopeTagFilters }}
+		tagFilters={scopeTagFilters}
 		onClose={() => (showShareDialog = false)}
 	/>
 {/if}

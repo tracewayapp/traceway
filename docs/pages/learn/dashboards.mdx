@@ -26,11 +26,17 @@ Each tab on the Dashboards page is one dashboard applied to the current project.
 
 ## Share and embed a dashboard
 
-A shared dashboard is a read-only page at `/embed/dashboard` that opens without a Traceway account, directly or inside an iframe. It shows the dashboard's name, the time range and its widgets. The project, time range and filters are signed into the link, so a viewer cannot change them, and every link stops working five minutes after it was issued.
+A shared dashboard is a read-only page at `/embed/dashboard` that opens without a Traceway account, directly or inside an iframe. It shows the dashboard's name, the time range and its widgets. The signed link controls the project, reporting timeframe, filters and access deadline.
 
 ### Share a link
 
-Select the project, time range and filters you want the viewer to see. Open the active dashboard tab's menu, choose **Share Dashboard**, then **Copy Link**. You need write access to the project. Anyone with the full link can view the dashboard for five minutes; once it has expired, **New Link** in the same dialog issues another.
+Select the project and filters, then choose **Share Dashboard** from the active dashboard tab’s menu. You need write access to the project.
+
+1. Under **Share for**, enter the number of days the link should work. The default is one day.
+2. Under **Timeframe**, choose **Last 30 minutes**, **Last 6 hours**, **Last 24 hours**, **Last 42 hours** (default), **Last 7 days**, or **Last 30 days**.
+3. Choose **Generate Link**. Check **Expires at**, shown in your local timezone, then choose **Copy Link**.
+
+For example, share for **3 days** with **Last 7 days**. Each time someone opens the link during those three days, every widget shows the same seven-day window ending at that open time. Opening the link again moves the window forward and keeps the original expiry.
 
 ### Issue a link from your backend
 
@@ -44,7 +50,7 @@ Use the dashboard's **numeric ID** and the project's **UUID**. The dashboard mus
 
 Use the optional `timeframe` query parameter to choose how much history every widget displays. Omit it for the **last 42 hours**. Use a positive whole number followed by `m` (minutes), `h` (hours) or `d` (24-hour days), up to 731 days. For example, `timeframe=30m`, `timeframe=42h` and `timeframe=7d` show the last half hour, 42 hours and week respectively. The `last` prefix is also accepted, as in `timeframe=last42h`.
 
-Traceway resolves the window when your backend requests the token and signs its start and end into the link. To change the timeframe, request a new link and assign its URL to the iframe. Renewing with the same relative timeframe moves the window forward. Each link grants access for five minutes regardless of how much history it displays.
+By default, backend-issued links expire after five minutes and resolve the timeframe at issuance. Supply a custom expiry to resolve the relative timeframe when each viewer opens the link. Traceway pins all widgets on that page to the same window. An explicit `from` and `to` always stays fixed.
 
 Optionally add `&theme=light` or `&theme=dark` to this request. Traceway includes that choice in the returned iframe URL. Dark is the default.
 
@@ -53,6 +59,8 @@ The JSON body is optional and takes these fields.
 | Field | Meaning |
 | --- | --- |
 | `from`, `to` | RFC 3339 timestamps of the window to show. Send both for a fixed interval such as a reporting week, and omit `timeframe`. Use the same timestamps on renewal to keep the same interval. |
+| `expiresInDays` | Positive whole days from issuance, measured on the Traceway server. For a three-day link, send `{"expiresInDays":3}`. |
+| `expiresAt` | Alternatively, supply an absolute future RFC 3339 timestamp. Send only one expiry field. The returned `expiresAt` is the enforced deadline in UTC, to the second. |
 | `tagFilters` | Tag values every widget is limited to, such as `{"account_id": "acme"}`. At most 20, each with a non-empty tag and value. They apply to every widget source and win over a filter the dashboard saved on the same tag. |
 
 Each KPI in this example carries an `account_id` tag. The backend takes the dashboard and project from its configuration and the account from the authorized viewer's session. This keeps a customer from selecting another account through a browser parameter.
@@ -87,7 +95,7 @@ A successful request returns **201 Created** with these fields.
 | `embedPath` | Ready-to-use path in the form `/embed/dashboard?dashboard=<uuid>#token=<jwt>`. Resolve it against the Traceway origin that the viewer's browser can reach. |
 | `expiresInSeconds` | How long the link still works. Use it to schedule the renewal, since it does not depend on your clock matching Traceway's. |
 | `expiresAt` | The same moment as a UTC timestamp. |
-| `token` | The five-minute signed JWT that grants read access to this view. It is already part of `embedPath`. |
+| `token` | The signed JWT that grants read access to this view. It is already part of `embedPath`. |
 | `dashboardUuid` | Stable identifier of this dashboard in this project, also already part of `embedPath`. The same dashboard applied to a second project has a different one there. |
 
 ### Display and renew the iframe
@@ -115,7 +123,7 @@ Traceway reads the JWT from the URL fragment, which browsers do not send to serv
 | --- | --- |
 | Issuance returns **403** | The token is read-only, **Allow agent writes** is off for the organization, or the token's owner cannot write to the project. |
 | Issuance returns **404** | The dashboard is not applied to the project in `projectId`. |
-| Issuance returns **422** | Check the error message. Common causes include a malformed or repeated `timeframe`, mixing `timeframe` with timestamps, a missing or reversed range boundary, a window over 731 days, or an empty tag filter. |
+| Issuance returns **422** | Check the error message. Common causes include a malformed or repeated `timeframe`, mixing `timeframe` with timestamps, a missing or reversed range boundary, a window over 731 days, a past or conflicting expiry, or an empty tag filter. |
 | The iframe says the link is invalid or has expired | Request a fresh link for the authorized viewer. |
 | The iframe says the dashboard is no longer shared | The dashboard was removed from the project or deleted. |
 | The frame stays empty | The `src` must be the `/embed/dashboard` URL built from `embedPath`. The rest of the Traceway dashboard refuses to load inside an iframe. |

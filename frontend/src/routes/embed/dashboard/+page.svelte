@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import type { LoadEmbedWidget } from '$lib/utils/dashboard-embed';
+	import { scheduleEmbedExpiry, type LoadEmbedWidget } from '$lib/utils/dashboard-embed';
 	import type { DashboardWidget, MetricQueryResponse } from '$lib/types/dashboard';
 
 	type EmbedDashboard = {
@@ -10,6 +10,7 @@
 		from: string;
 		to: string;
 		expiresInSeconds: number;
+		widgetToken?: string;
 		widgets: DashboardWidget[];
 	};
 
@@ -42,9 +43,9 @@
 			view = null;
 			error = message;
 		}
-		async function read<T>(path: string): Promise<T> {
+		async function read<T>(path: string, bearer = token): Promise<T> {
 			const response = await fetch(endpoint + path, {
-				headers: { Authorization: `Bearer ${token}` },
+				headers: { Authorization: `Bearer ${bearer}` },
 				credentials: 'omit',
 				cache: 'no-store',
 				signal: controller.signal
@@ -57,13 +58,18 @@
 			}
 			return response.json();
 		}
-		const load: LoadEmbedWidget = (id) =>
-			read<MetricQueryResponse>(`/widgets/${encodeURIComponent(id)}`);
 		read<EmbedDashboard>('')
 			.then((dashboard) => {
 				if (controller.signal.aborted) return;
 				error = '';
-				view = { dashboard, load };
+				view = {
+					dashboard,
+					load: (id) =>
+						read<MetricQueryResponse>(
+							`/widgets/${encodeURIComponent(id)}`,
+							dashboard.widgetToken ?? token
+						)
+				};
 			})
 			.catch((e: { status?: number }) => {
 				if (e.status === 401) return;
@@ -78,11 +84,10 @@
 	// Keep the displayed view's deadline even while its replacement is loading.
 	$effect(() => {
 		if (!view) return;
-		const timer = setTimeout(() => {
+		return scheduleEmbedExpiry(view.dashboard.expiresInSeconds, () => {
 			view = null;
 			error = 'This dashboard link has expired.';
-		}, view.dashboard.expiresInSeconds * 1000);
-		return () => clearTimeout(timer);
+		});
 	});
 </script>
 

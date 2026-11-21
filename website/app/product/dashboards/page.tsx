@@ -175,9 +175,9 @@ export default function DashboardsPage() {
             description={
               <>
                 Put a read-only Traceway dashboard in your customer portal. When
-                a customer signs in, your backend requests a five-minute link
-                scoped to their account. Choose how much history to show with
-                the timeframe parameter. For example, <code>timeframe=7d</code>{" "}
+                a customer signs in, your backend requests a link scoped to
+                their account. Choose how many days the link works and how much
+                history each viewer sees when they open it. For example, <code>timeframe=7d</code>{" "}
                 shows the past week. The default is the last 42 hours.
               </>
             }

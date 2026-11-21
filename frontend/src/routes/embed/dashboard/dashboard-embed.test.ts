@@ -2,6 +2,7 @@ import { cleanup, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import Dashboard from './+page.svelte';
+import { scheduleEmbedExpiry } from '$lib/utils/dashboard-embed';
 
 vi.mock('$lib/components/dashboard/widget-grid.svelte', () => ({ default: vi.fn() }));
 
@@ -44,4 +45,16 @@ it('expires the displayed view while a renewed link is waiting for its dashboard
 	await vi.advanceTimersByTimeAsync(0);
 	expect(page.getByRole('heading', { name: 'Renewed orders' })).toBeTruthy();
 	expect(page.queryByRole('alert')).toBeNull();
+});
+
+it('keeps a 30-day link active across the browser timer limit', async () => {
+	vi.useFakeTimers();
+	const expire = vi.fn();
+	const day = 86400;
+	const cancel = scheduleEmbedExpiry(30 * day, expire);
+	await vi.advanceTimersByTimeAsync(29 * day * 1000);
+	expect(expire).not.toHaveBeenCalled();
+	await vi.advanceTimersByTimeAsync(day * 1000);
+	expect(expire).toHaveBeenCalledTimes(1);
+	cancel();
 });

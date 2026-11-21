@@ -10,3 +10,16 @@ export function dashboardStorage(): Storage | undefined {
 		? window.localStorage
 		: undefined;
 }
+
+// Browser timers overflow beyond about 25 days.
+export function scheduleEmbedExpiry(seconds: number, expire: () => void) {
+	const deadline = Date.now() + seconds * 1000;
+	let timer: ReturnType<typeof setTimeout>;
+	function check() {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) expire();
+		else timer = setTimeout(check, Math.min(remaining, 2_147_483_647));
+	}
+	check();
+	return () => clearTimeout(timer);
+}

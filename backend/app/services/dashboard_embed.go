@@ -20,6 +20,7 @@ type DashboardEmbedView struct {
 }
 
 type DashboardEmbedClaims struct {
+	Rolling     bool      `json:"rolling,omitempty"`
 	DashboardId int       `json:"dashboardId"`
 	ProjectId   uuid.UUID `json:"projectId"`
 	DashboardEmbedView
@@ -37,7 +38,7 @@ func dashboardEmbedKey() ([]byte, error) {
 	return mac.Sum(nil), nil
 }
 
-func GenerateDashboardEmbed(dashboardId int, projectId uuid.UUID, view DashboardEmbedView) (*DashboardEmbedClaims, string, error) {
+func GenerateDashboardEmbed(dashboardId int, projectId uuid.UUID, view DashboardEmbedView, expiresAt time.Time, rolling bool) (*DashboardEmbedClaims, string, error) {
 	key, err := dashboardEmbedKey()
 	if err != nil {
 		return nil, "", err
@@ -45,13 +46,14 @@ func GenerateDashboardEmbed(dashboardId int, projectId uuid.UUID, view Dashboard
 	now := time.Now().UTC()
 	claims := &DashboardEmbedClaims{
 		DashboardId:        dashboardId,
+		Rolling:            rolling,
 		ProjectId:          projectId,
 		DashboardEmbedView: view,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   uuid.NewSHA1(projectId, []byte(strconv.Itoa(dashboardId))).String(),
 			Audience:  jwt.ClaimStrings{dashboardEmbedAudience},
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
 		},
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(key)

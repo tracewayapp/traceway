@@ -128,6 +128,7 @@ func TestListTools_writeServerAddsMutatingTools(t *testing.T) {
 		"list_slos": true, "get_slo": true, "get_slo_series": true, "preview_slo": true,
 
 		"import_dashboards":           false,
+		"create_dashboard_embed":      false,
 		"create_notification_channel": false, "update_notification_channel": false, "delete_notification_channel": false, "test_notification_channel": false,
 		"create_notification_rule": false, "update_notification_rule": false, "delete_notification_rule": false,
 		"create_team": false, "update_team": false, "delete_team": false, "set_team_members": false, "set_team_projects": false,

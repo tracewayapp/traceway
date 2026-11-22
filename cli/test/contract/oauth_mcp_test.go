@@ -554,8 +554,8 @@ func TestContract_mcpWriteMount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 89 {
-		t.Errorf("/mcp/write tools = %d, want 89", len(tools.Tools))
+	if len(tools.Tools) != 90 {
+		t.Errorf("/mcp/write tools = %d, want 90", len(tools.Tools))
 	}
 
 	archive := func() (*mcp.CallToolResult, string) {

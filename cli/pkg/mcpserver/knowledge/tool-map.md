@@ -60,5 +60,6 @@ OpAMP browser collection: `opamp rules list` maps to `list_sdk_config_rules`; `o
 | `dashboards library` | `dashboard_library` |
 | `dashboards export <id>` | `export_dashboard` |
 | `traceway-write dashboards import --file F [--mode create\|upsert]` | `import_dashboards` (write only) |
+| `traceway-write dashboards embed <id> [--timeframe T \| --from A --to B] [--tag k=v] [--expires-in-days N \| --expires-at T] [--theme light\|dark]` | `create_dashboard_embed` (write only) |
 
-`dashboards validate --file F` is an offline CLI check; both import surfaces run the same validation before writing. For the chart-building workflow, read `traceway://knowledge/dashboard-building` on the write server.
+`dashboards validate --file F` is an offline CLI check; both import surfaces run the same validation before writing. For the chart-building workflow, read `traceway://knowledge/dashboard-building` on the write server. To share a dashboard or embed it in the user's own application, read `traceway://knowledge/dashboard-embedding`.

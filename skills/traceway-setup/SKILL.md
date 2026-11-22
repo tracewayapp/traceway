@@ -1,6 +1,6 @@
 ---
 name: traceway-setup
-description: Analyze and instrument repositories for Traceway observability. Use when the user wants to plan, add, migrate, or verify Traceway or OpenTelemetry monitoring for backend, browser, full-stack, mobile or iOS, or AI-agent software, including project topology and user-approved setup-plan creation. Backends use OTLP/HTTP; browser frontends and independently released mobile clients use separate Traceway SDK projects. Accept either an existing project token and instance URL or an organization setup token (`tws_...`) and URL; with no token, analyze first and guide setup-token acquisition. Treat any `tws_` token as a setup token.
+description: Analyze and instrument repositories for Traceway observability. Use when the user wants to plan, add, migrate, or verify Traceway or OpenTelemetry monitoring for backend, browser, full-stack, mobile or iOS, or AI-agent software, including project topology and user-approved setup-plan creation. Also use it to embed a Traceway dashboard in the user's own application. Backends use OTLP/HTTP; browser frontends and independently released mobile clients use separate Traceway SDK projects. Accept either an existing project token and instance URL or an organization setup token (`tws_...`) and URL; with no token, analyze first and guide setup-token acquisition. Treat any `tws_` token as a setup token.
 ---
 
 # Set Up Traceway
@@ -255,6 +255,15 @@ Pick the path by project type, and pick the project type from the "Analyze the A
 | **Mobile** (Flutter, React Native, Android, native Swift iOS) | The Traceway platform SDK. Never OTel. Sole exception: a non-Swift iOS/Apple app has no native SDK, so it uses an OTel library (e.g. Honeycomb) exporting to Traceway like a backend (see "Frontend and Mobile"). |
 
 The rules every backend integration must satisfy, and the table of what each span becomes, are in Step 4 where they are applied.
+
+## Embedding Dashboards in the User's Application
+
+This is a separate integration from sending telemetry, and it needs no setup token. When the user wants a Traceway dashboard shown inside their own product, such as each customer's KPIs in an admin panel, read [dashboard-embedding.md](dashboard-embedding.md) and follow it: their backend asks Traceway for a short-lived signed link per authorized viewer, and their frontend shows it in an iframe.
+
+- It uses a **Read and write** personal access token (`tww_`) that the user creates and stores in their backend's secrets. Treat it like an ingest token: never print it, never ask for it in chat, never commit it. A project ingest token cannot issue links.
+- Per-customer embeds filter on a tag the metrics already carry, such as `account_id`. When you instrument the backend in Step 4 and the user plans to embed, put that attribute on the metrics the dashboard will chart, and keep its values bounded (an account or tenant id, never a user or request id).
+- The account in the filter comes from the viewer's server-side session, never from a browser parameter.
+- The dashboard itself is built in the Traceway UI or with the `traceway-write` skill; this skill only wires the embed into the application.
 
 ## Step 4: Backend OTel Setup
 

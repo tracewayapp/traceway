@@ -42,6 +42,8 @@ For example, share for **3 days** with **Last 7 days**. Each time someone opens 
 
 To show KPIs inside your own application, such as a customer admin panel, issue a fresh link each time your application has authorized a viewer. The share dialog shows the exact endpoint for the current dashboard and project.
 
+An AI agent can add this to your codebase for you: the `traceway-setup` and `traceway-write` skills and the MCP resource `traceway://knowledge/dashboard-embedding` carry the same steps. To try a dashboard and filter before writing code, `traceway-write dashboards embed <id> --tag account_id=acme --yes` (or the `create_dashboard_embed` MCP tool) issues one link.
+
 ```http
 POST /api/dashboards/{dashboardId}/embed-token?projectId={projectId}&timeframe=7d
 ```

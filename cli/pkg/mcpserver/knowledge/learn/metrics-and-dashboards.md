@@ -65,7 +65,7 @@ To embed KPIs in a customer admin panel, use the following flow.
 
 The page is dark by default. Add `&theme=light` or `&theme=dark` to the token request to receive a themed iframe URL. You can also set the theme directly in the iframe URL before its `#token=` fragment. Issuance answers 403 for a read-only token, a switched-off **Allow agent writes** or a token owner without write access to the project, 404 when the dashboard is not applied to the project, and 422 with a message for half a range, a reversed range, an expiry over 90 days or an empty filter.
 
-Use the dashboard menu for interactive sharing and the HTTP endpoint for application integration; the CLI and MCP have no command for it, and their dashboard exports return the widget definition. [Dashboard integration example](https://docs.tracewayapp.com/learn/dashboards#share-and-embed-a-dashboard)
+Use the dashboard menu for interactive sharing and the HTTP endpoint for application integration. The write CLI and write MCP server issue the same link with `traceway-write dashboards embed <id>` and `create_dashboard_embed`; the read-only CLI and server cannot, and their dashboard exports return the widget definition. [Dashboard integration example](https://docs.tracewayapp.com/learn/dashboards#share-and-embed-a-dashboard)
 
 ## Reading it from an agent
 

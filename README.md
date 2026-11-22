@@ -70,7 +70,7 @@ npx skills add tracewayapp/skills --all
 
 One command installs all four skills into Claude Code, Cursor, Codex, or any agent that reads `SKILL.md`:
 
-- **`/traceway-setup`** reads your repo and wires it up: OTel for backends, Traceway SDKs for web and mobile. Then it verifies data actually arrives.
+- **`/traceway-setup`** reads your repo and wires it up: OTel for backends, Traceway SDKs for web and mobile. Then it verifies data actually arrives. It also runs on one part of a codebase: `/traceway-setup track ai use` finds backend LLM calls and instruments them as OpenTelemetry GenAI spans. AI Traces shows token usage, estimated cost and, when enabled, conversation content.
 - **`/traceway`** installs the `traceway` CLI and uses it to query exceptions, logs, endpoints, and metrics, from bug report to root cause.
 - **`/traceway-learn`** is the full guide to the product: issues, endpoints, traces, logs, metrics, monitors, status pages, alerts, on-call schedules and paging, and settings. Ask it how anything in Traceway works.
 - **`/traceway-write`** teaches an agent to make routine on-call changes safely. It does nothing until you opt in to agent write access (below).

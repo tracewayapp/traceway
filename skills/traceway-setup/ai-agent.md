@@ -1,5 +1,6 @@
 # Instrumenting an AI Agent or Chatbot for Traceway
 
+Read this file when the analysis detected a conversational AI product: a chatbot, a multi-turn assistant, a tool-calling agent, or anything built on an agent framework. The base procedure is `ai-usage.md` in this skill directory (inventory the call sites, one OpenTelemetry GenAI span per model call, the attributes Traceway reads, verification). This file adds what conversational products need on top, so Traceway's Conversations and Users analytics light up: conversation grouping, per-user attribution, tool calls, and sub-agents.
 
 ## Before you write anything: three preconditions
 

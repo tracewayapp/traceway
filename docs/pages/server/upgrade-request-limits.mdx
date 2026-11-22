@@ -58,7 +58,7 @@ The server now closes connections whose headers or body do not finish arriving. 
 
 ## Public status pages in iframes
 
-Every response now carries `X-Frame-Options: DENY` and a `frame-ancestors 'none'` policy, except public status pages at `/status/<slug>`, which stay embeddable. A status page served at the root of a custom domain is not exempt, because that same root serves the dashboard on every hostname the backend answers on. To embed a status page, use its `/status/<slug>` URL.
+Every response now carries `X-Frame-Options: DENY` and a `frame-ancestors 'none'` policy, except embeddable views such as public status pages at `/status/<slug>` and shared dashboards at `/embed/dashboard`. A status page served at the root of a custom domain is not exempt, because that same root serves the dashboard on every hostname the backend answers on. To embed a status page, use its `/status/<slug>` URL.
 
 ## Metric query limits
 

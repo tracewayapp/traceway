@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { LoadEmbedWidget } from '$lib/utils/dashboard-embed';
 	import D3LineChart from './d3-line-chart.svelte';
 	import D3HorizontalBarChart from './d3-horizontal-bar-chart.svelte';
 	import D3StackedAreaChart from './d3-stacked-area-chart.svelte';
@@ -40,10 +41,11 @@
 		sharedHoverTime = null,
 		isSourceChart = false,
 		onHoverTimeChange,
+		loadEmbedWidget,
 		scopeTagFilters = {}
 	} = $props<{
 		widget: {
-			id: number;
+			id: number | string;
 			title: string;
 			widgetType: string;
 			config: DashboardWidgetConfig;
@@ -55,6 +57,7 @@
 		sharedHoverTime?: Date | null;
 		isSourceChart?: boolean;
 		onHoverTimeChange?: (time: Date | null) => void;
+		loadEmbedWidget?: LoadEmbedWidget;
 		scopeTagFilters?: Record<string, string>;
 	}>();
 
@@ -165,11 +168,13 @@
 				if (!additive) queries.push({ ...queries[0], aggregation: 'count' });
 			}
 
-			const response: MetricQueryResponse = await api.post(
-				'/metrics/query',
-				{ queries, from: fromDateUTC, to: toDateUTC, ...(wholeRange ? { wholeRange } : {}) },
-				{ projectId: projectsState.currentProjectId ?? undefined }
-			);
+			const response: MetricQueryResponse = loadEmbedWidget
+				? await loadEmbedWidget(widget.id)
+				: await api.post(
+						'/metrics/query',
+						{ queries, from: fromDateUTC, to: toDateUTC, ...(wholeRange ? { wholeRange } : {}) },
+						{ projectId: projectsState.currentProjectId ?? undefined }
+					);
 			if (sequence !== loadSequence) return;
 			truncated = response.results.some((r) => r.truncatedGroups);
 			rangeError = '';
@@ -225,7 +230,11 @@
 		} catch (e) {
 			if (sequence !== loadSequence) return;
 			// Retain the last successful snapshot during transient query failures.
-			rangeError = (e as { status?: number }).status === 422 ? (e as Error).message : '';
+			rangeError = loadEmbedWidget
+				? 'Could not load this widget.'
+				: (e as { status?: number }).status === 422
+					? (e as Error).message
+					: '';
 		} finally {
 			if (sequence === loadSequence) loading = false;
 		}
@@ -432,7 +441,7 @@
 		</div>
 	{/if}
 
-	{#if exemplarSource && !loading}
+	{#if !loadEmbedWidget && exemplarSource && !loading}
 		<div class="flex justify-end px-1 pt-1">
 			<ExemplarList
 				metric={exemplarSource.name}

@@ -8,7 +8,7 @@ import (
 
 func SecurityHeaders(c *gin.Context) {
 	path := c.Request.URL.Path
-	if strings.HasPrefix(path, "/status/") || strings.HasPrefix(path, "/api/status/") {
+	if path == "/embed/dashboard" || strings.HasPrefix(path, "/status/") || strings.HasPrefix(path, "/api/status/") {
 		c.Header("Content-Security-Policy", "base-uri 'self'; form-action 'self'")
 	} else {
 		c.Header("X-Frame-Options", "DENY")

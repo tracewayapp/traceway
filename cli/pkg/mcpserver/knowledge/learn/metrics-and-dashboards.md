@@ -25,7 +25,7 @@ Distribution queries support p50/p75/p90/p95/p99 and `good_ratio`; point metrics
 
 A dashboard is a set of metric widgets that belongs to the **organization**, not to one project. It is applied to any number of projects and shows as a tab on each of them. An edit made in one project is live in all of them.
 
-The active tab's menu: **Rename Dashboard** (names are unique in the organization), **Edit as JSON**, **Export JSON**, **Apply to Projects**, **Remove from this Project** (it stays elsewhere), **Delete Dashboard** (everywhere, permanently).
+The active tab's menu: **Rename Dashboard** (names are unique in the organization), **Edit as JSON**, **Export JSON**, **Share Dashboard**, **Apply to Projects**, **Remove from this Project** (it stays elsewhere), **Delete Dashboard** (everywhere, permanently).
 
 **Adding**: ⌘K (Ctrl K) or **Add or find dashboards...** opens one search over the dashboards of every organization the user belongs to (selecting one applies it here, or copies it in from another organization), the template marketplace (selecting one installs a copy) and every metric name seen in the organization (selecting one opens the widget editor prefilled). An empty project shows **Browse Dashboards & Templates**.
 
@@ -49,6 +49,23 @@ The active tab's menu: **Rename Dashboard** (names are unique in the organizatio
 **Grafana import**: paste a Grafana export. Time series and graph panels become line charts, stat becomes single value, gauge stays a gauge, and Prometheus queries become metric sources. Anything that does not convert faithfully is listed as a warning, never silently dropped.
 
 Editing dashboards and widgets needs an organization role above `readonly`. Starring, tab order and home page layout follow the effective project role. Browser projects receive Web Performance on creation; mobile projects offer Mobile Performance on the empty dashboard page. Client dashboards filter by release, OS and country (when configured), rather than server instance. Slow sessions opens retained distribution exemplars, which may have element attribution and session links.
+
+## Sharing and embedding a dashboard
+
+A shared dashboard is a read-only page at `/embed/dashboard` that needs no Traceway account and may be framed. The link signs the project, timeframe, filters and expiry.
+
+For a one-off link, select the project and filters, then open **Share Dashboard** in the active tab’s menu. Set **Share for** to 1 to 90 days (default one) and **Timeframe** to a Last preset (default 42 hours). Choose **Generate Link**, check **Expires at**, then **Copy Link**. Each open resolves the timeframe against the server time and keeps all widgets on that window. Issuance requires effective project write access.
+
+To embed KPIs in a customer admin panel, use the following flow.
+
+1. After authorizing the viewer, the host backend calls `POST /api/dashboards/{numericDashboardId}/embed-token?projectId={projectUuid}`. The share dialog shows the endpoint. The dashboard must be applied to that project. Use a server-side **Read and write** personal access token (`tww_`, expires within 90 days, so it needs rotating) whose owner can write to the project, with **Settings > Agent Access > Allow agent writes** enabled.
+2. Choose the dashboard, project and filters on the server. For account-specific KPIs tagged with `account_id`, send a body such as `{"tagFilters":{"account_id":"acme"}}` using the signed-in viewer's authorized account. These filters apply to every widget source and override a saved filter on the same key; at most 20, and an empty tag or value is refused. With no range specified, each link shows the last 42 hours. Set `timeframe=30m`, `timeframe=42h` or `timeframe=7d` on the token request to choose the reporting window (positive whole minutes, hours or days, up to 731 days). For a fixed range, omit `timeframe` and send both `from` and `to` as RFC 3339 timestamps.
+3. The **201** response contains `embedPath`, `expiresInSeconds`, `expiresAt`, `token` (the signed JWT) and `dashboardUuid` (stable per dashboard and project); the last two are already part of `embedPath`. Resolve `embedPath` against the browser-facing Traceway origin and send that URL and `expiresInSeconds` to the client with `Cache-Control: no-store`. Set the iframe's `src` to the complete URL, including its `#token=` fragment. Keep the personal access token on the backend.
+4. Backend-issued links default to a five-minute lifetime and a window fixed at issuance. For a custom expiry supply either `expiresInDays` (whole days, 1 to 90) or `expiresAt` (future RFC 3339 timestamp, at most 90 days away) in the POST body. Relative timeframes on these links follow each viewer’s open time. Explicit timestamps stay fixed. To keep the panel visible, authorize the viewer again and assign a fresh URL to the same iframe shortly before the link expires; the dashboard is replaced in place. Traceway verifies the JWT on each read without storing an embed session. A single link cannot be revoked; removing the dashboard from the project stops every link for that project. The page receives widget titles and display settings only, never the filters saved on a widget, and reads are limited per client address (60 opens and 600 widget reads a minute, then 429 with `Retry-After`).
+
+The page is dark by default. Add `&theme=light` or `&theme=dark` to the token request to receive a themed iframe URL. You can also set the theme directly in the iframe URL before its `#token=` fragment. Issuance answers 403 for a read-only token, a switched-off **Allow agent writes** or a token owner without write access to the project, 404 when the dashboard is not applied to the project, and 422 with a message for half a range, a reversed range, an expiry over 90 days or an empty filter.
+
+Use the dashboard menu for interactive sharing and the HTTP endpoint for application integration. The write CLI and write MCP server issue the same link with `traceway-write dashboards embed <id>` and `create_dashboard_embed`; the read-only CLI and server cannot, and their dashboard exports return the widget definition. [Dashboard integration example](https://docs.tracewayapp.com/learn/dashboards#share-and-embed-a-dashboard)
 
 ## Reading it from an agent
 

@@ -1,3 +1,4 @@
+import { dashboardStorage } from '$lib/utils/dashboard-embed';
 import { api } from '$lib/api';
 import { authState } from './auth.svelte';
 
@@ -179,8 +180,10 @@ export interface ProjectWithToken extends Project {
 const PROJECTS_CACHE_KEY = 'PROJECTS_CACHE_V2';
 
 class ProjectsState {
-	projects = $state<Project[]>(JSON.parse(localStorage.getItem(PROJECTS_CACHE_KEY) || '[]'));
-	currentProjectId = $state<string | null>(localStorage.getItem('CURRENT_PROJECT_ID'));
+	projects = $state<Project[]>(JSON.parse(dashboardStorage()?.getItem(PROJECTS_CACHE_KEY) || '[]'));
+	currentProjectId = $state<string | null>(
+		dashboardStorage()?.getItem('CURRENT_PROJECT_ID') ?? null
+	);
 	loading = $state(false);
 	error = $state<string | null>(null);
 	loaded = $state(false);
@@ -201,9 +204,9 @@ class ProjectsState {
 		$effect.root(() => {
 			$effect(() => {
 				if (this.currentProjectId) {
-					localStorage.setItem('CURRENT_PROJECT_ID', this.currentProjectId);
+					dashboardStorage()?.setItem('CURRENT_PROJECT_ID', this.currentProjectId);
 				} else {
-					localStorage.removeItem('CURRENT_PROJECT_ID');
+					dashboardStorage()?.removeItem('CURRENT_PROJECT_ID');
 				}
 			});
 		});
@@ -219,7 +222,7 @@ class ProjectsState {
 		}
 
 		// Cache in localStorage
-		localStorage.setItem(PROJECTS_CACHE_KEY, JSON.stringify(this.projects));
+		dashboardStorage()?.setItem(PROJECTS_CACHE_KEY, JSON.stringify(this.projects));
 	}
 
 	async loadProjects() {
@@ -234,7 +237,7 @@ class ProjectsState {
 			this.error = errorMessage;
 
 			// Try to load from cache
-			const cached = localStorage.getItem(PROJECTS_CACHE_KEY);
+			const cached = dashboardStorage()?.getItem(PROJECTS_CACHE_KEY);
 			if (cached) {
 				this.projects = JSON.parse(cached);
 			}
@@ -320,11 +323,11 @@ class ProjectsState {
 		this.projects = [];
 		this.currentProjectId = null;
 		this.loaded = false;
-		localStorage.removeItem(PROJECTS_CACHE_KEY);
+		dashboardStorage()?.removeItem(PROJECTS_CACHE_KEY);
 	}
 
 	initFromCache() {
-		const cached = localStorage.getItem(PROJECTS_CACHE_KEY);
+		const cached = dashboardStorage()?.getItem(PROJECTS_CACHE_KEY);
 		if (cached) {
 			this.projects = JSON.parse(cached);
 		}

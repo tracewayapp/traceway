@@ -2,6 +2,8 @@ package contract
 
 import (
 	"encoding/json"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +33,40 @@ func TestContractDashboardMCPAndClient(t *testing.T) {
 	call("list_dashboards", map[string]any{"project_id": projectID}, "Dashboard MCP contract")
 	call("dashboard_library", nil, "appliedProjectIds")
 	call("discover_metrics", map[string]any{"project_id": projectID, "from": seedAt.Add(-time.Hour).Format(time.RFC3339), "to": seedAt.Add(time.Hour).Format(time.RFC3339)}, seedMetricName)
+	link := call("create_dashboard_embed", map[string]any{"project_id": projectID, "id": id, "timeframe": "7d", "expires_in_days": 3, "tag_filters": map[string]any{"account_id": "acme"}}, "/embed/dashboard?dashboard=")
+	if link["token"] == "" || link["url"] == nil || link["expiresInSeconds"].(float64) < 3*86400-60 {
+		t.Fatalf("embed link %v", link)
+	}
 	c := client.New(baseURL, client.WithJWT(token))
+	raw, err := c.CreateDashboardEmbed(t.Context(), projectID, id, client.DashboardEmbedOptions{Theme: "light"}, baseURL)
+	var issued struct {
+		URL, Token, DashboardUUID string
+		ExpiresInSeconds          int
+	}
+	if err != nil || json.Unmarshal(raw, &issued) != nil || issued.ExpiresInSeconds > 300 || !strings.HasPrefix(issued.URL, baseURL+"/embed/dashboard?dashboard="+issued.DashboardUUID+"&theme=light#token=") {
+		t.Fatalf("client embed link: %s (%v)", raw, err)
+	}
+	// The link is all a viewer has: no session, no project parameter.
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/api/embedded-dashboards/"+issued.DashboardUUID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+issued.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var shared struct {
+		Name    string
+		Widgets []struct{ Id, Title string }
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&shared); err != nil || resp.StatusCode != http.StatusOK || shared.Name != "Dashboard MCP contract" || len(shared.Widgets) != 1 || shared.Widgets[0].Title != "Contract signal" {
+		t.Fatalf("shared dashboard: %d %+v (%v)", resp.StatusCode, shared, err)
+	}
+	if _, err := c.CreateDashboardEmbed(t.Context(), projectID, id, client.DashboardEmbedOptions{ExpiresInDays: client.DashboardEmbedMaxDays}, ""); err != nil {
+		t.Fatalf("longest link: %v", err)
+	}
 	doc["description"] = "Updated through the CLI client"
 	data, err := json.Marshal(doc)
 	if err != nil {

@@ -95,6 +95,10 @@ var knowledgeResources = []struct {
 		description: "Organization views, projects and connection, roles and per-project overrides, account, personal access tokens, settings and agent access.",
 	},
 	{
+		uri: "traceway://knowledge/dashboard-embedding", file: "dashboard-embedding.md", name: "Embed dashboards in another application",
+		description: "How a host application shows a Traceway dashboard to its own users: the embed-token request, the backend endpoint and iframe to add to the user's code, per-customer tag filters, renewal, limits and verification. Read when the user wants to embed or share a dashboard. Issuing a link needs a write credential.",
+	},
+	{
 		uri: "traceway://knowledge/tool-map", file: "tool-map.md", name: "CLI to MCP tool map",
 		description: "The 1:1 mapping between traceway CLI commands (used in the other resources' examples) and this server's MCP tools, plus the few deliberate differences.",
 	},

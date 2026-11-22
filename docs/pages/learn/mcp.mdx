@@ -92,7 +92,7 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `list_sdk_config_rules` | A browser project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
 | `preview_sdk_config` | The settings document saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live browser applied |
 
-The write server adds `import_dashboards`, `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, `create_slo`, `update_slo`, `delete_slo`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
+The write server adds `import_dashboards`, `create_dashboard_embed`, `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, `create_slo`, `update_slo`, `delete_slo`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
 
 Project selection is per call: every project-scoped tool accepts a `project_id` parameter and falls back to the CLI's current project.
 
@@ -132,7 +132,7 @@ Tool errors carry the CLI's stable error codes in the text, formatted as `error=
 
 ## Dashboard authoring
 
-The write server exposes `traceway://knowledge/dashboard-building`, a guide for turning instrumented code into useful charts. `import_dashboards` accepts a dashboard document or bundle in `data`, optional `mode` (`create` or `upsert`), and `project_id`. It validates the document before writing. Upserts replace shared dashboards by organization-wide name without concurrent-edit protection; inspect `dashboard_library` and `export_dashboard` first. See [Dashboards](/learn/dashboards#mcp-workflow) for complete tool arguments and the verification workflow.
+The write server exposes `traceway://knowledge/dashboard-building`, a guide for turning instrumented code into useful charts. `import_dashboards` accepts a dashboard document or bundle in `data`, optional `mode` (`create` or `upsert`), and `project_id`. It validates the document before writing. Upserts replace shared dashboards by organization-wide name without concurrent-edit protection; inspect `dashboard_library` and `export_dashboard` first. `create_dashboard_embed` issues an expiring read-only link to a dashboard (`id`, optional `timeframe`, `from`/`to`, `tag_filters`, `expires_in_days` or `expires_at`, `theme`); both servers expose `traceway://knowledge/dashboard-embedding`, the guide an agent follows to embed a dashboard in your own application. See [Dashboards](/learn/dashboards#mcp-workflow) for complete tool arguments and the verification workflow.
 
 
 ## Alerting configuration knowledge

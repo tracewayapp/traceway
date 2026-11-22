@@ -1,3 +1,4 @@
+import { dashboardStorage } from '$lib/utils/dashboard-embed';
 import { clearNavDepth } from '$lib/utils/back-navigation';
 
 export interface UserOrganizationResponse {
@@ -8,7 +9,7 @@ export interface UserOrganizationResponse {
 }
 
 function readStoredToken(): string | null {
-	const token = localStorage.getItem('AUTH_TOKEN');
+	const token = dashboardStorage()?.getItem('AUTH_TOKEN');
 	if (!token) return null;
 	try {
 		const { exp } = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
@@ -21,7 +22,7 @@ function readStoredToken(): string | null {
 class AuthState {
 	token = $state<string | null>(readStoredToken());
 	organizations = $state<UserOrganizationResponse[]>(
-		JSON.parse(localStorage.getItem('USER_ORGANIZATIONS') || '[]')
+		JSON.parse(dashboardStorage()?.getItem('USER_ORGANIZATIONS') || '[]')
 	);
 
 	isAuthenticated = $derived(!!this.token);
@@ -30,16 +31,16 @@ class AuthState {
 		$effect.root(() => {
 			$effect(() => {
 				if (this.token) {
-					localStorage.setItem('AUTH_TOKEN', this.token);
+					dashboardStorage()?.setItem('AUTH_TOKEN', this.token);
 				} else {
-					localStorage.removeItem('AUTH_TOKEN');
+					dashboardStorage()?.removeItem('AUTH_TOKEN');
 				}
 			});
 			$effect(() => {
 				if (this.organizations.length > 0) {
-					localStorage.setItem('USER_ORGANIZATIONS', JSON.stringify(this.organizations));
+					dashboardStorage()?.setItem('USER_ORGANIZATIONS', JSON.stringify(this.organizations));
 				} else {
-					localStorage.removeItem('USER_ORGANIZATIONS');
+					dashboardStorage()?.removeItem('USER_ORGANIZATIONS');
 				}
 			});
 		});

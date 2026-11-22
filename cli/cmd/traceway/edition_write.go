@@ -33,7 +33,7 @@ func addWriteCommands(root *cobra.Command) {
 	for _, sub := range root.Commands() {
 		switch sub.Name() {
 		case "dashboards":
-			sub.AddCommand(newDashboardsImportCmd())
+			sub.AddCommand(newDashboardsImportCmd(), newDashboardsEmbedCmd())
 		case "opamp":
 			addOpampWriteCommands(sub)
 		case "exceptions":

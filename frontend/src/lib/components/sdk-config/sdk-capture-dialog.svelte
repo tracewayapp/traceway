@@ -114,10 +114,12 @@
 		<p
 			class="text-xs text-muted-foreground"
 			title={flutter
-				? 'Each app session can upload up to 50 MiB and 10,000 diagnostic events, including the screen recording, across all captures. Developers may lower these limits. Errors, lifecycle metadata and performance metrics are separate.'
+				? 'Each app session can upload up to 50 MiB of screen recording, in at most 10,000 segments, across all captures and the error clips of the session. Logs, requests, errors, lifecycle metadata and performance metrics are not counted. The budget is kept across app restarts within the session.'
 				: 'Each browser session can upload up to 50 MiB and 10,000 diagnostic events, including replay events, across all captures. Developers may lower these limits. Errors, lifecycle metadata and web vitals are separate. Limits persist across page reloads when session storage is available.'}
 		>
-			Captures respect a shared per-session diagnostic budget: 50 MiB / 10,000 events maximum.
+			{flutter
+				? 'Screen recording shares a per-session budget: 50 MiB / 10,000 segments maximum.'
+				: 'Captures respect a shared per-session diagnostic budget: 50 MiB / 10,000 events maximum.'}
 		</p>
 
 		<form

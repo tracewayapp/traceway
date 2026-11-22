@@ -131,8 +131,8 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway slos series <id> --file range.json` | `good` and `total` per bucket for `{"fromDate", "toDate"}` (RFC 3339, at most 91 days, optional `intervalMinutes`) |
 | `traceway slos preview --file slo.json` | What an SLO definition `{"sliKind", "sliConfig"}` would measure over the last 24h (`good`, `total`, `sli`), without saving |
 | `traceway post-mortems list` / `post-mortems show <id>` | Post-mortem documents; `--search`, `--tag` |
-| `traceway opamp rules list` | Browser projects only: the remote SDK config (OpAMP) rules in order, with conditions, settings and `updatedAt`. Later matching rules win |
-| `traceway opamp preview --file client.json` | The settings document the saved rules give a client described by `{"attributes":{...},"instanceUid":"..."}` (`--file -` reads stdin): matched rules and captures, plan limits applied, config hash. Not proof that a browser applied it |
+| `traceway opamp rules list` | Browser and Flutter projects only: the remote SDK config (OpAMP) rules in order, with conditions, settings and `updatedAt`. Later matching rules win |
+| `traceway opamp preview --file client.json` | The settings document the saved rules give a client described by `{"attributes":{...},"instanceUid":"..."}` (`--file -` reads stdin): matched rules and captures, plan limits applied, config hash. Not proof that a client applied it |
 | `traceway profiles {list,use}`, `login`, `logout`, `version` | Profile and session management |
 
 The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above.

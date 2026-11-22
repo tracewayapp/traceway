@@ -207,7 +207,7 @@ func (p projectController) CreateProject(c *gin.Context) {
 		if err != nil {
 			return nil, err
 		}
-		if err := populateDefaultDashboards(tx, project, &userId); err != nil {
+		if err := populateDashboardsOnCreate(tx, project, &userId); err != nil {
 			return nil, err
 		}
 		return project, nil

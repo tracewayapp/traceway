@@ -49,7 +49,7 @@ The active tab's menu: **Rename Dashboard** (names are unique in the organizatio
 
 **Grafana import**: paste a Grafana export. Time series and graph panels become line charts, stat becomes single value, gauge stays a gauge, and Prometheus queries become metric sources. Anything that does not convert faithfully is listed as a warning, never silently dropped.
 
-Editing dashboards and widgets needs an organization role above `readonly`. Starring, tab order and home page layout follow the effective project role. Browser projects receive Web Performance on creation; mobile projects offer Mobile Performance on the empty dashboard page. Client dashboards filter by release, OS and country (when configured), rather than server instance. Slow sessions opens retained distribution exemplars, which may have element attribution and session links.
+Editing dashboards and widgets needs an organization role above `readonly`. Starring, tab order and home page layout follow the effective project role. Browser projects receive Web Performance on creation and Flutter projects Flutter Performance (the `app.*` metrics of the Flutter SDK 2.x); React Native, Android and iOS projects have no Dashboards page. Client dashboards filter by release, OS and country (when configured), rather than server instance. Slow sessions opens retained distribution exemplars, which may have element attribution and session links.
 
 ## Sharing and embedding a dashboard
 

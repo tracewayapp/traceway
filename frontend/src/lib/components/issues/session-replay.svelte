@@ -210,10 +210,15 @@
 		const onEnded = () => {
 			if (current < timeline.segments.length - 1) loadSegment(current + 1, 0, true);
 		};
-		// A segment that does not decode is skipped.
+		// A segment that does not decode is skipped; when it is the last, the player stops waiting for it.
 		const onError = () => {
-			if (pending && current < timeline.segments.length - 1)
+			if (!pending) return;
+			if (current < timeline.segments.length - 1) {
 				loadSegment(current + 1, 0, pending.play);
+			} else {
+				pending = null;
+				playing = false;
+			}
 		};
 		const onPlay = () => {
 			playing = true;

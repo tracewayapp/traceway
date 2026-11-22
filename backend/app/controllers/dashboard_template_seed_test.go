@@ -6,19 +6,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/tracewayapp/lit/v2"
 	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
-	"github.com/tracewayapp/traceway/backend/v2/app/config"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
 	"github.com/tracewayapp/traceway/backend/v2/app/migrations"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
-	"github.com/tracewayapp/traceway/backend/v2/app/services"
 	dashboardsvc "github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
 	_ "modernc.org/sqlite"
 )
@@ -198,20 +195,6 @@ func assertFlutterPerformanceDashboard(t *testing.T, tx *sql.Tx, projectId uuid.
 	}
 }
 
-func initRegistrationJWT(t *testing.T) {
-	t.Helper()
-	prevSecret := config.Config.JWTSecret
-	config.Config.JWTSecret = strings.Repeat("s", 32)
-	if err := services.InitJWT(); err != nil {
-		t.Fatalf("init jwt: %v", err)
-	}
-	services.InitTurnstile()
-	t.Cleanup(func() {
-		config.Config.JWTSecret = prevSecret
-		_ = services.InitJWT()
-	})
-}
-
 func createdProjectId(t *testing.T, body []byte, path ...string) uuid.UUID {
 	t.Helper()
 	var payload map[string]any
@@ -279,6 +262,43 @@ func TestNewFlutterProjectStartsWithFlutterPerformanceDashboard(t *testing.T) {
 		}
 		defer tx.Rollback()
 		assertFlutterPerformanceDashboard(t, tx, projectId)
+
+	})
+
+	t.Run("react-native from the project page", func(t *testing.T) {
+		// React Native has no Dashboards page: nothing is installed for it.
+		setupSetupControllerDB(t)
+		tx, err := db.DB.Begin()
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		userId, orgId := createSetupTestAccount(t, tx, "rn@example.com", "owner")
+		current, err := transactional.ProjectRepository.CreateWithOrganization(tx, "Backend", "custom", orgId)
+		if err != nil {
+			t.Fatalf("create current project: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		c, recorder := newControllerTestContext(t, nil, userId, http.MethodPost, "/api/projects", `{"name":"RN App","framework":"react-native"}`)
+		c.Set(middleware.ProjectIdContextKey, current.Id)
+		ProjectController.CreateProject(c)
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("create project: status = %d, body = %s", recorder.Code, recorder.Body.String())
+		}
+		projectId := createdProjectId(t, recorder.Body.Bytes())
+		tx, err = db.DB.Begin()
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer tx.Rollback()
+		assignments, err := transactional.DashboardRepository.FindAssignmentsByProject(tx, projectId)
+		if err != nil {
+			t.Fatalf("load assignments: %v", err)
+		}
+		if len(assignments) != 0 {
+			t.Errorf("a new react-native project has %d dashboards, want none", len(assignments))
+		}
 	})
 
 	t.Run("registration", func(t *testing.T) {

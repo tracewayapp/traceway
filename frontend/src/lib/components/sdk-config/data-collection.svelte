@@ -177,10 +177,10 @@
 			{#if rules.length === 0}
 				<p class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
 					{#if flutter}
-						No rules: errors are sent as they happen. Up to 10 minutes of breadcrumbs, and the last
-						seconds of the screen recording when screen capture is on, are uploaded on an error.
-						Sessions and performance metrics stay on; healthy-session sampling is off. Explicit SDK
-						options can override these defaults.
+						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
+						breadcrumbs, and the last seconds of the screen recording when screen capture is on, are
+						uploaded on an error. Sessions and performance metrics stay on; healthy-session sampling
+						is off. Explicit SDK options can override these defaults.
 					{:else}
 						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
 						breadcrumbs and a 30-second replay clip are uploaded on an error. Lightweight session

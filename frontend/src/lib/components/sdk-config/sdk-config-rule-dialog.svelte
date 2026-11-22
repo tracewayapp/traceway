@@ -292,7 +292,9 @@
 			<Sheet.Title>{rule ? 'Edit Rule' : 'New Rule'}</Sheet.Title>
 			<Sheet.Description>
 				Clients whose attributes match get these settings. Rules apply top to bottom, and a later
-				rule overrides what an earlier one set. Settings only lower what the SDK's init() options
+				rule overrides what an earlier one set. Settings only lower what the SDK's {flutter
+					? 'TracewayOptions'
+					: 'init() options'}
 				allow.
 			</Sheet.Description>
 		</Sheet.Header>

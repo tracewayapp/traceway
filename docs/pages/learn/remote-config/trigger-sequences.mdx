@@ -2,11 +2,11 @@
 
 Build an ordered sequence of clicks, hovers, navigations and log messages in **Data Collection → New Rule → Add recording trigger**. When a browser completes the sequence, it requests a replay capture. Sessions show the trigger name and a readable sequence, so you can find the visits that followed that journey.
 
-Recording triggers need browser SDK 2.0 or later: `@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version. The SDK advertises `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client the rule matches gets it. An SDK that cannot read one of these event matchers drops the whole trigger, and the legacy 1.x SDK never polls for rules, so [upgrade](/client/js-sdk/migration) the browser integration before relying on one. The builder is shown for browser projects (React, Vue, Svelte, jQuery) only.
+Recording triggers need browser SDK 2.0 or later (`@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version) or the Flutter SDK 2.x, where click and hover steps match widgets and navigation steps match routes (see [Recording triggers](/client/flutter#recording-triggers)). The SDK advertises `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client the rule matches gets it. An SDK that cannot read one of these event matchers drops the whole trigger, and the legacy 1.x SDK never polls for rules, so [upgrade](/client/js-sdk/migration) the browser integration before relying on one; the Flutter SDK 1.x never polls either. The builder is shown for browser projects (React, Vue, Svelte, jQuery) and Flutter projects.
 
 ## Build a sequence without writing a query
 
-1. Select the browser project and open **Data Collection** in its sidebar.
+1. Select the browser or Flutter project and open **Data Collection** in its sidebar.
 2. Create a Rule. Use the rule's targeting controls to choose the release, environment or cohort that should receive it.
 3. Add a recording trigger and give it a recognizable name, such as **Open user journey**.
 4. Add **Click** with `#open-user`, **Navigation** with `/users/{id}`, and **Log** with `User loaded`. Choose exact or contains matching for the log.

@@ -289,7 +289,7 @@ A server that predates remote config has no such route and answers 404 (the SDK 
 
 ## Dashboard API
 
-The Data Collection page uses these routes. They need dashboard authentication, or an agent credential for the rule and preview routes (see [Agent Write Access](/learn/agent-write-access)), and write access on the project for changes. The page itself is shown for browser projects (React, Vue, Svelte, jQuery) only. The `/api/sdk-config` routes answer `403` for a project that is not a browser or Flutter project.
+The Data Collection page uses these routes. They need dashboard authentication, or an agent credential for the rule and preview routes (see [Agent Write Access](/learn/agent-write-access)), and write access on the project for changes. The page itself is shown for browser projects (React, Vue, Svelte, jQuery) and Flutter projects. The `/api/sdk-config` routes answer `403` for a project that is not a browser or Flutter project.
 
 | Method | Endpoint | Purpose |
 |---|---|---|

@@ -3,9 +3,10 @@
 
 ## Sessions (`/sessions`)
 
-Only in the sidebar of browser and mobile projects. A session represents one visit; it can exist without a replay recording. Available breadcrumbs, requests, errors and replay explain individual experiences, while RUM metrics describe the population (see [rum.md](rum.md)).
+Only in the sidebar of browser and Flutter projects (React Native, Android and iOS projects have none). A session represents one visit; it can exist without a replay recording. Available breadcrumbs, requests, errors and replay explain individual experiences, while RUM metrics describe the population (see [rum.md](rum.md)).
 
 - With the 1.x browser SDK, sessions are recorded only when `recordAllSessions: true` is set. Without it, only a short clip from just before each exception is kept, shown on the issue page. The 2.x SDK reports every session unless `sessions: false` is set, but keeps its replay and breadcrumbs on the device by default and uploads them around errors and captures, or for the whole session with `recordAllSessions: true` or a remote SDK config rule (`data-collection.md`).
+- The Flutter SDK 2.x reports sessions the same way (`sessions: false` drops only the session records), with breadcrumbs buffered until an error, a trigger or a capture, and replay as an MP4 screen recording on Android, iOS and macOS: a clip before each exception, or consecutive video segments while a capture or rule streams replay.
 - A session ends after 15 minutes of inactivity, at 60 minutes in total, or when the page unloads. The server does not rely on the closing message arriving: it ends the session at the last activity it saw.
 - **Attributes**: the SDK stamps `url`, `path`, `referrer`, `userAgent`, `language`, `platform`, `viewport`, `screen` and `timezone`. The server adds `client.ip`. The app adds its own with `setAttributes` (for example `userId`, `email`, `tenant`).
 - **The list**: search a session id, IP or attribute value. Attribute filters use equals (case sensitive), not equals, contains or not contains (case insensitive), and all filters must match. Columns: session, attributes (click one to filter), started, duration, version. Filters are kept in the URL.

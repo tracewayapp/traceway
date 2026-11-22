@@ -26,6 +26,7 @@
 	import python from 'svelte-highlight/languages/python';
 	import {
 		getFrameworkCode,
+		getFlutterTelemetryCode,
 		getInstallCommand,
 		getFrameworkLabel
 	} from '$lib/utils/framework-code';
@@ -98,6 +99,12 @@ service:
 					projectWithToken.token,
 					projectWithToken.backendUrl
 				)
+			: ''
+	);
+
+	const flutterTelemetryCode = $derived(
+		projectWithToken?.framework === 'flutter'
+			? getFlutterTelemetryCode(projectWithToken.token, projectWithToken.backendUrl)
 			: ''
 	);
 
@@ -231,6 +238,22 @@ service:
 					<CopyableCodeBlock code={installCommand} language={bash} />
 				</CardContent>
 			</Card>
+			{#if flutterTelemetryCode}
+				<Card>
+					<CardHeader>
+						<CardTitle>Other OpenTelemetry Backends</CardTitle>
+						<CardDescription>
+							Optional, with the 2.x SDK. Send logs, request spans and metrics to any OTLP/HTTP
+							receiver, such as an OpenTelemetry Collector. Issues, sessions, remote collection
+							settings and screen recordings stay on Traceway; the project token is never sent to
+							the receiver.
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<CopyableCodeBlock code={flutterTelemetryCode} language={highlightLanguage} secret />
+					</CardContent>
+				</Card>
+			{/if}
 			{#if showSymbolUpload}
 				<SourceMapUploadCard />
 			{/if}

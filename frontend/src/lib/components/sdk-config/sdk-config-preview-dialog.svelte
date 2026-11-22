@@ -27,7 +27,7 @@
 	const flutter = $derived(projectsState.currentProject?.framework === 'flutter');
 	let attributesText = $state(
 		projectsState.currentProject?.framework === 'flutter'
-			? 'service.version=2.4.0\nos.name=Android\nuser.id='
+			? 'service.version=2.4.0\nos.name=android\nuser.id='
 			: 'service.version=2.4.0\nbrowser.name=Chrome\nuser.id='
 	);
 	let instanceUid = $state('');

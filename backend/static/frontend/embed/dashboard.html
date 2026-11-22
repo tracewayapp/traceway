@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en" class="dark" style="color-scheme: dark; background: #0b0d16">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Traceway</title>
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="alternate icon" href="/favicon.ico" sizes="any" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<script>
+			// Default to dark; honor stored preference if the user has set one.
+			// An embedded dashboard takes ?theme= from the page that frames it.
+			try {
+				var stored =
+					location.pathname === '/embed/dashboard'
+						? new URLSearchParams(location.search).get('theme')
+						: localStorage.getItem('traceway_theme');
+				if (stored === 'light') {
+					document.documentElement.classList.remove('dark');
+					document.documentElement.style.colorScheme = 'light';
+					document.documentElement.style.background = '';
+				}
+			} catch (e) {}
+		</script>
+		<style>
+			#splash {
+				position: fixed;
+				inset: 0;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				color: #71717a;
+				pointer-events: none;
+			}
+			html.dark #splash {
+				color: #fff;
+			}
+			#splash svg {
+				width: 4.5rem;
+				height: 4.5rem;
+			}
+			#splash .outer-ring {
+				animation: splash-spin 3s linear infinite;
+				transform-origin: 250px 250px;
+			}
+			#splash .middle-ring {
+				animation: splash-spin-reverse 2s linear infinite;
+				transform-origin: 250px 250px;
+			}
+			#splash .inner-ring {
+				animation: splash-spin 1.2s linear infinite;
+				transform-origin: 250px 250px;
+			}
+			@keyframes splash-spin {
+				from {
+					transform: rotate(0deg);
+				}
+				to {
+					transform: rotate(360deg);
+				}
+			}
+			@keyframes splash-spin-reverse {
+				from {
+					transform: rotate(0deg);
+				}
+				to {
+					transform: rotate(-360deg);
+				}
+			}
+		</style>
+		<link href="../_app/immutable/entry/start.CSpMrSiT.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CKfuZ3C1.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Dpw_JtvN.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DIeogL5L.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/-UyI9lYi.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D68z9fM2.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CdfXDPKF.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B0XwC4Ot.js" rel="modulepreload">
+		<link href="../_app/immutable/entry/app.D3XklkYs.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/PPVm8Dsz.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DsnmJJEf.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B-sWumEd.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/6DFM7H3j.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Bs0PaUZL.js" rel="modulepreload">
+		<link href="../_app/immutable/nodes/0.DJvJ5k48.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BCvcWUiu.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B_bzR1Vp.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/cry4kvwR.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DsDJ8mJz.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B3ObGhW3.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/oehMMySF.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D_yBsY6i.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/C24g0Tty.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CPXyHKPq.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BwjdHISM.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/-gsUorcD.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/C30FIux9.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CMXfLlms.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DnXdxP25.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DucW-S1H.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CrRL2hgJ.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Dqo1dL90.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DX7zkmN8.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D0ke2bEU.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Cp6DLeIx.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Ce7pWKla.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Bq4Z3xuJ.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CBrB537e.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Co4QZ-kU.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CD8CEJ3K.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Gl1MhKIv.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/C5q0Ekoz.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D26FjZ52.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DfIgfZcE.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DFdi3_QA.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/De-nD3H4.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B_iQxqNe.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/02mPXX3m.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/69_IOA4Y.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DANCNiqg.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D0B7j4MD.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CzQYQdzK.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D8G6m53N.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CEGWcoiZ.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/lgr3ZQXp.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/1GUGJewp.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BqQTeT0M.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/C3Py-NDB.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DE9zr2K3.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B6vr2AwT.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/hBOP7k7a.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/JI8Y4Crb.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/R4WhwsQZ.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/dONmFpjG.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CmgwShPo.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DalPDPIV.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/C_By1XXW.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CnCYikZ9.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B5sXQbGf.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/EhkvGxHP.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/H9DxHCc_.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BWsEk2uc.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DkE1aq3_.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Qi_mhhG_.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D_yRZZVC.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DMWmHbt4.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Y_1XAP2C.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D9K_9Fbc.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DhJTsKF0.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Dg7z55Hg.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B2tPOI2k.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/eA4k3eRQ.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Di5Uf8kx.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/s1BRJqIZ.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CMxF5yqn.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/C42hi9OO.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/D7H7lXTW.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Cu2krQjv.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DJmnbKEw.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BK4N9dcv.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/1njMUv94.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Czrimi2J.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BE8g6NAD.js" rel="modulepreload">
+		<link href="../_app/immutable/nodes/18.BaWRnLKX.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/LPTkDYbg.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BwYxrKBd.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/Ip1K25_6.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DWk-AbpP.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CRiV27Uu.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/uXd_GL1z.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/-NN2snjC.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/bRAwhNok.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DJY9H0SY.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/ZrrwS9_o.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B5cRg9Y3.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/grWkApz5.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CZXPzWfk.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BpxP70gP.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/B4PJM1o0.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/LUKUVV-4.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/DsXb2osU.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CcNt_Jjs.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/CuWCFBST.js" rel="modulepreload">
+		<link href="../_app/immutable/chunks/BR369h5S.js" rel="modulepreload">
+		
+		<link href="../_app/immutable/assets/select-trigger.CV-KWLNP.css" rel="stylesheet">
+		<link href="../_app/immutable/assets/status-page-view.WD1BhGpa.css" rel="stylesheet">
+		<link href="../_app/immutable/assets/0.CcYpFQJN.css" rel="stylesheet">
+		<link href="../_app/immutable/assets/loading-circle.B7eue_J4.css" rel="stylesheet">
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div id="splash">
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+				<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="31.25">
+					<g class="outer-ring">
+						<path
+							d="M250 41.67c115.06 0 208.33 93.27 208.33 208.33c0 37.94-10.15 73.54-27.88 104.17M104.17 101.23A207.71 207.71 0 0 0 41.67 250c0 115.06 93.27 208.33 208.33 208.33c37.94 0 73.54-10.15 104.17-27.88"
+						/>
+					</g>
+					<g class="middle-ring">
+						<path
+							d="M104.17 250c0 30.98 9.67 59.71 26.15 83.33M250 104.17a145.83 145.83 0 1 1-62.5 277.63"
+						/>
+					</g>
+					<g class="inner-ring">
+						<path d="M250 333.33a83.33 83.33 0 0 0 0-166.67" />
+					</g>
+				</g>
+			</svg>
+		</div>
+		<div style="display: contents">
+			<script>
+				{
+					__sveltekit_1gxa0eo = {
+						base: new URL("..", location).pathname.slice(0, -1)
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("../_app/immutable/entry/start.CSpMrSiT.js"),
+						import("../_app/immutable/entry/app.D3XklkYs.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+				}
+			</script>
+		</div>
+	</body>
+</html>

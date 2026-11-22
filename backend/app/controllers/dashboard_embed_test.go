@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,11 +60,18 @@ func TestEmbeddedDashboard(t *testing.T) {
 			map[string]any{"expiresInDays": 0},
 			map[string]any{"expiresInDays": -1},
 			map[string]any{"expiresInDays": 99999999},
+			map[string]any{"expiresInDays": embedMaxDays + 1},
+			map[string]any{"expiresAt": time.Now().AddDate(0, 0, embedMaxDays).Add(time.Hour)},
 			map[string]any{"expiresAt": deadline, "expiresInDays": 3},
 		} {
 			if rec := f.do(t, writer, http.MethodPost, issueURL, invalid); rec.Code != http.StatusUnprocessableEntity {
 				t.Errorf("invalid expiry %v: status %d", invalid, rec.Code)
 			}
+		}
+		rec := f.do(t, writer, http.MethodPost, issueURL, map[string]any{"expiresInDays": embedMaxDays})
+		var longest struct{ ExpiresAt time.Time }
+		if err := json.Unmarshal(rec.Body.Bytes(), &longest); err != nil || rec.Code != http.StatusCreated || longest.ExpiresAt.Sub(time.Now().AddDate(0, 0, embedMaxDays)).Abs() > time.Minute {
+			t.Fatalf("longest share: status %d, expires %v", rec.Code, longest.ExpiresAt)
 		}
 		for _, opts := range []map[string]any{{"expiresAt": deadline}, {"expiresInDays": 3}} {
 			opts["tagFilters"] = map[string]string{"account": "one"}
@@ -197,6 +205,17 @@ func TestEmbeddedDashboard(t *testing.T) {
 		}
 	}
 
+	// The viewer is anonymous: what a widget queries stays on the server.
+	meta := f.do(t, link.Token, http.MethodGet, path, nil).Body.String()
+	for _, hidden := range []string{"tagFilters", `"paid"`, `"name":"orders"`} {
+		if strings.Contains(meta, hidden) {
+			t.Fatalf("shared dashboard exposes %s: %s", hidden, meta)
+		}
+	}
+	if !strings.Contains(meta, `"aggregation":"sum"`) || !strings.Contains(meta, `"title":"Paid orders"`) {
+		t.Fatalf("shared dashboard lost what the page draws with: %s", meta)
+	}
+
 	now := time.Now().Add(-time.Minute)
 	point := models.MetricPoint{ProjectId: f.project.Id, Name: "orders", Value: 7, Tags: map[string]string{"state": "paid", "account": "one"}, RecordedAt: now}
 	older := point
@@ -262,5 +281,44 @@ func TestEmbedWidgetQueryMatchesTheDashboardPage(t *testing.T) {
 	req, err := embedWidgetQuery(saved, view)
 	if err != nil || req.Queries[0].TagFilters["account"] != "one" || req.Queries[0].TagFilters["state"] != "paid" {
 		t.Fatalf("signed filter must win over a saved one: %+v (%v)", req, err)
+	}
+}
+
+func TestEmbedWidgetsKeepOnlyWhatThePageDraws(t *testing.T) {
+	config := `{"unit":"ms","thresholds":[{"value":1,"color":"red"}],"sources":[{"type":"metric","name":"checkout.duration","aggregation":"p95","groupBy":"region","label":"Checkout","complement":true,"threshold":250,"tagFilters":{"account":"two"}}]}`
+	shown, err := embedWidgets([]models.DashboardWidget{
+		{Id: "w_1", Title: "Checkout", WidgetType: "line_chart", Config: json.RawMessage(config)},
+		{Id: "w_2", Title: "Empty", WidgetType: "line_chart", Config: json.RawMessage(`{}`)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"sources":[{"aggregation":"p95","groupBy":"region","label":"Checkout","complement":true}],"thresholds":[{"value":1,"color":"red"}],"unit":"ms"}`
+	if string(shown[0].Config) != want || shown[0].Title != "Checkout" || string(shown[1].Config) != `{}` {
+		t.Fatalf("shown widgets: %s, %s", shown[0].Config, shown[1].Config)
+	}
+	if _, err := embedWidgets([]models.DashboardWidget{{Id: "w_3", Config: json.RawMessage(`{"sources":"checkout.duration"}`)}}); err == nil {
+		t.Fatal("unreadable sources must not be passed through")
+	}
+}
+
+func TestEmbeddedDashboardReadsAreRateLimited(t *testing.T) {
+	f := setupAgentFixture(t)
+	for _, tc := range []struct {
+		path  string
+		limit int
+	}{
+		{"/api/embedded-dashboards/" + uuid.NewString(), embedOpensPerMinute},
+		{"/api/embedded-dashboards/" + uuid.NewString() + "/widgets/w_1", embedWidgetReadsPerMinute},
+	} {
+		for range tc.limit {
+			if rec := f.do(t, "", http.MethodGet, tc.path, nil); rec.Code != http.StatusUnauthorized {
+				t.Fatalf("GET %s within the limit: %d", tc.path, rec.Code)
+			}
+		}
+		rec := f.do(t, "", http.MethodGet, tc.path, nil)
+		if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
+			t.Fatalf("GET %s past the limit: %d", tc.path, rec.Code)
+		}
 	}
 }

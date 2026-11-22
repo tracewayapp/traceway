@@ -109,6 +109,7 @@
 						id="share-days"
 						type="number"
 						min={1}
+						max={90}
 						step={1}
 						class="pr-16"
 						bind:value={days}

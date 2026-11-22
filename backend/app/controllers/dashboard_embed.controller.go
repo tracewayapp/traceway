@@ -25,6 +25,13 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
+// One open of a shared dashboard reads the dashboard once and every widget once
+// (a dashboard holds at most 100), and viewers behind one address share a budget.
+const (
+	embedOpensPerMinute       = 60
+	embedWidgetReadsPerMinute = 600
+)
+
 var embedTimeframePattern = regexp.MustCompile(`^([0-9]+)([mhd])$`)
 
 func validateEmbedView(view *services.DashboardEmbedView, timeframes []string) string {
@@ -73,22 +80,24 @@ type embedOptions struct {
 	ExpiresInDays *int64     `json:"expiresInDays"`
 }
 
+// A link cannot be revoked on its own, so its lifetime is bounded like a write token's.
+const embedMaxDays = 90
+
 func (o *embedOptions) expiry(now time.Time) (time.Time, string) {
+	latest := now.AddDate(0, 0, embedMaxDays)
 	switch {
 	case o.ExpiresAt != nil && o.ExpiresInDays != nil:
 		return time.Time{}, "Send expiresAt or expiresInDays, not both"
 	case o.ExpiresAt != nil:
 		end := o.ExpiresAt.UTC().Truncate(time.Second)
-		if !end.After(now) || end.Year() > 9999 {
-			return time.Time{}, "expiresAt must be a future RFC 3339 timestamp"
+		if !end.After(now) || end.After(latest) {
+			return time.Time{}, fmt.Sprintf("expiresAt must be a future RFC 3339 timestamp at most %d days away", embedMaxDays)
 		}
 		return end, ""
 	case o.ExpiresInDays != nil:
-		// The API returns the deadline as an RFC 3339 timestamp (four-digit year).
-		last := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 		days := *o.ExpiresInDays
-		if days < 1 || days > (last.Unix()-now.Unix())/86400 {
-			return time.Time{}, "expiresInDays must be positive and produce a valid expiry date"
+		if days < 1 || days > embedMaxDays {
+			return time.Time{}, fmt.Sprintf("expiresInDays must be between 1 and %d", embedMaxDays)
 		}
 		return now.AddDate(0, 0, int(days)), ""
 	default:
@@ -205,9 +214,14 @@ func (c *dashboardsController) GetEmbed(ctx *gin.Context) {
 	if def == nil {
 		return
 	}
+	widgets, err := embedWidgets(def.Widgets)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to prepare the widgets of embedded dashboard %d: %w", claims.DashboardId, err))
+		return
+	}
 	response := gin.H{
 		"name":             dashboard.Name,
-		"widgets":          def.Widgets,
+		"widgets":          widgets,
 		"from":             claims.From,
 		"to":               claims.To,
 		"expiresAt":        claims.ExpiresAt.Time.UTC(),
@@ -217,12 +231,51 @@ func (c *dashboardsController) GetEmbed(ctx *gin.Context) {
 		// Pin every widget in this open page to the exact range shown in its header.
 		_, token, err := services.GenerateDashboardEmbed(claims.DashboardId, claims.ProjectId, claims.DashboardEmbedView, claims.ExpiresAt.Time, false)
 		if err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err)
+			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("failed to sign the widget token of embedded dashboard %d: %w", claims.DashboardId, err))
 			return
 		}
 		response["widgetToken"] = token
 	}
 	ctx.JSON(http.StatusOK, response)
+}
+
+// The fields of a source the embed page draws with. What a source queries (its
+// metric, saved filters and threshold) stays on the server, which runs the query:
+// a saved filter can name an account other than the viewer's.
+type embedWidgetSource struct {
+	Aggregation string `json:"aggregation,omitempty"`
+	GroupBy     string `json:"groupBy,omitempty"`
+	Label       string `json:"label,omitempty"`
+	Complement  bool   `json:"complement,omitempty"`
+}
+
+func embedWidgets(widgets []models.DashboardWidget) ([]models.DashboardWidget, error) {
+	shown := make([]models.DashboardWidget, len(widgets))
+	for i, widget := range widgets {
+		shown[i] = widget
+		if len(widget.Config) == 0 {
+			continue
+		}
+		var config map[string]json.RawMessage
+		if err := json.Unmarshal(widget.Config, &config); err != nil {
+			return nil, fmt.Errorf("widget %s: %w", widget.Id, err)
+		}
+		if _, ok := config["sources"]; !ok {
+			continue
+		}
+		var sources []embedWidgetSource
+		if err := json.Unmarshal(config["sources"], &sources); err != nil {
+			return nil, fmt.Errorf("widget %s sources: %w", widget.Id, err)
+		}
+		var err error
+		if config["sources"], err = json.Marshal(sources); err != nil {
+			return nil, err
+		}
+		if shown[i].Config, err = json.Marshal(config); err != nil {
+			return nil, err
+		}
+	}
+	return shown, nil
 }
 
 func (c *dashboardsController) GetEmbedWidget(ctx *gin.Context) {

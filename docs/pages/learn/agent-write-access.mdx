@@ -19,7 +19,7 @@ Every write a write credential makes in the organization is recorded in its agen
 | Action | `traceway-write` command | MCP tool |
 |---|---|---|
 | Create or replace dashboards and apply to the selected project | `dashboards import --file F [--mode create\|upsert]` | `import_dashboards` |
-| Issue an expiring read-only link to a dashboard | `dashboards embed <id> [--timeframe T] [--tag k=v] [--expires-in-days N]` | `create_dashboard_embed` |
+| Create a read-only personal access token for yourself | `tokens create --name N [--expires-in-days D]` | `create_read_token` |
 | Configure channels and project alert rules | `channels create/update/delete/test`, `alerts create/update/delete` | Notification channel/rule tools |
 | Create, change, pause or delete SLOs | `slos create/update/delete` | `create_slo`, `update_slo`, `delete_slo` |
 | Configure organization on-call routing | `teams`, `schedules`, `escalation-policies` | Team, on-call schedule/override and escalation-policy tools |
@@ -38,9 +38,9 @@ Every write a write credential makes in the organization is recorded in its agen
   Remote SDK config rules decide what the browsers of a React, Vue, Svelte or jQuery project running the 2.x SDK send. A write credential can therefore switch signals off, stream console lines, requests and clicks for every visitor, turn on full-session replay, and set `maskAllInputs: false`, which records what users type into input fields. The only limits are the ceilings the app sets in `init()` (for example `sessionRecording: false`) and the organization's plan. Turn Agent Access on only for organizations where that is acceptable, and review these writes in the agent activity log.
 </Callout>
 
-Other routes remain restricted, including creating monitors, status pages and public incident updates, member and invitation mutations, tokens, other project settings and targeted SDK captures. A new route is never reachable by an agent until it is added to the agent allowlist on purpose.
+Other routes remain restricted, including creating monitors, status pages and public incident updates, member and invitation mutations, revoking tokens and creating write tokens, other project settings and targeted SDK captures. A new route is never reachable by an agent until it is added to the agent allowlist on purpose.
 
-A [shared dashboard link](/learn/dashboards#share-and-embed-a-dashboard) is the one write a host application makes on its own: its backend calls the same endpoint with a write token to embed a dashboard for its own users. Every link issued, by an application, the CLI or an agent, appears in the agent activity log like any other agent write. A link opens without an account until it expires and cannot be revoked on its own, so agents issue one only when asked.
+A [shared dashboard link](/learn/dashboards#share-and-embed-a-dashboard) is not a write: it only reads a dashboard that already exists, so a read token issues one without Agent Access and it is not recorded in the agent activity log. The token's owner still needs write access to the project, as in the dashboard's share dialog. A link opens without an account until it expires and cannot be revoked on its own, so agents issue one only when asked.
 
 Organization teams, schedules and escalation policies require an owner or admin. Any organization member can create a schedule override; its creator, covering responder or an admin can delete it. Contact methods and personal notification chains are always scoped to the authenticated person. Organization and personal writes still need a selected project for the Agent Access check and audit attribution; an organization path must match that project's organization. Organization member discovery is admin-only.
 
@@ -61,6 +61,8 @@ The log keeps 90 days of history.
 In **Account > Personal Access Tokens**, choose **Access: Read and write** when creating a token. Write tokens start with `tww_` instead of `twp_`, so they stand out in logs and secret scanners. They must expire within 90 days.
 
 Read tokens (`twp_`) are the default. Tokens created before agent write access existed are read only. Create a new write token where an automation needs to write.
+
+A write credential can create read tokens for its owner (`traceway-write tokens create`, the `create_read_token` tool), for example to give a host application the token it embeds dashboards with. It cannot create write tokens, so write access never outlives the 90 days of the credential that has it. A read token created this way never expires unless the agent sets an expiry; revoke it in **Account > Personal Access Tokens**. Each creation is an agent write and appears in the activity log.
 
 ### The traceway-write CLI
 

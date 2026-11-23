@@ -92,7 +92,7 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `list_sdk_config_rules` | A browser project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
 | `preview_sdk_config` | The settings document saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live browser applied |
 
-The write server adds `import_dashboards`, `create_dashboard_embed`, `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, `create_slo`, `update_slo`, `delete_slo`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
+The write server adds `import_dashboards`, `create_dashboard_embed`, `create_read_token`, `list_personal_access_tokens`, `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, `create_slo`, `update_slo`, `delete_slo`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
 
 Project selection is per call: every project-scoped tool accepts a `project_id` parameter and falls back to the CLI's current project.
 

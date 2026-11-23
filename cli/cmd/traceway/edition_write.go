@@ -30,6 +30,7 @@ func init() {
 
 func addWriteCommands(root *cobra.Command) {
 	addAlertingConfigurationCommands(root, true)
+	root.AddCommand(newTokensCmd())
 	for _, sub := range root.Commands() {
 		switch sub.Name() {
 		case "dashboards":

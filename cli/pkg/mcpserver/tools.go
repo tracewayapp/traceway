@@ -145,5 +145,6 @@ func (s *server) addWriteTools(srv *mcp.Server) {
 	s.addOperationWriteTools(srv)
 	s.addOpampWriteTools(srv)
 	s.addDashboardWriteTools(srv)
+	s.addTokenWriteTools(srv)
 	s.addAlertingConfigurationTools(srv, true)
 }

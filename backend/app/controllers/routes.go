@@ -181,6 +181,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.POST("/distributed-traces/:traceId", middleware.UseAppAuth, DistributedTraceController.GetDistributedTrace)
 	router.GET("/otel/spans/:traceId/:spanId", middleware.UseAppAuth, middleware.RequireProjectAccess, GetOtelSpan)
 	router.POST("/spans/search", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.Search)
+	router.POST("/spans/series", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.Series)
+	router.POST("/spans/distribution", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.Distribution)
 	router.GET("/spans/traces/:traceId", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.GetTrace)
 	router.GET("/spans/traces/:traceId/spans/:spanId/attributes", middleware.UseAppAuth, middleware.RequireProjectAccess, SpanExplorerController.GetSpanAttributes)
 

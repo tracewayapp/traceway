@@ -1,5 +1,8 @@
-import { filterOperator, operatorOption } from './attribute-filters';
+import { filterOperator, operatorOption, parseAttributeFilter } from './attribute-filters';
 import { parseLogAttributeFilter } from './log-filters';
+import { spanKindLabel, spanStatusLabel } from './span-fields';
+
+export type SavedFilterPage = 'logs' | 'spans';
 
 export type SavedFilter = {
 	id: number;
@@ -15,23 +18,39 @@ export type SavedFilter = {
 
 export const TIME_PARAMS = ['preset', 'from', 'to'] as const;
 
-// The URL params of /logs a saved filter keeps; the backend keeps the same
-// list (savedFilterPageParams in saved_filter.controller.go).
-export const LOGS_FILTER_PARAMS = [
-	...TIME_PARAMS,
-	'search',
-	'searchType',
-	'minSeverity',
-	'service',
-	'traceId',
-	'spanId',
-	'scopeName',
-	'body',
-	'attr',
-	'chart',
-	'chartView',
-	'chartAgg'
-] as const;
+// The URL params of each page a saved filter keeps; the backend keeps the same
+// lists (savedFilterPageParams in saved_filter.controller.go).
+export const SAVED_FILTER_PARAMS: Record<SavedFilterPage, readonly string[]> = {
+	logs: [
+		...TIME_PARAMS,
+		'search',
+		'searchType',
+		'minSeverity',
+		'service',
+		'traceId',
+		'spanId',
+		'scopeName',
+		'body',
+		'attr',
+		'chart',
+		'chartView',
+		'chartAgg'
+	],
+	spans: [
+		...TIME_PARAMS,
+		'name',
+		'service',
+		'kind',
+		'status',
+		'minMs',
+		'maxMs',
+		'trace',
+		'attr',
+		'chart',
+		'chartView',
+		'chartAgg'
+	]
+};
 
 export function hasTimeRange(query: string): boolean {
 	const params = new URLSearchParams(query);
@@ -40,10 +59,14 @@ export function hasTimeRange(query: string): boolean {
 
 // The page's own params in a fixed order (keys sorted, repeated values kept
 // in order), so two queries compare equal whatever encoded them.
-export function normalizeQuery(query: string | URLSearchParams, withTime = true): string {
+export function normalizeQuery(
+	query: string | URLSearchParams,
+	page: SavedFilterPage,
+	withTime = true
+): string {
 	const params = typeof query === 'string' ? new URLSearchParams(query) : query;
 	const out = new URLSearchParams();
-	const keys = [...LOGS_FILTER_PARAMS]
+	const keys = [...SAVED_FILTER_PARAMS[page]]
 		.filter((k) => withTime || !(TIME_PARAMS as readonly string[]).includes(k))
 		.sort();
 	for (const key of keys) {
@@ -57,7 +80,8 @@ export function normalizeQuery(query: string | URLSearchParams, withTime = true)
 // A saved filter without a time range matches whatever range is selected.
 export function matchesSavedFilter(current: string, saved: SavedFilter): boolean {
 	const withTime = hasTimeRange(saved.query);
-	return normalizeQuery(current, withTime) === normalizeQuery(saved.query, withTime);
+	const page = saved.page as SavedFilterPage;
+	return normalizeQuery(current, page, withTime) === normalizeQuery(saved.query, page, withTime);
 }
 
 const severityLabels: Record<string, string> = {
@@ -84,9 +108,17 @@ export const presetLabels: Record<string, string> = {
 };
 
 // Short parts for the saved filters menu: what the filter selects, in the
-// order the logs page shows it.
-export function describeSavedFilter(query: string): string[] {
+// order its page shows it.
+export function describeSavedFilter(query: string, page: SavedFilterPage): string[] {
 	const params = new URLSearchParams(query);
+	const parts = page === 'spans' ? describeSpansFilter(params) : describeLogsFilter(params);
+	const preset = params.get('preset');
+	if (preset) parts.push(presetLabels[preset] ?? preset);
+	else if (params.get('from') && params.get('to')) parts.push('fixed range');
+	return parts;
+}
+
+function describeLogsFilter(params: URLSearchParams): string[] {
 	const parts: string[] = [];
 	const search = params.get('search');
 	if (search) parts.push(`"${search}"`);
@@ -107,9 +139,37 @@ export function describeSavedFilter(query: string): string[] {
 		const key = chart.replace(/^(resource|scope|log)\./, '');
 		parts.push(params.get('chartView') === 'distribution' ? `${key} distribution` : `${key} chart`);
 	}
-	const preset = params.get('preset');
-	if (preset) parts.push(presetLabels[preset] ?? preset);
-	else if (params.get('from') && params.get('to')) parts.push('fixed range');
+	return parts;
+}
+
+function describeSpansFilter(params: URLSearchParams): string[] {
+	const parts: string[] = [];
+	const name = params.get('name');
+	if (name) parts.push(`"${name}"`);
+	const service = params.get('service');
+	if (service) parts.push(`service = ${service}`);
+	const kind = params.get('kind');
+	if (kind) parts.push(spanKindLabel(Number(kind)) || `kind ${kind}`);
+	const status = params.get('status');
+	if (status) parts.push(`status ${spanStatusLabel(Number(status)) || status}`);
+	const minMs = params.get('minMs');
+	const maxMs = params.get('maxMs');
+	if (minMs && maxMs) parts.push(`${minMs}–${maxMs} ms`);
+	else if (minMs) parts.push(`≥ ${minMs} ms`);
+	else if (maxMs) parts.push(`≤ ${maxMs} ms`);
+	for (const raw of params.getAll('attr')) {
+		const f = parseAttributeFilter(raw);
+		if (!f) continue;
+		const op = operatorOption(filterOperator(f)).pill;
+		parts.push(f.exists ? `${f.key} ${op}` : `${f.key} ${op} ${f.value}`);
+	}
+	if (params.get('trace')) parts.push('one trace');
+	const chart = params.get('chart');
+	const distribution = params.get('chartView') === 'distribution';
+	if (chart === 'none') parts.push('no chart');
+	else if (chart?.startsWith('attr.')) {
+		parts.push(`${chart.slice(5)} ${distribution ? 'distribution' : 'chart'}`);
+	} else if (distribution) parts.push('duration distribution');
 	return parts;
 }
 

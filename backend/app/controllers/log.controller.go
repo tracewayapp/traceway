@@ -86,30 +86,6 @@ type LogAttributeChartRequest struct {
 	Bins       int             `json:"bins"`
 }
 
-// Present counts the matching logs that carry the attribute and Numeric those
-// whose value is a number; only numbers are charted.
-type LogAttributeSeriesResponse struct {
-	IntervalSeconds int64                             `json:"intervalSeconds"`
-	Present         int64                             `json:"present"`
-	Numeric         int64                             `json:"numeric"`
-	Buckets         []shared.LogAttributeSeriesBucket `json:"buckets"`
-}
-
-type LogAttributeDistributionResponse struct {
-	Present  int64                    `json:"present"`
-	Numeric  int64                    `json:"numeric"`
-	Integral bool                     `json:"integral"`
-	Min      float64                  `json:"min"`
-	Max      float64                  `json:"max"`
-	Avg      float64                  `json:"avg"`
-	Sum      float64                  `json:"sum"`
-	P50      float64                  `json:"p50"`
-	P95      float64                  `json:"p95"`
-	P99      float64                  `json:"p99"`
-	BinWidth float64                  `json:"binWidth"`
-	Bins     []shared.LogAttributeBin `json:"bins"`
-}
-
 // A chart reads every matching value of the attribute, unlike the list, which
 // stops at a page: past this the request answers 504 instead of holding a
 // database connection for as long as the scan takes.
@@ -262,8 +238,8 @@ func (l logController) AttributeSeries(c *gin.Context) {
 		l.answerChartError(c, ctx, err)
 		return
 	}
-	buckets, present, numeric := shared.BuildLogAttributeSeries(rows)
-	c.JSON(http.StatusOK, LogAttributeSeriesResponse{IntervalSeconds: step, Present: present, Numeric: numeric, Buckets: buckets})
+	buckets, present, numeric := shared.BuildChartSeries(rows)
+	c.JSON(http.StatusOK, ChartSeriesResponse{IntervalSeconds: step, Present: present, Numeric: numeric, Buckets: buckets})
 }
 
 // AttributeDistribution counts the numeric values of one attribute in
@@ -287,12 +263,6 @@ func (l logController) AttributeDistribution(c *gin.Context) {
 	if !ok {
 		return
 	}
-	bins := request.Bins
-	if bins == 0 {
-		bins = shared.LogAttributeDefaultBins
-	}
-	bins = min(max(bins, shared.LogAttributeMinBins), shared.LogAttributeMaxBins)
-
 	spanCtx, span := traceway.StartSpan(c, "charting log attribute distribution")
 	defer span.End()
 	traceway.SetAttribute(spanCtx, "logs.range_seconds", strconv.FormatFloat(request.ToDate.Sub(request.FromDate).Seconds(), 'f', 0, 64))
@@ -304,28 +274,13 @@ func (l logController) AttributeDistribution(c *gin.Context) {
 		l.answerChartError(c, ctx, err)
 		return
 	}
-	response := LogAttributeDistributionResponse{Bins: []shared.LogAttributeBin{}}
-	for _, row := range stats {
-		response.Present += row.Present
-		response.Numeric += row.Numeric
-	}
-	if len(stats) != 1 || stats[0].Numeric == 0 {
-		c.JSON(http.StatusOK, response)
-		return
-	}
-	row := stats[0]
-	response.Integral = row.Integral == row.Numeric
-	response.Min, response.Max, response.Sum = row.Min, row.Max, row.Sum
-	response.Avg = row.Sum / float64(row.Numeric)
-	response.P50, response.P95, response.P99 = row.P50, row.P95, row.P99
-	binning := shared.NiceLogAttributeBins(row.Min, row.Max, bins, response.Integral)
-	binRows, err := telemetry.LogRecordRepository.AttributeBins(ctx, params, target, binning)
+	response, err := chartDistribution(stats, chartBinCount(request.Bins), false, func(binning shared.ChartBinning) ([]shared.ChartBinRow, error) {
+		return telemetry.LogRecordRepository.AttributeBins(ctx, params, target, binning)
+	})
 	if err != nil {
 		l.answerChartError(c, ctx, err)
 		return
 	}
-	response.BinWidth = binning.Width
-	response.Bins = shared.BuildLogAttributeBins(binning, binRows)
 	c.JSON(http.StatusOK, response)
 }
 

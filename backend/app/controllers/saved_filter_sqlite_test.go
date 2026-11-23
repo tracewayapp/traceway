@@ -90,7 +90,7 @@ func TestSavedFiltersLifecycle(t *testing.T) {
 		"duplicate name, other case": `{"page":"logs","name":"node 7 TIMERS","query":"preset=1h"}`,
 		"no name":                    `{"page":"logs","name":"  ","query":"preset=1h"}`,
 		"long name":                  `{"page":"logs","name":"` + strings.Repeat("n", 101) + `","query":"preset=1h"}`,
-		"unknown page":               `{"page":"spans","name":"x","query":"preset=1h"}`,
+		"unknown page":               `{"page":"issues","name":"x","query":"preset=1h"}`,
 		"nothing to save":            `{"page":"logs","name":"x","query":"projectId=abc&other=1"}`,
 		"bad query":                  `{"page":"logs","name":"x","query":"attr=%zz"}`,
 		"too long":                   `{"page":"logs","name":"x","query":"search=` + strings.Repeat("a", 9000) + `"}`,
@@ -147,5 +147,21 @@ func TestSavedFiltersLifecycle(t *testing.T) {
 	}
 	if code, out := f.do("GET", "/api/saved-filters?page=logs", ""); code != http.StatusOK || len(out["data"].([]any)) != 1 {
 		t.Errorf("after delete the list = %v, want one filter", out)
+	}
+
+	// The spans page keeps its own params and its own names: a logs param is dropped, and a name used on logs is free.
+	spansQuery := "preset=60m&service=checkout-api&minMs=40&attr=db.system%3Dpostgresql&attr=cache.hit!%3F%3D&chart=duration&search=x"
+	code, spans := f.do("POST", "/api/saved-filters", `{"page":"spans","name":"Errors","query":`+strconv.Quote(spansQuery)+`}`)
+	if code != http.StatusCreated {
+		t.Fatalf("create on spans = %d %v", code, spans)
+	}
+	if got, want := spans["query"], "attr=db.system%3Dpostgresql&attr=cache.hit%21%3F%3D&chart=duration&minMs=40&preset=60m&service=checkout-api"; got != want {
+		t.Errorf("spans query = %q, want %q", got, want)
+	}
+	if code, out := f.do("GET", "/api/saved-filters?page=spans", ""); code != http.StatusOK || len(out["data"].([]any)) != 1 {
+		t.Errorf("spans list = %d %v, want its one filter", code, out)
+	}
+	if code, out := f.do("GET", "/api/saved-filters?page=logs", ""); code != http.StatusOK || len(out["data"].([]any)) != 1 {
+		t.Errorf("logs list after a spans save = %v, want its one filter", out)
 	}
 }

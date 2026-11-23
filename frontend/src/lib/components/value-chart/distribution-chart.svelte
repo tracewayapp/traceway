@@ -1,25 +1,32 @@
 <script lang="ts" module>
-	export type LogAttributeBin = { start: number; end: number; count: number };
+	export type ChartBin = { start: number; end: number; count: number };
 </script>
 
 <script lang="ts">
-	import { scaleLinear } from 'd3-scale';
-	import { formatChartNumber } from '$lib/utils/log-attribute-chart';
+	import { scaleLinear, scaleLog } from 'd3-scale';
+	import { formatChartNumber } from '$lib/utils/value-chart';
 
 	let {
 		bins,
 		binWidth,
 		integral,
 		markers,
+		scale = 'linear',
 		loading = false,
-		height = 180
+		height = 180,
+		format = formatChartNumber,
+		countLabel = 'Values'
 	}: {
-		bins: LogAttributeBin[];
+		bins: ChartBin[];
 		binWidth: number;
 		integral: boolean;
 		markers: { label: string; value: number; color: string }[];
+		// log: every bin covers the same ratio, so the axis is logarithmic.
+		scale?: 'linear' | 'log';
 		loading?: boolean;
 		height?: number;
+		format?: (value: number) => string;
+		countLabel?: string;
 	} = $props();
 
 	const PAD = { top: 18, right: 8, bottom: 4, left: 52 };
@@ -34,7 +41,11 @@
 	const lo = $derived(bins.length > 0 ? bins[0].start : 0);
 	const hi = $derived(bins.length > 0 ? bins[bins.length - 1].end : 1);
 
-	const x = $derived(scaleLinear().domain([lo, hi]).range([0, plotW]));
+	const x = $derived(
+		scale === 'log' && lo > 0
+			? scaleLog().domain([lo, hi]).range([0, plotW])
+			: scaleLinear().domain([lo, hi]).range([0, plotW])
+	);
 	const y = $derived(
 		scaleLinear()
 			.domain([0, Math.max(1, ...bins.map((b) => b.count))])
@@ -44,22 +55,37 @@
 	const yTicks = $derived(y.ticks(4).filter((t) => Number.isInteger(t)));
 
 	// One whole number per bin reads as that number, not as a range.
-	const singleValueBins = $derived(integral && binWidth === 1);
+	const singleValueBins = $derived(scale === 'linear' && integral && binWidth === 1);
+
+	// On a log axis the labels sit on round values: 1, 2 and 5 of each decade,
+	// or only the decades when those are too many.
+	function logLabels(want: number): { x: number; text: string }[] {
+		const lead = (t: number) => Math.round(t / 10 ** Math.floor(Math.log10(t) + 1e-9));
+		const ticks = x.ticks(20).filter((t) => t >= lo && t <= hi);
+		let picked = ticks.filter((t) => [1, 2, 5].includes(lead(t)));
+		if (picked.length > want) picked = ticks.filter((t) => lead(t) === 1);
+		if (picked.length > want) {
+			const every = Math.ceil(picked.length / want);
+			picked = picked.filter((_, i) => i % every === 0);
+		}
+		return picked.map((t) => ({ x: x(t), text: format(t) }));
+	}
 
 	const xLabels = $derived.by(() => {
 		if (bins.length === 0) return [];
 		const want = width < 560 ? 4 : 7;
+		if (scale === 'log' && lo > 0) return logLabels(want);
 		const every = Math.max(1, Math.ceil(bins.length / want));
 		const labels: { x: number; text: string }[] = [];
 		for (let i = 0; i < bins.length; i += every) {
 			const b = bins[i];
 			labels.push(
 				singleValueBins
-					? { x: x(b.start + binWidth / 2), text: formatChartNumber(b.start) }
-					: { x: x(b.start), text: formatChartNumber(b.start) }
+					? { x: x(b.start + binWidth / 2), text: format(b.start) }
+					: { x: x(b.start), text: format(b.start) }
 			);
 		}
-		if (!singleValueBins) labels.push({ x: x(hi), text: formatChartNumber(hi) });
+		if (!singleValueBins) labels.push({ x: x(hi), text: format(hi) });
 		return labels;
 	});
 
@@ -77,7 +103,7 @@
 	}
 
 	const hovered = $derived(hoverIndex !== null ? bins[hoverIndex] : null);
-	const tooltipLeft = $derived(hovered ? PAD.left + x((hovered.start + hovered.end) / 2) : 0);
+	const tooltipLeft = $derived(hovered ? PAD.left + (x(hovered.start) + x(hovered.end)) / 2 : 0);
 
 	// Percentiles close together get their labels on two rows.
 	const placedMarkers = $derived.by(() => {
@@ -92,9 +118,9 @@
 		return out.filter((m) => m.mx >= 0 && m.mx <= plotW);
 	});
 
-	function binLabel(b: LogAttributeBin): string {
-		if (singleValueBins) return formatChartNumber(b.start);
-		return `${formatChartNumber(b.start)} to ${formatChartNumber(b.end)}`;
+	function binLabel(b: ChartBin): string {
+		if (singleValueBins) return format(b.start);
+		return `${format(b.start)} to ${format(b.end)}`;
 	}
 </script>
 
@@ -104,7 +130,7 @@
 		style:height="{height}px"
 		bind:clientWidth={width}
 		role="img"
-		aria-label="How the values of the attribute are distributed"
+		aria-label="How the charted values are distributed"
 		onpointermove={handlePointerMove}
 		onpointerleave={() => (hoverIndex = null)}
 	>
@@ -179,7 +205,7 @@
 			>
 				<div class="mb-1 whitespace-nowrap text-muted-foreground">{binLabel(hovered)}</div>
 				<div class="flex justify-between gap-3 whitespace-nowrap">
-					<span class="text-muted-foreground">Values</span>
+					<span class="text-muted-foreground">{countLabel}</span>
 					<span class="font-medium tabular-nums">{hovered.count.toLocaleString()}</span>
 				</div>
 				<div class="flex justify-between gap-3 whitespace-nowrap">

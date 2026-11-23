@@ -101,7 +101,7 @@ func TestLogRecordRepository_AttributeStatsPerBucket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AttributeStats: %v", err)
 	}
-	buckets, present, numeric := shared.BuildLogAttributeSeries(rows)
+	buckets, present, numeric := shared.BuildChartSeries(rows)
 	if present != 10 || numeric != 6 {
 		t.Fatalf("present=%d numeric=%d, want 10 and 6 (\"abc\", \"\", \"007\" and \" 12\" are not JSON numbers)", present, numeric)
 	}
@@ -130,7 +130,7 @@ func TestLogRecordRepository_AttributeStatsPerBucket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AttributeStats with a filter: %v", err)
 	}
-	buckets, _, numeric = shared.BuildLogAttributeSeries(rows)
+	buckets, _, numeric = shared.BuildChartSeries(rows)
 	if numeric != 3 || len(buckets) != 2 || !near(buckets[0].Max, 30) || !near(buckets[1].Sum, 97.5) {
 		t.Errorf("Label=b: numeric=%d buckets=%+v, want the three values labelled b", numeric, buckets)
 	}
@@ -139,7 +139,7 @@ func TestLogRecordRepository_AttributeStatsPerBucket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AttributeStats of a missing key: %v", err)
 	}
-	if buckets, present, _ := shared.BuildLogAttributeSeries(rows); present != 0 || len(buckets) != 0 {
+	if buckets, present, _ := shared.BuildChartSeries(rows); present != 0 || len(buckets) != 0 {
 		t.Errorf("missing key: present=%d buckets=%+v, want nothing", present, buckets)
 	}
 }
@@ -163,7 +163,7 @@ func TestLogRecordRepository_AttributeStatsWholeRangeAndBins(t *testing.T) {
 		t.Errorf("whole range = %+v, want min -2.5, max 100, sum 162.5, p50 15", row)
 	}
 
-	binning := shared.NiceLogAttributeBins(row.Min, row.Max, 5, false)
+	binning := shared.NiceChartBins(row.Min, row.Max, 5, false)
 	if binning.Start != -25 || binning.Width != 25 || binning.Count != 6 {
 		t.Fatalf("binning = %+v, want 6 bins of 25 from -25", binning)
 	}
@@ -171,7 +171,7 @@ func TestLogRecordRepository_AttributeStatsWholeRangeAndBins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AttributeBins: %v", err)
 	}
-	bins := shared.BuildLogAttributeBins(binning, binRows)
+	bins := shared.BuildChartBins(binning, binRows)
 	want := []int64{1, 3, 1, 0, 0, 1}
 	for i, b := range bins {
 		if b.Count != want[i] {

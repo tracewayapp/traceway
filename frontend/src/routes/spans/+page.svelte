@@ -13,6 +13,8 @@
 	import { projectsState } from '$lib/state/projects.svelte';
 	import * as Table from '$lib/components/ui/table';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
@@ -26,7 +28,10 @@
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
 	import FormField from '$lib/components/traceway/form-field.svelte';
-	import { CircleAlert, Plus, X } from '@lucide/svelte';
+	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
+	import SavedFiltersMenu from '$lib/components/traceway/saved-filters-menu.svelte';
+	import ChartPanel, { type ChartSelection } from '$lib/components/value-chart/chart-panel.svelte';
+	import { Check, ChartLine, ChevronDown, CircleAlert, Plus, Timer, X } from '@lucide/svelte';
 	import { CalendarDate } from '@internationalized/date';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import {
@@ -52,15 +57,36 @@
 		spanStatusLabel
 	} from '$lib/utils/span-fields';
 	import {
-		type SpanAttributeFilter,
+		type SpanChart,
+		type SpanChartTarget,
 		type SpanSearchFilters,
 		DEFAULT_SPAN_SEARCH_PRESET,
-		parseSpanAttributeFilter,
+		parseSpanFilter,
+		readSpanChart,
 		readSpanSearchFilters,
+		spanChartBody,
+		spanChartDefaults,
+		spanChartLabel,
+		spanChartUrlParams,
 		spanSearchBody,
 		spanSearchUrlParams,
 		spanTraceHref
 	} from '$lib/utils/span-explorer';
+	import {
+		filterOperator,
+		isExistenceOperator,
+		keyOperatorOptions,
+		operatorOption,
+		withOperator,
+		type FilterOperator
+	} from '$lib/utils/attribute-filters';
+	import { formatChartMs, formatChartNumber, type ChartLines } from '$lib/utils/value-chart';
+	import {
+		paramsToApply,
+		presetLabels,
+		toQueryString,
+		type SavedFilter
+	} from '$lib/utils/saved-filters';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -93,6 +119,11 @@
 	}
 
 	let filters = $state<SpanSearchFilters>(filtersFromUrl());
+	let chart = $state<SpanChart | null>(readSpanChart(browser ? window.location.search : ''));
+	// What the table shows; a new object reloads the chart.
+	let chartSelection = $state<ChartSelection | null>(null);
+	// The applied filters as a query string, for the saved filters menu.
+	let appliedQuery = $state('');
 
 	let selectedPreset = $state<string | null>(initialUrlParams.preset);
 	let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, initialTimezone));
@@ -139,21 +170,43 @@
 		const range: Record<string, string | string[] | undefined> = selectedPreset
 			? { preset: selectedPreset }
 			: { from: getFromDateTimeUTC(), to: getToDateTimeUTC() };
-		updateUrl({ ...range, ...spanSearchUrlParams(filters) }, { pushToHistory });
+		const params = { ...range, ...spanSearchUrlParams(filters), ...spanChartUrlParams(chart) };
+		appliedQuery = toQueryString(params);
+		updateUrl(params, { pushToHistory });
 	}
 
-	function handlePopState() {
-		const urlParams = parseTimeRangeFromUrl(timezone, DEFAULT_SPAN_SEARCH_PRESET);
+	function applyUrlState(params: URLSearchParams) {
+		const urlParams = parseTimeRangeFromUrl(timezone, DEFAULT_SPAN_SEARCH_PRESET, params);
 		const range = getResolvedTimeRange(urlParams, timezone);
 		selectedPreset = urlParams.preset;
 		fromDate = dateToCalendarDate(range.from, timezone);
 		fromTime = dateToTimeString(range.from, timezone);
 		toDate = dateToCalendarDate(range.to, timezone);
 		toTime = dateToTimeString(range.to, timezone);
-		filters = filtersFromUrl();
+		filters = readSpanSearchFilters(params.toString());
+		chart = readSpanChart(params);
 		page = 1;
+	}
+
+	function handlePopState() {
+		applyUrlState(new URLSearchParams(window.location.search));
 		loadData(false);
 	}
+
+	function applySavedFilter(filter: SavedFilter) {
+		applyUrlState(
+			paramsToApply(filter, {
+				preset: selectedPreset,
+				from: getFromDateTimeUTC(),
+				to: getToDateTimeUTC()
+			})
+		);
+		loadData(true);
+	}
+
+	const timeRangeLabel = $derived(
+		selectedPreset ? (presetLabels[selectedPreset] ?? selectedPreset) : 'the custom range'
+	);
 
 	function handleTimeRangeChange(
 		from: { date: CalendarDate; time: string },
@@ -186,13 +239,18 @@
 		updateExplorerUrl(pushToHistory);
 
 		try {
+			const selection = {
+				fromDate: getFromDateTimeUTC(),
+				toDate: getToDateTimeUTC(),
+				...spanSearchBody(filters)
+			};
+			// The chart loads beside the table, never before it.
+			chartSelection = selection;
 			const response = (await api.post(
 				'/spans/search',
 				{
-					fromDate: getFromDateTimeUTC(),
-					toDate: getToDateTimeUTC(),
+					...selection,
 					orderBy: `${orderBy} ${sortDirection}`,
-					...spanSearchBody(filters),
 					pagination: { page, pageSize }
 				},
 				{ projectId: projectsState.currentProjectId ?? undefined }
@@ -249,24 +307,123 @@
 	let filterDialogOpen = $state(false);
 	let dialogKey = $state('');
 	let dialogValue = $state('');
+	let dialogOperator = $state<FilterOperator>('=');
 	let dialogError = $state('');
+	// The pill being edited, null when adding one.
+	let dialogEditIndex = $state<number | null>(null);
+
+	const dialogOperatorOption = $derived(operatorOption(dialogOperator));
+	const dialogNeedsValue = $derived(!isExistenceOperator(dialogOperator));
 
 	function openFilterDialog() {
 		dialogKey = '';
 		dialogValue = '';
+		dialogOperator = '=';
 		dialogError = '';
+		dialogEditIndex = null;
+		filterDialogOpen = true;
+	}
+
+	// operator preselects another operator, for a pill switching from a key
+	// check to a value comparison, which needs a value first.
+	function openEditFilterDialog(index: number, operator?: FilterOperator) {
+		const f = filters.attributes[index];
+		dialogKey = f.key;
+		dialogValue = f.value;
+		dialogOperator = operator ?? filterOperator(f);
+		dialogError = '';
+		dialogEditIndex = index;
 		filterDialogOpen = true;
 	}
 
 	function submitFilterDialog() {
-		const parsed = parseSpanAttributeFilter(dialogKey, dialogValue, filters.attributes);
+		const parsed = parseSpanFilter(
+			dialogKey,
+			dialogValue,
+			dialogOperator,
+			filters.attributes,
+			dialogEditIndex
+		);
 		if (typeof parsed === 'string') {
 			dialogError = parsed;
 			return;
 		}
-		filters.attributes = [...filters.attributes, parsed];
+		filters.attributes =
+			dialogEditIndex === null
+				? [...filters.attributes, parsed]
+				: filters.attributes.map((f, i) => (i === dialogEditIndex ? parsed : f));
 		filterDialogOpen = false;
 		applyFilters();
+	}
+
+	// A pill is removed with its X, so picking its current operator changes nothing.
+	function setPillOperator(index: number, operator: FilterOperator) {
+		const f = filters.attributes[index];
+		if (filterOperator(f) === operator) return;
+		if (f.exists && !isExistenceOperator(operator)) {
+			openEditFilterDialog(index, operator);
+			return;
+		}
+		const next = withOperator(filters.attributes, index, operator);
+		if (next) {
+			filters.attributes = next;
+			applyFilters();
+		}
+	}
+
+	const SPAN_CHART_ENDPOINTS = { series: '/spans/series', distribution: '/spans/distribution' };
+
+	function setChartTarget(target: SpanChartTarget) {
+		chart = {
+			target,
+			view: chart?.view ?? 'series',
+			aggregations: [...spanChartDefaults(target)]
+		};
+		updateExplorerUrl(true);
+	}
+
+	// View and line changes replace the history entry instead of adding one per click.
+	function setChartLines(lines: ChartLines) {
+		if (!chart) return;
+		chart = { ...chart, view: lines.view, aggregations: lines.aggregations };
+		updateExplorerUrl(false);
+	}
+
+	function closeChart() {
+		chart = null;
+		updateExplorerUrl(true);
+	}
+
+	function handleChartRangeSelect(from: Date, to: Date) {
+		handleTimeRangeChange(
+			{ date: dateToCalendarDate(from, timezone), time: dateToTimeString(from, timezone) },
+			{ date: dateToCalendarDate(to, timezone), time: dateToTimeString(to, timezone) },
+			null
+		);
+	}
+
+	let chartDialogOpen = $state(false);
+	let chartDialogKey = $state('');
+	let chartDialogError = $state('');
+
+	function openChartDialog() {
+		chartDialogKey = chart?.target.kind === 'attribute' ? chart.target.key : '';
+		chartDialogError = '';
+		chartDialogOpen = true;
+	}
+
+	function submitChartDialog() {
+		const key = chartDialogKey.trim();
+		if (!key) {
+			chartDialogError = 'Enter an attribute key.';
+			return;
+		}
+		if (/["\\]/.test(key)) {
+			chartDialogError = 'Attribute keys cannot contain quotes or backslashes.';
+			return;
+		}
+		chartDialogOpen = false;
+		setChartTarget({ kind: 'attribute', key });
 	}
 
 	function handleDialogKeydown(e: KeyboardEvent) {
@@ -276,8 +433,8 @@
 		}
 	}
 
-	function removeAttributeFilter(filter: SpanAttributeFilter) {
-		filters.attributes = filters.attributes.filter((existing) => existing !== filter);
+	function removeAttributeFilter(index: number) {
+		filters.attributes = filters.attributes.filter((_, i) => i !== index);
 		applyFilters();
 	}
 
@@ -381,32 +538,82 @@
 			<Plus class="h-3 w-3" />
 			Add attribute filter
 		</button>
-		{#each filters.attributes as filter (filter.key + '=' + filter.value)}
+		{#each filters.attributes as f, i (i)}
 			<span
 				class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
 			>
-				<span class="text-muted-foreground">{filter.key}</span>
-				<span>=</span>
-				<span>{filter.value}</span>
+				<button
+					type="button"
+					aria-label="Edit filter"
+					class="cursor-pointer text-muted-foreground hover:text-primary"
+					onclick={() => openEditFilterDialog(i)}
+				>
+					{f.key}
+				</button>
+				<FilterOperatorMenu
+					active={filterOperator(f)}
+					options={keyOperatorOptions}
+					onSelect={(operator) => setPillOperator(i, operator)}
+					triggerClass="cursor-pointer decoration-dotted underline-offset-2 hover:underline {f.exclude
+						? 'text-red-500'
+						: ''}"
+					triggerTitle="Change operator"
+					triggerAriaLabel="Change operator"
+				>
+					{operatorOption(filterOperator(f)).pill}
+				</FilterOperatorMenu>
+				{#if !f.exists}
+					<!-- Second way into the same dialog as the key, so it stays out of the tab order. -->
+					<button
+						type="button"
+						tabindex={-1}
+						class="cursor-pointer hover:text-primary"
+						onclick={() => openEditFilterDialog(i)}
+					>
+						{f.value}
+					</button>
+				{/if}
 				<button
 					type="button"
 					aria-label="Remove filter"
 					class="ml-1 cursor-pointer text-muted-foreground hover:text-foreground"
-					onclick={() => removeAttributeFilter(filter)}
+					onclick={() => removeAttributeFilter(i)}
 				>
 					<X class="h-3 w-3" />
 				</button>
 			</span>
 		{/each}
+		<div class="ml-auto flex items-center gap-2">
+			{#if !chart}
+				<button
+					type="button"
+					class="inline-flex items-center gap-1 rounded-full border px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+					onclick={() => setChartTarget({ kind: 'duration' })}
+				>
+					<ChartLine class="h-3 w-3" />
+					Chart
+				</button>
+			{/if}
+			<SavedFiltersMenu
+				page="spans"
+				currentQuery={appliedQuery}
+				{timeRangeLabel}
+				namePlaceholder="Slow checkout queries"
+				onApply={applySavedFilter}
+			/>
+		</div>
 	</div>
 
 	<AlertDialog.Root open={filterDialogOpen} onOpenChange={(open) => (filterDialogOpen = open)}>
 		<AlertDialog.Content>
 			<AlertDialog.Header>
-				<AlertDialog.Title>Add attribute filter</AlertDialog.Title>
+				<AlertDialog.Title>
+					{dialogEditIndex !== null ? 'Edit attribute filter' : 'Add attribute filter'}
+				</AlertDialog.Title>
 				<AlertDialog.Description>
-					Matches spans whose attribute has exactly this value. Keys are the OpenTelemetry names,
-					such as <code class="font-mono">http.request.method</code>.
+					Keys are the OpenTelemetry names, such as <code class="font-mono"
+						>http.request.method</code
+					>.
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			<div class="flex flex-col gap-3">
@@ -417,19 +624,145 @@
 						onkeydown={handleDialogKeydown}
 					/>
 				</FormField>
-				<FormField label="Value">
-					<Input placeholder="GET" bind:value={dialogValue} onkeydown={handleDialogKeydown} />
+				<FormField label="Operator">
+					<Select.Root
+						type="single"
+						value={dialogOperator}
+						onValueChange={(v) => (dialogOperator = v as FilterOperator)}
+					>
+						<Select.Trigger class="w-full" aria-label="Operator">
+							<span>
+								<span class="font-mono text-muted-foreground">{dialogOperatorOption.symbol}</span>
+								{dialogOperatorOption.label}
+							</span>
+						</Select.Trigger>
+						<Select.Content>
+							{#each keyOperatorOptions as opt (opt.value)}
+								<Select.Item value={opt.value} label={opt.label}>
+									<span class="font-mono text-muted-foreground">{opt.symbol}</span>
+									{opt.label}
+								</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</FormField>
+				{#if dialogNeedsValue}
+					<FormField label="Value">
+						<Input placeholder="GET" bind:value={dialogValue} onkeydown={handleDialogKeydown} />
+					</FormField>
+				{/if}
 				{#if dialogError}
 					<p class="text-xs text-red-500">{dialogError}</p>
 				{/if}
 			</div>
 			<AlertDialog.Footer>
 				<Button variant="outline" onclick={() => (filterDialogOpen = false)}>Cancel</Button>
-				<Button onclick={submitFilterDialog}><Plus class="h-4 w-4" /> Add filter</Button>
+				<Button onclick={submitFilterDialog}>
+					{#if dialogEditIndex !== null}
+						<Check class="h-4 w-4" /> Update filter
+					{:else}
+						<Plus class="h-4 w-4" /> Add filter
+					{/if}
+				</Button>
 			</AlertDialog.Footer>
 		</AlertDialog.Content>
 	</AlertDialog.Root>
+
+	<AlertDialog.Root open={chartDialogOpen} onOpenChange={(open) => (chartDialogOpen = open)}>
+		<AlertDialog.Content>
+			<AlertDialog.Header>
+				<AlertDialog.Title>Chart an attribute</AlertDialog.Title>
+				<AlertDialog.Description>
+					Charts the numeric values of one attribute across the spans the filters match, such as
+					<code class="font-mono">db.response.returned_rows</code>.
+				</AlertDialog.Description>
+			</AlertDialog.Header>
+			<div class="flex flex-col gap-3">
+				<FormField label="Attribute key">
+					<Input
+						placeholder="db.response.returned_rows"
+						bind:value={chartDialogKey}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault();
+								submitChartDialog();
+							}
+						}}
+					/>
+				</FormField>
+				{#if chartDialogError}
+					<p class="text-xs text-red-500">{chartDialogError}</p>
+				{/if}
+			</div>
+			<AlertDialog.Footer>
+				<Button variant="outline" onclick={() => (chartDialogOpen = false)}>Cancel</Button>
+				<Button onclick={submitChartDialog}><ChartLine class="h-4 w-4" /> Chart values</Button>
+			</AlertDialog.Footer>
+		</AlertDialog.Content>
+	</AlertDialog.Root>
+
+	{#snippet chartHeading()}
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger
+				class="-ml-1 inline-flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs hover:bg-muted"
+				aria-label="What to chart"
+				title="What to chart"
+			>
+				{#if chart?.target.kind === 'attribute'}
+					<ChartLine class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+					<span class="truncate font-mono font-medium">{chart.target.key}</span>
+				{:else}
+					<Timer class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+					<span class="font-medium">Duration</span>
+				{/if}
+				<ChevronDown class="h-3 w-3 shrink-0 opacity-60" />
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content align="start" class="min-w-52">
+				<DropdownMenu.Label class="text-xs font-normal text-muted-foreground"
+					>Chart</DropdownMenu.Label
+				>
+				<DropdownMenu.Item onclick={() => setChartTarget({ kind: 'duration' })}>
+					<Check class="h-4 w-4 {chart?.target.kind === 'duration' ? '' : 'opacity-0'}" />
+					Duration
+				</DropdownMenu.Item>
+				{#if chart?.target.kind === 'attribute'}
+					<DropdownMenu.Item onclick={openChartDialog}>
+						<Check class="h-4 w-4" />
+						<span class="truncate font-mono">{chart.target.key}</span>
+					</DropdownMenu.Item>
+				{/if}
+				<DropdownMenu.Separator />
+				<DropdownMenu.Item onclick={openChartDialog}>
+					<Plus class="h-4 w-4" />
+					A numeric attribute...
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+	{/snippet}
+
+	{#if chart}
+		<ChartPanel
+			class="rounded-md border"
+			label={spanChartLabel(chart.target)}
+			heading={chartHeading}
+			lines={chart}
+			endpoints={SPAN_CHART_ENDPOINTS}
+			body={spanChartBody(chart.target)}
+			selection={chartSelection}
+			{timezone}
+			format={chart.target.kind === 'duration' ? formatChartMs : formatChartNumber}
+			rows={{ one: 'span', many: 'spans' }}
+			values={chart.target.kind === 'duration'
+				? { one: 'span', many: 'spans' }
+				: { one: 'value', many: 'values' }}
+			emptyText={chart.target.kind === 'duration'
+				? 'No spans match in this time range.'
+				: undefined}
+			onChange={setChartLines}
+			onClose={closeChart}
+			onRangeSelect={handleChartRangeSelect}
+		/>
+	{/if}
 
 	{#if guidance}
 		<WarningCallout title="Narrow the search">{guidance}</WarningCallout>

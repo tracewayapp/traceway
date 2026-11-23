@@ -1,34 +1,32 @@
 <script lang="ts" module>
-	export type LogChartSelection = { fromDate: string; toDate: string } & Record<string, unknown>;
+	// The selection the page's list shows, sent with every chart request; a new
+	// object reloads the chart.
+	export type ChartSelection = { fromDate: string; toDate: string } & Record<string, unknown>;
 </script>
 
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { ChartColumn, ChartLine, X } from '@lucide/svelte';
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
+	import { cn } from '$lib/utils.js';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import LogAttributeSeriesChart, {
-		type LogAttributeSeriesBucket
-	} from './log-attribute-series-chart.svelte';
-	import LogAttributeDistributionChart, {
-		type LogAttributeBin
-	} from './log-attribute-distribution-chart.svelte';
+	import SeriesChart, { type ChartSeriesBucket } from './series-chart.svelte';
+	import DistributionChart, { type ChartBin } from './distribution-chart.svelte';
 	import {
 		chartAggregations,
 		formatChartNumber,
 		toggleAggregation,
-		type ChartView,
-		type LogAttributeChart
-	} from '$lib/utils/log-attribute-chart';
-	import { formatLogAttributeTarget } from '$lib/utils/log-filters';
+		type ChartLines,
+		type ChartView
+	} from '$lib/utils/value-chart';
 
 	type SeriesResponse = {
 		intervalSeconds: number;
 		present: number;
 		numeric: number;
-		buckets: LogAttributeSeriesBucket[];
+		buckets: ChartSeriesBucket[];
 	};
 
 	type DistributionResponse = {
@@ -42,24 +40,49 @@
 		p50: number;
 		p95: number;
 		p99: number;
+		scale?: 'linear' | 'log';
 		binWidth: number;
-		bins: LogAttributeBin[];
+		bins: ChartBin[];
 	};
 
+	type Noun = { one: string; many: string };
+
 	let {
-		chart,
+		label,
+		heading,
+		lines,
+		endpoints,
+		body = {},
 		selection,
 		timezone,
+		format = formatChartNumber,
+		rows = { one: 'log', many: 'logs' },
+		values = { one: 'value', many: 'values' },
+		emptyText,
+		class: className,
 		onChange,
 		onClose,
 		onRangeSelect
 	}: {
-		chart: LogAttributeChart;
-		// The list's current selection; a new object reloads the chart.
-		selection: LogChartSelection | null;
+		// What is charted, shown in the header and the empty states.
+		label: string;
+		// Replaces the label in the header, to make it a picker.
+		heading?: Snippet;
+		lines: ChartLines;
+		endpoints: { series: string; distribution: string };
+		// Sent with the selection, such as the attribute to chart.
+		body?: Record<string, unknown>;
+		selection: ChartSelection | null;
 		timezone: string;
-		onChange: (chart: LogAttributeChart) => void;
-		onClose: () => void;
+		format?: (value: number) => string;
+		// What the page lists, and what one charted number is called.
+		rows?: Noun;
+		values?: Noun;
+		// Shown instead of the default when nothing in the range carries the value.
+		emptyText?: string;
+		class?: string;
+		onChange: (lines: ChartLines) => void;
+		onClose?: () => void;
 		onRangeSelect?: (from: Date, to: Date) => void;
 	} = $props();
 
@@ -70,22 +93,17 @@
 	let distribution = $state<DistributionResponse | null>(null);
 	let generation = 0;
 
-	const label = $derived(formatLogAttributeTarget(chart.target));
-
-	async function load(sel: LogChartSelection, view: ChartView) {
+	async function load(sel: ChartSelection, view: ChartView, extra: Record<string, unknown>) {
 		const gen = ++generation;
 		loading = true;
 		error = '';
-		const body = {
-			...sel,
-			attribute: { scope: chart.target.scope, key: chart.target.key }
-		};
+		const request = { ...sel, ...extra };
 		try {
 			if (view === 'series') {
 				const maxBuckets = Math.max(20, Math.min(200, Math.floor((width || 960) / 7)));
 				const response = (await api.post(
-					'/logs/attribute-series',
-					{ ...body, maxBuckets },
+					endpoints.series,
+					{ ...request, maxBuckets },
 					{ projectId: projectsState.currentProjectId ?? undefined }
 				)) as SeriesResponse;
 				if (gen !== generation) return;
@@ -93,8 +111,8 @@
 				distribution = null;
 			} else {
 				const response = (await api.post(
-					'/logs/attribute-distribution',
-					{ ...body, bins: 40 },
+					endpoints.distribution,
+					{ ...request, bins: 40 },
 					{ projectId: projectsState.currentProjectId ?? undefined }
 				)) as DistributionResponse;
 				if (gen !== generation) return;
@@ -103,29 +121,30 @@
 			}
 		} catch (e) {
 			if (gen !== generation) return;
-			error = getErrorMessage(e) || 'Failed to chart this attribute';
+			error = getErrorMessage(e) || `Failed to chart ${label}`;
 		} finally {
 			if (gen === generation) loading = false;
 		}
 	}
 
+	const bodyKey = $derived(JSON.stringify(body));
+
 	$effect(() => {
 		const sel = selection;
-		const view = chart.view;
-		void chart.target.scope;
-		void chart.target.key;
+		const view = lines.view;
+		void bodyKey;
 		if (!sel) return;
-		untrack(() => load(sel, view));
+		untrack(() => load(sel, view, body));
 	});
 
 	const counts = $derived(
-		chart.view === 'series'
+		lines.view === 'series'
 			? series && { present: series.present, numeric: series.numeric }
 			: distribution && { present: distribution.present, numeric: distribution.numeric }
 	);
 
 	const summary = $derived.by(() => {
-		if (chart.view === 'distribution') {
+		if (lines.view === 'distribution') {
 			if (!distribution || distribution.numeric === 0) return [];
 			return [
 				{ label: 'Min', value: distribution.min },
@@ -164,22 +183,27 @@
 	);
 
 	const skipped = $derived(counts ? counts.present - counts.numeric : 0);
+	const countLabel = $derived(values.many[0].toUpperCase() + values.many.slice(1));
 
 	function setView(view: ChartView) {
-		if (view !== chart.view) onChange({ ...chart, view });
+		if (view !== lines.view) onChange({ ...lines, view });
 	}
 </script>
 
-<div class="flex flex-col gap-2 border-b px-3 pt-2 pb-3" bind:clientWidth={width}>
+<div class={cn('flex flex-col gap-2 border-b px-3 pt-2 pb-3', className)} bind:clientWidth={width}>
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-		<div class="flex min-w-0 items-center gap-1.5">
-			<ChartLine class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-			<span class="truncate font-mono text-xs font-medium" title={label}>{label}</span>
-		</div>
+		{#if heading}
+			{@render heading()}
+		{:else}
+			<div class="flex min-w-0 items-center gap-1.5">
+				<ChartLine class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+				<span class="truncate font-mono text-xs font-medium" title={label}>{label}</span>
+			</div>
+		{/if}
 		<div class="inline-flex rounded-md border p-0.5 text-xs" role="group" aria-label="Chart view">
 			<button
 				type="button"
-				aria-pressed={chart.view === 'series'}
+				aria-pressed={lines.view === 'series'}
 				class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-muted-foreground transition-colors hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
 				onclick={() => setView('series')}
 			>
@@ -188,7 +212,7 @@
 			</button>
 			<button
 				type="button"
-				aria-pressed={chart.view === 'distribution'}
+				aria-pressed={lines.view === 'distribution'}
 				class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-muted-foreground transition-colors hover:text-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
 				onclick={() => setView('distribution')}
 			>
@@ -196,10 +220,10 @@
 				Distribution
 			</button>
 		</div>
-		{#if chart.view === 'series'}
+		{#if lines.view === 'series'}
 			<div class="flex flex-wrap items-center gap-1" role="group" aria-label="Lines">
 				{#each chartAggregations as agg (agg.value)}
-					{@const on = chart.aggregations.includes(agg.value)}
+					{@const on = lines.aggregations.includes(agg.value)}
 					<button
 						type="button"
 						aria-pressed={on}
@@ -208,8 +232,8 @@
 							: 'border-transparent text-muted-foreground hover:text-foreground'}"
 						onclick={() =>
 							onChange({
-								...chart,
-								aggregations: toggleAggregation(chart.aggregations, agg.value)
+								...lines,
+								aggregations: toggleAggregation(lines.aggregations, agg.value)
 							})}
 					>
 						<span
@@ -227,26 +251,28 @@
 					{#if counts}
 						<span>
 							<span class="font-medium text-foreground">{counts.numeric.toLocaleString()}</span>
-							{counts.numeric === 1 ? 'value' : 'values'}
+							{counts.numeric === 1 ? values.one : values.many}
 						</span>
 					{/if}
 					{#each summary as s (s.label)}
 						<span>
 							{s.label}
-							<span class="font-medium text-foreground">{formatChartNumber(s.value)}</span>
+							<span class="font-medium text-foreground">{format(s.value)}</span>
 						</span>
 					{/each}
 				</div>
 			{/if}
-			<button
-				type="button"
-				aria-label="Close chart"
-				title="Close chart"
-				class="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-				onclick={onClose}
-			>
-				<X class="h-3.5 w-3.5" />
-			</button>
+			{#if onClose}
+				<button
+					type="button"
+					aria-label="Close chart"
+					title="Close chart"
+					class="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+					onclick={onClose}
+				>
+					<X class="h-3.5 w-3.5" />
+				</button>
+			{/if}
 		</div>
 	</div>
 
@@ -258,35 +284,44 @@
 		<div
 			class="flex h-[180px] flex-col items-center justify-center gap-1 text-center text-xs text-muted-foreground"
 		>
-			<span class="font-medium text-foreground">No numbers to chart</span>
+			<span class="font-medium text-foreground">
+				{counts.present === 0 && emptyText ? 'Nothing to chart' : 'No numbers to chart'}
+			</span>
 			{#if counts.present > 0}
 				<span>
 					{counts.present.toLocaleString()}
-					{counts.present === 1 ? 'log carries' : 'logs carry'}
+					{counts.present === 1 ? `${rows.one} carries` : `${rows.many} carry`}
 					<span class="font-mono">{label}</span> in this range, but none of the values is a number.
 				</span>
+			{:else if emptyText}
+				<span>{emptyText}</span>
 			{:else}
-				<span>No log in this range carries <span class="font-mono">{label}</span>.</span>
+				<span>No {rows.one} in this range carries <span class="font-mono">{label}</span>.</span>
 			{/if}
 		</div>
-	{:else if chart.view === 'series' && series}
-		<LogAttributeSeriesChart
+	{:else if lines.view === 'series' && series}
+		<SeriesChart
 			buckets={series.buckets}
 			intervalSeconds={series.intervalSeconds}
 			from={series.from}
 			to={series.to}
-			aggregations={chart.aggregations}
+			aggregations={lines.aggregations}
 			{timezone}
 			{loading}
+			{format}
+			{countLabel}
 			{onRangeSelect}
 		/>
-	{:else if chart.view === 'distribution' && distribution}
-		<LogAttributeDistributionChart
+	{:else if lines.view === 'distribution' && distribution}
+		<DistributionChart
 			bins={distribution.bins}
 			binWidth={distribution.binWidth}
 			integral={distribution.integral}
+			scale={distribution.scale ?? 'linear'}
 			{markers}
 			{loading}
+			{format}
+			{countLabel}
 		/>
 	{:else}
 		<div class="flex h-[180px] items-center justify-center">

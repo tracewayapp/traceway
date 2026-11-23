@@ -3,7 +3,7 @@ import {
 	escapeFilterKey,
 	filterOperator,
 	formatAttributeFilter,
-	logOperatorOptions,
+	keyOperatorOptions,
 	operatorFlags,
 	operatorOptions,
 	parseAttributeFilter,
@@ -13,7 +13,7 @@ import {
 } from './attribute-filters';
 
 describe('attribute filter operators', () => {
-	it.each(logOperatorOptions.map((o) => o.value))(
+	it.each(keyOperatorOptions.map((o) => o.value))(
 		'round trips %s through its flags',
 		(operator) => {
 			expect(filterOperator(operatorFlags(operator))).toBe(operator);
@@ -31,7 +31,7 @@ describe('attribute filter operators', () => {
 
 	it('keeps existence checks out of the pages that match values only', () => {
 		expect(operatorOptions.map((o) => o.value)).toEqual(['=', '!=', '~=', '!~=']);
-		expect(logOperatorOptions.map((o) => o.value)).toContain('?=');
+		expect(keyOperatorOptions.map((o) => o.value)).toContain('?=');
 	});
 });
 

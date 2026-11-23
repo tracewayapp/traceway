@@ -145,17 +145,21 @@ func (r *otelSpanRepository) FindSpanAttributes(ctx context.Context, lookup shar
 
 func (r *otelSpanRepository) IsReadLimitError(error) bool { return false }
 
+const sqliteSpanAttribute = `json_extract(span_attributes, '$."' || ? || '"')`
+
 var sqliteSearchDialect = shared.OtelSearchDialect{
-	WinnerOrder: shared.OtelTextWinnerOrder,
-	Project:     func(id uuid.UUID) any { return id.String() },
-	Time:        sqliteOtelCodec.Time,
-	Trace:       func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },
-	NameLike:    "INSTR(LOWER(name), LOWER(?)) > 0",
-	Attribute:   `json_extract(span_attributes, '$."' || ? || '"') = ?`,
-	StartOrder:  "CAST(start_time_unix_nano AS INTEGER)",
-	Bucket:      epochBucket,
-	Count:       "COUNT(*)",
-	CountIf:     sumIf,
+	WinnerOrder:    shared.OtelTextWinnerOrder,
+	Project:        func(id uuid.UUID) any { return id.String() },
+	Time:           sqliteOtelCodec.Time,
+	Trace:          func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },
+	NameLike:       "INSTR(LOWER(name), LOWER(?)) > 0",
+	AttributeValue: sqliteSpanAttribute,
+	AttributeHas:   sqliteSpanAttribute + " IS NOT NULL",
+	Contains:       func(text string) string { return "INSTR(LOWER(" + text + "), LOWER(?)) > 0" },
+	StartOrder:     "CAST(start_time_unix_nano AS INTEGER)",
+	Bucket:         epochBucket,
+	Count:          "COUNT(*)",
+	CountIf:        sumIf,
 }
 
 func (r *otelSpanRepository) Search(ctx context.Context, search shared.OtelSpanSearch) ([]models.OtelSpan, uint64, error) {

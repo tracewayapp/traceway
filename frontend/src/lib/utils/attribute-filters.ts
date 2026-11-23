@@ -25,14 +25,14 @@ const existenceOperators: readonly OperatorOption[] = [
 // Sessions and endpoint traces match on values only.
 export const operatorOptions: readonly OperatorOption[] = equalityOperators;
 
-// Logs can also be filtered on whether a key is there at all.
-export const logOperatorOptions: readonly OperatorOption[] = [
+// Logs and spans can also be filtered on whether a key is there at all.
+export const keyOperatorOptions: readonly OperatorOption[] = [
 	...equalityOperators,
 	...existenceOperators
 ];
 
 export function operatorOption(operator: FilterOperator): OperatorOption {
-	return logOperatorOptions.find((o) => o.value === operator) ?? logOperatorOptions[0];
+	return keyOperatorOptions.find((o) => o.value === operator) ?? keyOperatorOptions[0];
 }
 
 export function isExistenceOperator(operator: FilterOperator): boolean {

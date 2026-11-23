@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	export type LogAttributeSeriesBucket = {
+	export type ChartSeriesBucket = {
 		start: string;
 		count: number;
 		sum: number;
@@ -20,7 +20,7 @@
 		chartAggregations,
 		formatChartNumber,
 		type ChartAggregation
-	} from '$lib/utils/log-attribute-chart';
+	} from '$lib/utils/value-chart';
 
 	let {
 		buckets,
@@ -31,9 +31,11 @@
 		timezone,
 		loading = false,
 		height = 180,
+		format = formatChartNumber,
+		countLabel = 'Values',
 		onRangeSelect
 	}: {
-		buckets: LogAttributeSeriesBucket[];
+		buckets: ChartSeriesBucket[];
 		intervalSeconds: number;
 		from: Date;
 		to: Date;
@@ -41,6 +43,10 @@
 		timezone: string;
 		loading?: boolean;
 		height?: number;
+		// How a charted value reads; counts always read as plain numbers.
+		format?: (value: number) => string;
+		// What the count line and the tooltip's count row call one bucket's rows.
+		countLabel?: string;
 		onRangeSelect?: (from: Date, to: Date) => void;
 	} = $props();
 
@@ -58,6 +64,13 @@
 	const toMs = $derived(Math.max(from.getTime() + 1, to.getTime()));
 
 	const lines = $derived(chartAggregations.filter((a) => aggregations.includes(a.value)));
+	const tickFormat = $derived(
+		aggregations.every((a) => a === 'count') ? formatChartNumber : format
+	);
+
+	function formatLine(agg: ChartAggregation, value: number): string {
+		return agg === 'count' ? value.toLocaleString() : format(value);
+	}
 
 	const points = $derived(buckets.map((b) => ({ bucket: b, t: Date.parse(b.start) + stepMs / 2 })));
 
@@ -128,7 +141,7 @@
 		return Array.from({ length: n }, (_, i) => axisFormat(fromMs + (spanMs * i) / (n - 1)));
 	});
 
-	function rangeLabel(bucket: LogAttributeSeriesBucket): string {
+	function rangeLabel(bucket: ChartSeriesBucket): string {
 		const start = zoned(Date.parse(bucket.start));
 		const end = start.plus({ milliseconds: stepMs });
 		const time = stepMs < 60_000 ? DateTime.TIME_WITH_SECONDS : DateTime.TIME_SIMPLE;
@@ -199,7 +212,7 @@
 		style:height="{height}px"
 		bind:clientWidth={width}
 		role="application"
-		aria-label="Values of the attribute over the selected time range. Drag across the chart to zoom in."
+		aria-label="The charted values over the selected time range. Drag across the chart to zoom in."
 		onpointermove={handlePointerMove}
 		onpointerleave={() => (hoverIndex = null)}
 		onpointerdown={handlePointerDown}
@@ -231,7 +244,7 @@
 							fill="currentColor"
 							class="text-muted-foreground tabular-nums"
 						>
-							{formatChartNumber(tick)}
+							{tickFormat(tick)}
 						</text>
 					{/each}
 					{#if dragFromX !== null && dragToX !== null}
@@ -304,13 +317,13 @@
 						<span class="h-2 w-2 rounded-full" style="background-color: {l.color};"></span>
 						<span class="text-muted-foreground">{l.label}</span>
 						<span class="ml-auto pl-3 font-medium tabular-nums">
-							{formatChartNumber(hovered.bucket[l.value])}
+							{formatLine(l.value, hovered.bucket[l.value])}
 						</span>
 					</div>
 				{/each}
 				{#if !aggregations.includes('count')}
 					<div class="mt-1 flex justify-between border-t border-border pt-1">
-						<span class="text-muted-foreground">Values</span>
+						<span class="text-muted-foreground">{countLabel}</span>
 						<span class="font-medium tabular-nums">{hovered.bucket.count.toLocaleString()}</span>
 					</div>
 				{/if}

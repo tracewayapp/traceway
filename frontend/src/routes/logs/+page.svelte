@@ -27,15 +27,13 @@
 	import FormField from '$lib/components/traceway/form-field.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
-	import SavedFiltersMenu from '$lib/components/trace-logs/saved-filters-menu.svelte';
-	import LogAttributeChartPanel, {
-		type LogChartSelection
-	} from '$lib/components/trace-logs/log-attribute-chart-panel.svelte';
+	import SavedFiltersMenu from '$lib/components/traceway/saved-filters-menu.svelte';
+	import ChartPanel, { type ChartSelection } from '$lib/components/value-chart/chart-panel.svelte';
 	import { Check, Play, Plus, X } from '@lucide/svelte';
 	import {
 		filterOperator,
 		isExistenceOperator,
-		logOperatorOptions,
+		keyOperatorOptions,
 		operatorFlags,
 		operatorOption,
 		type FilterOperator
@@ -43,6 +41,7 @@
 	import {
 		filtersEqual,
 		formatLogAttributeFilter,
+		formatLogAttributeTarget,
 		parseLogAttributeFilter,
 		parseLogAttributeTarget,
 		sameFilterTarget,
@@ -290,7 +289,7 @@
 	let attributeFilters = $state<LogAttributeFilter[]>(initialUrlParams.attributeFilters);
 	let chart = $state<LogAttributeChart | null>(initialUrlParams.chart);
 	// What the list shows; a new object reloads the chart.
-	let chartSelection = $state<LogChartSelection | null>(null);
+	let chartSelection = $state<ChartSelection | null>(null);
 	// The applied filters as a query string, for the saved filters menu.
 	let appliedQuery = $state('');
 
@@ -441,6 +440,11 @@
 		chart = null;
 		updateLogsUrl(true);
 	}
+
+	const LOG_CHART_ENDPOINTS = {
+		series: '/logs/attribute-series',
+		distribution: '/logs/attribute-distribution'
+	};
 
 	// Filters for the fixed tiles of the expanded row (Body / Trace ID /
 	// Span ID / Scope), backed by their dedicated query params rather than
@@ -1030,7 +1034,7 @@
 				</button>
 				<FilterOperatorMenu
 					active={filterOperator(f)}
-					options={logOperatorOptions}
+					options={keyOperatorOptions}
 					onSelect={(operator) => setPillOperator(i, operator)}
 					triggerClass="cursor-pointer decoration-dotted underline-offset-2 hover:underline {f.exclude
 						? 'text-red-500'
@@ -1103,7 +1107,7 @@
 							</span>
 						</Select.Trigger>
 						<Select.Content>
-							{#each logOperatorOptions as opt (opt.value)}
+							{#each keyOperatorOptions as opt (opt.value)}
 								<Select.Item value={opt.value} label={opt.label}>
 									<span class="font-mono text-muted-foreground">{opt.symbol}</span>
 									{opt.label}
@@ -1162,11 +1166,14 @@
 			{/if}
 		</div>
 		{#if chart}
-			<LogAttributeChartPanel
-				{chart}
+			<ChartPanel
+				label={formatLogAttributeTarget(chart.target)}
+				lines={chart}
+				endpoints={LOG_CHART_ENDPOINTS}
+				body={{ attribute: { scope: chart.target.scope, key: chart.target.key } }}
 				selection={chartSelection}
 				{timezone}
-				onChange={setChart}
+				onChange={(lines) => chart && setChart({ ...chart, ...lines })}
 				onClose={closeChart}
 				onRangeSelect={handleVolumeRangeSelect}
 			/>

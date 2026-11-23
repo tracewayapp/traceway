@@ -9,7 +9,14 @@ import (
 
 const MaxOtelSearchAttributeFilters = 10
 
-type OtelAttributeFilter struct{ Key, Value string }
+// OtelAttributeFilter selects spans by one attribute, with the operators of
+// LogAttributeFilter: Contains switches to a case-insensitive substring match,
+// Exclude negates (and then keeps spans without the attribute), and Exists
+// matches on the key alone.
+type OtelAttributeFilter struct {
+	Key, Value                string
+	Exclude, Contains, Exists bool
+}
 
 // OtelSpanSearch is one page of the span explorer. From and To are required: a search is always bounded by time.
 type OtelSpanSearch struct {
@@ -25,11 +32,16 @@ type OtelSpanSearch struct {
 
 // OtelSearchDialect holds what differs between the three backends. Every fragment uses ? placeholders.
 type OtelSearchDialect struct {
-	Project     func(uuid.UUID) any
-	Time        func(time.Time) any
-	Trace       func(project uuid.UUID, traceHex string) (string, any)
-	NameLike    string
-	Attribute   string
+	Project  func(uuid.UUID) any
+	Time     func(time.Time) any
+	Trace    func(project uuid.UUID, traceHex string) (string, any)
+	NameLike string
+	// AttributeValue is an attribute's value with the key as its one placeholder: '' or NULL when the span lacks it.
+	AttributeValue string
+	// AttributeHas is true when the span carries the key, its one placeholder.
+	AttributeHas string
+	// Contains wraps a text expression into a case-insensitive substring test, with the needle as its one placeholder.
+	Contains    func(text string) string
 	StartOrder  string
 	ReadSetting string
 	WinnerOrder string
@@ -78,20 +90,30 @@ func otelSearchPredicate(search OtelSpanSearch, dialect OtelSearchDialect) (stri
 		add("duration <= ?", int64(search.MaxDuration))
 	}
 	for _, filter := range search.Attributes {
-		add(dialect.Attribute, filter.Key, filter.Value)
+		// COALESCE keeps the negated forms true for spans without the attribute,
+		// where SQLite and DuckDB answer NULL (ClickHouse answers '').
+		text := "COALESCE(" + dialect.AttributeValue + ", '')"
+		switch {
+		case filter.Exists && filter.Exclude:
+			add("NOT ("+dialect.AttributeHas+")", filter.Key)
+		case filter.Exists:
+			add(dialect.AttributeHas, filter.Key)
+		case filter.Contains && filter.Exclude:
+			add("NOT ("+dialect.Contains(text)+")", filter.Key, filter.Value)
+		case filter.Contains:
+			add(dialect.Contains(text), filter.Key, filter.Value)
+		case filter.Exclude:
+			add(text+" != ?", filter.Key, filter.Value)
+		default:
+			add(dialect.AttributeValue+" = ?", filter.Key, filter.Value)
+		}
 	}
 	return strings.Join(conditions, " AND "), args
 }
 
-// OtelSearchQueries returns the page query, which selects OtelTopologyColumns, and the matching count query.
-func OtelSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page string, pageArgs []any, count string, countArgs []any) {
+// otelSearchSource is what a search reads, as a FROM clause: the matching spans, one retry version of each.
+func otelSearchSource(search OtelSpanSearch, dialect OtelSearchDialect) (string, []any) {
 	predicate, args := otelSearchPredicate(search, dialect)
-	order, known := otelSearchOrders[search.OrderBy]
-	if !known {
-		order = otelSearchOrders["start_time desc"]
-	}
-	order = strings.ReplaceAll(order, "%s", dialect.StartOrder)
-	order += ", trace_id, span_id"
 	scope, scopeArgs := otelSearchPredicate(OtelSpanSearch{ProjectId: search.ProjectId, From: search.From, To: search.To, TraceId: search.TraceId}, dialect)
 	// The winner of every span in the range is picked by a sort, and a filter on
 	// the result makes that sort carry the filtered columns (the attribute map
@@ -104,10 +126,30 @@ func OtelSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page s
 		innerArgs = append(append([]any{}, scopeArgs...), args...)
 	}
 	winners := OtelWinningRows("*", inner, dialect.WinnerOrder)
-	args = append(innerArgs, args...)
-	page = "SELECT " + OtelTopologyColumns + " FROM " + winners + " WHERE " + predicate + " ORDER BY " + order + " LIMIT ? OFFSET ?" + dialect.ReadSetting
+	return winners + " WHERE " + predicate, append(innerArgs, args...)
+}
+
+// OtelChartSource is what a span chart reads, as a FROM clause: the spans Search would match. An attribute chart
+// reads only the spans that carry the attribute, which on ClickHouse also keeps the version sort to those spans.
+func OtelChartSource(search OtelSpanSearch, attribute string, dialect OtelSearchDialect) (string, []any) {
+	if attribute != "" {
+		search.Attributes = append(append([]OtelAttributeFilter{}, search.Attributes...), OtelAttributeFilter{Key: attribute, Exists: true})
+	}
+	return otelSearchSource(search, dialect)
+}
+
+// OtelSearchQueries returns the page query, which selects OtelTopologyColumns, and the matching count query.
+func OtelSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page string, pageArgs []any, count string, countArgs []any) {
+	order, known := otelSearchOrders[search.OrderBy]
+	if !known {
+		order = otelSearchOrders["start_time desc"]
+	}
+	order = strings.ReplaceAll(order, "%s", dialect.StartOrder)
+	order += ", trace_id, span_id"
+	source, args := otelSearchSource(search, dialect)
+	page = "SELECT " + OtelTopologyColumns + " FROM " + source + " ORDER BY " + order + " LIMIT ? OFFSET ?" + dialect.ReadSetting
 	pageArgs = append(append([]any{}, args...), search.PageSize, (search.Page-1)*search.PageSize)
-	return page, pageArgs, "SELECT count(*) FROM " + winners + " WHERE " + predicate + dialect.ReadSetting, args
+	return page, pageArgs, "SELECT count(*) FROM " + source + dialect.ReadSetting, args
 }
 
 // OtelServicesQuery lists the services that reported spans in the range, busiest first, for the explorer's filter.

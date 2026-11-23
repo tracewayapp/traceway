@@ -26,17 +26,20 @@ Two rules worth knowing when something seems missing:
 
 A search over every span of the project. Hidden in the sidebar for browser and mobile projects.
 
-- **Filters**: span name (contains, case insensitive), service, kind, status (unset, ok, error), minimum and maximum duration, trace id, and up to 10 exact attribute matches (`key = value`).
+- **Filters**: span name (contains, case insensitive), service, kind, status (unset, ok, error), minimum and maximum duration, trace id, and up to 10 attribute filters with the operators of the logs page: equals, not equals, contains, not contains, **key exists** and **key does not exist**. Each is a pill whose operator switches in place; the negated ones keep spans without the attribute.
 - **Sort**: start time or duration, either direction.
 - **Time range**: defaults to the last 60 minutes, and can be up to 31 days. A search that takes too long answers with a warning to narrow the range or add filters.
 - The service filter lists the busiest 100 services in the range.
+- **Chart**: above the results, open by default, the duration of every matching span. **Over time** draws P50, P95 and P99 per time slice (average, minimum, maximum, sum and count on request; drag to zoom). **Distribution** counts durations in bins and marks P50, P95 and P99; when the durations span a wide range (the slowest at least 20 times the fastest) the bins cover equal ratios, so the axis is logarithmic and fast and slow paths show as separate humps. The picker in the chart's corner charts a numeric attribute instead (`db.response.returned_rows`), and **Close** hides the chart. Each span is counted once even when a retried export stored it twice, so the chart's count equals the table's. Dashboard only.
+- **Saved filters** work as on the logs page and keep the spans page's own search, filters and chart.
+- From a trace: in any waterfall, the filter icon on a span attribute opens the span explorer filtered on it, and **Chart values** on a numeric attribute opens its chart for the same operation (service and span name).
 
 ## The trace page (`/spans/<traceId>`)
 
 The whole trace as one waterfall, across every service and **every project of the organization**, because the services of one trace usually report to different projects. Other organizations stay out.
 
 - Each row names its service. Bars are coloured per service once a trace crosses services, and error spans are marked.
-- Clicking a span opens its attributes, service, kind, status and scope. Attributes load when the popover opens.
+- Clicking a span opens its attributes, service, kind, status and scope. Attributes load when the popover opens, and each one links to the span explorer (see above).
 - Large traces: over 500 spans, any node with more than 50 children starts folded, with a pill counting the hidden spans and an error marker when one of them failed. **Expand all** and **Collapse all** sit in the header. Over the row cap, the page keeps errors first, then entry points, then the slowest spans, and says the trace is partial.
 - The trace's logs are listed alongside, from every project of the organization, with a service column.
 - The URL needs `?at=` (any time near the trace) and can carry `?span=` to highlight one span.

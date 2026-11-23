@@ -32,6 +32,13 @@ var savedFilterPageParams = map[string]map[string]bool{
 		"attr":  true,
 		"chart": true, "chartView": true, "chartAgg": true,
 	},
+	"spans": {
+		"preset": true, "from": true, "to": true,
+		"name": true, "service": true, "kind": true, "status": true,
+		"minMs": true, "maxMs": true, "trace": true,
+		"attr":  true,
+		"chart": true, "chartView": true, "chartAgg": true,
+	},
 }
 
 const (
@@ -135,7 +142,7 @@ func (savedFilterController) List(c *gin.Context) {
 	}
 	page := c.Query("page")
 	if !validSavedFilterPage(page) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "page must be logs"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "page must be logs or spans"})
 		return
 	}
 	filters, err := transactional.SavedFilterRepository.List(db.GetTx(c), projectId, page)
@@ -160,7 +167,7 @@ func (savedFilterController) Create(c *gin.Context) {
 		return
 	}
 	if !validSavedFilterPage(req.Page) {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "page must be logs"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "page must be logs or spans"})
 		return
 	}
 	name, err := savedFilterName(req.Name)

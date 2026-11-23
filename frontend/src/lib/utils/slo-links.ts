@@ -39,7 +39,12 @@ export function badEventsHref(slo: Pick<SLO, 'sliKind' | 'sliConfig'>): string {
 				minMs: span.good === 'latency' ? String(span.latencyThresholdMs) : '',
 				maxMs: '',
 				traceId: '',
-				attributes: span.attributes ?? []
+				attributes: (span.attributes ?? []).map((a) => ({
+					...a,
+					exclude: false,
+					contains: false,
+					exists: false
+				}))
 			});
 			const search = new URLSearchParams();
 			for (const [key, value] of Object.entries(params)) {

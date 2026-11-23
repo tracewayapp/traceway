@@ -221,11 +221,12 @@ func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSe
 
 // attributeValues is the subquery every attribute chart reads: one row per
 // matching log that carries the attribute, with its bucket and its number
-// (NULL when the value is not one). step 0 puts every row in bucket 0.
-func (r *logRecordRepository) attributeValues(params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) (string, lit.P, bool) {
+// (NULL when the value is not one), rendered to positional placeholders. step 0
+// puts every row in bucket 0.
+func (r *logRecordRepository) attributeValues(params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) (string, []any, bool, error) {
 	col := attrColumn(target.Scope)
 	if col == "" {
-		return "", nil, false
+		return "", nil, false, nil
 	}
 	where, args := r.buildWhere(params)
 	args["chart_key"] = target.Key
@@ -233,77 +234,30 @@ func (r *logRecordRepository) attributeValues(params shared.LogSearchParams, tar
 	if step > 0 {
 		bucket = epochBucket("timestamp", int(step))
 	}
-	query := fmt.Sprintf(`SELECT bucket, CASE WHEN regexp_full_match(raw, '%s') THEN TRY_CAST(raw AS DOUBLE) END AS v
+	query, positional, err := lit.ParseNamedQuery(db.Driver, fmt.Sprintf(`SELECT bucket, %s AS v
 		FROM (SELECT %s AS bucket, json_extract_string(%s, '$."' || :chart_key || '"') AS raw
 			FROM log_records WHERE %s) AS attr
-		WHERE raw IS NOT NULL`, shared.LogAttributeNumberPattern, bucket, col, where)
-	return query, args, true
+		WHERE raw IS NOT NULL`, chartNumber, bucket, col, where), args)
+	return query, positional, err == nil, err
 }
 
 // AttributeStats summarises the numeric values of one attribute per step-second
 // bucket of the logs Search would match (step 0: one row for the whole range).
-func (r *logRecordRepository) AttributeStats(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) ([]shared.LogAttributeStatsRow, error) {
-	values, args, ok := r.attributeValues(params, target, step)
+func (r *logRecordRepository) AttributeStats(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) ([]shared.ChartStatsRow, error) {
+	values, args, ok, err := r.attributeValues(params, target, step)
 	if !ok {
-		return nil, nil
-	}
-	query, positional, err := lit.ParseNamedQuery(db.Driver, `SELECT bucket, CAST(COUNT(*) AS BIGINT) AS present, CAST(COUNT(v) AS BIGINT) AS numeric,
-		CAST(COUNT(CASE WHEN v = floor(v) THEN 1 END) AS BIGINT) AS integral,
-		COALESCE(SUM(v), 0) AS sum, COALESCE(MIN(v), 0) AS min, COALESCE(MAX(v), 0) AS max,
-		COALESCE(quantile_cont(v, 0.5), 0) AS p50, COALESCE(quantile_cont(v, 0.95), 0) AS p95, COALESCE(quantile_cont(v, 0.99), 0) AS p99
-	FROM (`+values+`) AS chart
-	GROUP BY bucket`, args)
-	if err != nil {
 		return nil, err
 	}
-	rows, err := db.TelemetryDB.QueryContext(ctx, query, positional...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []shared.LogAttributeStatsRow
-	for rows.Next() {
-		var row shared.LogAttributeStatsRow
-		if err := rows.Scan(&row.Bucket, &row.Present, &row.Numeric, &row.Integral, &row.Sum, &row.Min, &row.Max, &row.P50, &row.P95, &row.P99); err != nil {
-			return nil, err
-		}
-		out = append(out, row)
-	}
-	return out, rows.Err()
+	return queryChartStats(ctx, values, args)
 }
 
 // AttributeBins counts the numeric values of one attribute per bin.
-func (r *logRecordRepository) AttributeBins(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, binning shared.LogAttributeBinning) ([]shared.LogAttributeBinRow, error) {
-	values, args, ok := r.attributeValues(params, target, 0)
+func (r *logRecordRepository) AttributeBins(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, binning shared.ChartBinning) ([]shared.ChartBinRow, error) {
+	values, args, ok, err := r.attributeValues(params, target, 0)
 	if !ok {
-		return nil, nil
-	}
-	args["bin_start"] = binning.Start
-	args["bin_width"] = binning.Width
-	args["bin_last"] = int64(binning.Count - 1)
-	query, positional, err := lit.ParseNamedQuery(db.Driver, `SELECT CAST(greatest(0, least(CAST(floor((v - :bin_start) / :bin_width) AS BIGINT), :bin_last)) AS BIGINT) AS bin,
-		CAST(COUNT(*) AS BIGINT) AS count
-	FROM (`+values+`) AS chart WHERE v IS NOT NULL
-	GROUP BY bin`, args)
-	if err != nil {
 		return nil, err
 	}
-	rows, err := db.TelemetryDB.QueryContext(ctx, query, positional...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []shared.LogAttributeBinRow
-	for rows.Next() {
-		var row shared.LogAttributeBinRow
-		var index int64
-		if err := rows.Scan(&index, &row.Count); err != nil {
-			return nil, err
-		}
-		row.Index = int(index)
-		out = append(out, row)
-	}
-	return out, rows.Err()
+	return queryChartBins(ctx, values, args, binning)
 }
 
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {

@@ -30,7 +30,7 @@ Pair the objective with multi-window burn-rate alerts to distinguish sustained b
 | Kind | Counts | Good when | View bad events opens |
 |------|--------|-----------|-----------------------|
 | Endpoint | Requests of one endpoint, or of every endpoint in the project | The status is below 500, or the request took at most a threshold | The endpoint page, or the endpoints list for all endpoints |
-| Span | Spans matching the same filters the [span explorer](/learn/spans) offers: service, name, kind and exact attribute values | The span status is not error, or the span took at most a threshold | The span explorer, prefiltered |
+| Span | Spans matching [span explorer](/learn/spans#span-explorer) filters: service, name, kind and exact attribute values | The span status is not error, or the span took at most a threshold | The span explorer, prefiltered |
 | Task | Background task runs, all tasks or one by name | No exception or captured message was recorded on the run's own span | The task page, or the tasks list for all tasks |
 | Monitor | Probes of the selected [monitors](/learn/monitors) | The probe came back up; missed probes do not count | The monitor page, or the monitors list for several monitors |
 | Metric | Fixed time slices of a metric (1, 5, 15 or 60 minutes), optionally filtered by tags. With **Every observation** on a distribution metric, each observation is an event instead | The slice's aggregate (average, min, max, sum or last value) satisfies the comparison; with **Every observation**, the observation itself does ("75% of page views have an LCP at most 2500 ms") | Dashboards |

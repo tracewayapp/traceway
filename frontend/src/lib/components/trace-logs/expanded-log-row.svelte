@@ -16,8 +16,8 @@
 <script lang="ts">
 	import * as Table from '$lib/components/ui/table';
 	import { AttributesGrid, AttributesView } from '$lib/components/ui/attributes-grid';
-	import { logOperatorOptions, type FilterOperator } from '$lib/utils/attribute-filters';
-	import { isNumericAttributeValue } from '$lib/utils/log-attribute-chart';
+	import { keyOperatorOptions, type FilterOperator } from '$lib/utils/attribute-filters';
+	import { isNumericAttributeValue } from '$lib/utils/value-chart';
 	import { logAttributeEntries, type LogAttributeTarget } from '$lib/utils/log-filters';
 
 	let {
@@ -114,7 +114,7 @@
 				<AttributesGrid
 					attributes={entries.attributes}
 					collapsedCount={6}
-					operators={logOperatorOptions}
+					operators={keyOperatorOptions}
 					filterOperatorFor={filterOperatorFor
 						? (key, value) => filterOperatorFor(targetOf(key), value)
 						: undefined}

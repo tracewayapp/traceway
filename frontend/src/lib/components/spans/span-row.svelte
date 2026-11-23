@@ -8,6 +8,18 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import Unlink from '@lucide/svelte/icons/unlink';
+	import ListFilter from '@lucide/svelte/icons/list-filter';
+	import ChartLine from '@lucide/svelte/icons/chart-line';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
+	import {
+		keyOperatorOptions,
+		operatorFlags,
+		type FilterOperator
+	} from '$lib/utils/attribute-filters';
+	import { isNumericAttributeValue } from '$lib/utils/value-chart';
+	import { spanExplorerHref } from '$lib/utils/span-explorer';
+	import { gotoHref } from '$lib/utils/navigation';
 	import { spanDisplayName } from '$lib/utils/span-display';
 	import { resolveHref } from '$lib/utils/links';
 	import { isErrorSpan, spanKindLabel, spanStatusLabel } from '$lib/utils/span-fields';
@@ -157,6 +169,18 @@
 		Object.entries(span.attributes ?? lazyAttributes ?? {}).sort((a, b) => a[0].localeCompare(b[0]))
 	);
 
+	// An attribute of the span opens the span explorer: the spans that share it,
+	// or the chart of its values across the same operation.
+	function findSpans(key: string, value: string, operator: FilterOperator) {
+		const flags = operatorFlags(operator);
+		const filter = { key, value: flags.exists ? '' : value, ...flags };
+		gotoHref(spanExplorerHref(span, { filter }, window.location.search));
+	}
+
+	function chartValues(key: string) {
+		gotoHref(spanExplorerHref(span, { chartKey: key }, window.location.search));
+	}
+
 	const foldedCount = $derived(isCollapsed && hasChildren ? descendants : 0);
 
 	$effect(() => {
@@ -261,6 +285,26 @@
 										<div class="font-mono text-xs break-all text-muted-foreground">{key}</div>
 										<div class="font-mono text-xs break-all select-text">{value}</div>
 									</div>
+									{#snippet chartItem()}
+										<DropdownMenu.Item onclick={() => chartValues(key)}>
+											<ChartLine class="h-4 w-4" />
+											Chart values
+										</DropdownMenu.Item>
+									{/snippet}
+									<FilterOperatorMenu
+										active={null}
+										label={key}
+										options={keyOperatorOptions}
+										onSelect={(operator) => findSpans(key, value, operator)}
+										triggerClass="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+										triggerTitle="Find spans by this attribute"
+										triggerAriaLabel={`Find spans by ${key}`}
+										extra={isNumericAttributeValue(value) ? chartItem : undefined}
+										side="right"
+										align="center"
+									>
+										<ListFilter class="h-3.5 w-3.5" />
+									</FilterOperatorMenu>
 									<CopyButton bare text={value} iconClass="h-3.5 w-3.5" class="shrink-0" />
 								</div>
 							{/each}

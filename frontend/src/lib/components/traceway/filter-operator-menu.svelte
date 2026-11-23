@@ -18,7 +18,9 @@
 		triggerTitle,
 		triggerAriaLabel,
 		children,
-		extra
+		extra,
+		side,
+		align = 'end'
 	}: {
 		active: FilterOperator | null;
 		label?: string;
@@ -31,6 +33,9 @@
 		children: Snippet;
 		// More actions on the same value, below the operators.
 		extra?: Snippet;
+		// Where the menu opens; beside the trigger keeps a popover behind it readable.
+		side?: 'top' | 'right' | 'bottom' | 'left';
+		align?: 'start' | 'center' | 'end';
 	} = $props();
 </script>
 
@@ -38,7 +43,7 @@
 	<DropdownMenu.Trigger class={triggerClass} title={triggerTitle} aria-label={triggerAriaLabel}>
 		{@render children()}
 	</DropdownMenu.Trigger>
-	<DropdownMenu.Content align="end" class="min-w-48">
+	<DropdownMenu.Content {side} {align} class="min-w-48">
 		{#if label}
 			<DropdownMenu.Label
 				class="max-w-64 truncate font-mono text-xs font-normal text-muted-foreground"

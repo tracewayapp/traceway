@@ -243,7 +243,11 @@ A full-stack framework has two halves and two Traceway projects. Next.js and Rem
 
 <table width="100%">
 <tr>
-<td width="50%" valign="top"><b>Logs: trace-linked search</b><br><img src="./.github/screenshots/logs.png" alt="Logs" /></td>
+<td width="50%" valign="top"><b>Logs: chart any attribute, save any search</b><br><img src="./.github/screenshots/logs.png" alt="Logs filtered to payments, with payment latency percentiles charted over time and a saved filter applied" /></td>
+<td width="50%" valign="top"><b>Spans: search and chart latency</b><br><img src="./.github/screenshots/spans-explorer.png" alt="Span explorer with P50, P95 and P99 duration lines that step up after a deploy" /></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Spans: latency distribution</b><br><img src="./.github/screenshots/spans-latency.png" alt="Durations of a cache lookup on a log scale, with cache hits and misses as two humps" /></td>
 <td width="50%" valign="top"><b>Span waterfall</b><br><img src="./.github/screenshots/span-waterfall.png" alt="Spans" /></td>
 </tr>
 <tr>

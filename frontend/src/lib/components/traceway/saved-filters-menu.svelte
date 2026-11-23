@@ -25,19 +25,22 @@
 		hasTimeRange,
 		matchesSavedFilter,
 		normalizeQuery,
-		type SavedFilter
+		type SavedFilter,
+		type SavedFilterPage
 	} from '$lib/utils/saved-filters';
 
 	let {
 		page,
 		currentQuery,
 		timeRangeLabel,
+		namePlaceholder = 'Slow telegrams on node 7',
 		onApply
 	}: {
-		page: 'logs';
+		page: SavedFilterPage;
 		// The page's filters as a URL query string, time range included.
 		currentQuery: string;
 		timeRangeLabel: string;
+		namePlaceholder?: string;
 		onApply: (filter: SavedFilter) => void;
 	} = $props();
 
@@ -57,9 +60,11 @@
 
 	const canWrite = $derived(projectsState.canWriteCurrentProject);
 	const active = $derived(filters.find((f) => matchesSavedFilter(currentQuery, f)) ?? null);
-	const nothingToSave = $derived(normalizeQuery(currentQuery, false) === '');
+	const nothingToSave = $derived(normalizeQuery(currentQuery, page, false) === '');
 
-	const savePreview = $derived(describeSavedFilter(normalizeQuery(currentQuery, includeTime)));
+	const savePreview = $derived(
+		describeSavedFilter(normalizeQuery(currentQuery, page, includeTime), page)
+	);
 
 	async function loadFilters() {
 		try {
@@ -110,7 +115,7 @@
 		try {
 			if (editing) {
 				const body: { name: string; query?: string } = { name };
-				if (replaceFilters) body.query = normalizeQuery(currentQuery, includeTime);
+				if (replaceFilters) body.query = normalizeQuery(currentQuery, page, includeTime);
 				await api.put(`/saved-filters/${editing.id}`, body, {
 					projectId: projectsState.currentProjectId ?? undefined
 				});
@@ -118,7 +123,7 @@
 			} else {
 				await api.post(
 					'/saved-filters',
-					{ page, name, query: normalizeQuery(currentQuery, includeTime) },
+					{ page, name, query: normalizeQuery(currentQuery, page, includeTime) },
 					{ projectId: projectsState.currentProjectId ?? undefined }
 				);
 				toast.success('Successfully created the Saved Filter', { position: 'top-center' });
@@ -196,7 +201,7 @@
 		{:else}
 			<ul class="max-h-80 overflow-y-auto py-1">
 				{#each filters as filter (filter.id)}
-					{@const parts = describeSavedFilter(filter.query)}
+					{@const parts = describeSavedFilter(filter.query, page)}
 					<li class="group flex items-start gap-1 px-1">
 						<button
 							type="button"
@@ -279,11 +284,7 @@
 		</AlertDialog.Header>
 		<div class="flex flex-col gap-3">
 			<FormField label="Name">
-				<Input
-					placeholder="Slow telegrams on node 7"
-					bind:value={name}
-					onkeydown={handleNameKeydown}
-				/>
+				<Input placeholder={namePlaceholder} bind:value={name} onkeydown={handleNameKeydown} />
 			</FormField>
 			{#if editing}
 				<label class="flex cursor-pointer items-start gap-2 text-sm">

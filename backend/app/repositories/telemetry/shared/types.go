@@ -45,6 +45,13 @@ type CheckResult struct {
 	TlsDaysRemaining int
 }
 
+// LogAttributeTarget names one attribute of the logs a search matches. Scope is
+// "resource", "scope" or "log", like LogAttributeFilter.
+type LogAttributeTarget struct {
+	Scope string
+	Key   string
+}
+
 // LogAttributeFilter selects logs by attribute value. Scope is one of
 // "resource", "scope", or "log"; picks which of the three attribute maps to
 // query (Map columns with bloom-filter indexes on ClickHouse, JSON on

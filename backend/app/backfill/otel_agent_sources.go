@@ -14,11 +14,23 @@ import (
 	dashboardsvc "github.com/tracewayapp/traceway/backend/v2/app/services/dashboards"
 )
 
-const otelAgentSourcesBackfillName = "otel-agent-dashboard-sources-v2"
+const (
+	otelAgentSourcesBackfillName    = "otel-agent-dashboard-sources-v2"
+	otelAgentFilesystemBackfillName = "otel-agent-filesystem-utilization-v1"
+)
 
 const otelAgentTemplateKey = "traceway-otel-agent"
 
+type otelAgentDashboardUpgrade func(dashboard *models.Dashboard, templateSources map[string]json.RawMessage) (bool, error)
+
 func RunOtelAgentDashboardSources() error {
+	if err := runOtelAgentDashboardBackfill(otelAgentSourcesBackfillName, upgradeOtelAgentDashboard); err != nil {
+		return err
+	}
+	return runOtelAgentDashboardBackfill(otelAgentFilesystemBackfillName, fixOtelAgentFilesystemSource)
+}
+
+func runOtelAgentDashboardBackfill(name string, upgrade otelAgentDashboardUpgrade) error {
 	updated, err := db.ExecuteTransaction(func(tx *sql.Tx) (int, error) {
 		if !db.IsSQLite() {
 			if _, err := tx.Exec("SELECT pg_advisory_xact_lock(824737006)"); err != nil {
@@ -29,7 +41,7 @@ func RunOtelAgentDashboardSources() error {
 		marker, err := lit.SelectSingleNamed[models.CountResult](
 			tx,
 			"SELECT COUNT(*) as count FROM backfill_runs WHERE name = :name",
-			lit.P{"name": otelAgentSourcesBackfillName},
+			lit.P{"name": name},
 		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to check backfill marker: %w", err)
@@ -57,7 +69,7 @@ func RunOtelAgentDashboardSources() error {
 				return 0, fmt.Errorf("failed to list OTel agent dashboards: %w", err)
 			}
 			for _, dashboard := range dashboards {
-				changed, err := upgradeOtelAgentDashboard(dashboard, templateSources)
+				changed, err := upgrade(dashboard, templateSources)
 				if err != nil {
 					return 0, fmt.Errorf("dashboard %d: %w", dashboard.Id, err)
 				}
@@ -76,7 +88,7 @@ func RunOtelAgentDashboardSources() error {
 			db.Driver,
 			tx,
 			"INSERT INTO backfill_runs (name, ran_at) VALUES (:name, :ran_at)",
-			lit.P{"name": otelAgentSourcesBackfillName, "ran_at": time.Now().UTC()},
+			lit.P{"name": name, "ran_at": time.Now().UTC()},
 		); err != nil {
 			return 0, fmt.Errorf("failed to record backfill marker: %w", err)
 		}
@@ -168,6 +180,60 @@ func upgradeOtelAgentDashboard(dashboard *models.Dashboard, templateSources map[
 		}
 		replacement, ok := templateSources[name]
 		if !ok || string(replacement) == string(sources) {
+			continue
+		}
+		cfg["sources"] = replacement
+		raw, err := json.Marshal(cfg)
+		if err != nil {
+			return false, err
+		}
+		def.Widgets[i].Config = raw
+		changed = true
+	}
+	if !changed {
+		return false, nil
+	}
+	raw, err := dashboardsvc.MarshalDefinition(def)
+	if err != nil {
+		return false, err
+	}
+	dashboard.Definition = models.JSONText(raw)
+	return true, nil
+}
+
+// The template once filtered filesystem utilization on state=used, an
+// attribute the hostmetrics receiver only puts on system.filesystem.usage, so
+// that widget charted nothing for any real collector.
+const brokenFilesystemUtilizationSources = `[{"type":"metric","name":"system.filesystem.utilization","aggregation":"max","tagFilters":{"state":"used"},"groupBy":"server_name","label":"Used"}]`
+
+func fixOtelAgentFilesystemSource(dashboard *models.Dashboard, templateSources map[string]json.RawMessage) (bool, error) {
+	broken, err := canonicalJSON(json.RawMessage(brokenFilesystemUtilizationSources))
+	if err != nil {
+		return false, err
+	}
+	replacement, ok := templateSources[models.MetricNameSystemFilesystemUtilization]
+	if !ok {
+		return false, nil
+	}
+	if current, err := canonicalJSON(replacement); err != nil || current == broken {
+		return false, err
+	}
+
+	def, err := dashboardsvc.ParseDefinition([]byte(dashboard.Definition))
+	if err != nil {
+		return false, err
+	}
+	changed := false
+	for i := range def.Widgets {
+		var cfg widgetConfig
+		if err := json.Unmarshal(def.Widgets[i].Config, &cfg); err != nil {
+			return false, err
+		}
+		sources, ok := cfg["sources"]
+		if !ok {
+			continue
+		}
+		if current, err := canonicalJSON(sources); err != nil || current != broken {
 			continue
 		}
 		cfg["sources"] = replacement

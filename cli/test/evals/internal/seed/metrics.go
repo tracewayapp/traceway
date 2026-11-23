@@ -258,9 +258,11 @@ func (h *Host) Disk(device string, readBps, writeBps, pending Series) {
 	h.svc.GaugeOn(h.Name, "system.disk.pending_operations", "{operations}", map[string]any{"device": device}, pending)
 }
 
-// Filesystem emits system.filesystem.utilization for a mountpoint.
-func (h *Host) Filesystem(mount string, used Series) {
-	h.svc.GaugeOn(h.Name, "system.filesystem.utilization", "1", map[string]any{"mountpoint": mount, "state": "used"}, Clamp(used, 0, 1))
+// Filesystem emits system.filesystem.utilization for a writable ext4 mount,
+// with the attributes the hostmetrics receiver puts on it. It has no state
+// attribute: only system.filesystem.usage is split by state.
+func (h *Host) Filesystem(device, mount string, used Series) {
+	h.svc.GaugeOn(h.Name, "system.filesystem.utilization", "1", map[string]any{"device": device, "mode": "rw", "mountpoint": mount, "type": "ext4"}, Clamp(used, 0, 1))
 }
 
 func (s *Scenario) metricRequests(svc *Service) []*colmetricspb.ExportMetricsServiceRequest {

@@ -94,7 +94,7 @@ func papSeedDiskIO(s *seed.Scenario) error {
 		seed.Step(onset, seed.Flat(5e6, 1.1e7), seed.Flat(4.8e7, 6.2e7)),
 		seed.Step(onset, seed.Flat(0.4, 1.6), seed.Flat(28, 44)))
 	pg.Memory(seed.Flat(0.61, 0.64))
-	pg.Filesystem("/var/lib/postgresql", seed.Plus(seed.Flat(0.57, 0.58), func(t time.Time) float64 {
+	pg.Filesystem("/dev/nvme1n1", "/var/lib/postgresql", seed.Plus(seed.Flat(0.57, 0.58), func(t time.Time) float64 {
 		if t.Before(onset) {
 			return 0
 		}

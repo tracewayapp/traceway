@@ -190,6 +190,39 @@ func networkRatesByServer(series map[string][]models.TimeSeriesPoint) map[string
 	return rates
 }
 
+// system.filesystem.utilization carries one series per mount and no state
+// attribute. Read-only mounts, such as the squashfs images snaps run from,
+// always read as full, so a host's disk is its busiest writable mount. A host
+// whose collector reports no writable mount keeps its busiest mount of any mode.
+func loadFilesystemUsage(ctx context.Context, projectId uuid.UUID, servers []string, since, now time.Time) (map[string]float64, error) {
+	writable, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, projectId, models.MetricNameSystemFilesystemUtilization, since, now, 2, "max", map[string]string{"mode": "rw"}, "server_name", 0)
+	if err != nil {
+		return nil, err
+	}
+	usage := make(map[string]float64, len(servers))
+	var unresolved []string
+	for _, server := range servers {
+		if value, ok := lastSeriesValue(writable, server); ok {
+			usage[server] = value
+		} else {
+			unresolved = append(unresolved, server)
+		}
+	}
+	if len(unresolved) == 0 {
+		return usage, nil
+	}
+	anyMode, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, projectId, models.MetricNameSystemFilesystemUtilization, since, now, 2, "max", nil, "server_name", 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, server := range unresolved {
+		if value, ok := lastSeriesValue(anyMode, server); ok {
+			usage[server] = value
+		}
+	}
+	return usage, nil
+}
+
 func applyServerMetadata(row *orgServerRow, tags map[string]string) {
 	row.HostName = tags["host.name"]
 	row.HostId = tags["host.id"]
@@ -262,7 +295,11 @@ func loadProjectServerRows(ctx context.Context, project *models.Project, dashboa
 		if err != nil {
 			return nil, err
 		}
-		filesystemUsed, err := telemetry.MetricPointRepository.QueryTimeSeries(ctx, project.Id, models.MetricNameSystemFilesystemUtilization, since, now, 2, "max", map[string]string{"state": "used"}, "server_name", 0)
+		otelServers := make([]string, 0, len(latestOtel))
+		for _, point := range latestOtel {
+			otelServers = append(otelServers, point.ServerName)
+		}
+		filesystemUsed, err := loadFilesystemUsage(ctx, project.Id, otelServers, since, now)
 		if err != nil {
 			return nil, err
 		}
@@ -285,7 +322,7 @@ func loadProjectServerRows(ctx context.Context, project *models.Project, dashboa
 			if value, ok := lastSeriesValue(memoryUsed, point.ServerName); ok {
 				row.MemoryPct = pointerTo(otelFractionToPercent(value))
 			}
-			if value, ok := lastSeriesValue(filesystemUsed, point.ServerName); ok {
+			if value, ok := filesystemUsed[point.ServerName]; ok {
 				row.DiskPct = pointerTo(otelFractionToPercent(value))
 			}
 			if rate, ok := receive[point.ServerName]; ok {

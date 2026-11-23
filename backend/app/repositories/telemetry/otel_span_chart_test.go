@@ -160,3 +160,44 @@ func TestOtelSpanChartAttribute(t *testing.T) {
 		t.Fatalf("an attribute no span carries charts nothing: %+v %v", stats, err)
 	}
 }
+
+// A span stored twice counts as its winning version (the longer one) everywhere: an attribute only the losing
+// version carries is not charted, as the search does not find the span by it either.
+func TestOtelSpanChartAttributeOfTheWinningVersion(t *testing.T) {
+	search, base := seedChartSpans(t)
+	ctx := context.Background()
+	winner := canonicalSpan(search.ProjectId, uuid.New(), uuid.New(), nil)
+	start := base.Add(21 * time.Minute)
+	winner.Name, winner.ServiceName, winner.Duration, winner.StartTime, winner.RecordedAt = "GET product", "checkout-api", 90*time.Millisecond, start, start
+	winner.Attributes = map[string]string{"cache.hit": "false"}
+	loser := winner
+	loser.Duration = 80 * time.Millisecond
+	loser.Attributes = map[string]string{"cache.hit": "false", "db.rows": "77"}
+	for _, span := range []models.OtelSpan{winner, loser} {
+		if _, err := OtelSpanRepository.InsertAsync(ctx, []models.OtelSpan{span}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, chartSearch := range map[string]shared.OtelSpanSearch{
+		"no filter": search,
+		"filtered": func() shared.OtelSpanSearch {
+			filtered := search
+			filtered.Attributes = []shared.OtelAttributeFilter{{Key: "cache.hit", Value: "false"}}
+			return filtered
+		}(),
+	} {
+		stats, err := OtelSpanRepository.ChartStats(ctx, chartSearch, "db.rows", 0)
+		if err != nil || len(stats) != 1 {
+			t.Fatalf("%s: whole range = %+v %v", name, stats, err)
+		}
+		if near(stats[0].Max, 77) || !near(stats[0].Max, 30) {
+			t.Errorf("%s: db.rows = %+v, want a maximum of 30: the value 77 is on the version that lost", name, stats[0])
+		}
+		withKey := chartSearch
+		withKey.Attributes = append(append([]shared.OtelAttributeFilter{}, chartSearch.Attributes...), shared.OtelAttributeFilter{Key: "db.rows", Exists: true})
+		_, total, err := OtelSpanRepository.Search(ctx, withKey)
+		if err != nil || int64(total) != stats[0].Present {
+			t.Errorf("%s: the chart reads %d spans, the search with the key finds %d (%v)", name, stats[0].Present, total, err)
+		}
+	}
+}

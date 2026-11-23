@@ -48,6 +48,7 @@ func chartBinCount(requested int) int {
 // lets values that span a wide range (durations) use log-scale bins.
 func chartDistribution(stats []shared.ChartStatsRow, bins int, allowLog bool, binCounts func(shared.ChartBinning) ([]shared.ChartBinRow, error)) (ChartDistributionResponse, error) {
 	response := ChartDistributionResponse{Scale: "linear", Bins: []shared.ChartBin{}}
+	shared.FiniteChartStats(stats)
 	for _, row := range stats {
 		response.Present += row.Present
 		response.Numeric += row.Numeric

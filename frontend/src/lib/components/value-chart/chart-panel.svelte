@@ -1,6 +1,7 @@
 <script lang="ts" module>
-	// The selection the page's list shows, sent with every chart request; a new
-	// object reloads the chart.
+	// The selection the page's list shows, sent with every chart request. The
+	// chart reloads when its content changes, not on every new object: paging or
+	// sorting the list re-sends the same selection.
 	export type ChartSelection = { fromDate: string; toDate: string } & Record<string, unknown>;
 </script>
 
@@ -128,13 +129,15 @@
 	}
 
 	const bodyKey = $derived(JSON.stringify(body));
+	const selectionKey = $derived(JSON.stringify(selection));
 
 	$effect(() => {
-		const sel = selection;
 		const view = lines.view;
 		void bodyKey;
-		if (!sel) return;
-		untrack(() => load(sel, view, body));
+		void selectionKey;
+		untrack(() => {
+			if (selection) load(selection, view, body);
+		});
 	});
 
 	const counts = $derived(

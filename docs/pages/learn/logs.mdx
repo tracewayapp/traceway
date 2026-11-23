@@ -128,7 +128,7 @@ When an attribute holds a number, its menu also offers **Chart values**. A chart
 
 <img src="/logs/logs-attribute-distribution.png" alt="The distribution of TimerSend values, with P50, P95 and P99 marked" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-- A value is charted when it is a number written the way JSON writes one: `12`, `-3.5` or `1e3`. Text such as `timeout`, and forms such as `007` or ` 12`, are left out, and a note under the chart says how many values were.
+- A value is charted when it is a number written the way JSON writes one: `12`, `-3.5` or `1e3`. Text such as `timeout`, forms such as `007` or ` 12`, and values too large to be a number (an id such as `4e98213` reads as 4 followed by 98,213 zeros) are left out, and a note under the chart says how many values were.
 - The header shows how many values were charted, with their minimum, average and maximum (and P50 and P95 for a distribution).
 - The chart, its view and its lines are kept in the URL, so a link or a [saved filter](#saved-filters) opens the same chart.
 - Every filter applies, including attribute filters on other keys: filter on one node, one host or one service to compare it with the rest.

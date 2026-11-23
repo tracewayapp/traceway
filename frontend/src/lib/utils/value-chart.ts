@@ -6,8 +6,10 @@
 // "Chart values" action is offered for exactly those values.
 const numberPattern = /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?$/;
 
+// A value of the right shape can still be too large for a float ("4e98213"),
+// which the backend leaves out as well.
 export function isNumericAttributeValue(value: string): boolean {
-	return numberPattern.test(value);
+	return numberPattern.test(value) && Number.isFinite(Number(value));
 }
 
 export type ChartView = 'series' | 'distribution';

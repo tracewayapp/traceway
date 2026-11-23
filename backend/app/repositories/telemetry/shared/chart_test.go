@@ -82,3 +82,48 @@ func TestNiceLogScaleBins(t *testing.T) {
 		t.Fatalf("twelve decades take two bins per decade, got %+v", wide)
 	}
 }
+
+// SQLite reads the counts and the percentile positions separately. A record
+// stored between the two reads must not shift the positions against the count.
+func TestApplyChartQuantilesUsesTheCountOfItsOwnRead(t *testing.T) {
+	rows := []ChartStatsRow{{Bucket: 60, Numeric: 100}}
+	const n = 101
+	var values []ChartQuantileRow
+	sorted := make([]float64, n)
+	for i := range sorted {
+		sorted[i] = float64(i + 1)
+	}
+	for _, q := range ChartQuantiles {
+		lo, hi, _ := ChartQuantilePositions(n, q)
+		values = append(values, ChartQuantileRow{Bucket: 60, N: n, Position: lo, Value: sorted[lo]})
+		if hi < n {
+			values = append(values, ChartQuantileRow{Bucket: 60, N: n, Position: hi, Value: sorted[hi]})
+		}
+	}
+	ApplyChartQuantiles(rows, values)
+	for i, q := range ChartQuantiles {
+		got := []float64{rows[0].P50, rows[0].P95, rows[0].P99}[i]
+		if want := ComputePercentile(sorted, q); math.Abs(got-want) > 1e-9 {
+			t.Errorf("q%v = %v, want %v: the percentile of the 101 values the positions were read from", q, got, want)
+		}
+	}
+}
+
+func TestChartStatsStayFinite(t *testing.T) {
+	rows := []ChartStatsRow{{Bucket: 60, Present: 2, Numeric: 2, Sum: math.Inf(1), Min: -1e308, Max: 1e308, P50: math.NaN(), P95: math.Inf(1), P99: math.Inf(-1)}}
+	buckets, _, _ := BuildChartSeries(rows)
+	b := buckets[0]
+	for name, v := range map[string]float64{"sum": b.Sum, "avg": b.Avg, "min": b.Min, "max": b.Max, "p50": b.P50, "p95": b.P95, "p99": b.P99} {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			t.Errorf("%s = %v, which JSON cannot carry", name, v)
+		}
+	}
+
+	binning := NiceChartBins(-1e308, 1e308, 40, false)
+	if binning.Count != 40 || math.IsInf(binning.Width, 0) || binning.Width <= 0 {
+		t.Fatalf("a range that overflows a float still gets its 40 bins, got %+v", binning)
+	}
+	if binning.Edge(0) > -1e308 || binning.Edge(binning.Count) < 1e308*(1-1e-9) {
+		t.Errorf("the bins [%v, %v) must cover the values", binning.Edge(0), binning.Edge(binning.Count))
+	}
+}

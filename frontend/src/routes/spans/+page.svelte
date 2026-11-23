@@ -120,7 +120,7 @@
 
 	let filters = $state<SpanSearchFilters>(filtersFromUrl());
 	let chart = $state<SpanChart | null>(readSpanChart(browser ? window.location.search : ''));
-	// What the table shows; a new object reloads the chart.
+	// What the table shows; the chart reloads when it changes.
 	let chartSelection = $state<ChartSelection | null>(null);
 	// The applied filters as a query string, for the saved filters menu.
 	let appliedQuery = $state('');

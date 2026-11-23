@@ -14,6 +14,12 @@ import (
 // a literal ? as a parameter.
 const ChartNumberPattern = `^-{0,1}(0|[1-9][0-9]*)([.][0-9]+){0,1}([eE][-+]{0,1}[0-9]+){0,1}$`
 
+// ChartNumberLimit is the largest magnitude a charted number may have. A value
+// that matches the pattern can still be too large for a float64 ("1e999", or an
+// id such as "4e98213"): it parses as infinity, which no bin, sum or JSON
+// response can hold, so every backend leaves it out like any other text.
+const ChartNumberLimit = "1.7976931348623157e308"
+
 // ChartQuantiles are the percentiles every stats row carries, in the
 // order the backends return them.
 var ChartQuantiles = [3]float64{0.5, 0.95, 0.99}
@@ -75,6 +81,11 @@ func NiceChartBins(min, max float64, target int, integral bool) ChartBinning {
 			start = min - width/2
 		}
 		return ChartBinning{Start: start, Width: width, Count: 1}
+	}
+	if math.IsInf(max-min, 0) {
+		// Values almost as far apart as a float64 reaches: the range itself
+		// overflows, so the bins are taken from the halves.
+		return ChartBinning{Start: min, Width: max/float64(target) - min/float64(target), Count: target}
 	}
 	width := niceStep((max - min) / float64(target))
 	if integral && width < 1 {
@@ -180,9 +191,29 @@ type ChartSeriesBucket struct {
 	P99   float64   `json:"p99"`
 }
 
+// FiniteChartStats keeps every statistic inside what JSON can carry. Each
+// charted value is finite, but a sum of them, or a percentile interpolated
+// between two of them, can still overflow.
+func FiniteChartStats(rows []ChartStatsRow) {
+	for i := range rows {
+		r := &rows[i]
+		for _, v := range []*float64{&r.Sum, &r.Min, &r.Max, &r.P50, &r.P95, &r.P99} {
+			switch {
+			case math.IsNaN(*v):
+				*v = 0
+			case math.IsInf(*v, 1):
+				*v = math.MaxFloat64
+			case math.IsInf(*v, -1):
+				*v = -math.MaxFloat64
+			}
+		}
+	}
+}
+
 // BuildChartSeries keeps the buckets holding at least one number, in time
 // order, and totals the counts of all of them.
 func BuildChartSeries(rows []ChartStatsRow) (buckets []ChartSeriesBucket, present, numeric int64) {
+	FiniteChartStats(rows)
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Bucket < rows[j].Bucket })
 	buckets = []ChartSeriesBucket{}
 	for _, r := range rows {
@@ -247,16 +278,20 @@ func ChartQuantilePositions(n int64, q float64) (int64, int64, float64) {
 }
 
 // ApplyChartQuantiles fills the percentiles of the stats rows from the
-// values read at their positions.
+// values read at their positions. The positions are those of the count the
+// values were read with (N), not of the row's own: the two come from separate
+// reads, and a record stored between them moves every position.
 func ApplyChartQuantiles(rows []ChartStatsRow, values []ChartQuantileRow) {
 	type key struct{ bucket, position int64 }
 	at := make(map[key]float64, len(values))
+	counts := make(map[int64]int64)
 	for _, v := range values {
 		at[key{v.Bucket, v.Position}] = v.Value
+		counts[v.Bucket] = v.N
 	}
 	for i := range rows {
-		n := rows[i].Numeric
-		if n == 0 {
+		n := counts[rows[i].Bucket]
+		if n == 0 || rows[i].Numeric == 0 {
 			continue
 		}
 		quantile := func(q float64) float64 {

@@ -19,7 +19,8 @@ import (
 // JSON number: the grammar the other backends match with
 // shared.ChartNumberPattern. json_valid alone would also accept the whitespace
 // JSON allows around a value.
-const chartNumber = `CASE WHEN raw NOT GLOB '*[^0-9eE.+-]*' AND json_valid(raw) AND json_type(raw) IN ('integer', 'real') THEN CAST(raw AS REAL) END`
+const chartNumber = `CASE WHEN raw NOT GLOB '*[^0-9eE.+-]*' AND json_valid(raw) AND json_type(raw) IN ('integer', 'real')
+		AND abs(CAST(raw AS REAL)) <= ` + shared.ChartNumberLimit + ` THEN CAST(raw AS REAL) END`
 
 // queryChartStats summarises the values per bucket. SQLite has no quantile
 // aggregate, so a second read takes the values at the sorted positions the

@@ -20,7 +20,8 @@ type chartFixture struct {
 
 // seedChartLogs stores the same records on every backend: three numbers in the
 // first minute, three in the second (one negative, one in exponent form), four
-// values that are not JSON numbers in the third, and logs without the attribute.
+// values that are not JSON numbers and one too large for a float in the third,
+// and logs without the attribute.
 func seedChartLogs(t *testing.T) chartFixture {
 	t.Helper()
 	setupTestDB(t)
@@ -46,6 +47,7 @@ func seedChartLogs(t *testing.T) chartFixture {
 		record(130*time.Second, map[string]string{"TimerSend": ""}),
 		record(135*time.Second, map[string]string{"TimerSend": "007"}),
 		record(140*time.Second, map[string]string{"TimerSend": " 12"}),
+		record(142*time.Second, map[string]string{"TimerSend": "4e98213"}),
 		record(145*time.Second, map[string]string{"Label": "a"}),
 		record(150*time.Second, nil),
 	}
@@ -77,8 +79,8 @@ func TestLogRecordRepository_ExistsAttributeFilter(t *testing.T) {
 		}
 		return total
 	}
-	if got := count(LogAttributeFilter{Scope: "log", Key: "TimerSend", Exists: true}); got != 10 {
-		t.Errorf("TimerSend exists matched %d logs, want 10 (an empty value still carries the key)", got)
+	if got := count(LogAttributeFilter{Scope: "log", Key: "TimerSend", Exists: true}); got != 11 {
+		t.Errorf("TimerSend exists matched %d logs, want 11 (an empty value still carries the key)", got)
 	}
 	if got := count(LogAttributeFilter{Scope: "log", Key: "TimerSend", Exists: true, Exclude: true}); got != 2 {
 		t.Errorf("TimerSend does not exist matched %d logs, want 2", got)
@@ -87,8 +89,8 @@ func TestLogRecordRepository_ExistsAttributeFilter(t *testing.T) {
 	if got := count(LogAttributeFilter{Scope: "log", Key: "Label", Value: "zzz", Exists: true}); got != 7 {
 		t.Errorf("Label exists matched %d logs, want 7", got)
 	}
-	if got := count(LogAttributeFilter{Scope: "resource", Key: "host.name", Exists: true}); got != 12 {
-		t.Errorf("resource host.name exists matched %d logs, want 12", got)
+	if got := count(LogAttributeFilter{Scope: "resource", Key: "host.name", Exists: true}); got != 13 {
+		t.Errorf("resource host.name exists matched %d logs, want 13", got)
 	}
 	if got := count(LogAttributeFilter{Scope: "resource", Key: "TimerSend", Exists: true}); got != 0 {
 		t.Errorf("resource TimerSend exists matched %d logs, want 0 (it is a log attribute)", got)
@@ -102,8 +104,8 @@ func TestLogRecordRepository_AttributeStatsPerBucket(t *testing.T) {
 		t.Fatalf("AttributeStats: %v", err)
 	}
 	buckets, present, numeric := shared.BuildChartSeries(rows)
-	if present != 10 || numeric != 6 {
-		t.Fatalf("present=%d numeric=%d, want 10 and 6 (\"abc\", \"\", \"007\" and \" 12\" are not JSON numbers)", present, numeric)
+	if present != 11 || numeric != 6 {
+		t.Fatalf("present=%d numeric=%d, want 11 and 6 (\"abc\", \"\", \"007\" and \" 12\" are not JSON numbers, \"4e98213\" overflows a float)", present, numeric)
 	}
 	if len(buckets) != 2 {
 		t.Fatalf("got %d buckets, want 2 (the third minute holds no number): %+v", len(buckets), buckets)
@@ -155,8 +157,8 @@ func TestLogRecordRepository_AttributeStatsWholeRangeAndBins(t *testing.T) {
 		t.Fatalf("got %d rows for the whole range, want 1: %+v", len(rows), rows)
 	}
 	row := rows[0]
-	if row.Present != 10 || row.Numeric != 6 || row.Integral != 5 {
-		t.Errorf("present=%d numeric=%d integral=%d, want 10, 6 and 5 (-2.5 is not whole)", row.Present, row.Numeric, row.Integral)
+	if row.Present != 11 || row.Numeric != 6 || row.Integral != 5 {
+		t.Errorf("present=%d numeric=%d integral=%d, want 11, 6 and 5 (-2.5 is not whole)", row.Present, row.Numeric, row.Integral)
 	}
 	// Sorted: -2.5 5 10 20 30 100. p50 sits halfway between 10 and 20.
 	if !near(row.Min, -2.5) || !near(row.Max, 100) || !near(row.Sum, 162.5) || !near(row.P50, 15) {

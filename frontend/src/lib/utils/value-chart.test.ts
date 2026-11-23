@@ -12,13 +12,24 @@ describe('isNumericAttributeValue', () => {
 	it.each(['0', '12', '-3', '12.5', '1e3', '-2.5E-4'])('charts %s', (v) => {
 		expect(isNumericAttributeValue(v)).toBe(true);
 	});
-	// The backend's grammar: JSON numbers only.
-	it.each(['', 'abc', '007', ' 12', '12 ', '1.', '.5', '+1', 'NaN', 'Infinity', '0x1A'])(
-		'skips %j',
-		(v) => {
-			expect(isNumericAttributeValue(v)).toBe(false);
-		}
-	);
+	// The backend's grammar: JSON numbers only, and only those a float can hold.
+	it.each([
+		'',
+		'abc',
+		'007',
+		' 12',
+		'12 ',
+		'1.',
+		'.5',
+		'+1',
+		'NaN',
+		'Infinity',
+		'0x1A',
+		'1e999',
+		'4e98213'
+	])('skips %j', (v) => {
+		expect(isNumericAttributeValue(v)).toBe(false);
+	});
 });
 
 describe('toggleAggregation', () => {

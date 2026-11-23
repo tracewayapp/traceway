@@ -14,7 +14,8 @@ import (
 // NULL when the row's value is not a number.
 
 // chartNumber turns the text column raw into a number, or NULL when it is not one.
-const chartNumber = `CASE WHEN regexp_full_match(raw, '` + shared.ChartNumberPattern + `') THEN TRY_CAST(raw AS DOUBLE) END`
+const chartNumber = `CASE WHEN regexp_full_match(raw, '` + shared.ChartNumberPattern + `')
+		AND abs(TRY_CAST(raw AS DOUBLE)) <= ` + shared.ChartNumberLimit + ` THEN TRY_CAST(raw AS DOUBLE) END`
 
 func queryChartStats(ctx context.Context, values string, args []any) ([]shared.ChartStatsRow, error) {
 	rows, err := db.TelemetryDB.QueryContext(ctx, `SELECT bucket, CAST(COUNT(*) AS BIGINT) AS present, CAST(COUNT(v) AS BIGINT) AS numeric,

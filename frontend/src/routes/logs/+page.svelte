@@ -288,7 +288,7 @@
 	let bodyFilter = $state(initialUrlParams.body);
 	let attributeFilters = $state<LogAttributeFilter[]>(initialUrlParams.attributeFilters);
 	let chart = $state<LogAttributeChart | null>(initialUrlParams.chart);
-	// What the list shows; a new object reloads the chart.
+	// What the list shows; the chart reloads when it changes.
 	let chartSelection = $state<ChartSelection | null>(null);
 	// The applied filters as a query string, for the saved filters menu.
 	let appliedQuery = $state('');

@@ -14,7 +14,7 @@ import (
 // a number, v is that number. settings is appended to the query.
 
 // chartNumber turns the text column raw into num and v.
-const chartNumber = `match(raw, '` + shared.ChartNumberPattern + `') AS num, if(num, toFloat64OrZero(raw), 0) AS v`
+const chartNumber = `match(raw, '` + shared.ChartNumberPattern + `') AND isFinite(toFloat64OrZero(raw)) AS num, if(num, toFloat64OrZero(raw), 0) AS v`
 
 func queryChartStats(ctx context.Context, values string, args []any, settings string) ([]shared.ChartStatsRow, error) {
 	query := `SELECT bucket, toInt64(count()) AS present, toInt64(countIf(num)) AS numeric,
@@ -68,16 +68,17 @@ func queryChartBins(ctx context.Context, values string, args []any, binning shar
 // spanChartValues reads what a span chart measures: the duration in
 // milliseconds, or the attribute's value (attribute non-empty).
 func spanChartValues(search shared.OtelSpanSearch, attribute string, step int64) (string, []any) {
-	source, args := shared.OtelChartSource(search, attribute, clickhouseSearchDialect)
 	bucket := "toInt64(0)"
 	if step > 0 {
 		bucket = epochBucket("recorded_at", int(step))
 	}
 	if attribute == "" {
+		source, args := shared.OtelChartSource(search, attribute, clickhouseSearchDialect)
 		return "SELECT " + bucket + " AS bucket, toUInt8(1) AS num, duration / 1e6 AS v FROM " + source, args
 	}
+	source, args := shared.OtelClickHouseAttributeChartSource(search, attribute, clickhouseSearchDialect)
 	return `SELECT bucket, ` + chartNumber + `
-		FROM (SELECT ` + bucket + ` AS bucket, span_attributes[?] AS raw FROM ` + source + `)`, append([]any{attribute}, args...)
+		FROM (SELECT ` + bucket + ` AS bucket, chart_raw AS raw FROM ` + source + `)`, args
 }
 
 func (r *otelSpanRepository) ChartStats(ctx context.Context, search shared.OtelSpanSearch, attribute string, step int64) ([]shared.ChartStatsRow, error) {

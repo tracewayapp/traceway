@@ -138,6 +138,31 @@ func OtelChartSource(search OtelSpanSearch, attribute string, dialect OtelSearch
 	return otelSearchSource(search, dialect)
 }
 
+// OtelClickHouseAttributeChartSource is OtelChartSource for an attribute chart on ClickHouse, with the columns
+// recorded_at and chart_raw. ClickHouse evaluates span_attributes[key] after the winner sort, so the generic source
+// makes that sort carry the whole attribute map of every span with the attribute: a day of 4M spans that all carry it
+// ran out of the search's memory, where the duration chart of the same spans did not. Here the value and the verdict
+// of the filters are computed per stored version and close the sort order, which is what makes ClickHouse compute
+// them before the sort. The order was total already (span_version is a digest of the span), so the winner is the same,
+// and it is still the winner the filters are applied to.
+func OtelClickHouseAttributeChartSource(search OtelSpanSearch, attribute string, dialect OtelSearchDialect) (string, []any) {
+	scope, scopeArgs := otelSearchPredicate(OtelSpanSearch{ProjectId: search.ProjectId, From: search.From, To: search.To, TraceId: search.TraceId}, dialect)
+	_, filterArgs := otelSearchPredicate(search, dialect)
+	search.Attributes = append(append([]OtelAttributeFilter{}, search.Attributes...), OtelAttributeFilter{Key: attribute, Exists: true})
+	predicate, args := otelSearchPredicate(search, dialect)
+	inner, innerArgs := scope, scopeArgs
+	// The chart's own attribute is no reason to narrow the sort: it no longer carries the map.
+	if len(filterArgs) > len(scopeArgs) {
+		inner = scope + " AND (trace_id, span_id) IN (SELECT trace_id, span_id FROM " + SpansTable + " WHERE " + predicate + ")"
+		innerArgs = append(append([]any{}, scopeArgs...), args...)
+	}
+	source := "(SELECT recorded_at, chart_raw FROM (SELECT recorded_at, chart_raw, chart_match, ROW_NUMBER() OVER (PARTITION BY project_id, trace_id, span_id ORDER BY " +
+		dialect.WinnerOrder + ", chart_match, chart_raw) AS otel_version FROM (SELECT project_id, trace_id, span_id, recorded_at, duration, span_version, " +
+		dialect.AttributeValue + " AS chart_raw, toUInt8(" + predicate + ") AS chart_match FROM " + SpansTable + " WHERE " + inner +
+		") versions) ranked WHERE otel_version = 1 AND chart_match) winners"
+	return source, append(append([]any{attribute}, args...), innerArgs...)
+}
+
 // OtelSearchQueries returns the page query, which selects OtelTopologyColumns, and the matching count query.
 func OtelSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page string, pageArgs []any, count string, countArgs []any) {
 	order, known := otelSearchOrders[search.OrderBy]

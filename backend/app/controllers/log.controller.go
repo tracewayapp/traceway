@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -27,6 +29,8 @@ type LogAttributeFilterRequest struct {
 	Value    string `json:"value"`
 	Exclude  bool   `json:"exclude"`
 	Contains bool   `json:"contains"`
+	// Exists matches on the key alone; with Exclude, logs without it.
+	Exists bool `json:"exists"`
 }
 
 type LogPaginationParams struct {
@@ -67,6 +71,51 @@ type LogHistogramResponse struct {
 	Total           int64                       `json:"total"`
 	Buckets         []shared.LogHistogramBucket `json:"buckets"`
 }
+
+type LogAttributeRef struct {
+	Scope string `json:"scope"`
+	Key   string `json:"key"`
+}
+
+// LogAttributeChartRequest charts the numeric values of one attribute of the
+// logs the selection matches: over time (maxBuckets) or as a distribution (bins).
+type LogAttributeChartRequest struct {
+	LogFilterRequest
+	Attribute  LogAttributeRef `json:"attribute"`
+	MaxBuckets int             `json:"maxBuckets"`
+	Bins       int             `json:"bins"`
+}
+
+// Present counts the matching logs that carry the attribute and Numeric those
+// whose value is a number; only numbers are charted.
+type LogAttributeSeriesResponse struct {
+	IntervalSeconds int64                             `json:"intervalSeconds"`
+	Present         int64                             `json:"present"`
+	Numeric         int64                             `json:"numeric"`
+	Buckets         []shared.LogAttributeSeriesBucket `json:"buckets"`
+}
+
+type LogAttributeDistributionResponse struct {
+	Present  int64                    `json:"present"`
+	Numeric  int64                    `json:"numeric"`
+	Integral bool                     `json:"integral"`
+	Min      float64                  `json:"min"`
+	Max      float64                  `json:"max"`
+	Avg      float64                  `json:"avg"`
+	Sum      float64                  `json:"sum"`
+	P50      float64                  `json:"p50"`
+	P95      float64                  `json:"p95"`
+	P99      float64                  `json:"p99"`
+	BinWidth float64                  `json:"binWidth"`
+	Bins     []shared.LogAttributeBin `json:"bins"`
+}
+
+// A chart reads every matching value of the attribute, unlike the list, which
+// stops at a page: past this the request answers 504 instead of holding a
+// database connection for as long as the scan takes.
+const logAttributeChartTimeout = 30 * time.Second
+
+const logAttributeKeyMaxLength = 256
 
 // Max time range allowed for body search without any other selector. Keeps a
 // naïve "find all logs containing 'error' for the past 30 days" query from
@@ -172,6 +221,144 @@ func (l logController) Histogram(c *gin.Context) {
 	c.JSON(http.StatusOK, LogHistogramResponse{IntervalSeconds: step, Total: total, Buckets: buckets})
 }
 
+// AttributeSeries charts the numeric values of one attribute over time: per
+// bucket the count, sum, average, minimum, maximum and percentiles of the values
+// in it. Buckets without a number are left out, so the chart shows a gap.
+func (l logController) AttributeSeries(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+	var request LogAttributeChartRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		middleware.RejectBindError(c, err, err.Error())
+		return
+	}
+	target, ok := l.chartTarget(c, &request)
+	if !ok {
+		return
+	}
+	params, ok := l.searchParams(c, projectId, &request.LogFilterRequest)
+	if !ok {
+		return
+	}
+	maxBuckets := request.MaxBuckets
+	if maxBuckets == 0 {
+		maxBuckets = shared.LogHistogramDefaultBuckets
+	}
+	maxBuckets = min(max(maxBuckets, shared.LogHistogramMinBuckets), shared.LogHistogramMaxBuckets)
+	step := shared.LogHistogramStep(request.FromDate, request.ToDate, maxBuckets)
+
+	spanCtx, span := traceway.StartSpan(c, "charting log attribute")
+	defer span.End()
+	traceway.SetAttribute(spanCtx, "logs.range_seconds", strconv.FormatFloat(request.ToDate.Sub(request.FromDate).Seconds(), 'f', 0, 64))
+	traceway.SetAttribute(spanCtx, "logs.chart_step_seconds", strconv.FormatInt(step, 10))
+	traceway.SetAttribute(spanCtx, "logs.attribute_filter_count", strconv.Itoa(len(params.AttributeFilters)))
+	ctx, cancel := context.WithTimeout(spanCtx, logAttributeChartTimeout)
+	defer cancel()
+	rows, err := telemetry.LogRecordRepository.AttributeStats(ctx, params, target, step)
+	if err != nil {
+		l.answerChartError(c, ctx, err)
+		return
+	}
+	buckets, present, numeric := shared.BuildLogAttributeSeries(rows)
+	c.JSON(http.StatusOK, LogAttributeSeriesResponse{IntervalSeconds: step, Present: present, Numeric: numeric, Buckets: buckets})
+}
+
+// AttributeDistribution counts the numeric values of one attribute in
+// equal-width bins with round edges, next to their summary statistics.
+func (l logController) AttributeDistribution(c *gin.Context) {
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return
+	}
+	var request LogAttributeChartRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		middleware.RejectBindError(c, err, err.Error())
+		return
+	}
+	target, ok := l.chartTarget(c, &request)
+	if !ok {
+		return
+	}
+	params, ok := l.searchParams(c, projectId, &request.LogFilterRequest)
+	if !ok {
+		return
+	}
+	bins := request.Bins
+	if bins == 0 {
+		bins = shared.LogAttributeDefaultBins
+	}
+	bins = min(max(bins, shared.LogAttributeMinBins), shared.LogAttributeMaxBins)
+
+	spanCtx, span := traceway.StartSpan(c, "charting log attribute distribution")
+	defer span.End()
+	traceway.SetAttribute(spanCtx, "logs.range_seconds", strconv.FormatFloat(request.ToDate.Sub(request.FromDate).Seconds(), 'f', 0, 64))
+	traceway.SetAttribute(spanCtx, "logs.attribute_filter_count", strconv.Itoa(len(params.AttributeFilters)))
+	ctx, cancel := context.WithTimeout(spanCtx, logAttributeChartTimeout)
+	defer cancel()
+	stats, err := telemetry.LogRecordRepository.AttributeStats(ctx, params, target, 0)
+	if err != nil {
+		l.answerChartError(c, ctx, err)
+		return
+	}
+	response := LogAttributeDistributionResponse{Bins: []shared.LogAttributeBin{}}
+	for _, row := range stats {
+		response.Present += row.Present
+		response.Numeric += row.Numeric
+	}
+	if len(stats) != 1 || stats[0].Numeric == 0 {
+		c.JSON(http.StatusOK, response)
+		return
+	}
+	row := stats[0]
+	response.Integral = row.Integral == row.Numeric
+	response.Min, response.Max, response.Sum = row.Min, row.Max, row.Sum
+	response.Avg = row.Sum / float64(row.Numeric)
+	response.P50, response.P95, response.P99 = row.P50, row.P95, row.P99
+	binning := shared.NiceLogAttributeBins(row.Min, row.Max, bins, response.Integral)
+	binRows, err := telemetry.LogRecordRepository.AttributeBins(ctx, params, target, binning)
+	if err != nil {
+		l.answerChartError(c, ctx, err)
+		return
+	}
+	response.BinWidth = binning.Width
+	response.Bins = shared.BuildLogAttributeBins(binning, binRows)
+	c.JSON(http.StatusOK, response)
+}
+
+func (l logController) chartTarget(c *gin.Context, request *LogAttributeChartRequest) (shared.LogAttributeTarget, bool) {
+	if request.ToDate.Before(request.FromDate) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "toDate must not be before fromDate"})
+		return shared.LogAttributeTarget{}, false
+	}
+	switch request.Attribute.Scope {
+	case "resource", "scope", "log":
+	default:
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "attribute.scope must be resource, scope or log"})
+		return shared.LogAttributeTarget{}, false
+	}
+	if request.Attribute.Key == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "attribute.key is required"})
+		return shared.LogAttributeTarget{}, false
+	}
+	if len(request.Attribute.Key) > logAttributeKeyMaxLength {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": fmt.Sprintf("attribute.key must be at most %d bytes", logAttributeKeyMaxLength)})
+		return shared.LogAttributeTarget{}, false
+	}
+	return shared.LogAttributeTarget{Scope: request.Attribute.Scope, Key: request.Attribute.Key}, true
+}
+
+func (l logController) answerChartError(c *gin.Context, ctx context.Context, err error) {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		c.JSON(http.StatusGatewayTimeout, gin.H{"error": "Charting this attribute took too long. Narrow the time range or add a filter."})
+		return
+	}
+	c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error charting log attribute: %w", err))
+}
+
 // searchParams validates the shared log selection and turns it into repository
 // params. It writes the error response itself and returns false when the request
 // must stop.
@@ -219,6 +406,7 @@ func (l logController) searchParams(c *gin.Context, projectId uuid.UUID, request
 			Value:    f.Value,
 			Exclude:  f.Exclude,
 			Contains: f.Contains,
+			Exists:   f.Exists,
 		})
 	}
 
@@ -276,6 +464,14 @@ func (r *LogSearchRequest) UnmarshalJSON(data []byte) error {
 
 func (r *LogHistogramRequest) UnmarshalJSON(data []byte) error {
 	type request LogHistogramRequest
+	if err := rejectRetiredLogSelectors(data); err != nil {
+		return err
+	}
+	return json.Unmarshal(data, (*request)(r))
+}
+
+func (r *LogAttributeChartRequest) UnmarshalJSON(data []byte) error {
+	type request LogAttributeChartRequest
 	if err := rejectRetiredLogSelectors(data); err != nil {
 		return err
 	}

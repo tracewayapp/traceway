@@ -234,6 +234,129 @@ func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSe
 	return out, rows.Err()
 }
 
+// attributeValues is the subquery every attribute chart reads: one row per
+// matching log that carries the attribute, with its bucket and its number
+// (NULL when the value is not one). A value counts as a number when it is a
+// JSON number, the grammar the other backends match with
+// shared.LogAttributeNumberPattern: json_valid alone would also accept the
+// whitespace JSON allows around a value. step 0 puts every row in bucket 0.
+func (r *logRecordRepository) attributeValues(params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) (string, lit.P, bool) {
+	col := attrColumn(target.Scope)
+	if col == "" {
+		return "", nil, false
+	}
+	where, args := r.buildWhere(params)
+	args["chart_key"] = target.Key
+	bucket := "0"
+	if step > 0 {
+		bucket = fmt.Sprintf("(CAST(strftime('%%s', timestamp) AS INTEGER) / %d) * %d", step, step)
+	}
+	query := fmt.Sprintf(`SELECT bucket, CASE WHEN raw NOT GLOB '*[^0-9eE.+-]*' AND json_valid(raw) AND json_type(raw) IN ('integer', 'real') THEN CAST(raw AS REAL) END AS v
+		FROM (SELECT %s AS bucket, json_extract(%s, '$."' || :chart_key || '"') AS raw
+			FROM log_records WHERE %s)
+		WHERE raw IS NOT NULL`, bucket, col, where)
+	return query, args, true
+}
+
+// AttributeStats summarises the numeric values of one attribute per step-second
+// bucket of the logs Search would match (step 0: one row for the whole range).
+// SQLite has no quantile aggregate, so a second read takes the values at the
+// sorted positions the percentiles interpolate between.
+func (r *logRecordRepository) AttributeStats(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) ([]shared.LogAttributeStatsRow, error) {
+	values, args, ok := r.attributeValues(params, target, step)
+	if !ok {
+		return nil, nil
+	}
+	query, positional, err := lit.ParseNamedQuery(db.Driver, `SELECT bucket, COUNT(*) AS present, COUNT(v) AS numeric,
+		COUNT(CASE WHEN v = CAST(v AS INTEGER) THEN 1 END) AS integral,
+		COALESCE(SUM(v), 0) AS sum, COALESCE(MIN(v), 0) AS min, COALESCE(MAX(v), 0) AS max
+	FROM (`+values+`)
+	GROUP BY bucket`, args)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, positional...)
+	if err != nil {
+		return nil, err
+	}
+	var out []shared.LogAttributeStatsRow
+	for rows.Next() {
+		var row shared.LogAttributeStatsRow
+		if err := rows.Scan(&row.Bucket, &row.Present, &row.Numeric, &row.Integral, &row.Sum, &row.Min, &row.Max); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	positions := make([]string, 0, 2*len(shared.LogAttributeQuantiles))
+	for _, q := range shared.LogAttributeQuantiles {
+		low := fmt.Sprintf("CAST((n - 1) * %v AS INTEGER)", q)
+		positions = append(positions, low, low+" + 1")
+	}
+	query, positional, err = lit.ParseNamedQuery(db.Driver, `SELECT bucket, n, rn, v FROM (
+		SELECT bucket, v, ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY v) - 1 AS rn, COUNT(*) OVER (PARTITION BY bucket) AS n
+		FROM (`+values+`) WHERE v IS NOT NULL
+	) WHERE rn IN (`+strings.Join(positions, ", ")+`)`, args)
+	if err != nil {
+		return nil, err
+	}
+	rows, err = db.TelemetryDB.QueryContext(ctx, query, positional...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var at []shared.LogAttributeQuantileRow
+	for rows.Next() {
+		var v shared.LogAttributeQuantileRow
+		if err := rows.Scan(&v.Bucket, &v.N, &v.Position, &v.Value); err != nil {
+			return nil, err
+		}
+		at = append(at, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	shared.ApplyLogAttributeQuantiles(out, at)
+	return out, nil
+}
+
+// AttributeBins counts the numeric values of one attribute per bin.
+func (r *logRecordRepository) AttributeBins(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, binning shared.LogAttributeBinning) ([]shared.LogAttributeBinRow, error) {
+	values, args, ok := r.attributeValues(params, target, 0)
+	if !ok {
+		return nil, nil
+	}
+	args["bin_start"] = binning.Start
+	args["bin_width"] = binning.Width
+	args["bin_last"] = int64(binning.Count - 1)
+	// No value lies below binning.Start, so the truncating CAST floors.
+	query, positional, err := lit.ParseNamedQuery(db.Driver, `SELECT max(0, min(CAST((v - :bin_start) / :bin_width AS INTEGER), :bin_last)) AS bin, COUNT(*) AS count
+	FROM (`+values+`) WHERE v IS NOT NULL
+	GROUP BY bin`, args)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.TelemetryDB.QueryContext(ctx, query, positional...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []shared.LogAttributeBinRow
+	for rows.Next() {
+		var row shared.LogAttributeBinRow
+		if err := rows.Scan(&row.Index, &row.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
 	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT `+logRecordColumns+` FROM log_records
@@ -324,6 +447,15 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		}
 		keyPH := fmt.Sprintf("attr_k%d", i)
 		valPH := fmt.Sprintf("attr_v%d", i)
+		if f.Exists {
+			check := "IS NOT NULL"
+			if f.Exclude {
+				check = "IS NULL"
+			}
+			clauses = append(clauses, fmt.Sprintf("json_extract(%s, '$.\"' || :%s || '\"') %s", col, keyPH, check))
+			args[keyPH] = f.Key
+			continue
+		}
 		if f.Contains {
 			// Case-insensitive substring match. COALESCE keeps the negated
 			// form true for rows that don't carry the attribute at all

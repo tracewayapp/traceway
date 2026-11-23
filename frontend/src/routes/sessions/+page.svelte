@@ -52,9 +52,11 @@
 		filterOperator,
 		operatorFlags,
 		operatorOptions,
+		withOperator,
 		type AttributeFilter,
 		type FilterOperator
 	} from '$lib/utils/attribute-filters';
+	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -135,7 +137,8 @@
 		const attrs: AttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
 			const parsed = parseAttributeFilter(raw);
-			if (parsed) attrs.push(parsed);
+			// Only logs can filter on whether a key exists.
+			if (parsed && !parsed.exists) attrs.push(parsed);
 		}
 		return {
 			...timeParams,
@@ -213,6 +216,15 @@
 
 	function removeAttributeFilter(index: number) {
 		attributeFilters = attributeFilters.filter((_, i) => i !== index);
+		page = 1;
+		loadData(true);
+	}
+
+	// A pill is removed with its X, so picking its current operator changes nothing.
+	function setPillOperator(index: number, operator: FilterOperator) {
+		const next = withOperator(attributeFilters, index, operator);
+		if (!next) return;
+		attributeFilters = next;
 		page = 1;
 		loadData(true);
 	}
@@ -482,12 +494,31 @@
 				<button
 					type="button"
 					aria-label="Edit filter"
-					class="inline-flex cursor-pointer items-center gap-1 hover:text-primary"
+					class="cursor-pointer text-muted-foreground hover:text-primary"
 					onclick={() => openEditFilterDialog(i)}
 				>
-					<span class="text-muted-foreground">{f.key}</span>
-					<span class={f.exclude ? 'text-red-500' : ''}>{filterOperator(f)}</span>
-					<span class="max-w-64 truncate" title={f.value}>{f.value || '""'}</span>
+					{f.key}
+				</button>
+				<FilterOperatorMenu
+					active={filterOperator(f)}
+					onSelect={(operator) => setPillOperator(i, operator)}
+					triggerClass="cursor-pointer decoration-dotted underline-offset-2 hover:underline {f.exclude
+						? 'text-red-500'
+						: ''}"
+					triggerTitle="Change operator"
+					triggerAriaLabel="Change operator"
+				>
+					{filterOperator(f)}
+				</FilterOperatorMenu>
+				<!-- Second way into the same dialog as the key, so it stays out of the tab order. -->
+				<button
+					type="button"
+					tabindex={-1}
+					class="max-w-64 cursor-pointer truncate hover:text-primary"
+					title={f.value}
+					onclick={() => openEditFilterDialog(i)}
+				>
+					{f.value || '""'}
 				</button>
 				<button
 					type="button"

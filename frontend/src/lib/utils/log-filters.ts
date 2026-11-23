@@ -9,11 +9,14 @@ export type LogAttributeScope = 'resource' | 'scope' | 'log';
 
 export type LogAttributeFilter = AttributeFilter & { scope: LogAttributeScope };
 
+export type LogAttributeTarget = { scope: LogAttributeScope; key: string };
+
 // Parse `resource.service.name=backend-service` or `log.method!=Enter`
-// (scope.*/log.* likewise; `~=` / `!~=` for substring match) into a
-// structured filter. Returns null if the input doesn't match the shape.
-// The value is kept verbatim: a filter made from a tile whose value ends in
-// whitespace or a newline must still match it after a reload.
+// (scope.*/log.* likewise; `~=` / `!~=` for substring match, `?=` / `!?=`
+// for whether the key is there) into a structured filter. Returns null if
+// the input doesn't match the shape. The value is kept verbatim: a filter
+// made from a tile whose value ends in whitespace or a newline must still
+// match it after a reload.
 export function parseLogAttributeFilter(input: string): LogAttributeFilter | null {
 	// The layer prefix is taken first, so a key that itself starts with an
 	// operator character (`log.~=1` is key `~`) is not split at `log.`.
@@ -27,16 +30,53 @@ export function formatLogAttributeFilter(f: LogAttributeFilter): string {
 	return `${f.scope}.${formatAttributeFilter(f)}`;
 }
 
-// Displayed attribute keys are prefixed `resource.` / `scope.`; log
-// attributes are unprefixed.
-export function displayKeyToFilter(displayKey: string): { scope: LogAttributeScope; key: string } {
-	if (displayKey.startsWith('resource.')) {
-		return { scope: 'resource', key: displayKey.slice('resource.'.length) };
-	}
-	if (displayKey.startsWith('scope.')) {
-		return { scope: 'scope', key: displayKey.slice('scope.'.length) };
-	}
-	return { scope: 'log', key: displayKey };
+export function formatLogAttributeTarget(t: LogAttributeTarget): string {
+	return `${t.scope}.${t.key}`;
+}
+
+export function parseLogAttributeTarget(input: string): LogAttributeTarget | null {
+	const m = input.match(/^(resource|scope|log)\.(.+)$/s);
+	return m ? { scope: m[1] as LogAttributeScope, key: m[2] } : null;
+}
+
+export type LogAttributeEntries = {
+	// Display key -> value, for the attributes grid.
+	attributes: Record<string, string>;
+	// Display key -> the attribute it shows, for filters and charts.
+	targets: Map<string, LogAttributeTarget>;
+};
+
+type LogAttributeLayers = {
+	resourceAttributes?: Record<string, string> | null;
+	scopeAttributes?: Record<string, string> | null;
+	logAttributes?: Record<string, string> | null;
+};
+
+// Resource and scope attributes are shown prefixed `resource.` / `scope.`,
+// log attributes as they are. A log attribute whose own key starts with
+// `resource.` or `scope.` is shown as `log.<key>`, so it can neither be
+// mistaken for nor collide with an attribute of the other layers.
+export function logAttributeEntries(log: LogAttributeLayers): LogAttributeEntries {
+	const attributes: Record<string, string> = {};
+	const targets = new Map<string, LogAttributeTarget>();
+	const push = (
+		m: Record<string, string> | null | undefined,
+		scope: LogAttributeScope,
+		display: (key: string) => string
+	) => {
+		if (!m) return;
+		for (const [key, value] of Object.entries(m)) {
+			const shown = display(key);
+			attributes[shown] = value;
+			targets.set(shown, { scope, key });
+		}
+	};
+	push(log.resourceAttributes, 'resource', (k) => `resource.${k}`);
+	push(log.scopeAttributes, 'scope', (k) => `scope.${k}`);
+	push(log.logAttributes, 'log', (k) =>
+		k.startsWith('resource.') || k.startsWith('scope.') ? `log.${k}` : k
+	);
+	return { attributes, targets };
 }
 
 export function sameFilterTarget(

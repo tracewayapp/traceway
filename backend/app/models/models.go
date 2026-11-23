@@ -90,6 +90,8 @@ func Init(driver lit.Driver) {
 	lit.RegisterModel[SyntheticRunner](driver)
 	lit.RegisterModel[StatusPage](driver)
 	lit.RegisterModel[SdkConfigRule](driver)
+	lit.RegisterModel[SavedFilter](driver)
+	lit.RegisterModel[SavedFilterListItem](driver)
 	lit.RegisterModel[SdkCapture](driver)
 
 	for _, register := range ExtensionModelRegistrations {

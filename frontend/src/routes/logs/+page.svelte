@@ -27,21 +27,40 @@
 	import FormField from '$lib/components/traceway/form-field.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
+	import SavedFiltersMenu from '$lib/components/trace-logs/saved-filters-menu.svelte';
+	import LogAttributeChartPanel, {
+		type LogChartSelection
+	} from '$lib/components/trace-logs/log-attribute-chart-panel.svelte';
 	import { Check, Play, Plus, X } from '@lucide/svelte';
 	import {
 		filterOperator,
+		isExistenceOperator,
+		logOperatorOptions,
 		operatorFlags,
-		operatorOptions,
+		operatorOption,
 		type FilterOperator
 	} from '$lib/utils/attribute-filters';
 	import {
-		displayKeyToFilter,
 		filtersEqual,
 		formatLogAttributeFilter,
 		parseLogAttributeFilter,
+		parseLogAttributeTarget,
 		sameFilterTarget,
-		type LogAttributeFilter
+		type LogAttributeFilter,
+		type LogAttributeTarget
 	} from '$lib/utils/log-filters';
+	import {
+		defaultChartAggregations,
+		formatChartParams,
+		parseChartParams,
+		type LogAttributeChart
+	} from '$lib/utils/log-attribute-chart';
+	import {
+		paramsToApply,
+		presetLabels,
+		toQueryString,
+		type SavedFilter
+	} from '$lib/utils/saved-filters';
 	import { CalendarDate } from '@internationalized/date';
 	import {
 		parseTimeRangeFromUrl,
@@ -193,6 +212,7 @@
 		void attributeFilters.length;
 		void loading;
 		void volume;
+		void chart;
 		updateMaxHeight();
 	});
 
@@ -209,8 +229,8 @@
 		expandedHeight = height;
 	}
 
-	function parseLogsUrlParams() {
-		if (!browser) {
+	function parseLogsUrlParams(search?: URLSearchParams) {
+		if (!browser && !search) {
 			return {
 				preset: '24h',
 				from: null,
@@ -223,11 +243,12 @@
 				spanId: '',
 				scopeName: '',
 				body: '',
-				attributeFilters: [] as LogAttributeFilter[]
+				attributeFilters: [] as LogAttributeFilter[],
+				chart: null as LogAttributeChart | null
 			};
 		}
-		const params = new URLSearchParams(window.location.search);
-		const timeParams = parseTimeRangeFromUrl(timezone, '24h');
+		const params = search ?? new URLSearchParams(window.location.search);
+		const timeParams = parseTimeRangeFromUrl(timezone, '24h', params);
 		const minSev = Number(params.get('minSeverity') || '0');
 		const attrs: LogAttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
@@ -244,7 +265,8 @@
 			spanId: params.get('spanId') || '',
 			scopeName: params.get('scopeName') || '',
 			body: params.get('body') || '',
-			attributeFilters: attrs
+			attributeFilters: attrs,
+			chart: parseChartParams(params)
 		};
 	}
 
@@ -266,6 +288,11 @@
 	let scopeNameFilter = $state(initialUrlParams.scopeName);
 	let bodyFilter = $state(initialUrlParams.body);
 	let attributeFilters = $state<LogAttributeFilter[]>(initialUrlParams.attributeFilters);
+	let chart = $state<LogAttributeChart | null>(initialUrlParams.chart);
+	// What the list shows; a new object reloads the chart.
+	let chartSelection = $state<LogChartSelection | null>(null);
+	// The applied filters as a query string, for the saved filters menu.
+	let appliedQuery = $state('');
 
 	// Add-filter dialog
 	let addFilterOpen = $state(false);
@@ -276,9 +303,8 @@
 	// Index into attributeFilters when editing an existing pill, null when adding.
 	let dialogEditIndex = $state<number | null>(null);
 
-	const dialogOperatorOption = $derived(
-		operatorOptions.find((o) => o.value === dialogOperator) ?? operatorOptions[0]
-	);
+	const dialogOperatorOption = $derived(operatorOption(dialogOperator));
+	const dialogNeedsValue = $derived(!isExistenceOperator(dialogOperator));
 
 	function openAddFilterDialog() {
 		dialogKey = '';
@@ -289,11 +315,13 @@
 		addFilterOpen = true;
 	}
 
-	function openEditFilterDialog(index: number) {
+	// operator preselects another operator, for a pill switching from an
+	// existence check to a value comparison, which needs a value first.
+	function openEditFilterDialog(index: number, operator?: FilterOperator) {
 		const f = attributeFilters[index];
 		dialogKey = `${f.scope}.${f.key}`;
 		dialogValue = f.value;
-		dialogOperator = filterOperator(f);
+		dialogOperator = operator ?? filterOperator(f);
 		dialogError = '';
 		dialogEditIndex = index;
 		addFilterOpen = true;
@@ -305,12 +333,13 @@
 		// in whitespace, so a value left as it was is kept verbatim.
 		const editing = dialogEditIndex !== null ? attributeFilters[dialogEditIndex] : null;
 		const value = editing && dialogValue === editing.value ? dialogValue : dialogValue.trimEnd();
-		const composed = `${dialogKey.trim()}${dialogOperator}${value}`;
-		const parsed = parseLogAttributeFilter(composed);
-		if (!parsed) {
+		const target = parseLogAttributeTarget(dialogKey.trim());
+		if (!target || !target.key.trim()) {
 			dialogError = 'Key must start with resource., scope., or log.';
 			return;
 		}
+		const flags = operatorFlags(dialogOperator);
+		const parsed: LogAttributeFilter = { ...target, value: flags.exists ? '' : value, ...flags };
 		if (dialogEditIndex !== null) {
 			updateAttributeFilter(dialogEditIndex, parsed);
 		} else {
@@ -335,36 +364,49 @@
 	}
 
 	// An attribute tile reflects the filters on its own key and value, whatever
-	// their operator. A contains filter typed with a substring does not match.
-	function tileFilterIndex(displayKey: string, value: string): number {
-		const target = { ...displayKeyToFilter(displayKey), value };
-		return attributeFilters.findIndex((f) => sameFilterTarget(f, target));
+	// their operator, or else an existence filter on its key. A contains filter
+	// typed with a substring does not match.
+	function onTile(f: LogAttributeFilter, target: LogAttributeTarget, value: string): boolean {
+		return f.exists
+			? f.scope === target.scope && f.key === target.key
+			: sameFilterTarget(f, { ...target, value });
 	}
 
-	function attributeFilterOperator(displayKey: string, value: string): FilterOperator | null {
-		const index = tileFilterIndex(displayKey, value);
+	function tileFilterIndex(target: LogAttributeTarget, value: string): number {
+		const byValue = attributeFilters.findIndex((f) => !f.exists && onTile(f, target, value));
+		return byValue !== -1 ? byValue : attributeFilters.findIndex((f) => onTile(f, target, value));
+	}
+
+	function attributeFilterOperator(
+		target: LogAttributeTarget,
+		value: string
+	): FilterOperator | null {
+		const index = tileFilterIndex(target, value);
 		return index === -1 ? null : filterOperator(attributeFilters[index]);
 	}
 
 	// From the operator menu of an attribute tile. Picking the active operator
 	// again removes the filter, picking another one changes it in place, and
-	// null clears every filter on that key and value.
+	// null clears every filter the tile shows.
 	function setAttributeFilterOperator(
-		displayKey: string,
+		target: LogAttributeTarget,
 		value: string,
 		operator: FilterOperator | null
 	) {
-		const target = { ...displayKeyToFilter(displayKey), value };
-		const index = tileFilterIndex(displayKey, value);
+		const index = tileFilterIndex(target, value);
 		if (operator === null) {
-			attributeFilters = attributeFilters.filter((f) => !sameFilterTarget(f, target));
+			attributeFilters = attributeFilters.filter((f) => !onTile(f, target, value));
 			loadData(true);
-		} else if (index === -1) {
-			addAttributeFilter({ ...target, ...operatorFlags(operator) });
+			return;
+		}
+		const flags = operatorFlags(operator);
+		const filter: LogAttributeFilter = { ...target, value: flags.exists ? '' : value, ...flags };
+		if (index === -1) {
+			addAttributeFilter(filter);
 		} else if (filterOperator(attributeFilters[index]) === operator) {
 			removeAttributeFilter(index);
 		} else {
-			updateAttributeFilter(index, { ...attributeFilters[index], ...operatorFlags(operator) });
+			updateAttributeFilter(index, filter);
 		}
 	}
 
@@ -372,7 +414,32 @@
 	function setPillOperator(index: number, operator: FilterOperator) {
 		const f = attributeFilters[index];
 		if (filterOperator(f) === operator) return;
-		updateAttributeFilter(index, { ...f, ...operatorFlags(operator) });
+		const flags = operatorFlags(operator);
+		if (f.exists && !flags.exists) {
+			openEditFilterDialog(index, operator);
+			return;
+		}
+		updateAttributeFilter(index, { ...f, value: flags.exists ? '' : f.value, ...flags });
+	}
+
+	function openChart(target: LogAttributeTarget) {
+		const same = chart && chart.target.scope === target.scope && chart.target.key === target.key;
+		if (!same) {
+			chart = { target, view: 'series', aggregations: [...defaultChartAggregations] };
+			updateLogsUrl(true);
+		}
+		tick().then(() => volumeEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+	}
+
+	// View and line changes replace the history entry instead of adding one per click.
+	function setChart(next: LogAttributeChart) {
+		chart = next;
+		updateLogsUrl(false);
+	}
+
+	function closeChart() {
+		chart = null;
+		updateLogsUrl(true);
 	}
 
 	// Filters for the fixed tiles of the expanded row (Body / Trace ID /
@@ -469,25 +536,33 @@
 		return toUTCISO(luxonDt);
 	}
 
-	function updateLogsUrl(pushToHistory = true) {
-		updateUrl(
-			{
-				preset: selectedPreset || null,
-				from: selectedPreset ? null : getFromDateTimeUTC(),
-				to: selectedPreset ? null : getToDateTimeUTC(),
-				search: searchQuery.trim() || null,
-				searchType: searchType !== 'body' ? searchType : null,
-				minSeverity: minSeverity > 0 ? String(minSeverity) : null,
-				service: serviceName.trim() || null,
-				traceId: traceIdFilter.trim() || null,
-				spanId: spanIdFilter.trim() || null,
-				scopeName: scopeNameFilter.trim() || null,
-				body: bodyFilter || null,
-				attr: attributeFilters.map(formatLogAttributeFilter)
-			},
-			{ pushToHistory }
-		);
+	function logsUrlParams(): Record<string, string | string[] | null> {
+		return {
+			preset: selectedPreset || null,
+			from: selectedPreset ? null : getFromDateTimeUTC(),
+			to: selectedPreset ? null : getToDateTimeUTC(),
+			search: searchQuery.trim() || null,
+			searchType: searchType !== 'body' ? searchType : null,
+			minSeverity: minSeverity > 0 ? String(minSeverity) : null,
+			service: serviceName.trim() || null,
+			traceId: traceIdFilter.trim() || null,
+			spanId: spanIdFilter.trim() || null,
+			scopeName: scopeNameFilter.trim() || null,
+			body: bodyFilter || null,
+			attr: attributeFilters.map(formatLogAttributeFilter),
+			...formatChartParams(chart)
+		};
 	}
+
+	function updateLogsUrl(pushToHistory = true) {
+		const params = logsUrlParams();
+		appliedQuery = toQueryString(params);
+		updateUrl(params, { pushToHistory });
+	}
+
+	const timeRangeLabel = $derived(
+		selectedPreset ? (presetLabels[selectedPreset] ?? selectedPreset) : 'the custom range'
+	);
 
 	function removeAttributeFilter(index: number) {
 		attributeFilters = attributeFilters.filter((_, i) => i !== index);
@@ -539,6 +614,7 @@
 			};
 
 			loadVolume(lastFromISO, lastToISO, lastFilterBody);
+			chartSelection = { fromDate: lastFromISO, toDate: lastToISO, ...lastFilterBody };
 			const response = (await api.post('/logs', requestBody, {
 				projectId: projectsState.currentProjectId ?? undefined
 			})) as LogsResponse;
@@ -593,11 +669,15 @@
 	function refreshLiveVolume() {
 		if (!selectedPreset) return;
 		const range = getTimeRangeFromPreset(selectedPreset, timezone);
-		loadVolume(
-			range.from.toISOString(),
-			range.to.toISOString(),
-			lastFilterBody ?? currentFilterBody()
-		);
+		const filters = lastFilterBody ?? currentFilterBody();
+		loadVolume(range.from.toISOString(), range.to.toISOString(), filters);
+		if (chart) {
+			chartSelection = {
+				fromDate: range.from.toISOString(),
+				toDate: range.to.toISOString(),
+				...filters
+			};
+		}
 	}
 
 	function handleVolumeRangeSelect(from: Date, to: Date) {
@@ -785,7 +865,21 @@
 	}
 
 	function handlePopState() {
-		const urlParams = parseLogsUrlParams();
+		applyUrlState(parseLogsUrlParams());
+		loadData(false);
+	}
+
+	function applySavedFilter(filter: SavedFilter) {
+		const params = paramsToApply(filter, {
+			preset: selectedPreset,
+			from: getFromDateTimeUTC(),
+			to: getToDateTimeUTC()
+		});
+		applyUrlState(parseLogsUrlParams(params));
+		loadData(true);
+	}
+
+	function applyUrlState(urlParams: ReturnType<typeof parseLogsUrlParams>) {
 		const range = getResolvedTimeRange(urlParams, timezone);
 		const storedSort = getSortState(SORT_STORAGE_KEY, { field: 'timestamp', direction: 'desc' });
 		sortField = storedSort.field;
@@ -804,8 +898,8 @@
 		scopeNameFilter = urlParams.scopeName;
 		bodyFilter = urlParams.body;
 		attributeFilters = urlParams.attributeFilters;
+		chart = urlParams.chart;
 		if (!urlParams.preset && live) stopLive();
-		loadData(false);
 	}
 
 	function toggleExpanded(id: string) {
@@ -936,6 +1030,7 @@
 				</button>
 				<FilterOperatorMenu
 					active={filterOperator(f)}
+					options={logOperatorOptions}
 					onSelect={(operator) => setPillOperator(i, operator)}
 					triggerClass="cursor-pointer decoration-dotted underline-offset-2 hover:underline {f.exclude
 						? 'text-red-500'
@@ -943,17 +1038,19 @@
 					triggerTitle="Change operator"
 					triggerAriaLabel="Change operator"
 				>
-					{filterOperator(f)}
+					{operatorOption(filterOperator(f)).pill}
 				</FilterOperatorMenu>
-				<!-- Second way into the same dialog as the key, so it stays out of the tab order. -->
-				<button
-					type="button"
-					tabindex={-1}
-					class="cursor-pointer hover:text-primary"
-					onclick={() => openEditFilterDialog(i)}
-				>
-					{f.value}
-				</button>
+				{#if !f.exists}
+					<!-- Second way into the same dialog as the key, so it stays out of the tab order. -->
+					<button
+						type="button"
+						tabindex={-1}
+						class="cursor-pointer hover:text-primary"
+						onclick={() => openEditFilterDialog(i)}
+					>
+						{f.value}
+					</button>
+				{/if}
 				<button
 					type="button"
 					aria-label="Remove filter"
@@ -964,6 +1061,14 @@
 				</button>
 			</span>
 		{/each}
+		<div class="ml-auto">
+			<SavedFiltersMenu
+				page="logs"
+				currentQuery={appliedQuery}
+				{timeRangeLabel}
+				onApply={applySavedFilter}
+			/>
+		</div>
 	</div>
 
 	<AlertDialog.Root open={addFilterOpen} onOpenChange={(open) => (addFilterOpen = open)}>
@@ -998,7 +1103,7 @@
 							</span>
 						</Select.Trigger>
 						<Select.Content>
-							{#each operatorOptions as opt (opt.value)}
+							{#each logOperatorOptions as opt (opt.value)}
 								<Select.Item value={opt.value} label={opt.label}>
 									<span class="font-mono text-muted-foreground">{opt.symbol}</span>
 									{opt.label}
@@ -1007,13 +1112,15 @@
 						</Select.Content>
 					</Select.Root>
 				</FormField>
-				<FormField label="Value">
-					<Input
-						placeholder="backend-service"
-						bind:value={dialogValue}
-						onkeydown={handleDialogKeydown}
-					/>
-				</FormField>
+				{#if dialogNeedsValue}
+					<FormField label="Value">
+						<Input
+							placeholder="backend-service"
+							bind:value={dialogValue}
+							onkeydown={handleDialogKeydown}
+						/>
+					</FormField>
+				{/if}
 				{#if dialogError}
 					<p class="text-xs text-red-500">{dialogError}</p>
 				{/if}
@@ -1054,6 +1161,16 @@
 				</div>
 			{/if}
 		</div>
+		{#if chart}
+			<LogAttributeChartPanel
+				{chart}
+				selection={chartSelection}
+				{timezone}
+				onChange={setChart}
+				onClose={closeChart}
+				onRangeSelect={handleVolumeRangeSelect}
+			/>
+		{/if}
 		<div
 			bind:this={scrollEl}
 			bind:clientHeight={viewportH}
@@ -1165,6 +1282,7 @@
 									colspan={5}
 									filterOperatorFor={attributeFilterOperator}
 									onFilterOperator={setAttributeFilterOperator}
+									onChart={openChart}
 									{isMetaFilterActive}
 									onMetaFilterToggle={toggleMetaFilter}
 									onHeightChange={setExpandedHeight}

@@ -168,6 +168,86 @@ func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSe
 	return out, rows.Err()
 }
 
+// attributeValues is the subquery every attribute chart reads: one row per
+// matching log that carries the attribute, with its bucket, whether its value
+// is a number, and the number. step 0 puts every row in bucket 0.
+func (r *logRecordRepository) attributeValues(params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) (string, []interface{}, bool) {
+	col := attrColumn(target.Scope)
+	if col == "" {
+		return "", nil, false
+	}
+	where, whereArgs := r.buildWhere(params)
+	bucket := "toInt64(0)"
+	if step > 0 {
+		bucket = epochBucket("timestamp", int(step))
+	}
+	query := `SELECT bucket, match(raw, '` + shared.LogAttributeNumberPattern + `') AS num, if(num, toFloat64OrZero(raw), 0) AS v
+		FROM (SELECT ` + bucket + ` AS bucket, ` + col + `[?] AS raw
+			FROM log_records WHERE ` + where + ` AND mapContains(` + col + `, ?))`
+	args := append([]interface{}{target.Key}, whereArgs...)
+	args = append(args, target.Key)
+	return query, args, true
+}
+
+// AttributeStats summarises the numeric values of one attribute per step-second
+// bucket of the logs Search would match (step 0: one row for the whole range).
+func (r *logRecordRepository) AttributeStats(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) ([]shared.LogAttributeStatsRow, error) {
+	values, args, ok := r.attributeValues(params, target, step)
+	if !ok {
+		return nil, nil
+	}
+	query := `SELECT bucket, toInt64(count()) AS present, toInt64(countIf(num)) AS numeric,
+		toInt64(countIf(num AND v = floor(v))) AS integral,
+		sumIf(v, num) AS sum, minIf(v, num) AS min, maxIf(v, num) AS max,
+		quantilesIf(0.5, 0.95, 0.99)(v, num) AS q
+	FROM (` + values + `)
+	GROUP BY bucket`
+	rows, err := chdb.Conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []shared.LogAttributeStatsRow
+	for rows.Next() {
+		var row shared.LogAttributeStatsRow
+		var q []float64
+		if err := rows.Scan(&row.Bucket, &row.Present, &row.Numeric, &row.Integral, &row.Sum, &row.Min, &row.Max, &q); err != nil {
+			return nil, err
+		}
+		if row.Numeric > 0 && len(q) == len(shared.LogAttributeQuantiles) {
+			row.P50, row.P95, row.P99 = q[0], q[1], q[2]
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// AttributeBins counts the numeric values of one attribute per bin.
+func (r *logRecordRepository) AttributeBins(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, binning shared.LogAttributeBinning) ([]shared.LogAttributeBinRow, error) {
+	values, valueArgs, ok := r.attributeValues(params, target, 0)
+	if !ok {
+		return nil, nil
+	}
+	query := `SELECT toInt64(greatest(0, least(toInt64(floor((v - ?) / ?)), ?))) AS bin, toInt64(count()) AS count
+	FROM (` + values + `) WHERE num
+	GROUP BY bin`
+	args := append([]interface{}{binning.Start, binning.Width, int64(binning.Count - 1)}, valueArgs...)
+	rows, err := chdb.Conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []shared.LogAttributeBinRow
+	for rows.Next() {
+		var index, count int64
+		if err := rows.Scan(&index, &count); err != nil {
+			return nil, err
+		}
+		out = append(out, shared.LogAttributeBinRow{Index: int(index), Count: count})
+	}
+	return out, rows.Err()
+}
+
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
 	query := `SELECT ` + chLogRecordColumns + `
 	FROM log_records
@@ -300,6 +380,15 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 	for _, f := range params.AttributeFilters {
 		col := attrColumn(f.Scope)
 		if col == "" {
+			continue
+		}
+		if f.Exists {
+			if f.Exclude {
+				clauses = append(clauses, "NOT mapContains("+col+", ?)")
+			} else {
+				clauses = append(clauses, "mapContains("+col+", ?)")
+			}
+			args = append(args, f.Key)
 			continue
 		}
 		if f.Contains {

@@ -50,13 +50,16 @@ type CheckResult struct {
 // query (Map columns with bloom-filter indexes on ClickHouse, JSON on
 // SQLite/DuckDB). Contains switches from exact match to case-insensitive
 // substring match; Exclude negates either mode. Negated filters keep rows
-// that don't carry the attribute at all.
+// that don't carry the attribute at all. Exists matches on the key alone
+// (Value and Contains are ignored): rows that carry the attribute, or with
+// Exclude the rows that don't.
 type LogAttributeFilter struct {
 	Scope    string
 	Key      string
 	Value    string
 	Exclude  bool
 	Contains bool
+	Exists   bool
 }
 
 type LogSearchParams struct {

@@ -34,6 +34,7 @@ var (
 	ProjectRepository                = pgrepo.ProjectRepository
 	ProjectUserRoleRepository        = pgrepo.ProjectUserRoleRepository
 	RefreshTokenRepository           = pgrepo.RefreshTokenRepository
+	SavedFilterRepository            = pgrepo.SavedFilterRepository
 	SetupPlanRepository              = pgrepo.SetupPlanRepository
 	SetupTokenRepository             = pgrepo.SetupTokenRepository
 	SLORepository                    = pgrepo.SLORepository

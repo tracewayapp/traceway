@@ -61,10 +61,14 @@ Filters, which all combine:
 
 - **Search**, by **Message** (the body), **Service** or **Trace ID**. On ClickHouse a single-word body search is a fast whole-word match that is case sensitive (`timeout` does not find `Timeout` or `timeouts`). Anything longer, and every search on SQLite and DuckDB, is a case-insensitive substring match.
 - **Severity**: All levels, or a threshold from TRACE+ to FATAL.
-- **Attribute filters** (**Add filter**): any `resource.*`, `scope.*` or log attribute key, with equals, not equals, contains or not contains. Not equals is how teams mute a noisy logger. Each filter is a pill, red for exclusions; clicking a pill's operator switches it in place. In an expanded log row, the filter icon on an attribute offers the same four operators for that value, and the body, trace id, span id and scope tiles filter on an exact match in one click.
+- **Attribute filters** (**Add filter**): any `resource.*`, `scope.*` or log attribute key, with equals, not equals, contains or not contains, or **key exists** / **key does not exist**, which match on the key alone. Not equals is how teams mute a noisy logger. Each filter is a pill, red for exclusions; clicking a pill's operator switches it in place. In an expanded log row, the filter icon on an attribute offers the same operators for that value and key, and the body, trace id, span id and scope tiles filter on an exact match in one click. A log attribute whose own key starts with `resource.` or `scope.` is shown as `log.<key>`.
 - **Time range**: presets or custom, 24 hours by default. Results are newest first by default (timestamp, level and service are sortable), and **Load 50 more** fetches more.
 
 Filters are kept in the URL, so a filtered view can be shared.
+
+**Charting attribute values**: on an attribute whose value is a number, the tile menu offers **Chart values**. The chart covers the logs the current filters select. **Over time** draws, per time slice, the average, P50, P95, P99, minimum, maximum, sum and count (average and maximum by default; hover for one slice, drag to zoom). **Distribution** counts the values in round bins and marks P50, P95 and P99. Only JSON-style numbers (`12`, `-3.5`, `1e3`) are charted; the chart says how many values were not numbers. Dashboard only.
+
+**Saved filters** (button at the right of the filter pills) store the search, severity, service and attribute filters and an open chart under a name, optionally with the time range. They belong to the project and every member sees them; read-only members can apply but not change them. Names are unique per project, ignoring case, at most 100 per project. Dashboard only.
 
 **Live** turns the page into a live tail. It polls every 5 seconds, prepends new records and keeps up to 2000 rows. It works with preset ranges only, honours every filter, holds the scroll position while reading, and changing the sort stops it.
 

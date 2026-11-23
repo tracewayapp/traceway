@@ -944,7 +944,14 @@ Agents reach every SLO route: the reads and `preview` with any scope, create/upd
 **Logs**
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| POST | `/api/logs` | App | List/search logs (filters: severity, service, trace, body) |
+| POST | `/api/logs` | App | List/search logs (filters: severity, service, trace, body, `attributeFilters` with `exclude`/`contains`/`exists`) |
+| POST | `/api/logs/histogram` | App | Volume chart counts per bucket and level |
+| POST | `/api/logs/attribute-series` | App | One numeric attribute (`attribute: {scope, key}`) over time: per bucket count, sum, avg, min, max, p50/p95/p99, plus `present`/`numeric` counts |
+| POST | `/api/logs/attribute-distribution` | App | The same attribute in round bins (`shared.NiceLogAttributeBins`, whole-number bins for whole numbers) with its overall statistics |
+| GET/POST | `/api/saved-filters` | App / App+Write | Saved filters of a page (`?page=logs`) / create (`{page, name, query}`) |
+| PUT/DELETE | `/api/saved-filters/:id` | App+Write | Rename and/or replace the query / delete |
+
+Log filters and charts (`log.controller.go`, `saved_filter.controller.go`, frontend `routes/logs`, `components/trace-logs/`). An existence filter (`exists`, with `exclude` for "does not exist") matches on the key alone: `mapContains` on ClickHouse, `json_extract(...) IS [NOT] NULL` on SQLite and DuckDB. In the `attr=` URL param it is `key?=` / `key!?=`, and `escapeFilterKey` (`utils/attribute-filters.ts`) percent-escapes `%`, `=` and a trailing run of `!`, `~`, `?` in keys so they survive a reload. The expanded log row maps display keys to `{scope, key}` through `logAttributeEntries` (a log attribute named `resource.x` is shown as `log.resource.x`), never by parsing the display key. Attribute charts count a value only when it is a JSON number, the same grammar on every backend (`shared.LogAttributeNumberPattern` on ClickHouse and DuckDB, `json_valid`/`json_type` plus a character check on SQLite; the frontend's `isNumericAttributeValue` decides when to offer Chart values). Percentiles interpolate linearly everywhere: `quantiles` on ClickHouse, `quantile_cont` on DuckDB, and on SQLite a window-function read of the values around each position (`ApplyLogAttributeQuantiles`); `log_attribute_chart_test.go` runs on all three backends. Both chart endpoints reuse `searchParams` (same filters and body-search gate as the list) and give up after 30s with a 504. The chart lives in the URL (`chart`, `chartView`, `chartAgg`). Saved filters (`saved_filters`, main DB: `pg/0176`-`0177`, `sqlite/0097`) are per project and page, shared by its members, store the page's own URL params (`savedFilterPageParams`, mirrored by `LOGS_FILTER_PARAMS` in `utils/saved-filters.ts`), names unique ignoring case, at most 100 per page; they are not agent routes.
 
 **Source Maps**
 | Method | Endpoint | Auth | Purpose |
@@ -1008,6 +1015,7 @@ func (c *ReportController) Report(ctx *gin.Context) {
 | `post_mortem_events` | Append-only post-mortem edit log (action, JSON changes list, user, ON DELETE CASCADE) |
 | `sdk_config_rules` | Remote SDK config rules per project: ordered (`position`), `conditions` JSON (targeting) and `settings` JSON (the overlay), `enabled`; see "Remote SDK Config" |
 | `sdk_captures` | On-demand captures per project: UUID id, `conditions` (one attribute eq), `actions` (`{lookbackSeconds, signals, replay}`), `expires_at` (max 24h), `cancelled_at` |
+| `saved_filters` | Named filter sets of a dashboard page (`page` = `logs`), per project: the page's URL query, unique `(project_id, page, name)` |
 | `synthetic_runners` | Liveness registry for self-registered runner fleet (unique name, version, first/last_seen_at; no credentials, no org scoping) |
 | `status_pages` | Public uptime pages (org-scoped slug + selected check ids + branding: description, logo_key, unique custom_domain) |
 | `widget_groups` / `widget_group_widgets` / `starred_widgets` | Legacy pre-dashboards tables, retained read-only for rollback until a follow-up drop |
@@ -1034,6 +1042,7 @@ Both embedded builds (SQLite and DuckDB telemetry) are single-instance: the data
 - `notification_channels`, `notification_rules`
 - `synthetic_checks`, `check_runs`, `check_incidents`, `incident_updates`, `post_mortems`, `post_mortem_events`, `synthetic_runners`, `status_pages`
 - `sdk_config_rules`, `sdk_captures`
+- `saved_filters`
 
 **Telemetry DB tables** (`db.TelemetryDB` — non-transactional, uses lit with `db.TelemetryDB` directly):
 - `endpoints_v2`, `tasks_v2`, `ai_traces_v2`, `exceptions_v2`, `spans_v2`, `metric_points`

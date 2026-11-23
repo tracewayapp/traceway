@@ -44,10 +44,14 @@ export type TimeRangeParams = {
 	to: Date | null;
 };
 
-export function parseTimeRangeFromUrl(timezone: string, defaultPreset = '24h'): TimeRangeParams {
-	if (!browser) return { preset: defaultPreset, from: null, to: null };
+export function parseTimeRangeFromUrl(
+	timezone: string,
+	defaultPreset = '24h',
+	search?: URLSearchParams
+): TimeRangeParams {
+	if (!browser && !search) return { preset: defaultPreset, from: null, to: null };
 
-	const params = new URLSearchParams(window.location.search);
+	const params = search ?? new URLSearchParams(window.location.search);
 	const presetParam = params.get('preset');
 	const fromParam = params.get('from');
 	const toParam = params.get('to');

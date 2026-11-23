@@ -186,6 +186,8 @@ func RegisterControllers(router *gin.RouterGroup) {
 
 	router.POST("/logs", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.List)
 	router.POST("/logs/histogram", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.Histogram)
+	router.POST("/logs/attribute-series", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.AttributeSeries)
+	router.POST("/logs/attribute-distribution", middleware.UseAppAuth, middleware.RequireProjectAccess, LogController.AttributeDistribution)
 
 	router.POST("/exception-stack-traces", middleware.UseAppAuth, middleware.RequireProjectAccess, ExceptionStackTraceController.FindGrouppedExceptionStackTraces)
 	router.POST("/exception-stack-traces/archive", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, ExceptionStackTraceController.ArchiveExceptions)
@@ -350,6 +352,10 @@ func RegisterControllers(router *gin.RouterGroup) {
 	router.PUT("/sdk-config/rules/reorder", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.ReorderRules)
 	router.PUT("/sdk-config/rules/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.UpdateRule)
 	router.DELETE("/sdk-config/rules/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.DeleteRule)
+	router.GET("/saved-filters", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SavedFilterController.List)
+	router.POST("/saved-filters", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SavedFilterController.Create)
+	router.PUT("/saved-filters/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SavedFilterController.Update)
+	router.DELETE("/saved-filters/:id", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SavedFilterController.Delete)
 	router.POST("/sdk-config/preview", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SdkConfigController.Preview)
 	router.GET("/sdk-config/captures", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.Transactional, SdkConfigController.ListCaptures)
 	router.POST("/sdk-config/captures", middleware.UseAppAuth, middleware.RequireProjectAccess, middleware.RequireWriteAccess, middleware.Transactional, SdkConfigController.CreateCapture)

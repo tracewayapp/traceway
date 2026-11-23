@@ -61,7 +61,9 @@ it('loads old attribute links, edits and removes chips, and combines text search
 		expect(post).toHaveBeenCalledWith(
 			'/sessions',
 			expect.objectContaining({
-				attributeFilters: [{ key: 'userId', value: 'u_42', exclude: false, contains: false }]
+				attributeFilters: [
+					{ key: 'userId', value: 'u_42', exclude: false, contains: false, exists: false }
+				]
 			}),
 			{ projectId: 'project-1' }
 		)

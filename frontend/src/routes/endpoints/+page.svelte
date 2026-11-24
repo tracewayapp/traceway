@@ -13,7 +13,6 @@
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { NonRootChip } from '$lib/components/ui/non-root-chip';
 	import EndpointName from '$lib/components/endpoint-name.svelte';
 	import { browser } from '$app/environment';
@@ -24,6 +23,14 @@
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import ChartCard from '$lib/components/traceway/chart-card.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		describeTimeRange,
+		methodField,
+		rootField
+	} from '$lib/components/traceway/filter-bar';
 	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import D3StackedAreaChart from '$lib/components/dashboard/d3-stacked-area-chart.svelte';
@@ -42,7 +49,7 @@
 		handleSortClick,
 		type SortDirection
 	} from '$lib/utils/sort-storage';
-	import { EndpointFilter, isMethodFilterValue } from '$lib/components/ui/endpoint-filter';
+	import { isMethodFilterValue } from '$lib/components/ui/endpoint-filter';
 	import { isRootFilterValue } from '$lib/components/ui/root-filter';
 
 	const timezone = $derived(getTimezone());
@@ -375,12 +382,19 @@
 		loadChartData();
 	}
 
-	function handleSearch() {
-		page = 1;
-		loadData(true);
-	}
+	const filterFields: FilterField[] = [
+		{ ...methodField(), inSearch: true },
+		{ ...rootField('requests'), inSearch: true }
+	];
+	const filterValues = $derived({ methodFilter, rootFilter });
+	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 
-	function applyFilterChange() {
+	function handleFilterApply(next: FilterApply) {
+		const method = next.values.methodFilter ?? 'all';
+		const root = next.values.rootFilter ?? 'all';
+		searchQuery = next.search;
+		methodFilter = isMethodFilterValue(method) ? method : 'all';
+		rootFilter = isRootFilterValue(root) ? root : 'all';
 		page = 1;
 		loadData(true);
 	}
@@ -465,203 +479,202 @@
 		{/snippet}
 	</PageHeader>
 
-	<!-- Search -->
-	<SearchBar
-		placeholder="Search endpoints..."
-		bind:value={searchQuery}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search endpoints..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
+		noun="endpoints"
+		rangeLabel={timeRangeLabel}
 	>
-		{#snippet pillEnd()}
-			<EndpointFilter
-				bind:rootValue={rootFilter}
-				bind:methodValue={methodFilter}
-				onChange={applyFilterChange}
-			/>
-		{/snippet}
-	</SearchBar>
+		{@render results()}
+	</FilterBar>
 
-	<!-- Performance Chart -->
-	<ChartCard
-		title="Performance"
-		loading={useBarChart ? loading : chartLoading}
-		empty={useBarChart ? barChartData.length === 0 : chartEndpoints.length === 0}
-	>
-		{#snippet icon()}
-			<ChartLine class="h-3.5 w-3.5 text-muted-foreground" />
-		{/snippet}
-		{#snippet controls()}
-			<ToolbarSelect
-				bind:value={selectedMetric}
-				options={metricOptions}
-				class="w-44"
-				onChange={handleMetricChange}
-			/>
-		{/snippet}
-		{#if useBarChart}
-			<D3HorizontalBarChart data={barChartData} formatValue={formatDuration} />
-		{:else}
-			<D3StackedAreaChart
-				endpoints={chartEndpoints}
-				series={chartSeries}
-				formatValue={formatTotalTime}
-				onRangeSelect={handleChartRangeSelect}
-			/>
-		{/if}
-	</ChartCard>
-
-	<!-- Endpoints Table -->
-	<TableContainer minWidth="860px" empty={loading || !!error || endpoints.length === 0}>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={6} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={6} class="h-24 text-center text-red-500">
-							{error}
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if endpoints.length === 0}
-				<Table.Body>
-					<TableEmptyState
-						colspan={6}
-						message="No endpoint data available for your search parameters"
-					/>
-				</Table.Body>
+	{#snippet results()}
+		<!-- Performance Chart -->
+		<ChartCard
+			title="Performance"
+			loading={useBarChart ? loading : chartLoading}
+			empty={useBarChart ? barChartData.length === 0 : chartEndpoints.length === 0}
+		>
+			{#snippet icon()}
+				<ChartLine class="h-3.5 w-3.5 text-muted-foreground" />
+			{/snippet}
+			{#snippet controls()}
+				<ToolbarSelect
+					bind:value={selectedMetric}
+					options={metricOptions}
+					class="w-44"
+					onChange={handleMetricChange}
+				/>
+			{/snippet}
+			{#if useBarChart}
+				<D3HorizontalBarChart data={barChartData} formatValue={formatDuration} />
 			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader
-							label="Endpoint"
-							tooltip="The API route or page being accessed"
-							class="max-w-[50%]"
-						/>
-						<TracewayTableHeader
-							label="Calls"
-							tooltip="Total number of requests"
-							sortField="count"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Typical"
-							tooltip="Median response time (P50)"
-							sortField="p50_duration"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Slow"
-							tooltip="95th percentile - slowest 5% of requests"
-							sortField="p95_duration"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Awful"
-							tooltip="99th percentile - slowest 1% of requests"
-							sortField="p99_duration"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Impact"
-							tooltip="Impact score based on Apdex, error rates, P99 latency, and request volume"
-							sortField="impact"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							align="right"
-							class="w-[120px]"
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each endpoints as endpoint, __index (__index)}
-						<Table.Row
-							class="cursor-pointer"
-							onclick={createRowClickHandler(
-								resolve(`/endpoints/${encodeURIComponent(endpoint.endpoint)}`),
-								'preset',
-								'from',
-								'to'
-							)}
-						>
-							<Table.Cell class="font-mono text-sm">
-								<div class="flex max-w-[560px] items-center gap-2">
-									<span class="min-w-0 truncate" title={endpoint.endpoint}
-										><EndpointName endpoint={endpoint.endpoint} /></span
-									>
-									{#if endpoint.isStream}
-										<Badge
-											variant="outline"
-											class="shrink-0 font-sans text-xs"
-											title="Streaming response (SSE / WebSocket / long-poll). Excluded from latency, Apdex, and impact scoring."
-											>Stream</Badge
-										>
-									{/if}
-									{#if dropHealthyHealthchecks && isHealthcheckEndpoint(endpoint.endpoint, healthcheckPaths)}
-										<Badge
-											variant="outline"
-											class="shrink-0 font-sans text-xs"
-											title="Healthcheck endpoint. Only failed requests (status 400+) are stored, so counts and error rates reflect failures only. Configure in project settings."
-											>Healthcheck</Badge
-										>
-									{/if}
-									{#if endpoint.hasNonRoot}
-										<NonRootChip mixed={endpoint.hasRoot && endpoint.hasNonRoot} />
-									{/if}
+				<D3StackedAreaChart
+					endpoints={chartEndpoints}
+					series={chartSeries}
+					formatValue={formatTotalTime}
+					onRangeSelect={handleChartRangeSelect}
+				/>
+			{/if}
+		</ChartCard>
+
+		<!-- Endpoints Table -->
+		<TableContainer minWidth="860px" empty={loading || !!error || endpoints.length === 0}>
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={6} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
 								</div>
 							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								{formatCount(endpoint.count)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
-								{endpoint.isStream ? '—' : formatDuration(endpoint.p50Duration)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
-								{endpoint.isStream ? '—' : formatDuration(endpoint.p95Duration)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
-								{endpoint.isStream ? '—' : formatDuration(endpoint.p99Duration)}
-							</Table.Cell>
-							<Table.Cell class="text-right">
-								<ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
+						</Table.Row>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={6} class="h-24 text-center text-red-500">
+								{error}
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if endpoints.length === 0}
+					<Table.Body>
+						<TableEmptyState
+							colspan={6}
+							message="No endpoint data available for your search parameters"
+						/>
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader
+								label="Endpoint"
+								tooltip="The API route or page being accessed"
+								class="max-w-[50%]"
+							/>
+							<TracewayTableHeader
+								label="Calls"
+								tooltip="Total number of requests"
+								sortField="count"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Typical"
+								tooltip="Median response time (P50)"
+								sortField="p50_duration"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Slow"
+								tooltip="95th percentile - slowest 5% of requests"
+								sortField="p95_duration"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Awful"
+								tooltip="99th percentile - slowest 1% of requests"
+								sortField="p99_duration"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Impact"
+								tooltip="Impact score based on Apdex, error rates, P99 latency, and request volume"
+								sortField="impact"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								align="right"
+								class="w-[120px]"
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each endpoints as endpoint, __index (__index)}
+							<Table.Row
+								class="cursor-pointer"
+								onclick={createRowClickHandler(
+									resolve(`/endpoints/${encodeURIComponent(endpoint.endpoint)}`),
+									'preset',
+									'from',
+									'to'
+								)}
+							>
+								<Table.Cell class="font-mono text-sm">
+									<div class="flex max-w-[560px] items-center gap-2">
+										<span class="min-w-0 truncate" title={endpoint.endpoint}
+											><EndpointName endpoint={endpoint.endpoint} /></span
+										>
+										{#if endpoint.isStream}
+											<Badge
+												variant="outline"
+												class="shrink-0 font-sans text-xs"
+												title="Streaming response (SSE / WebSocket / long-poll). Excluded from latency, Apdex, and impact scoring."
+												>Stream</Badge
+											>
+										{/if}
+										{#if dropHealthyHealthchecks && isHealthcheckEndpoint(endpoint.endpoint, healthcheckPaths)}
+											<Badge
+												variant="outline"
+												class="shrink-0 font-sans text-xs"
+												title="Healthcheck endpoint. Only failed requests (status 400+) are stored, so counts and error rates reflect failures only. Configure in project settings."
+												>Healthcheck</Badge
+											>
+										{/if}
+										{#if endpoint.hasNonRoot}
+											<NonRootChip mixed={endpoint.hasRoot && endpoint.hasNonRoot} />
+										{/if}
+									</div>
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									{formatCount(endpoint.count)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+									{endpoint.isStream ? '—' : formatDuration(endpoint.p50Duration)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+									{endpoint.isStream ? '—' : formatDuration(endpoint.p95Duration)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+									{endpoint.isStream ? '—' : formatDuration(endpoint.p99Duration)}
+								</Table.Cell>
+								<Table.Cell class="text-right">
+									<ImpactBadge score={endpoint.impact} reason={endpoint.impactReason} />
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<!-- Pagination Footer -->
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="endpoint"
-	/>
+		<!-- Pagination Footer -->
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="endpoint"
+		/>
+	{/snippet}
 </div>

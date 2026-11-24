@@ -27,10 +27,17 @@ type distinctServerResult struct {
 	ServerName string `lit:"sn"`
 }
 
+type tagValueRow struct {
+	TagValue string `lit:"tag_value"`
+}
+
+// Models are registered once at startup: lit's registry is a plain map, so registering
+// while requests read it crashes the process (concurrent map read and map write).
 func init() {
 	models.ExtensionModelRegistrations = append(models.ExtensionModelRegistrations, func(driver lit.Driver) {
 		lit.RegisterModel[avgResult](driver)
 		lit.RegisterModel[distinctServerResult](driver)
+		lit.RegisterModel[tagValueRow](driver)
 	})
 }
 
@@ -246,11 +253,6 @@ func (r *metricPointRepository) DiscoverMetrics(ctx context.Context, projectId u
 }
 
 func (r *metricPointRepository) DiscoverTagValues(ctx context.Context, projectId uuid.UUID, metricName, tagKey string, from, to time.Time) ([]string, error) {
-	type tagValueRow struct {
-		TagValue string `lit:"tag_value"`
-	}
-	lit.RegisterModel[tagValueRow](db.Driver)
-
 	results, err := lit.SelectNamed[tagValueRow](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT DISTINCT json_extract(tags, '$."' || :tag_key || '"') AS tag_value
 		FROM metric_points

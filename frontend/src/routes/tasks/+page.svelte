@@ -10,8 +10,7 @@
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { SearchBar } from '$lib/components/ui/search-bar';
-	import { RootFilter, isRootFilterValue } from '$lib/components/ui/root-filter';
+	import { isRootFilterValue } from '$lib/components/ui/root-filter';
 	import { NonRootChip } from '$lib/components/ui/non-root-chip';
 	import { CalendarDate } from '@internationalized/date';
 	import { browser } from '$app/environment';
@@ -20,6 +19,13 @@
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		describeTimeRange,
+		rootField
+	} from '$lib/components/traceway/filter-bar';
 	import {
 		getTimeRangeFromPreset,
 		dateToCalendarDate,
@@ -233,12 +239,14 @@
 		loadData(false);
 	}
 
-	function handleSearch() {
-		page = 1;
-		loadData(true);
-	}
+	const filterFields: FilterField[] = [rootField('runs')];
+	const filterValues = $derived({ rootFilter });
+	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 
-	function applyFilterChange() {
+	function handleFilterApply(next: FilterApply) {
+		const root = next.values.rootFilter ?? 'all';
+		searchQuery = next.search;
+		rootFilter = isRootFilterValue(root) ? root : 'all';
 		page = 1;
 		loadData(true);
 	}
@@ -272,122 +280,121 @@
 		{/snippet}
 	</PageHeader>
 
-	<!-- Search -->
-	<SearchBar
-		placeholder="Search tasks..."
-		bind:value={searchQuery}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search tasks..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
+		noun="tasks"
+		rangeLabel={timeRangeLabel}
 	>
-		{#snippet pillEnd()}
-			<RootFilter
-				bind:value={rootFilter}
-				onChange={applyFilterChange}
-				class="h-9 w-[110px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
-			/>
-		{/snippet}
-	</SearchBar>
+		{@render results()}
+	</FilterBar>
 
-	<!-- Tasks Table -->
-	<TableContainer minWidth="640px" empty={loading || !!error || tasks.length === 0}>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={4} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={4} class="h-24 text-center text-red-500">
-							{error}
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if tasks.length === 0}
-				<Table.Body>
-					<TableEmptyState colspan={4} message="No task data received yet" />
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader label="Task" tooltip="The background job or task name" />
-						<TracewayTableHeader
-							label="Runs"
-							tooltip="Total number of task executions"
-							sortField="count"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Typical"
-							tooltip="Median duration (P50)"
-							sortField="p50_duration"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Slow"
-							tooltip="95th percentile - slowest 5% of executions"
-							sortField="p95_duration"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each tasks as task, __index (__index)}
-						<Table.Row
-							class="cursor-pointer"
-							onclick={createRowClickHandler(
-								resolve(`/tasks/${encodeURIComponent(task.taskName)}`),
-								'preset',
-								'from',
-								'to'
-							)}
-						>
-							<Table.Cell class="font-mono text-sm">
-								{task.taskName}
-								{#if task.hasNonRoot}
-									<NonRootChip mixed={task.hasRoot && task.hasNonRoot} />
-								{/if}
-							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								{formatCount(task.count)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatDuration(task.p50Duration)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatDuration(task.p95Duration)}
+	{#snippet results()}
+		<!-- Tasks Table -->
+		<TableContainer minWidth="640px" empty={loading || !!error || tasks.length === 0}>
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={4} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
+								</div>
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={4} class="h-24 text-center text-red-500">
+								{error}
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if tasks.length === 0}
+					<Table.Body>
+						<TableEmptyState colspan={4} message="No task data received yet" />
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader label="Task" tooltip="The background job or task name" />
+							<TracewayTableHeader
+								label="Runs"
+								tooltip="Total number of task executions"
+								sortField="count"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Typical"
+								tooltip="Median duration (P50)"
+								sortField="p50_duration"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Slow"
+								tooltip="95th percentile - slowest 5% of executions"
+								sortField="p95_duration"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each tasks as task, __index (__index)}
+							<Table.Row
+								class="cursor-pointer"
+								onclick={createRowClickHandler(
+									resolve(`/tasks/${encodeURIComponent(task.taskName)}`),
+									'preset',
+									'from',
+									'to'
+								)}
+							>
+								<Table.Cell class="font-mono text-sm">
+									{task.taskName}
+									{#if task.hasNonRoot}
+										<NonRootChip mixed={task.hasRoot && task.hasNonRoot} />
+									{/if}
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									{formatCount(task.count)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatDuration(task.p50Duration)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatDuration(task.p95Duration)}
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<!-- Pagination Footer -->
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="task"
-	/>
+		<!-- Pagination Footer -->
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="task"
+		/>
+	{/snippet}
 </div>

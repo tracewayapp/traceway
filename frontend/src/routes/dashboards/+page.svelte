@@ -14,8 +14,13 @@
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import WidgetConfigPanel from '$lib/components/dashboard/widget-config-panel.svelte';
 	import DashboardCommand from '$lib/components/dashboard/dashboard-command.svelte';
-	import InstanceFilter from '$lib/components/dashboard/instance-filter.svelte';
-	import DimensionFilter from '$lib/components/dashboard/dimension-filter.svelte';
+	import {
+		FilterBar,
+		describeTimeRange,
+		type FilterApply,
+		type FilterField
+	} from '$lib/components/traceway/filter-bar';
+	import { loadDimensionValues, loadInstances } from '$lib/utils/dashboard-scope';
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
@@ -228,8 +233,72 @@
 		return normalized;
 	}
 
-	function setServerScope(scope: string) {
-		serverScope = setScopeParam('server', scope);
+	// Countries only show up where the deployment resolves them, so the field waits for one.
+	let countriesSeen = $state(false);
+	$effect(() => {
+		const projectId = projectsState.currentProjectId;
+		countriesSeen = false;
+		if (!projectId || !isClientProject) return;
+		void loadDimensionValues(projectId, scopeMetrics, 'country').then((options) => {
+			if (projectsState.currentProjectId === projectId) countriesSeen = options.length > 0;
+		});
+	});
+
+	function dimensionField(key: string, label: string, dimension: string): FilterField {
+		return {
+			kind: 'select',
+			key,
+			label,
+			anyLabel: `Any ${label === 'OS' ? label : label.toLowerCase()}`,
+			options: [],
+			searchable: true,
+			loadOptions: () =>
+				loadDimensionValues(projectsState.currentProjectId ?? '', scopeMetrics, dimension)
+		};
+	}
+
+	const scopeFields = $derived<FilterField[]>(
+		isClientProject
+			? [
+					dimensionField('release', 'Release', 'service.version'),
+					dimensionField('os', 'OS', 'os.name'),
+					...(countriesSeen || countryScope
+						? [dimensionField('country', 'Country', 'country')]
+						: [])
+				]
+			: [
+					{
+						kind: 'select',
+						key: 'server',
+						label: 'Instance',
+						anyLabel: 'Any instance',
+						options: [],
+						searchable: true,
+						hint: 'Instances that reported in the time range.',
+						loadOptions: () =>
+							loadInstances(
+								projectsState.currentProjectId ?? '',
+								getFromDateTimeUTC(),
+								getToDateTimeUTC()
+							)
+					}
+				]
+	);
+	const scopeValues = $derived({
+		release: releaseScope,
+		os: osScope,
+		country: countryScope,
+		server: serverScope
+	});
+
+	function handleScopeApply(next: FilterApply) {
+		if (isClientProject) {
+			releaseScope = setScopeParam('release', next.values.release ?? '');
+			osScope = setScopeParam('os', next.values.os ?? '');
+			countryScope = setScopeParam('country', next.values.country ?? '');
+		} else {
+			serverScope = setScopeParam('server', next.values.server ?? '');
+		}
 	}
 
 	function updateDashboardUrl(params: Record<string, string>) {
@@ -1093,41 +1162,6 @@
 						{isMac ? '⌘' : 'Ctrl'}K
 					</kbd>
 				</button>
-				{#if isClientProject}
-					<DimensionFilter
-						label="Release"
-						dimension="service.version"
-						metrics={scopeMetrics}
-						value={releaseScope}
-						projectId={projectsState.currentProjectId}
-						onValueChange={(v) => (releaseScope = setScopeParam('release', v))}
-					/>
-					<DimensionFilter
-						label="OS"
-						dimension="os.name"
-						metrics={scopeMetrics}
-						value={osScope}
-						projectId={projectsState.currentProjectId}
-						onValueChange={(v) => (osScope = setScopeParam('os', v))}
-					/>
-					<DimensionFilter
-						label="Country"
-						dimension="country"
-						metrics={scopeMetrics}
-						value={countryScope}
-						projectId={projectsState.currentProjectId}
-						hideWhenEmpty
-						onValueChange={(v) => (countryScope = setScopeParam('country', v))}
-					/>
-				{:else}
-					<InstanceFilter
-						value={serverScope}
-						from={getFromDateTimeUTC()}
-						to={getToDateTimeUTC()}
-						projectId={projectsState.currentProjectId}
-						onValueChange={setServerScope}
-					/>
-				{/if}
 				<TimeRangePicker
 					bind:fromDate
 					bind:toDate
@@ -1139,6 +1173,17 @@
 			{/if}
 		{/snippet}
 	</PageHeader>
+
+	{#if !loading && dashboards.length > 0}
+		<FilterBar
+			showSearch={false}
+			fields={scopeFields}
+			values={scopeValues}
+			onApply={handleScopeApply}
+			noun="every widget"
+			rangeLabel={describeTimeRange(selectedPreset)}
+		/>
+	{/if}
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20">

@@ -170,7 +170,7 @@
 
 <Popover.Root bind:open>
 	<Popover.Trigger
-		class="inline-flex max-w-64 items-center gap-1 rounded-full border px-3 py-0.5 text-xs font-medium transition-colors {active
+		class="inline-flex h-8 max-w-64 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-xs transition-colors {active
 			? 'border-primary/40 bg-primary/10 text-primary'
 			: 'text-muted-foreground hover:border-foreground/40 hover:text-foreground'}"
 		aria-label="Saved filters"

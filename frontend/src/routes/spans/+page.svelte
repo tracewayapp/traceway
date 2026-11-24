@@ -14,24 +14,28 @@
 	import * as Table from '$lib/components/ui/table';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		describeTimeRange,
+		attributeConfig,
+		traceIdField
+	} from '$lib/components/traceway/filter-bar';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
-	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
 	import FormField from '$lib/components/traceway/form-field.svelte';
-	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
 	import SavedFiltersMenu from '$lib/components/traceway/saved-filters-menu.svelte';
 	import ChartPanel, { type ChartSelection } from '$lib/components/value-chart/chart-panel.svelte';
-	import { Check, ChartLine, ChevronDown, CircleAlert, Plus, Timer, X } from '@lucide/svelte';
+	import { Check, ChartLine, ChevronDown, CircleAlert, Plus, Timer } from '@lucide/svelte';
 	import { CalendarDate } from '@internationalized/date';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import {
@@ -61,7 +65,7 @@
 		type SpanChartTarget,
 		type SpanSearchFilters,
 		DEFAULT_SPAN_SEARCH_PRESET,
-		parseSpanFilter,
+		SPAN_ATTRIBUTE_RULES,
 		readSpanChart,
 		readSpanSearchFilters,
 		spanChartBody,
@@ -72,21 +76,8 @@
 		spanSearchUrlParams,
 		spanTraceHref
 	} from '$lib/utils/span-explorer';
-	import {
-		filterOperator,
-		isExistenceOperator,
-		keyOperatorOptions,
-		operatorOption,
-		withOperator,
-		type FilterOperator
-	} from '$lib/utils/attribute-filters';
 	import { formatChartMs, formatChartNumber, type ChartLines } from '$lib/utils/value-chart';
-	import {
-		paramsToApply,
-		presetLabels,
-		toQueryString,
-		type SavedFilter
-	} from '$lib/utils/saved-filters';
+	import { paramsToApply, toQueryString, type SavedFilter } from '$lib/utils/saved-filters';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -136,15 +127,67 @@
 	let orderBy = $state<SortField>(initialSort.field === 'duration' ? 'duration' : 'start_time');
 	let sortDirection = $state<SortDirection>(initialSort.direction);
 
-	const serviceOptions = $derived([
-		{ value: '', label: 'All services' },
-		...[...new Set([...services, filters.service].filter((name) => !!name))].map((name) => ({
+	const serviceOptions = $derived(
+		[...new Set([...services, filters.service].filter((name) => !!name))].map((name) => ({
 			value: name,
 			label: name
 		}))
+	);
+	const filterFields = $derived<FilterField[]>([
+		{
+			kind: 'select',
+			key: 'service',
+			label: 'Service',
+			anyLabel: 'Any service',
+			options: serviceOptions,
+			searchable: true
+		},
+		{
+			kind: 'select',
+			key: 'kind',
+			label: 'Kind',
+			anyLabel: 'Any kind',
+			options: SPAN_KIND_OPTIONS
+		},
+		{
+			kind: 'select',
+			key: 'status',
+			label: 'Status',
+			anyLabel: 'Any status',
+			options: SPAN_STATUS_OPTIONS
+		},
+		{
+			kind: 'range',
+			key: 'duration',
+			label: 'Duration',
+			minKey: 'minMs',
+			maxKey: 'maxMs',
+			unit: 'ms'
+		},
+		traceIdField('traceId', 'Every span of one trace.')
 	]);
-	const kindOptions = [{ value: '', label: 'All kinds' }, ...SPAN_KIND_OPTIONS];
-	const statusOptions = [{ value: '', label: 'Any status' }, ...SPAN_STATUS_OPTIONS];
+	const filterValues = $derived({
+		service: filters.service,
+		kind: filters.kind,
+		status: filters.status,
+		minMs: filters.minMs,
+		maxMs: filters.maxMs,
+		traceId: filters.traceId
+	});
+
+	function handleFilterApply(next: FilterApply) {
+		filters = {
+			name: next.search,
+			service: next.values.service ?? '',
+			kind: next.values.kind ?? '',
+			status: next.values.status ?? '',
+			minMs: next.values.minMs ?? '',
+			maxMs: next.values.maxMs ?? '',
+			traceId: next.values.traceId ?? '',
+			attributes: next.attributes
+		};
+		applyFilters();
+	}
 
 	function getFromDateTimeUTC(): string {
 		const [hour, minute] = (fromTime || '00:00').split(':').map(Number);
@@ -204,9 +247,7 @@
 		loadData(true);
 	}
 
-	const timeRangeLabel = $derived(
-		selectedPreset ? (presetLabels[selectedPreset] ?? selectedPreset) : 'the custom range'
-	);
+	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 
 	function handleTimeRangeChange(
 		from: { date: CalendarDate; time: string },
@@ -304,73 +345,6 @@
 		loadData(false);
 	}
 
-	let filterDialogOpen = $state(false);
-	let dialogKey = $state('');
-	let dialogValue = $state('');
-	let dialogOperator = $state<FilterOperator>('=');
-	let dialogError = $state('');
-	// The pill being edited, null when adding one.
-	let dialogEditIndex = $state<number | null>(null);
-
-	const dialogOperatorOption = $derived(operatorOption(dialogOperator));
-	const dialogNeedsValue = $derived(!isExistenceOperator(dialogOperator));
-
-	function openFilterDialog() {
-		dialogKey = '';
-		dialogValue = '';
-		dialogOperator = '=';
-		dialogError = '';
-		dialogEditIndex = null;
-		filterDialogOpen = true;
-	}
-
-	// operator preselects another operator, for a pill switching from a key
-	// check to a value comparison, which needs a value first.
-	function openEditFilterDialog(index: number, operator?: FilterOperator) {
-		const f = filters.attributes[index];
-		dialogKey = f.key;
-		dialogValue = f.value;
-		dialogOperator = operator ?? filterOperator(f);
-		dialogError = '';
-		dialogEditIndex = index;
-		filterDialogOpen = true;
-	}
-
-	function submitFilterDialog() {
-		const parsed = parseSpanFilter(
-			dialogKey,
-			dialogValue,
-			dialogOperator,
-			filters.attributes,
-			dialogEditIndex
-		);
-		if (typeof parsed === 'string') {
-			dialogError = parsed;
-			return;
-		}
-		filters.attributes =
-			dialogEditIndex === null
-				? [...filters.attributes, parsed]
-				: filters.attributes.map((f, i) => (i === dialogEditIndex ? parsed : f));
-		filterDialogOpen = false;
-		applyFilters();
-	}
-
-	// A pill is removed with its X, so picking its current operator changes nothing.
-	function setPillOperator(index: number, operator: FilterOperator) {
-		const f = filters.attributes[index];
-		if (filterOperator(f) === operator) return;
-		if (f.exists && !isExistenceOperator(operator)) {
-			openEditFilterDialog(index, operator);
-			return;
-		}
-		const next = withOperator(filters.attributes, index, operator);
-		if (next) {
-			filters.attributes = next;
-			applyFilters();
-		}
-	}
-
 	const SPAN_CHART_ENDPOINTS = { series: '/spans/series', distribution: '/spans/distribution' };
 
 	function setChartTarget(target: SpanChartTarget) {
@@ -426,22 +400,6 @@
 		setChartTarget({ kind: 'attribute', key });
 	}
 
-	function handleDialogKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			submitFilterDialog();
-		}
-	}
-
-	function removeAttributeFilter(index: number) {
-		filters.attributes = filters.attributes.filter((_, i) => i !== index);
-		applyFilters();
-	}
-
-	function handleInputKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') applyFilters();
-	}
-
 	onMount(() => {
 		window.addEventListener('popstate', handlePopState);
 		loadData(false);
@@ -468,131 +426,28 @@
 		{/snippet}
 	</PageHeader>
 
-	<SearchBar
-		placeholder="Search span names..."
-		bind:value={filters.name}
-		onSearch={applyFilters}
+	<FilterBar
+		search={filters.name}
+		searchPlaceholder="Search span names..."
+		fields={filterFields}
+		values={filterValues}
+		attributes={attributeConfig(filters.attributes, SPAN_ATTRIBUTE_RULES)}
+		onApply={handleFilterApply}
 		disabled={loading}
+		noun="spans"
+		rangeLabel={timeRangeLabel}
 	>
-		{#snippet pillEnd()}
-			<ToolbarSelect
-				bind:value={filters.service}
-				options={serviceOptions}
-				ariaLabel="Service"
-				class="h-9 w-[170px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
-				onChange={applyFilters}
-			/>
-		{/snippet}
-	</SearchBar>
-
-	<div class="flex flex-wrap items-center gap-2">
-		<ToolbarSelect
-			bind:value={filters.kind}
-			options={kindOptions}
-			ariaLabel="Span kind"
-			class="w-[130px]"
-			onChange={applyFilters}
-		/>
-		<ToolbarSelect
-			bind:value={filters.status}
-			options={statusOptions}
-			ariaLabel="Span status"
-			class="w-[130px]"
-			onChange={applyFilters}
-		/>
-		<Input
-			inputmode="decimal"
-			placeholder="Min ms"
-			aria-label="Minimum duration in milliseconds"
-			class="h-9 w-[100px]"
-			bind:value={filters.minMs}
-			onchange={applyFilters}
-			onkeydown={handleInputKeydown}
-		/>
-		<Input
-			inputmode="decimal"
-			placeholder="Max ms"
-			aria-label="Maximum duration in milliseconds"
-			class="h-9 w-[100px]"
-			bind:value={filters.maxMs}
-			onchange={applyFilters}
-			onkeydown={handleInputKeydown}
-		/>
-		<Input
-			placeholder="Trace ID"
-			aria-label="Trace ID"
-			class="h-9 w-[280px] font-mono text-xs"
-			bind:value={filters.traceId}
-			onchange={applyFilters}
-			onkeydown={handleInputKeydown}
-		/>
-	</div>
-
-	<div class="flex flex-wrap items-center gap-2">
-		<button
-			type="button"
-			class="inline-flex items-center gap-1 rounded-full border border-dashed px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
-			onclick={openFilterDialog}
-			disabled={loading}
-		>
-			<Plus class="h-3 w-3" />
-			Add attribute filter
-		</button>
-		{#each filters.attributes as f, i (i)}
-			<span
-				class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
-			>
-				<button
-					type="button"
-					aria-label="Edit filter"
-					class="cursor-pointer text-muted-foreground hover:text-primary"
-					onclick={() => openEditFilterDialog(i)}
-				>
-					{f.key}
-				</button>
-				<FilterOperatorMenu
-					active={filterOperator(f)}
-					options={keyOperatorOptions}
-					onSelect={(operator) => setPillOperator(i, operator)}
-					triggerClass="cursor-pointer decoration-dotted underline-offset-2 hover:underline {f.exclude
-						? 'text-red-500'
-						: ''}"
-					triggerTitle="Change operator"
-					triggerAriaLabel="Change operator"
-				>
-					{operatorOption(filterOperator(f)).pill}
-				</FilterOperatorMenu>
-				{#if !f.exists}
-					<!-- Second way into the same dialog as the key, so it stays out of the tab order. -->
-					<button
-						type="button"
-						tabindex={-1}
-						class="cursor-pointer hover:text-primary"
-						onclick={() => openEditFilterDialog(i)}
-					>
-						{f.value}
-					</button>
-				{/if}
-				<button
-					type="button"
-					aria-label="Remove filter"
-					class="ml-1 cursor-pointer text-muted-foreground hover:text-foreground"
-					onclick={() => removeAttributeFilter(i)}
-				>
-					<X class="h-3 w-3" />
-				</button>
-			</span>
-		{/each}
-		<div class="ml-auto flex items-center gap-2">
+		{#snippet actions()}
 			{#if !chart}
-				<button
-					type="button"
-					class="inline-flex items-center gap-1 rounded-full border px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-8"
 					onclick={() => setChartTarget({ kind: 'duration' })}
 				>
-					<ChartLine class="h-3 w-3" />
+					<ChartLine class="h-3.5 w-3.5" />
 					Chart
-				</button>
+				</Button>
 			{/if}
 			<SavedFiltersMenu
 				page="spans"
@@ -601,72 +456,10 @@
 				namePlaceholder="Slow checkout queries"
 				onApply={applySavedFilter}
 			/>
-		</div>
-	</div>
+		{/snippet}
 
-	<AlertDialog.Root open={filterDialogOpen} onOpenChange={(open) => (filterDialogOpen = open)}>
-		<AlertDialog.Content>
-			<AlertDialog.Header>
-				<AlertDialog.Title>
-					{dialogEditIndex !== null ? 'Edit attribute filter' : 'Add attribute filter'}
-				</AlertDialog.Title>
-				<AlertDialog.Description>
-					Keys are the OpenTelemetry names, such as <code class="font-mono"
-						>http.request.method</code
-					>.
-				</AlertDialog.Description>
-			</AlertDialog.Header>
-			<div class="flex flex-col gap-3">
-				<FormField label="Attribute key">
-					<Input
-						placeholder="http.request.method"
-						bind:value={dialogKey}
-						onkeydown={handleDialogKeydown}
-					/>
-				</FormField>
-				<FormField label="Operator">
-					<Select.Root
-						type="single"
-						value={dialogOperator}
-						onValueChange={(v) => (dialogOperator = v as FilterOperator)}
-					>
-						<Select.Trigger class="w-full" aria-label="Operator">
-							<span>
-								<span class="font-mono text-muted-foreground">{dialogOperatorOption.symbol}</span>
-								{dialogOperatorOption.label}
-							</span>
-						</Select.Trigger>
-						<Select.Content>
-							{#each keyOperatorOptions as opt (opt.value)}
-								<Select.Item value={opt.value} label={opt.label}>
-									<span class="font-mono text-muted-foreground">{opt.symbol}</span>
-									{opt.label}
-								</Select.Item>
-							{/each}
-						</Select.Content>
-					</Select.Root>
-				</FormField>
-				{#if dialogNeedsValue}
-					<FormField label="Value">
-						<Input placeholder="GET" bind:value={dialogValue} onkeydown={handleDialogKeydown} />
-					</FormField>
-				{/if}
-				{#if dialogError}
-					<p class="text-xs text-red-500">{dialogError}</p>
-				{/if}
-			</div>
-			<AlertDialog.Footer>
-				<Button variant="outline" onclick={() => (filterDialogOpen = false)}>Cancel</Button>
-				<Button onclick={submitFilterDialog}>
-					{#if dialogEditIndex !== null}
-						<Check class="h-4 w-4" /> Update filter
-					{:else}
-						<Plus class="h-4 w-4" /> Add filter
-					{/if}
-				</Button>
-			</AlertDialog.Footer>
-		</AlertDialog.Content>
-	</AlertDialog.Root>
+		{@render results()}
+	</FilterBar>
 
 	<AlertDialog.Root open={chartDialogOpen} onOpenChange={(open) => (chartDialogOpen = open)}>
 		<AlertDialog.Content>
@@ -740,140 +533,143 @@
 		</DropdownMenu.Root>
 	{/snippet}
 
-	{#if chart}
-		<ChartPanel
-			class="rounded-md border"
-			label={spanChartLabel(chart.target)}
-			heading={chartHeading}
-			lines={chart}
-			endpoints={SPAN_CHART_ENDPOINTS}
-			body={spanChartBody(chart.target)}
-			selection={chartSelection}
-			{timezone}
-			format={chart.target.kind === 'duration' ? formatChartMs : formatChartNumber}
-			rows={{ one: 'span', many: 'spans' }}
-			values={chart.target.kind === 'duration'
-				? { one: 'span', many: 'spans' }
-				: { one: 'value', many: 'values' }}
-			emptyText={chart.target.kind === 'duration'
-				? 'No spans match in this time range.'
-				: undefined}
-			onChange={setChartLines}
-			onClose={closeChart}
-			onRangeSelect={handleChartRangeSelect}
-		/>
-	{/if}
+	{#snippet results()}
+		<!-- An empty search draws no chart: a flat line over empty buckets says nothing. -->
+		{#if chart && (loading || spans.length > 0)}
+			<ChartPanel
+				class="rounded-md border"
+				label={spanChartLabel(chart.target)}
+				heading={chartHeading}
+				lines={chart}
+				endpoints={SPAN_CHART_ENDPOINTS}
+				body={spanChartBody(chart.target)}
+				selection={chartSelection}
+				{timezone}
+				format={chart.target.kind === 'duration' ? formatChartMs : formatChartNumber}
+				rows={{ one: 'span', many: 'spans' }}
+				values={chart.target.kind === 'duration'
+					? { one: 'span', many: 'spans' }
+					: { one: 'value', many: 'values' }}
+				emptyText={chart.target.kind === 'duration'
+					? 'No spans match in this time range.'
+					: undefined}
+				onChange={setChartLines}
+				onClose={closeChart}
+				onRangeSelect={handleChartRangeSelect}
+			/>
+		{/if}
 
-	{#if guidance}
-		<WarningCallout title="Narrow the search">{guidance}</WarningCallout>
-	{/if}
+		{#if guidance}
+			<WarningCallout title="Narrow the search">{guidance}</WarningCallout>
+		{/if}
 
-	<TableContainer minWidth="860px" empty={loading || !!error || spans.length === 0}>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={7} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={7} class="h-24 text-center text-red-500">
-							{error}
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if spans.length === 0}
-				<Table.Body>
-					<TableEmptyState
-						colspan={7}
-						message={guidance ? 'No results to show' : 'No spans match in this time range'}
-					/>
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader
-							label="Started"
-							tooltip="When the span started"
-							sortField="start_time"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[210px]"
-						/>
-						<TracewayTableHeader label="Service" tooltip="The service.name of the resource" />
-						<TracewayTableHeader label="Span" tooltip="The span name" />
-						<TracewayTableHeader
-							label="Kind"
-							tooltip="Server, client, producer, consumer or internal"
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader label="Status" tooltip="The span status" class="w-[90px]" />
-						<TracewayTableHeader
-							label="Duration"
-							tooltip="How long the span took"
-							sortField="duration"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[110px]"
-						/>
-						<TracewayTableHeader
-							label="Trace"
-							tooltip="Start of the trace ID. Open the row to see the whole trace"
-							class="w-[110px]"
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each spans as span (`${span.traceId}:${span.spanId}`)}
-						<Table.Row
-							class="cursor-pointer"
-							onclick={createRowClickHandler(spanTraceHref(span, { focusSpan: true }) ?? '')}
-						>
-							<Table.Cell class="text-sm whitespace-nowrap text-muted-foreground tabular-nums">
-								{formatDateTime(span.startTime, { timezone, format: 'datetime-seconds' })}
-							</Table.Cell>
-							<Table.Cell class="text-sm">{span.serviceName || '-'}</Table.Cell>
-							<Table.Cell class="max-w-[420px] truncate font-mono text-sm">
-								{#if isErrorSpan(span)}<CircleAlert
-										class="mr-1 inline h-3.5 w-3.5 align-[-2px] text-destructive"
-										aria-label="Error"
-									/>{/if}{span.name}
-							</Table.Cell>
-							<Table.Cell class="text-sm text-muted-foreground">
-								{spanKindLabel(span.spanKind) || '-'}
-							</Table.Cell>
-							<Table.Cell class={isErrorSpan(span) ? 'text-sm text-destructive' : 'text-sm'}>
-								{spanStatusLabel(span.statusCode)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatDuration(span.duration)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-xs text-muted-foreground">
-								{span.traceId.slice(0, 8)}
+		<TableContainer minWidth="860px" empty={loading || !!error || spans.length === 0}>
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={7} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
+								</div>
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={7} class="h-24 text-center text-red-500">
+								{error}
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if spans.length === 0}
+					<Table.Body>
+						<TableEmptyState
+							colspan={7}
+							message={guidance ? 'No results to show' : 'No spans match in this time range'}
+						/>
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader
+								label="Started"
+								tooltip="When the span started"
+								sortField="start_time"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[210px]"
+							/>
+							<TracewayTableHeader label="Service" tooltip="The service.name of the resource" />
+							<TracewayTableHeader label="Span" tooltip="The span name" />
+							<TracewayTableHeader
+								label="Kind"
+								tooltip="Server, client, producer, consumer or internal"
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader label="Status" tooltip="The span status" class="w-[90px]" />
+							<TracewayTableHeader
+								label="Duration"
+								tooltip="How long the span took"
+								sortField="duration"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[110px]"
+							/>
+							<TracewayTableHeader
+								label="Trace"
+								tooltip="Start of the trace ID. Open the row to see the whole trace"
+								class="w-[110px]"
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each spans as span (`${span.traceId}:${span.spanId}`)}
+							<Table.Row
+								class="cursor-pointer"
+								onclick={createRowClickHandler(spanTraceHref(span, { focusSpan: true }) ?? '')}
+							>
+								<Table.Cell class="text-sm whitespace-nowrap text-muted-foreground tabular-nums">
+									{formatDateTime(span.startTime, { timezone, format: 'datetime-seconds' })}
+								</Table.Cell>
+								<Table.Cell class="text-sm">{span.serviceName || '-'}</Table.Cell>
+								<Table.Cell class="max-w-[420px] truncate font-mono text-sm">
+									{#if isErrorSpan(span)}<CircleAlert
+											class="mr-1 inline h-3.5 w-3.5 align-[-2px] text-destructive"
+											aria-label="Error"
+										/>{/if}{span.name}
+								</Table.Cell>
+								<Table.Cell class="text-sm text-muted-foreground">
+									{spanKindLabel(span.spanKind) || '-'}
+								</Table.Cell>
+								<Table.Cell class={isErrorSpan(span) ? 'text-sm text-destructive' : 'text-sm'}>
+									{spanStatusLabel(span.statusCode)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatDuration(span.duration)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-xs text-muted-foreground">
+									{span.traceId.slice(0, 8)}
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="span"
-	/>
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="span"
+		/>
+	{/snippet}
 </div>

@@ -22,8 +22,12 @@
 	import StatTile from '$lib/components/traceway/stat-tile.svelte';
 	import StatusPill from '$lib/components/traceway/status-pill.svelte';
 	import ChartCard from '$lib/components/traceway/chart-card.svelte';
-	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField
+	} from '$lib/components/traceway/filter-bar';
 	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
 	import { uptimeClass } from '$lib/utils/uptime';
 	import { browser } from '$app/environment';
@@ -84,13 +88,23 @@
 	// Result filter for the runs table; the date range is the page's fixed
 	// 30-day window.
 	let resultFilter = $state('all');
-	const resultFilterOptions = [
-		{ value: 'all', label: 'All results' },
-		{ value: 'up', label: 'Up' },
-		{ value: 'down', label: 'Down' },
-		{ value: 'missed', label: 'Missed' }
+	const resultFilterFields: FilterField[] = [
+		{
+			kind: 'select',
+			key: 'result',
+			label: 'Result',
+			emptyValue: 'all',
+			anyLabel: 'Any result',
+			options: [
+				{ value: 'up', label: 'Up' },
+				{ value: 'down', label: 'Down' },
+				{ value: 'missed', label: 'Missed' }
+			]
+		}
 	];
-	function onResultFilterChange() {
+	const resultFilterValues = $derived({ result: resultFilter });
+	function handleResultFilterApply(next: FilterApply) {
+		resultFilter = next.values.result || 'all';
 		page = 1;
 		loadResults();
 	}
@@ -581,12 +595,18 @@
 					<History class="h-3.5 w-3.5 text-muted-foreground" />
 					<span class="text-sm font-[400] text-muted-foreground">Run history</span>
 				</Card.Title>
-				<ToolbarSelect
-					bind:value={resultFilter}
-					options={resultFilterOptions}
-					class="w-[130px]"
-					onChange={onResultFilterChange}
-				/>
+				<!-- The filter narrows this card only, so it lives in the card's header. -->
+				<div class="flex min-w-0 flex-wrap items-center gap-2">
+					<FilterBar
+						showSearch={false}
+						fields={resultFilterFields}
+						values={resultFilterValues}
+						onApply={handleResultFilterApply}
+						disabled={resultsLoading}
+						noun="runs"
+						rangeLabel="the last {WINDOW_DAYS} days"
+					/>
+				</div>
 			</Card.Header>
 			<Card.Content class="overflow-hidden rounded-b-xl p-0">
 				<TableContainer class="rounded-none border-0" minWidth="640px">

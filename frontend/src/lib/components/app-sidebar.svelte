@@ -39,6 +39,7 @@
 	import { page } from '$app/state';
 	import { addStickyParamsToHref, createRowClickHandler } from '$lib/utils/navigation';
 	import { resolveHref } from '$lib/utils/links';
+	import { harvestSeason } from '$lib/utils/harvest';
 	import { cn } from '$lib/utils';
 
 	interface SidebarItem {
@@ -385,7 +386,10 @@
 			<span class="text-xs text-muted-foreground">&nbsp;</span>
 		</div>
 
-		<div class="group-data-[collapsible=icon]:hidden">
+		<div class="flex items-center gap-1.5 group-data-[collapsible=icon]:hidden">
+			{#if harvestSeason}
+				<img src="/harvest/maple-leaf.svg" alt="" aria-hidden="true" class="size-4 select-none" />
+			{/if}
 			<span class="text-xs text-muted-foreground">Traceway - v{__APP_VERSION__}</span>
 		</div>
 	</Sidebar.SidebarFooter>

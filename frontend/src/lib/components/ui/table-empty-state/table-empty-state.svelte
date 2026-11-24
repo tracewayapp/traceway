@@ -1,15 +1,18 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { cn } from '$lib/utils.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 
 	let {
 		colspan,
 		message = 'No data found.',
-		class: className
+		class: className,
+		children
 	}: {
 		colspan: number;
 		message?: string;
 		class?: string;
+		children?: Snippet;
 	} = $props();
 </script>
 
@@ -21,6 +24,7 @@
 			className
 		)}
 	>
+		{@render children?.()}
 		{message}
 	</Table.Cell>
 </Table.Row>

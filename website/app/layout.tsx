@@ -2,6 +2,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { MotionPolish } from "@/components/motion-polish";
 import { CookieConsent } from "@/components/cookie-consent";
+import { HARVEST_SEASON_SCRIPT } from "@/components/harvest";
 import type { Metadata } from "next";
 import "@fontsource-variable/jetbrains-mono/wght.css";
 import "@fontsource/ibm-plex-mono/400.css";
@@ -35,7 +36,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: HARVEST_SEASON_SCRIPT }} />
+      </head>
       <body className="antialiased">
         <SiteHeader />
         {children}

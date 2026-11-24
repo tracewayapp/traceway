@@ -24,6 +24,7 @@ import {
   Goal,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
+import { Harvest } from "@/components/harvest";
 import { DiscordIcon } from "@/components/discord-icon";
 import { cn } from "@/lib/utils";
 import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
@@ -368,6 +369,12 @@ export function SiteHeader() {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
+          <Harvest
+            src="/harvest/pumpkin-pie.svg"
+            width={128}
+            height={128}
+            className="size-9 select-none"
+          />
           <Link
             href={GITHUB_URL}
             target="_blank"

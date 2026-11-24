@@ -31,6 +31,7 @@
 	import { parseSpanAttributeFilter, type SpanAttributeFilter } from '$lib/utils/span-explorer';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { formatSloPercent } from '$lib/utils/slo-math';
+	import { loadTagValues } from '$lib/utils/dashboard-scope';
 	import { Check, FlaskConical, Plus } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -334,17 +335,8 @@
 		}
 	}
 
-	async function loadTagValues(key: string): Promise<string[]> {
-		try {
-			const response = await api.get(
-				`/metrics/discover/tags?name=${encodeURIComponent(metricName)}&key=${encodeURIComponent(key)}`,
-				projectQuery()
-			);
-			return response.values || [];
-		} catch {
-			return [];
-		}
-	}
+	const loadMetricTagValues = (key: string) =>
+		loadTagValues(projectsState.currentProjectId ?? undefined, metricName, key);
 
 	const metricTagKeys = $derived(metrics.find((m) => m.name === metricName)?.tagKeys ?? []);
 	const SPLIT_DIMENSIONS = [
@@ -482,7 +474,7 @@
 				await api.put(`/slos/${slo.id}`, payload, projectQuery());
 				toast.success('Successfully updated the SLO', { position: 'top-center' });
 			} else if (sliKind === 'metric' && splitBy) {
-				const values = (await loadTagValues(splitBy)).filter((v) => v && v !== 'other');
+				const values = (await loadMetricTagValues(splitBy)).filter((v) => v && v !== 'other');
 				if (values.length === 0) {
 					error = `No values of ${splitBy} have been reported for this metric yet.`;
 					return;
@@ -787,7 +779,7 @@
 								tagKeys={metricTagKeys}
 								activeFilters={metricTags}
 								onFilterChange={(filters) => (metricTags = filters)}
-								onLoadTagValues={loadTagValues}
+								onLoadTagValues={loadMetricTagValues}
 							/>
 						</div>
 					{/if}

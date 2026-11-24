@@ -7,7 +7,6 @@
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import * as Table from '$lib/components/ui/table';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
@@ -18,6 +17,7 @@
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import { FilterBar, type FilterApply } from '$lib/components/traceway/filter-bar';
 	import ExperimentalBanner from '$lib/components/profiles/experimental-banner.svelte';
 	import {
 		getTimeRangeFromPreset,
@@ -61,7 +61,8 @@
 	let totalPages = $state(0);
 	let search = $state('');
 
-	function handleSearch() {
+	function handleFilterApply(next: FilterApply) {
+		search = next.search;
 		page = 1;
 		loadData(false);
 	}
@@ -250,136 +251,136 @@
 
 	<ExperimentalBanner />
 
-	<SearchBar
-		placeholder="Search services..."
-		bind:value={search}
-		onSearch={handleSearch}
+	<FilterBar
+		{search}
+		searchPlaceholder="Search services..."
+		onApply={handleFilterApply}
 		disabled={loading}
-	/>
-
-	<TableContainer>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={7} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={7} class="h-24 text-center text-red-500">{error}</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if groups.length === 0}
-				<Table.Body>
-					<TableEmptyState colspan={7} message="No profile data received yet" />
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader label="Service" tooltip="The service that emitted the profile" />
-						<TracewayTableHeader
-							label="Type"
-							tooltip="The profile type (CPU time or heap memory)"
-						/>
-						<TracewayTableHeader
-							label="Profiles"
-							tooltip="Number of profiles collected in the range"
-							sortField="profile_count"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[110px]"
-						/>
-						<TracewayTableHeader
-							label="Samples"
-							tooltip="Total samples across all profiles"
-							sortField="sample_count"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[110px]"
-						/>
-						<TracewayTableHeader
-							label="Total"
-							tooltip="Aggregate value (CPU time or bytes) over the range"
-							sortField="total_value"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[120px]"
-						/>
-						<TracewayTableHeader
-							label="Trend"
-							tooltip="Total trend across the selected range"
-							class="w-[120px]"
-						/>
-						<TracewayTableHeader
-							label="Last Seen"
-							tooltip="When this service last reported this profile type"
-							sortField="last_seen"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[110px]"
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each groups as group (group.serviceName + '::' + group.type)}
-						<Table.Row
-							class="cursor-pointer"
-							onclick={createRowClickHandler(detailHref(group), 'preset', 'from', 'to')}
-						>
-							<Table.Cell class="font-mono text-sm">{group.serviceName}</Table.Cell>
-							<Table.Cell class="text-sm">{typeLabel(group.type)}</Table.Cell>
-							<Table.Cell class="tabular-nums">{formatCount(group.profileCount)}</Table.Cell>
-							<Table.Cell class="tabular-nums">{formatCount(group.sampleCount)}</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatValue(group.unit, group.totalValue)}
-							</Table.Cell>
-							<Table.Cell>
-								{#if group.sparkline && group.sparkline.length > 1}
-									<svg
-										viewBox="0 0 100 16"
-										preserveAspectRatio="none"
-										class="h-5 w-24 text-primary"
-									>
-										<path
-											d={sparkPath(group.sparkline)}
-											fill="none"
-											stroke="currentColor"
-											stroke-width="1.5"
-											vector-effect="non-scaling-stroke"
-										/>
-									</svg>
-								{:else}
-									<span class="text-xs text-muted-foreground">—</span>
-								{/if}
-							</Table.Cell>
-							<Table.Cell class="text-sm text-muted-foreground">
-								{formatRelativeTimeAgo(group.lastSeen, timezone)}
+	>
+		<TableContainer>
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={7} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
+								</div>
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={7} class="h-24 text-center text-red-500">{error}</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if groups.length === 0}
+					<Table.Body>
+						<TableEmptyState colspan={7} message="No profile data received yet" />
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader label="Service" tooltip="The service that emitted the profile" />
+							<TracewayTableHeader
+								label="Type"
+								tooltip="The profile type (CPU time or heap memory)"
+							/>
+							<TracewayTableHeader
+								label="Profiles"
+								tooltip="Number of profiles collected in the range"
+								sortField="profile_count"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[110px]"
+							/>
+							<TracewayTableHeader
+								label="Samples"
+								tooltip="Total samples across all profiles"
+								sortField="sample_count"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[110px]"
+							/>
+							<TracewayTableHeader
+								label="Total"
+								tooltip="Aggregate value (CPU time or bytes) over the range"
+								sortField="total_value"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[120px]"
+							/>
+							<TracewayTableHeader
+								label="Trend"
+								tooltip="Total trend across the selected range"
+								class="w-[120px]"
+							/>
+							<TracewayTableHeader
+								label="Last Seen"
+								tooltip="When this service last reported this profile type"
+								sortField="last_seen"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[110px]"
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each groups as group (group.serviceName + '::' + group.type)}
+							<Table.Row
+								class="cursor-pointer"
+								onclick={createRowClickHandler(detailHref(group), 'preset', 'from', 'to')}
+							>
+								<Table.Cell class="font-mono text-sm">{group.serviceName}</Table.Cell>
+								<Table.Cell class="text-sm">{typeLabel(group.type)}</Table.Cell>
+								<Table.Cell class="tabular-nums">{formatCount(group.profileCount)}</Table.Cell>
+								<Table.Cell class="tabular-nums">{formatCount(group.sampleCount)}</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatValue(group.unit, group.totalValue)}
+								</Table.Cell>
+								<Table.Cell>
+									{#if group.sparkline && group.sparkline.length > 1}
+										<svg
+											viewBox="0 0 100 16"
+											preserveAspectRatio="none"
+											class="h-5 w-24 text-primary"
+										>
+											<path
+												d={sparkPath(group.sparkline)}
+												fill="none"
+												stroke="currentColor"
+												stroke-width="1.5"
+												vector-effect="non-scaling-stroke"
+											/>
+										</svg>
+									{:else}
+										<span class="text-xs text-muted-foreground">—</span>
+									{/if}
+								</Table.Cell>
+								<Table.Cell class="text-sm text-muted-foreground">
+									{formatRelativeTimeAgo(group.lastSeen, timezone)}
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="profile"
-	/>
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="profile"
+		/>
+	</FilterBar>
 </div>

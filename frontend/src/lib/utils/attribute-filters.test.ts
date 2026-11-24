@@ -8,7 +8,6 @@ import {
 	operatorOptions,
 	parseAttributeFilter,
 	unescapeFilterKey,
-	withOperator,
 	type AttributeFilter
 } from './attribute-filters';
 
@@ -106,22 +105,5 @@ describe('attribute filter key escaping', () => {
 
 	it('decodes only the characters it escapes', () => {
 		expect(unescapeFilterKey('a%3Db%25%20c')).toBe('a=b%%20c');
-	});
-});
-
-describe('withOperator', () => {
-	const a: AttributeFilter = { key: 'k', value: 'v', ...operatorFlags('=') };
-	const b: AttributeFilter = { key: 'k', value: 'v', ...operatorFlags('!=') };
-
-	it('switches one pill in place', () => {
-		expect(withOperator([a], 0, '~=')).toEqual([{ ...a, contains: true }]);
-	});
-
-	it('returns null when nothing changes', () => {
-		expect(withOperator([a], 0, '=')).toBeNull();
-	});
-
-	it('drops a pill that would duplicate another', () => {
-		expect(withOperator([a, b], 1, '=')).toEqual([a]);
 	});
 });

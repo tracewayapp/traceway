@@ -24,6 +24,7 @@
 	import { api } from '$lib/api';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
+	import { widgetLoads } from './widget-loads.svelte';
 	import type {
 		DashboardWidgetConfig,
 		DashboardWidgetSource,
@@ -140,6 +141,8 @@
 				(widget.config.showLegend !== false && series.length > 1))
 	);
 
+	const loads = widgetLoads();
+
 	async function loadData() {
 		const sequence = ++loadSequence;
 		const sources = widget.config.sources;
@@ -149,6 +152,7 @@
 		}
 
 		loading = true;
+		loads?.start();
 		try {
 			const newSeries: Array<{ key: string; data: MetricTrendPoint[]; color: string }> = [];
 			let colorIdx = 0;
@@ -236,6 +240,7 @@
 					? (e as Error).message
 					: '';
 		} finally {
+			loads?.end();
 			if (sequence === loadSequence) loading = false;
 		}
 	}

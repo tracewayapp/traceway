@@ -1,12 +1,11 @@
 import type { Span } from '$lib/types/spans';
 import {
-	attributeFiltersEqual,
 	formatAttributeFilter,
-	operatorFlags,
+	keyOperatorOptions,
 	parseAttributeFilter,
-	type AttributeFilter,
-	type FilterOperator
+	type AttributeFilter
 } from './attribute-filters';
+import type { AttributeRules } from '$lib/components/traceway/filter-bar/attributes';
 import { addStickyParamsToHref } from './navigation';
 import { SPAN_STATUS_ERROR } from './span-fields';
 import { timestampNanos } from './timestamp-nanos';
@@ -114,33 +113,18 @@ export function spanSearchBody(filters: SpanSearchFilters) {
 	};
 }
 
-// The add or edit filter dialog of the explorer. editIndex is the pill being
-// edited, which may keep its own place in the list.
-export function parseSpanFilter(
-	key: string,
-	value: string,
-	operator: FilterOperator,
-	existing: AttributeFilter[],
-	editIndex: number | null = null
-): AttributeFilter | string {
-	const flags = operatorFlags(operator);
-	const filter: AttributeFilter = {
-		key: key.trim(),
-		value: flags.exists ? '' : value.trim(),
-		...flags
-	};
-	if (!filter.key) return 'Enter an attribute key.';
-	if (/["\\]/.test(filter.key)) return 'Attribute keys cannot contain quotes or backslashes.';
-	if (!flags.exists && !filter.value) return 'Enter the value to match.';
-	const others = existing.filter((_, i) => i !== editIndex);
-	if (others.some((other) => attributeFiltersEqual(other, filter))) {
-		return 'This filter is already applied.';
-	}
-	if (editIndex === null && existing.length >= MAX_SPAN_ATTRIBUTE_FILTERS) {
-		return `A search takes at most ${MAX_SPAN_ATTRIBUTE_FILTERS} attribute filters.`;
-	}
-	return filter;
-}
+// What the span search accepts as an attribute filter.
+export const SPAN_ATTRIBUTE_RULES: AttributeRules = {
+	operators: keyOperatorOptions,
+	hint: 'Keys are the OpenTelemetry names, such as http.request.method.',
+	keyPlaceholder: 'http.request.method',
+	valuePlaceholder: 'GET',
+	value: 'trim',
+	requireValue: true,
+	max: MAX_SPAN_ATTRIBUTE_FILTERS,
+	key: (key) =>
+		/["\\]/.test(key) ? { error: 'Attribute keys cannot contain quotes or backslashes.' } : key
+};
 
 // What the chart above the explorer measures: the span duration, or one
 // numeric attribute.

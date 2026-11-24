@@ -11,7 +11,6 @@
 	import { updateUrl } from '$lib/utils/url-params';
 	import * as Table from '$lib/components/ui/table';
 	import { Button } from '$lib/components/ui/button';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
@@ -19,6 +18,12 @@
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		describeTimeRange
+	} from '$lib/components/traceway/filter-bar';
 	import PageBadges from '$lib/components/traceway/page-badges.svelte';
 	import CountPill from '../count-pill.svelte';
 
@@ -28,13 +33,24 @@
 
 	const REFRESH_MS = 60 * 1000;
 
-	const statusFilters = [
-		{ value: 'active', label: 'All active' },
+	const statusOptions = [
 		{ value: 'open', label: 'Open' },
 		{ value: 'acknowledged', label: 'Acknowledged' },
 		{ value: 'resolved', label: 'Resolved' }
 	];
-	const statusValues = new Set(statusFilters.map((filter) => filter.value));
+	const statusValues = new Set(['active', ...statusOptions.map((option) => option.value)]);
+	const filterFields: FilterField[] = [
+		{
+			kind: 'select',
+			key: 'status',
+			label: 'Status',
+			emptyValue: 'active',
+			anyLabel: 'Active',
+			hint: 'Active pages are open or acknowledged.',
+			narrowsByDefault: true,
+			options: statusOptions
+		}
+	];
 
 	const emptyMessages: Record<string, string> = {
 		active: 'No active pages opened in the selected range. All quiet.',
@@ -58,6 +74,8 @@
 	const initialParams = readParams();
 	let statusFilter = $state(initialParams.status);
 	let searchQuery = $state(initialParams.search);
+	const filterValues = $derived({ status: statusFilter });
+	const timeRangeLabel = $derived(describeTimeRange(range.preset));
 
 	let pages = $state<OrgPageRow[]>([]);
 	let openPagesCount = $state(0);
@@ -110,13 +128,9 @@
 		}
 	}
 
-	function setFilter(value: string) {
-		statusFilter = value;
-		currentPage = 1;
-		loadPages(true);
-	}
-
-	function handleSearch() {
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
+		statusFilter = next.values.status || 'active';
 		currentPage = 1;
 		loadPages(true);
 	}
@@ -203,115 +217,107 @@
 		{/snippet}
 	</PageHeader>
 
-	<SearchBar
-		placeholder="Search pages by subject or rule..."
-		bind:value={searchQuery}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search pages by subject or rule..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
-	/>
-
-	<div class="flex flex-wrap items-center gap-2">
-		{#each statusFilters as filter (filter.value)}
-			<Button
-				size="sm"
-				variant={statusFilter === filter.value ? 'default' : 'outline'}
-				class="rounded-full"
-				onclick={() => setFilter(filter.value)}
-			>
-				{filter.label}
-			</Button>
-		{/each}
-	</div>
-
-	<TableContainer minWidth="820px">
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={5} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={5} class="h-48">
-							<div class="flex h-full flex-col items-center justify-center gap-3">
-								<p class="text-sm text-destructive">{error}</p>
-								<Button variant="outline" size="sm" onclick={() => loadPages(false)}>Retry</Button>
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if pages.length === 0}
-				<Table.Body>
-					<TableEmptyState colspan={5} message={emptyMessages[statusFilter]} />
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader label="Page" />
-						<TracewayTableHeader label="Project" class="w-[180px]" />
-						<TracewayTableHeader label="Severity" class="w-[160px]" />
-						<TracewayTableHeader label="Status" class="w-[130px]" />
-						<TracewayTableHeader label="Opened" class="w-[170px]" align="right" />
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each pages as oncallPage (oncallPage.id)}
-						<Table.Row
-							class="cursor-pointer"
-							onclick={createRowClickHandler(
-								`/on-call?tab=pages&page=${oncallPage.id}&projectId=${oncallPage.projectId}`
-							)}
-						>
-							<Table.Cell class="max-w-[420px] py-3">
-								<div class="min-w-0">
-									<div class="truncate font-medium">{oncallPage.subject || '—'}</div>
-									{#if oncallPage.ruleName}
-										<div class="truncate text-xs text-muted-foreground">
-											{oncallPage.ruleName}
-										</div>
-									{/if}
+		noun="pages"
+		rangeLabel={timeRangeLabel}
+	>
+		<TableContainer minWidth="820px">
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={5} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
 								</div>
-							</Table.Cell>
-							<Table.Cell class="text-sm text-muted-foreground">
-								{oncallPage.projectName || '—'}
-							</Table.Cell>
-							<Table.Cell>
-								<div class="flex flex-wrap gap-1">
-									<PageBadges
-										severity={oncallPage.severity}
-										urgency={oncallPage.urgency}
-										fallback
-									/>
-								</div>
-							</Table.Cell>
-							<Table.Cell><PageBadges status={oncallPage.status} /></Table.Cell>
-							<Table.Cell
-								class="text-right text-sm text-muted-foreground"
-								title={formatDateTime(oncallPage.createdAt)}
-							>
-								{formatRelativeTimeAgo(oncallPage.createdAt)}
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={5} class="h-48">
+								<div class="flex h-full flex-col items-center justify-center gap-3">
+									<p class="text-sm text-destructive">{error}</p>
+									<Button variant="outline" size="sm" onclick={() => loadPages(false)}>Retry</Button
+									>
+								</div>
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if pages.length === 0}
+					<Table.Body>
+						<TableEmptyState colspan={5} message={emptyMessages[statusFilter]} />
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader label="Page" />
+							<TracewayTableHeader label="Project" class="w-[180px]" />
+							<TracewayTableHeader label="Severity" class="w-[160px]" />
+							<TracewayTableHeader label="Status" class="w-[130px]" />
+							<TracewayTableHeader label="Opened" class="w-[170px]" align="right" />
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each pages as oncallPage (oncallPage.id)}
+							<Table.Row
+								class="cursor-pointer"
+								onclick={createRowClickHandler(
+									`/on-call?tab=pages&page=${oncallPage.id}&projectId=${oncallPage.projectId}`
+								)}
+							>
+								<Table.Cell class="max-w-[420px] py-3">
+									<div class="min-w-0">
+										<div class="truncate font-medium">{oncallPage.subject || '—'}</div>
+										{#if oncallPage.ruleName}
+											<div class="truncate text-xs text-muted-foreground">
+												{oncallPage.ruleName}
+											</div>
+										{/if}
+									</div>
+								</Table.Cell>
+								<Table.Cell class="text-sm text-muted-foreground">
+									{oncallPage.projectName || '—'}
+								</Table.Cell>
+								<Table.Cell>
+									<div class="flex flex-wrap gap-1">
+										<PageBadges
+											severity={oncallPage.severity}
+											urgency={oncallPage.urgency}
+											fallback
+										/>
+									</div>
+								</Table.Cell>
+								<Table.Cell><PageBadges status={oncallPage.status} /></Table.Cell>
+								<Table.Cell
+									class="text-right text-sm text-muted-foreground"
+									title={formatDateTime(oncallPage.createdAt)}
+								>
+									{formatRelativeTimeAgo(oncallPage.createdAt)}
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<PaginationFooter
-		{currentPage}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="page"
-	/>
+		<PaginationFooter
+			{currentPage}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="page"
+		/>
+	</FilterBar>
 </div>

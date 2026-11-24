@@ -15,8 +15,6 @@
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { SearchBar } from '$lib/components/ui/search-bar';
-	import { RootFilter } from '$lib/components/ui/root-filter';
 	import { NonRootChip } from '$lib/components/ui/non-root-chip';
 	import { browser } from '$app/environment';
 	import { CalendarDate } from '@internationalized/date';
@@ -25,6 +23,14 @@
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		describeTimeRange,
+		rootField,
+		rootFilterValue
+	} from '$lib/components/traceway/filter-bar';
 	import { formatCost, formatCount, formatTokens } from '$lib/utils/ai-format';
 	import AiNavTabs from '$lib/components/ai/ai-nav-tabs.svelte';
 	import {
@@ -86,7 +92,7 @@
 		return {
 			...timeParams,
 			search: params.get('search') || '',
-			rootFilter: params.get('rootFilter') || 'all'
+			rootFilter: rootFilterValue(params.get('rootFilter'))
 		};
 	}
 
@@ -245,7 +251,13 @@
 		loadData(false);
 	}
 
-	function handleSearch() {
+	const filterFields: FilterField[] = [rootField('calls')];
+	const filterValues = $derived({ rootFilter });
+	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
+
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
+		rootFilter = rootFilterValue(next.values.rootFilter);
 		page = 1;
 		loadData(true);
 	}
@@ -281,162 +293,158 @@
 
 	<AiNavTabs active="traces" />
 
-	<!-- Search -->
-	<SearchBar
-		placeholder="Search traces..."
-		bind:value={searchQuery}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search traces..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
+		noun="AI traces"
+		rangeLabel={timeRangeLabel}
 	>
-		{#snippet pillEnd()}
-			<RootFilter
-				bind:value={rootFilter}
-				class="h-9 w-[110px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
-			/>
-		{/snippet}
-	</SearchBar>
-
-	<!-- AI Traces Table -->
-	<TableContainer>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={7} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={7} class="h-24 text-center text-red-500">
-							{error}
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if traces.length === 0}
-				<Table.Body>
-					<TableEmptyState
-						colspan={7}
-						message="No AI trace data available for your search parameters"
-					/>
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader label="Trace Name" tooltip="The AI agent or workflow name" />
-						<TracewayTableHeader
-							label="Calls"
-							tooltip="Total number of AI calls"
-							sortField="count"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[80px]"
-						/>
-						<TracewayTableHeader
-							label="Typical"
-							tooltip="Median duration (P50)"
-							sortField="p50_duration"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Slow"
-							tooltip="95th percentile duration"
-							sortField="p95_duration"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Total Tokens"
-							tooltip="Total tokens consumed"
-							sortField="total_tokens"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[110px]"
-						/>
-						<TracewayTableHeader
-							label="Total Cost"
-							tooltip="Total cost across all calls"
-							sortField="total_cost"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Last Seen"
-							tooltip="When the last call occurred"
-							sortField="last_seen"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each traces as trace, __index (__index)}
-						<!-- Trace names "conversations" and "users" are shadowed by the
-                         static sibling routes, so those two names are unreachable here. -->
-						<Table.Row
-							class="cursor-pointer"
-							onclick={createRowClickHandler(
-								resolve(`/ai-traces/${encodeURIComponent(trace.traceName)}`),
-								'preset',
-								'from',
-								'to'
-							)}
-						>
-							<Table.Cell class="font-mono text-sm">
-								{trace.traceName}
-								{#if trace.hasNonRoot}
-									<NonRootChip mixed={trace.hasRoot && trace.hasNonRoot} />
-								{/if}
-							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								{formatCount(trace.count)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatDuration(trace.p50Duration)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatDuration(trace.p95Duration)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatTokens(trace.totalTokens)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatCost(trace.totalCost)}
-							</Table.Cell>
-							<Table.Cell class="text-sm text-muted-foreground">
-								{formatDateTime(trace.lastSeen, { timezone, format: 'date' })}
+		<!-- AI Traces Table -->
+		<TableContainer>
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={7} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
+								</div>
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={7} class="h-24 text-center text-red-500">
+								{error}
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if traces.length === 0}
+					<Table.Body>
+						<TableEmptyState
+							colspan={7}
+							message="No AI trace data available for your search parameters"
+						/>
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader label="Trace Name" tooltip="The AI agent or workflow name" />
+							<TracewayTableHeader
+								label="Calls"
+								tooltip="Total number of AI calls"
+								sortField="count"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[80px]"
+							/>
+							<TracewayTableHeader
+								label="Typical"
+								tooltip="Median duration (P50)"
+								sortField="p50_duration"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Slow"
+								tooltip="95th percentile duration"
+								sortField="p95_duration"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Total Tokens"
+								tooltip="Total tokens consumed"
+								sortField="total_tokens"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[110px]"
+							/>
+							<TracewayTableHeader
+								label="Total Cost"
+								tooltip="Total cost across all calls"
+								sortField="total_cost"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Last Seen"
+								tooltip="When the last call occurred"
+								sortField="last_seen"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each traces as trace, __index (__index)}
+							<!-- Trace names "conversations" and "users" are shadowed by the
+	                         static sibling routes, so those two names are unreachable here. -->
+							<Table.Row
+								class="cursor-pointer"
+								onclick={createRowClickHandler(
+									resolve(`/ai-traces/${encodeURIComponent(trace.traceName)}`),
+									'preset',
+									'from',
+									'to'
+								)}
+							>
+								<Table.Cell class="font-mono text-sm">
+									{trace.traceName}
+									{#if trace.hasNonRoot}
+										<NonRootChip mixed={trace.hasRoot && trace.hasNonRoot} />
+									{/if}
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									{formatCount(trace.count)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatDuration(trace.p50Duration)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatDuration(trace.p95Duration)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatTokens(trace.totalTokens)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatCost(trace.totalCost)}
+								</Table.Cell>
+								<Table.Cell class="text-sm text-muted-foreground">
+									{formatDateTime(trace.lastSeen, { timezone, format: 'date' })}
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<!-- Pagination Footer -->
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="trace"
-	/>
+		<!-- Pagination Footer -->
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="trace"
+		/>
+	</FilterBar>
 </div>

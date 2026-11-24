@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { parseAttributeInput } from '$lib/components/traceway/filter-bar/attributes';
+import { operatorFlags } from './attribute-filters';
 import {
 	filtersEqual,
 	formatLogAttributeFilter,
+	fromFlatLogFilter,
+	LOG_ATTRIBUTE_RULES,
 	logAttributeEntries,
 	parseLogAttributeFilter,
 	parseLogAttributeTarget,
-	sameFilterTarget
+	sameFilterTarget,
+	toFlatLogFilter
 } from './log-filters';
 
 describe('log attribute filter URLs', () => {
@@ -101,5 +106,24 @@ describe('filter comparison', () => {
 	it('distinguishes scopes', () => {
 		const resource = parseLogAttributeFilter('resource.TimerSend=7')!;
 		expect(sameFilterTarget(equals, resource)).toBe(false);
+	});
+});
+
+describe('log attribute rules', () => {
+	it('stores a scoped key and refuses one without a scope', () => {
+		expect(
+			parseAttributeInput(LOG_ATTRIBUTE_RULES, 'resource.service.name', 'api', '=', [])
+		).toMatchObject({
+			key: 'resource.service.name',
+			value: 'api'
+		});
+		expect(parseAttributeInput(LOG_ATTRIBUTE_RULES, 'service.name', 'api', '=', [])).toMatch(
+			/resource\./
+		);
+	});
+
+	it('round-trips a scoped filter through the flat key the filter bar edits', () => {
+		const filter = { scope: 'log' as const, key: 'user.id', value: 'u_1', ...operatorFlags('!=') };
+		expect(fromFlatLogFilter(toFlatLogFilter(filter))).toEqual([filter]);
 	});
 });

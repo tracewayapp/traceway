@@ -12,7 +12,6 @@
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { browser } from '$app/environment';
 	import { CalendarDate } from '@internationalized/date';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -20,14 +19,19 @@
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
-	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		describeTimeRange,
+		valueOptions
+	} from '$lib/components/traceway/filter-bar';
 	import { formatCost, formatCount, formatTokens } from '$lib/utils/ai-format';
 	import AiNavTabs from '$lib/components/ai/ai-nav-tabs.svelte';
 	import FlaggedBadge from '$lib/components/ai/flagged-badge.svelte';
-	import FlaggedFilter from '$lib/components/ai/flagged-filter.svelte';
 	import EditProjectModal from '$lib/components/edit-project-modal.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { ShieldAlert, TrendingUp, X } from '@lucide/svelte';
+	import { ShieldAlert, TrendingUp } from '@lucide/svelte';
 	import {
 		getTimeRangeFromPreset,
 		dateToCalendarDate,
@@ -273,37 +277,53 @@
 		loadData(false);
 	}
 
-	function handleSearch() {
-		page = 1;
-		loadData(true);
-	}
-
-	function applyFilterChange() {
-		page = 1;
-		loadData(true);
-	}
-
-	type FilterPillKind = 'user' | 'model' | 'tool' | 'flagged';
-
-	const filterPills = $derived([
-		...(userIdFilter
-			? [{ kind: 'user' as FilterPillKind, label: 'user', value: userIdFilter }]
-			: []),
-		...(modelFilter
-			? [{ kind: 'model' as FilterPillKind, label: 'model', value: modelFilter }]
-			: []),
-		...(toolFilter ? [{ kind: 'tool' as FilterPillKind, label: 'tool', value: toolFilter }] : []),
-		...(flaggedFilter === 'flagged'
-			? [{ kind: 'flagged' as FilterPillKind, label: 'flagged', value: 'only' }]
-			: [])
+	const filterFields = $derived<FilterField[]>([
+		{
+			kind: 'select',
+			key: 'flagged',
+			label: 'Flagged',
+			anyLabel: 'Any',
+			options: [{ value: 'flagged', label: 'Flagged only', pill: 'Flagged only' }],
+			emptyValue: 'all'
+		},
+		{
+			kind: 'select',
+			key: 'model',
+			label: 'Model',
+			options: valueOptions(facetModels)
+		},
+		{
+			kind: 'select',
+			key: 'tool',
+			label: 'Tool',
+			options: valueOptions(facetTools)
+		},
+		{
+			kind: 'text',
+			key: 'userId',
+			label: 'User',
+			placeholder: 'u_42',
+			hint: 'The exact user ID.'
+		}
 	]);
+	const filterValues = $derived({
+		flagged: flaggedFilter,
+		model: modelFilter,
+		tool: toolFilter,
+		userId: userIdFilter
+	});
+	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 
-	function removeFilterPill(kind: FilterPillKind) {
-		if (kind === 'user') userIdFilter = '';
-		else if (kind === 'model') modelFilter = '';
-		else if (kind === 'tool') toolFilter = '';
-		else if (kind === 'flagged') flaggedFilter = 'all';
-		applyFilterChange();
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
+		flaggedFilter = next.values.flagged === 'flagged' ? 'flagged' : 'all';
+		modelFilter = next.values.model ?? '';
+		toolFilter = next.values.tool ?? '';
+		// IDs match exactly, so one kept from a link is not trimmed unless it was edited.
+		const userId = next.values.userId ?? '';
+		userIdFilter = userId === userIdFilter ? userId : userId.trim();
+		page = 1;
+		loadData(true);
 	}
 
 	const hasActiveFilters = $derived(
@@ -320,15 +340,6 @@
 		const idx = model.lastIndexOf('/');
 		return idx >= 0 ? model.slice(idx + 1) : model;
 	}
-
-	const modelOptions = $derived([
-		{ value: '', label: 'All models' },
-		...facetModels.map((m) => ({ value: m, label: m }))
-	]);
-	const toolOptions = $derived([
-		{ value: '', label: 'All tools' },
-		...facetTools.map((t) => ({ value: t, label: t }))
-	]);
 
 	const isCostOutlier = (row: ConversationRow) =>
 		!!thresholds && thresholds.p95Cost > 0 && row.totalCost > thresholds.p95Cost;
@@ -377,298 +388,261 @@
 
 	<AiNavTabs active="conversations" />
 
-	<!-- Search + filters -->
-	<SearchBar
-		placeholder="Search conversations..."
-		bind:value={searchQuery}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search conversations..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
+		noun="conversations"
+		rangeLabel={timeRangeLabel}
 	>
-		{#snippet pillEnd()}
-			<FlaggedFilter
-				bind:value={flaggedFilter}
-				onChange={applyFilterChange}
-				class="h-9 w-[130px] shrink-0 shadow-none sm:rounded-none sm:border-r-0"
-			/>
-		{/snippet}
-		<ToolbarSelect
-			bind:value={modelFilter}
-			options={modelOptions}
-			class="w-[160px]"
-			onChange={applyFilterChange}
-		/>
-		<ToolbarSelect
-			bind:value={toolFilter}
-			options={toolOptions}
-			class="w-[150px]"
-			onChange={applyFilterChange}
-		/>
-	</SearchBar>
-
-	{#if filterPills.length > 0}
-		<div class="flex flex-wrap items-center gap-2">
-			{#each filterPills as pill (pill.kind)}
-				<span
-					class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
-				>
-					<span class="text-muted-foreground">{pill.label}</span>
-					<span>=</span>
-					<span class="max-w-[240px] truncate" title={pill.value}>{pill.value}</span>
-					<button
-						type="button"
-						aria-label="Remove {pill.label} filter"
-						class="ml-1 cursor-pointer text-muted-foreground hover:text-foreground"
-						onclick={() => removeFilterPill(pill.kind)}
-					>
-						<X class="h-3 w-3" />
-					</button>
-				</span>
-			{/each}
-		</div>
-	{/if}
-
-	<!-- Conversations Table -->
-	<TableContainer>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={8} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={8} class="h-24 text-center text-red-500">
-							{error}
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if conversations.length === 0}
-				<Table.Body>
-					<TableEmptyState
-						colspan={8}
-						message={hasActiveFilters
-							? 'No conversations match the current search and filters. Search covers conversation ids, users, models, tool names, and flagged terms.'
-							: 'No conversations found. They appear once your AI calls carry a gen_ai.conversation.id or session.id attribute (or share a distributed trace).'}
-					/>
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader
-							label="Conversation"
-							tooltip="The conversation id reported by your app"
-						/>
-						<TracewayTableHeader
-							label="User"
-							tooltip="The user.id attribute on the calls"
-							sortField="user_id"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[140px]"
-						/>
-						<TracewayTableHeader
-							label="Turns"
-							tooltip="Number of LLM calls in the conversation"
-							sortField="turns"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[90px]"
-						/>
-						<TracewayTableHeader
-							label="Tools"
-							tooltip="Total tool calls across the conversation"
-							sortField="tool_call_count"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[90px]"
-						/>
-						<TracewayTableHeader label="Models" tooltip="Models used in the conversation" />
-						<TracewayTableHeader
-							label="Tokens"
-							tooltip="Total tokens used"
-							sortField="total_tokens"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Cost"
-							tooltip="Total cost of the conversation"
-							sortField="total_cost"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Last Seen"
-							tooltip="When the conversation last had a call"
-							sortField="last_seen"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[130px]"
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each conversations as conv, __index (__index)}
-						<Table.Row
-							class="cursor-pointer"
-							onclick={createRowClickHandler(
-								resolve('/ai-traces/conversations/[conversationId]', {
-									conversationId: encodeURIComponent(conv.conversationId)
-								}),
-								'preset',
-								'from',
-								'to'
-							)}
-						>
-							<Table.Cell class="max-w-[280px] font-mono text-sm">
-								<div class="flex items-center gap-2">
-									<span class="truncate" title={conv.conversationId}>{conv.conversationId}</span>
-									{#if conv.flagged && conv.flaggedTerms?.length}
-										<FlaggedBadge terms={conv.flaggedTerms} />
-									{/if}
+		<!-- Conversations Table -->
+		<TableContainer>
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={8} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
 								</div>
 							</Table.Cell>
-							<Table.Cell class="max-w-[140px] truncate font-mono text-sm" title={conv.userId}>
-								{conv.userId || '-'}
-							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								{#if isTurnsOutlier(conv)}
-									<Tooltip.Provider>
-										<Tooltip.Root>
-											<Tooltip.Trigger>
-												<span
-													class="inline-flex items-center gap-1 font-semibold text-orange-600 dark:text-orange-400"
-												>
-													{formatCount(conv.turns)}
-													<TrendingUp class="h-3 w-3" />
-												</span>
-											</Tooltip.Trigger>
-											<Tooltip.Content>
-												<p class="text-xs">
-													Above the 95th percentile turns for this period (P95: {Math.round(
-														thresholds?.p95Turns ?? 0
-													)})
-												</p>
-											</Tooltip.Content>
-										</Tooltip.Root>
-									</Tooltip.Provider>
-								{:else}
-									{formatCount(conv.turns)}
-								{/if}
-							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								{#if conv.toolNames?.length}
-									<Tooltip.Provider>
-										<Tooltip.Root>
-											<Tooltip.Trigger>
-												<span>{formatCount(conv.toolCallCount)}</span>
-											</Tooltip.Trigger>
-											<Tooltip.Content>
-												<p class="max-w-xs text-xs">{conv.toolNames.join(', ')}</p>
-											</Tooltip.Content>
-										</Tooltip.Root>
-									</Tooltip.Provider>
-								{:else}
-									{formatCount(conv.toolCallCount)}
-								{/if}
-							</Table.Cell>
-							<Table.Cell>
-								{#if conv.models?.length}
-									<Tooltip.Provider>
-										<Tooltip.Root>
-											<Tooltip.Trigger>
-												<span class="inline-flex items-center gap-1">
-													<Badge variant="outline" class="font-mono text-xs"
-														>{shortModelName(conv.models[0])}</Badge
-													>
-													{#if conv.models.length > 1}
-														<Badge variant="outline" class="text-xs"
-															>+{conv.models.length - 1}</Badge
-														>
-													{/if}
-												</span>
-											</Tooltip.Trigger>
-											<Tooltip.Content>
-												<p class="max-w-xs text-xs">{conv.models.join(', ')}</p>
-											</Tooltip.Content>
-										</Tooltip.Root>
-									</Tooltip.Provider>
-								{:else}
-									<span class="text-muted-foreground">-</span>
-								{/if}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatTokens(conv.totalTokens)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{#if isCostOutlier(conv)}
-									<Tooltip.Provider>
-										<Tooltip.Root>
-											<Tooltip.Trigger>
-												<span
-													class="inline-flex items-center gap-1 font-semibold text-orange-600 dark:text-orange-400"
-												>
-													{formatCost(conv.totalCost)}
-													<TrendingUp class="h-3 w-3" />
-												</span>
-											</Tooltip.Trigger>
-											<Tooltip.Content>
-												<p class="text-xs">
-													Above the 95th percentile cost for this period (P95: {formatCost(
-														thresholds?.p95Cost ?? 0
-													)})
-												</p>
-											</Tooltip.Content>
-										</Tooltip.Root>
-									</Tooltip.Provider>
-								{:else}
-									{formatCost(conv.totalCost)}
-								{/if}
-							</Table.Cell>
-							<Table.Cell class="text-sm text-muted-foreground">
-								<Tooltip.Provider>
-									<Tooltip.Root>
-										<Tooltip.Trigger>
-											<span>{formatDateTime(conv.lastSeen, { timezone })}</span>
-										</Tooltip.Trigger>
-										<Tooltip.Content>
-											<p class="text-xs">Started {formatDateTime(conv.firstSeen, { timezone })}</p>
-										</Tooltip.Content>
-									</Tooltip.Root>
-								</Tooltip.Provider>
+						</Table.Row>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={8} class="h-24 text-center text-red-500">
+								{error}
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if conversations.length === 0}
+					<Table.Body>
+						<TableEmptyState
+							colspan={8}
+							message={hasActiveFilters
+								? 'No conversations match the current search and filters. Search covers conversation ids, users, models, tool names, and flagged terms.'
+								: 'No conversations found. They appear once your AI calls carry a gen_ai.conversation.id or session.id attribute (or share a distributed trace).'}
+						/>
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader
+								label="Conversation"
+								tooltip="The conversation id reported by your app"
+							/>
+							<TracewayTableHeader
+								label="User"
+								tooltip="The user.id attribute on the calls"
+								sortField="user_id"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[140px]"
+							/>
+							<TracewayTableHeader
+								label="Turns"
+								tooltip="Number of LLM calls in the conversation"
+								sortField="turns"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[90px]"
+							/>
+							<TracewayTableHeader
+								label="Tools"
+								tooltip="Total tool calls across the conversation"
+								sortField="tool_call_count"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[90px]"
+							/>
+							<TracewayTableHeader label="Models" tooltip="Models used in the conversation" />
+							<TracewayTableHeader
+								label="Tokens"
+								tooltip="Total tokens used"
+								sortField="total_tokens"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Cost"
+								tooltip="Total cost of the conversation"
+								sortField="total_cost"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Last Seen"
+								tooltip="When the conversation last had a call"
+								sortField="last_seen"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[130px]"
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each conversations as conv, __index (__index)}
+							<Table.Row
+								class="cursor-pointer"
+								onclick={createRowClickHandler(
+									resolve('/ai-traces/conversations/[conversationId]', {
+										conversationId: encodeURIComponent(conv.conversationId)
+									}),
+									'preset',
+									'from',
+									'to'
+								)}
+							>
+								<Table.Cell class="max-w-[280px] font-mono text-sm">
+									<div class="flex items-center gap-2">
+										<span class="truncate" title={conv.conversationId}>{conv.conversationId}</span>
+										{#if conv.flagged && conv.flaggedTerms?.length}
+											<FlaggedBadge terms={conv.flaggedTerms} />
+										{/if}
+									</div>
+								</Table.Cell>
+								<Table.Cell class="max-w-[140px] truncate font-mono text-sm" title={conv.userId}>
+									{conv.userId || '-'}
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									{#if isTurnsOutlier(conv)}
+										<Tooltip.Provider>
+											<Tooltip.Root>
+												<Tooltip.Trigger>
+													<span
+														class="inline-flex items-center gap-1 font-semibold text-orange-600 dark:text-orange-400"
+													>
+														{formatCount(conv.turns)}
+														<TrendingUp class="h-3 w-3" />
+													</span>
+												</Tooltip.Trigger>
+												<Tooltip.Content>
+													<p class="text-xs">
+														Above the 95th percentile turns for this period (P95: {Math.round(
+															thresholds?.p95Turns ?? 0
+														)})
+													</p>
+												</Tooltip.Content>
+											</Tooltip.Root>
+										</Tooltip.Provider>
+									{:else}
+										{formatCount(conv.turns)}
+									{/if}
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									{#if conv.toolNames?.length}
+										<Tooltip.Provider>
+											<Tooltip.Root>
+												<Tooltip.Trigger>
+													<span>{formatCount(conv.toolCallCount)}</span>
+												</Tooltip.Trigger>
+												<Tooltip.Content>
+													<p class="max-w-xs text-xs">{conv.toolNames.join(', ')}</p>
+												</Tooltip.Content>
+											</Tooltip.Root>
+										</Tooltip.Provider>
+									{:else}
+										{formatCount(conv.toolCallCount)}
+									{/if}
+								</Table.Cell>
+								<Table.Cell>
+									{#if conv.models?.length}
+										<Tooltip.Provider>
+											<Tooltip.Root>
+												<Tooltip.Trigger>
+													<span class="inline-flex items-center gap-1">
+														<Badge variant="outline" class="font-mono text-xs"
+															>{shortModelName(conv.models[0])}</Badge
+														>
+														{#if conv.models.length > 1}
+															<Badge variant="outline" class="text-xs"
+																>+{conv.models.length - 1}</Badge
+															>
+														{/if}
+													</span>
+												</Tooltip.Trigger>
+												<Tooltip.Content>
+													<p class="max-w-xs text-xs">{conv.models.join(', ')}</p>
+												</Tooltip.Content>
+											</Tooltip.Root>
+										</Tooltip.Provider>
+									{:else}
+										<span class="text-muted-foreground">-</span>
+									{/if}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatTokens(conv.totalTokens)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{#if isCostOutlier(conv)}
+										<Tooltip.Provider>
+											<Tooltip.Root>
+												<Tooltip.Trigger>
+													<span
+														class="inline-flex items-center gap-1 font-semibold text-orange-600 dark:text-orange-400"
+													>
+														{formatCost(conv.totalCost)}
+														<TrendingUp class="h-3 w-3" />
+													</span>
+												</Tooltip.Trigger>
+												<Tooltip.Content>
+													<p class="text-xs">
+														Above the 95th percentile cost for this period (P95: {formatCost(
+															thresholds?.p95Cost ?? 0
+														)})
+													</p>
+												</Tooltip.Content>
+											</Tooltip.Root>
+										</Tooltip.Provider>
+									{:else}
+										{formatCost(conv.totalCost)}
+									{/if}
+								</Table.Cell>
+								<Table.Cell class="text-sm text-muted-foreground">
+									<Tooltip.Provider>
+										<Tooltip.Root>
+											<Tooltip.Trigger>
+												<span>{formatDateTime(conv.lastSeen, { timezone })}</span>
+											</Tooltip.Trigger>
+											<Tooltip.Content>
+												<p class="text-xs">
+													Started {formatDateTime(conv.firstSeen, { timezone })}
+												</p>
+											</Tooltip.Content>
+										</Tooltip.Root>
+									</Tooltip.Provider>
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<!-- Pagination Footer -->
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="conversation"
-	/>
+		<!-- Pagination Footer -->
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="conversation"
+		/>
+	</FilterBar>
 </div>
 
 <EditProjectModal

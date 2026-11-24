@@ -1,9 +1,11 @@
 import {
 	attributeFiltersEqual,
 	formatAttributeFilter,
+	keyOperatorOptions,
 	parseAttributeFilter,
 	type AttributeFilter
 } from './attribute-filters';
+import type { AttributeRules } from '$lib/components/traceway/filter-bar/attributes';
 
 export type LogAttributeScope = 'resource' | 'scope' | 'log';
 
@@ -89,3 +91,33 @@ export function sameFilterTarget(
 export function filtersEqual(a: LogAttributeFilter, b: LogAttributeFilter): boolean {
 	return a.scope === b.scope && attributeFiltersEqual(a, b);
 }
+
+// The filter bar edits flat keys (`resource.service.name`); the logs page keeps the scope apart.
+export function toFlatLogFilter(f: LogAttributeFilter): AttributeFilter {
+	return {
+		key: formatLogAttributeTarget(f),
+		value: f.value,
+		exclude: f.exclude,
+		contains: f.contains,
+		exists: f.exists
+	};
+}
+
+export function fromFlatLogFilter(f: AttributeFilter): LogAttributeFilter[] {
+	const target = parseLogAttributeTarget(f.key);
+	return target ? [{ ...f, ...target }] : [];
+}
+
+export const LOG_ATTRIBUTE_RULES: AttributeRules = {
+	operators: keyOperatorOptions,
+	hint: 'Keys start with resource., scope. or log.',
+	keyPlaceholder: 'resource.service.name',
+	valuePlaceholder: 'backend-service',
+	value: 'trim-end',
+	key: (key) => {
+		const target = parseLogAttributeTarget(key);
+		return target && target.key.trim()
+			? formatLogAttributeTarget(target)
+			: { error: 'Key must start with resource., scope., or log.' };
+	}
+};

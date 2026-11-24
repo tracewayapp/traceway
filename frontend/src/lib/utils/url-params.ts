@@ -3,20 +3,9 @@ import { CalendarDate } from '@internationalized/date';
 import { DateTime } from 'luxon';
 import { getNow, parseISO } from './formatters';
 import { gotoHref } from './navigation';
+import { presetMinutes } from './time-presets';
 
-export const presetMinutes: Record<string, number> = {
-	'5m': 5,
-	'30m': 30,
-	'60m': 60,
-	'3h': 180,
-	'6h': 360,
-	'12h': 720,
-	'24h': 1440,
-	'3d': 4320,
-	'7d': 10080,
-	'1M': 43200,
-	'3M': 129600
-};
+export { presetMinutes };
 
 export function getTimeRangeFromPreset(
 	presetValue: string,

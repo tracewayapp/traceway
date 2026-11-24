@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { api } from '$lib/api';
 	import { organizationContext } from '$lib/state/organization-context.svelte';
+	import { projectsState } from '$lib/state/projects.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { resolveHref } from '$lib/utils/links';
 	import { getServerColor } from '$lib/utils/server-colors';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField
+	} from '$lib/components/traceway/filter-bar';
 	import * as Select from '$lib/components/ui/select';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
@@ -22,7 +27,6 @@
 		Boxes,
 		Cloud,
 		RefreshCw,
-		Search,
 		Server,
 		TriangleAlert
 	} from '@lucide/svelte';
@@ -304,9 +308,46 @@
 		projectFilter = 'all';
 	}
 
-	const projectFilterLabel = $derived(
-		projectOptions.find((project) => project.id === projectFilter)?.name ?? 'All projects'
-	);
+	// A filtered project that stopped reporting keeps its field and its name, so the pill
+	// still reads well and can be removed.
+	const projectFieldOptions = $derived.by(() => {
+		const options = projectOptions.map((p) => ({ value: p.id, label: p.name }));
+		if (projectFilter === 'all' || options.some((o) => o.value === projectFilter)) return options;
+		const name = projectsState.projects.find((p) => p.id === projectFilter)?.name;
+		return [{ value: projectFilter, label: name ?? projectFilter }, ...options];
+	});
+
+	const filterFields = $derived<FilterField[]>([
+		...(projectFieldOptions.length > 1 || projectFilter !== 'all'
+			? [
+					{
+						kind: 'select' as const,
+						key: 'project',
+						label: 'Project',
+						emptyValue: 'all',
+						options: projectFieldOptions
+					}
+				]
+			: []),
+		{
+			kind: 'select',
+			key: 'state',
+			label: 'Health',
+			emptyValue: 'all',
+			options: STATE_ORDER.map((state) => ({
+				value: state,
+				label: STATE_LABELS[state][0].toUpperCase() + STATE_LABELS[state].slice(1)
+			}))
+		}
+	]);
+	const filterValues = $derived({ project: projectFilter, state: stateFilter });
+
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
+		projectFilter = next.values.project || 'all';
+		const state = next.values.state || 'all';
+		stateFilter = STATE_ORDER.includes(state as ServerState) ? (state as ServerState) : 'all';
+	}
 
 	function toTrendPoints(trend: OrgServerRow['trend']): MetricTrendPoint[] {
 		return (trend || []).map((point) => ({
@@ -416,52 +457,43 @@
 			</div>
 		</section>
 
-		<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-			<div class="relative min-w-0 sm:w-64">
-				<Search
-					class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-				/>
-				<Input bind:value={searchQuery} placeholder="Find a server" class="h-9 pl-9" />
-			</div>
-			{#if projectOptions.length > 1}
-				<Select.Root type="single" bind:value={projectFilter}>
-					<Select.Trigger class="h-9 w-full sm:w-48" aria-label="Filter servers by project">
-						<span class="truncate">{projectFilterLabel}</span>
+		<FilterBar
+			search={searchQuery}
+			searchPlaceholder="Find a server"
+			fields={filterFields}
+			values={filterValues}
+			onApply={handleFilterApply}
+			noun="servers"
+			rangeLabel="last 30 minutes"
+		>
+			{#snippet actions()}
+				{#if filtersActive}
+					<span class="text-xs text-muted-foreground tabular-nums">
+						Showing {visibleServers.length} of {servers.length}
+					</span>
+				{/if}
+				<Select.Root
+					type="single"
+					value={groupMode}
+					onValueChange={(value) => (groupMode = value as GroupMode)}
+				>
+					<Select.Trigger class="h-8 w-auto text-xs" aria-label="Group servers">
+						{GROUP_LABELS[groupMode]}
 					</Select.Trigger>
 					<Select.Content>
-						<Select.Item value="all" label="All projects">All projects</Select.Item>
-						{#each projectOptions as project (project.id)}
-							<Select.Item value={project.id} label={project.name}>{project.name}</Select.Item>
-						{/each}
+						<Select.Item value="project" label={GROUP_LABELS.project}
+							>{GROUP_LABELS.project}</Select.Item
+						>
+						{#if hasKubernetesMetadata}
+							<Select.Item value="cluster" label={GROUP_LABELS.cluster}
+								>{GROUP_LABELS.cluster}</Select.Item
+							>
+						{/if}
+						<Select.Item value="none" label={GROUP_LABELS.none}>{GROUP_LABELS.none}</Select.Item>
 					</Select.Content>
 				</Select.Root>
-			{/if}
-			<Select.Root
-				type="single"
-				value={groupMode}
-				onValueChange={(value) => (groupMode = value as GroupMode)}
-			>
-				<Select.Trigger class="h-9 w-full sm:w-auto" aria-label="Group servers">
-					{GROUP_LABELS[groupMode]}
-				</Select.Trigger>
-				<Select.Content>
-					<Select.Item value="project" label={GROUP_LABELS.project}
-						>{GROUP_LABELS.project}</Select.Item
-					>
-					{#if hasKubernetesMetadata}
-						<Select.Item value="cluster" label={GROUP_LABELS.cluster}
-							>{GROUP_LABELS.cluster}</Select.Item
-						>
-					{/if}
-					<Select.Item value="none" label={GROUP_LABELS.none}>{GROUP_LABELS.none}</Select.Item>
-				</Select.Content>
-			</Select.Root>
-			{#if filtersActive}
-				<span class="text-sm text-muted-foreground tabular-nums sm:ml-auto">
-					Showing {visibleServers.length} of {servers.length}
-				</span>
-			{/if}
-		</div>
+			{/snippet}
+		</FilterBar>
 	{/if}
 
 	{#if partial || (error && servers.length > 0)}

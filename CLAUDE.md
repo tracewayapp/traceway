@@ -572,6 +572,9 @@ const handleClick = createRowClickHandler('/issues/abc123', 'preset', 'from', 't
 /data-collection            Remote SDK config: rules and captures (browser projects only; the backend also answers OpAMP polls of Flutter projects, but the dashboard has no page for them)
 ```
 
+### Cloud Extension Slots (`$billing/*`)
+Traceway Cloud adds UI without forking: `BILLING_PATH` (vite.config.ts, svelte.config.js) aliases `$billing` to the cloud's frontend directory, and every `$billing/<file>.svelte` is loaded with a dynamic `import()` whose `.catch` swallows the open-source case (the `stub-billing-imports` plugin resolves them to `export default null` when `BILLING_PATH` is unset). Prop types live in `src/billing.d.ts`. With `BILLING_PATH` set, every slot file must exist there or the build fails. Slots: `cross-site-notification-baner.svelte` (layout notices), `billing-tab.svelte` (settings) and `overlay-slot.svelte` (mounted in `authenticatedOverlays` and in the setup flow's shell, for UI that floats over every signed-in page: the cloud's help button, whose panel sends a message to the Traceway team or links to the docs). Cloud files resolve packages from this tree only through `resolve.dedupe`, which also keeps `@tracewayapp/frontend` a single instance so the cloud code sees the dashboard's own SDK client.
+
 ### UI Components
 Location: `src/lib/components/ui/*`
 Uses shadcn-svelte registry with bits-ui primitives. Key components:
@@ -1423,6 +1426,7 @@ Templates: `new_error`, `error_regression`, `check_down`, `check_recovered`, `al
 - **`services.Email`** carries the chrome every template shares (`Title`, `Badge`/`BadgeColor` via `EmailColor*`, `URL`, `Footer`, `LogoURL` defaulting to `{APP_BASE_URL}/traceway-mark.png`) plus `Template` and `Data`, the typed payload reached as `{{.Data.X}}`. `Text` is the plaintext alternative and must stand on its own.
 - **Notification payloads** live on `models.NotificationMessage.Email` (`models.NotificationEmail`: a template name plus one typed struct — `EmailException`, `EmailCheck`, `EmailAlert`, `EmailFlagged`, `EmailPage`, `EmailTest`). The builders in `notifications/messages.go` attach it; `services.NotificationEmail` turns a message into the `Email` at send time (severity chip, absolute link, "why you got this" footer). It rides through the notification outbox as JSON, so the shape is a wire format: add fields, never repurpose them. Only the email adapter reads it — Slack/Telegram/SMS/webhook and `fired_notifications` still see `Body` alone, so `Body` must always stay complete.
 - **Adding an email**: add `emailtemplates/<name>.gohtml`, add its payload struct, and call `SendEmail` with `Template: "<name>"`. For a new rule type that only needs a sentence and a link, reuse `alert` by filling `models.EmailAlert`.
+- **Extension templates**: `services.RegisterEmailTemplates(fsys, patterns...)` adds templates from another module (Traceway Cloud's `support_request`), named by file name like the core ones; call it from an `init` function, since `html/template` refuses to parse after its first execution. `Email.ReplyTo` sets a `Reply-To` header (sanitized and encoded like `To`).
 - **Preview**: `EMAIL_PREVIEW_ENABLED=true` registers `GET /api/email-preview` (index) and `GET /api/email-preview/:template`, which renders any template with sample data (`?format=text` shows the plaintext alternative). Off by default, so it is never a route in production. Sample data lives in `controllers/email_preview.controller.go`.
 
 ---

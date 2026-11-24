@@ -7,6 +7,7 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
@@ -26,6 +27,14 @@ var emailTemplateFS embed.FS
 
 var emailTemplates = template.Must(template.New("emails").ParseFS(emailTemplateFS, "emailtemplates/*.gohtml"))
 
+// RegisterEmailTemplates adds an extension's templates to the set SendEmail renders, named by file
+// name like the core ones (a file named like a core template replaces it). html/template refuses to
+// parse once a template has been executed, so call it from an init function.
+func RegisterEmailTemplates(fsys fs.FS, patterns ...string) error {
+	_, err := emailTemplates.ParseFS(fsys, patterns...)
+	return err
+}
+
 const (
 	EmailColorCritical = "#cf222e"
 	EmailColorWarning  = "#9a6700"
@@ -40,6 +49,7 @@ type Email struct {
 	Text     string
 	Template string
 	Data     any
+	ReplyTo  string
 
 	Title      string
 	Badge      string
@@ -137,6 +147,9 @@ func SendEmail(ctx context.Context, email Email) error {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: %s\r\n", headerAddress(from))
 	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(headerAddresses(recipients), ", "))
+	if email.ReplyTo != "" {
+		fmt.Fprintf(&buf, "Reply-To: %s\r\n", headerAddress(email.ReplyTo))
+	}
 	fmt.Fprintf(&buf, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject))
 	fmt.Fprintf(&buf, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	buf.WriteString("MIME-Version: 1.0\r\n")

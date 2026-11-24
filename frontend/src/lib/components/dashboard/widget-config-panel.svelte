@@ -6,7 +6,7 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import TagFilter from './tag-filter.svelte';
 	import { THRESHOLD_COLOR_NAMES, resolveThresholdColor } from './gauge-thresholds';
-	import { api } from '$lib/api';
+	import { loadTagValues } from '$lib/utils/dashboard-scope';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { Plus, Check, X } from '@lucide/svelte';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
@@ -151,18 +151,6 @@
 	function getMetricUnit(metricName: string): string {
 		const m = availableMetrics.find((m: DiscoveredMetric) => m.name === metricName);
 		return m?.unit ?? '';
-	}
-
-	async function loadTagValues(metricName: string, key: string): Promise<string[]> {
-		try {
-			const response = await api.get(
-				`/metrics/discover/tags?name=${encodeURIComponent(metricName)}&key=${encodeURIComponent(key)}`,
-				{ projectId: projectsState.currentProjectId ?? undefined }
-			);
-			return response.values || [];
-		} catch {
-			return [];
-		}
 	}
 
 	function handleMetricChange(index: number, value: string) {
@@ -491,7 +479,8 @@
 								onFilterChange={(filters) => {
 									sources[i].tagFilters = Object.keys(filters).length > 0 ? filters : undefined;
 								}}
-								onLoadTagValues={(key) => loadTagValues(source.name, key)}
+								onLoadTagValues={(key) =>
+									loadTagValues(projectsState.currentProjectId ?? undefined, source.name, key)}
 							/>
 						</div>
 

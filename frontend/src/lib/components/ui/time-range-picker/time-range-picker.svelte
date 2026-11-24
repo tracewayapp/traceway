@@ -6,16 +6,7 @@
 	import { CalendarDate, CalendarDateTime, getLocalTimeZone, today } from '@internationalized/date';
 	import { getNow, luxonToCalendarDateTime } from '$lib/utils/formatters';
 	import { getTimezone } from '$lib/state/timezone.svelte';
-
-	type TimeRangePreset = {
-		value: string;
-		label: string;
-		minutes: number;
-	};
-
-	type PresetGroup = {
-		presets: TimeRangePreset[];
-	};
+	import { presetGroups, type TimeRangePreset } from '$lib/utils/time-presets';
 
 	interface Props {
 		fromDate?: CalendarDate;
@@ -43,37 +34,6 @@
 
 	const tz = $derived(timezone ?? getTimezone());
 
-	// Preset groups
-	const presetGroups: PresetGroup[] = [
-		{
-			presets: [
-				{ value: '5m', label: '5 minutes', minutes: 5 },
-				{ value: '30m', label: '30 minutes', minutes: 30 },
-				{ value: '60m', label: '60 minutes', minutes: 60 }
-			]
-		},
-		{
-			presets: [
-				{ value: '3h', label: '3 hours', minutes: 180 },
-				{ value: '6h', label: '6 hours', minutes: 360 },
-				{ value: '12h', label: '12 hours', minutes: 720 },
-				{ value: '24h', label: '24 hours', minutes: 1440 }
-			]
-		},
-		{
-			presets: [
-				{ value: '3d', label: '3 days', minutes: 4320 },
-				{ value: '7d', label: '7 days', minutes: 10080 }
-			]
-		},
-		{
-			presets: [
-				{ value: '1M', label: '1 month', minutes: 43200 },
-				{ value: '3M', label: '3 months', minutes: 129600 }
-			]
-		}
-	];
-
 	let isOpen = $state(false);
 	let showCustom = $state(preset === null);
 	let selectedPreset = $state<string | null>(preset);
@@ -89,7 +49,7 @@
 
 			// If preset is set, calculate the time range
 			if (preset) {
-				const presetDef = presetGroups.flatMap((g) => g.presets).find((p) => p.value === preset);
+				const presetDef = presetGroups.flat().find((p) => p.value === preset);
 				if (presetDef) {
 					const now = getNow(tz);
 					const fromDt = now.minus({ minutes: presetDef.minutes });
@@ -229,7 +189,7 @@
 	// Get display label for trigger button
 	const displayLabel = $derived(() => {
 		if (selectedPreset && !showCustom) {
-			const preset = presetGroups.flatMap((g) => g.presets).find((p) => p.value === selectedPreset);
+			const preset = presetGroups.flat().find((p) => p.value === selectedPreset);
 			return preset ? `Last ${preset.label}` : 'Select time range';
 		}
 		// For custom selection, show date and time range (no prefix)
@@ -415,7 +375,7 @@
 					{#if groupIndex > 0}
 						<div class="mx-2 my-1 border-t"></div>
 					{/if}
-					{#each group.presets as preset, __index (__index)}
+					{#each group as preset, __index (__index)}
 						<button
 							class="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition-colors hover:bg-muted/50 {selectedPreset ===
 								preset.value && !showCustom

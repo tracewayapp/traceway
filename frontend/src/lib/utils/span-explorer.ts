@@ -3,13 +3,9 @@ import {
 	formatAttributeFilter,
 	keyOperatorOptions,
 	parseAttributeFilter,
-	type AttributeFilter,
-	type FilterOperator
+	type AttributeFilter
 } from './attribute-filters';
-import {
-	parseAttributeInput,
-	type AttributeRules
-} from '$lib/components/traceway/filter-bar/attributes';
+import type { AttributeRules } from '$lib/components/traceway/filter-bar/attributes';
 import { addStickyParamsToHref } from './navigation';
 import { SPAN_STATUS_ERROR } from './span-fields';
 import { timestampNanos } from './timestamp-nanos';
@@ -117,11 +113,10 @@ export function spanSearchBody(filters: SpanSearchFilters) {
 	};
 }
 
-// The add or edit filter dialog of the explorer. editIndex is the pill being
-// edited, which may keep its own place in the list.
-// What the span search accepts as an attribute filter; the explorer's drawer uses it.
+// What the span search accepts as an attribute filter.
 export const SPAN_ATTRIBUTE_RULES: AttributeRules = {
 	operators: keyOperatorOptions,
+	hint: 'Keys are the OpenTelemetry names, such as http.request.method.',
 	keyPlaceholder: 'http.request.method',
 	valuePlaceholder: 'GET',
 	value: 'trim',
@@ -130,16 +125,6 @@ export const SPAN_ATTRIBUTE_RULES: AttributeRules = {
 	key: (key) =>
 		/["\\]/.test(key) ? { error: 'Attribute keys cannot contain quotes or backslashes.' } : key
 };
-
-export function parseSpanFilter(
-	key: string,
-	value: string,
-	operator: FilterOperator,
-	existing: AttributeFilter[],
-	editIndex: number | null = null
-): AttributeFilter | string {
-	return parseAttributeInput(SPAN_ATTRIBUTE_RULES, key, value, operator, existing, editIndex);
-}
 
 // What the chart above the explorer measures: the span duration, or one
 // numeric attribute.

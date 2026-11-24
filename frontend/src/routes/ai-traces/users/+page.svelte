@@ -269,12 +269,7 @@
 		searchPlaceholder="Search users..."
 		onApply={handleFilterApply}
 		disabled={loading}
-		noun="users"
 	>
-		{@render results()}
-	</FilterBar>
-
-	{#snippet results()}
 		<!-- Users Table -->
 		<TableContainer>
 			<Table.Root>
@@ -445,5 +440,5 @@
 			{loading}
 			itemLabel="user"
 		/>
-	{/snippet}
+	</FilterBar>
 </div>

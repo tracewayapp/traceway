@@ -107,21 +107,3 @@ export function attributeFiltersEqual(a: AttributeFilter, b: AttributeFilter): b
 		(a.exists ? true : a.value === b.value)
 	);
 }
-
-// The filter list after one pill switched operator in place, or null when it
-// already had that operator. A switch that makes it equal to another pill
-// drops it instead of keeping two copies.
-export function withOperator<T extends AttributeFilter>(
-	filters: readonly T[],
-	index: number,
-	operator: FilterOperator
-): T[] | null {
-	const current = filters[index];
-	if (!current || filterOperator(current) === operator) return null;
-	const flags = operatorFlags(operator);
-	const changed = { ...current, ...flags, value: flags.exists ? '' : current.value };
-	const others = filters.filter((_, i) => i !== index);
-	return others.some((f) => attributeFiltersEqual(f, changed))
-		? others
-		: filters.map((f, i) => (i === index ? changed : f));
-}

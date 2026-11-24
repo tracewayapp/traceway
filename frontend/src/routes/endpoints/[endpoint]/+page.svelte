@@ -148,7 +148,7 @@
 		const attrs: AttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
 			const parsed = parseAttributeFilter(raw);
-			// Only logs can filter on whether a key exists.
+			// The request search matches values only; it has no existence filter.
 			if (parsed && !parsed.exists) attrs.push(parsed);
 		}
 		return { search: params.get('search') ?? '', attributeFilters: attrs };
@@ -156,6 +156,7 @@
 
 	let searchQuery = $state('');
 	let attributeFilters = $state<AttributeFilter[]>([]);
+	const attributeRules = storedValueRules('user.id', 'u_42', 'traces');
 
 	function handleFilterApply(next: FilterApply) {
 		searchQuery = next.search;
@@ -548,16 +549,12 @@
 		<FilterBar
 			search={searchQuery}
 			searchPlaceholder="Search attribute values..."
-			attributes={attributeConfig(attributeFilters, storedValueRules('user.id', 'u_42'))}
+			attributes={attributeConfig(attributeFilters, attributeRules)}
 			onApply={handleFilterApply}
 			disabled={loading}
 			noun="traces"
 			rangeLabel={timeRangeLabel}
 		>
-			{@render results()}
-		</FilterBar>
-
-		{#snippet results()}
 			<!-- Traces Table -->
 			<TableContainer minWidth="960px" empty={!loading && transactions.length === 0}>
 				<Table.Root>
@@ -672,7 +669,7 @@
 				{loading}
 				itemLabel="trace"
 			/>
-		{/snippet}
+		</FilterBar>
 	{/if}
 </div>
 

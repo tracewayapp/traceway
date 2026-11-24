@@ -53,7 +53,7 @@
 	let sortField = $state(initialSort.field);
 	let sortDirection = $state<SortDirection>(initialSort.direction);
 
-	const filterFields: FilterField[] = [{ ...issueTypeField(), inSearch: true }];
+	const filterFields: FilterField[] = [issueTypeField()];
 
 	function readSearchParams() {
 		if (!browser) return { search: '', searchType: 'all' };

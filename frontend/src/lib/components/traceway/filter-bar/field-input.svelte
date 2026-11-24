@@ -11,6 +11,7 @@
 		fieldError,
 		fieldValueLabel,
 		isFieldSet,
+		labelInSentence,
 		type FilterField,
 		type FilterOption,
 		type FilterValues
@@ -25,6 +26,7 @@
 		highlight = false,
 		options: loadedOptions,
 		loading = false,
+		failed = false,
 		changed = false
 	}: {
 		field: FilterField;
@@ -37,6 +39,7 @@
 		// Options fetched by the drawer for a field with `loadOptions`.
 		options?: readonly FilterOption[];
 		loading?: boolean;
+		failed?: boolean;
 		// Differs from what is applied, so Apply would change it.
 		changed?: boolean;
 	} = $props();
@@ -78,6 +81,19 @@
 	}
 </script>
 
+<!-- The "Any" item always matches, so a list that loaded nothing says so here, not in Command.Empty. -->
+{#snippet optionsState()}
+	{#if loading}
+		<p class="px-2 py-1.5 text-xs text-muted-foreground">Loading...</p>
+	{:else if failed}
+		<p class="px-2 py-1.5 text-xs text-destructive">
+			Could not load the values. Reopen the filters to try again.
+		</p>
+	{:else if field.kind === 'select' && field.loadOptions && options.length === 0}
+		<p class="px-2 py-1.5 text-xs text-muted-foreground">No values reported.</p>
+	{/if}
+{/snippet}
+
 <div
 	{id}
 	class="space-y-1.5 rounded-md transition-shadow {highlight
@@ -116,9 +132,9 @@
 			</Popover.Trigger>
 			<Popover.Content align="start" class="w-(--bits-popover-anchor-width) p-0">
 				<Command.Root>
-					<Command.Input placeholder="Find {field.label.toLowerCase()}..." />
+					<Command.Input placeholder="Find {labelInSentence(field.label)}..." />
 					<Command.List class="max-h-72">
-						<Command.Empty>{loading ? 'Loading...' : 'Nothing matches.'}</Command.Empty>
+						<Command.Empty>Nothing matches.</Command.Empty>
 						<Command.Group>
 							<Command.Item value={anyLabel} onSelect={() => pick(empty)}>
 								<Check class="h-4 w-4 {set ? 'opacity-0' : ''}" />
@@ -133,6 +149,7 @@
 								</Command.Item>
 							{/each}
 						</Command.Group>
+						{@render optionsState()}
 					</Command.List>
 				</Command.Root>
 			</Popover.Content>
@@ -163,9 +180,7 @@
 						>
 					</Select.Item>
 				{/each}
-				{#if loading}
-					<p class="px-2 py-1.5 text-xs text-muted-foreground">Loading...</p>
-				{/if}
+				{@render optionsState()}
 			</Select.Content>
 		</Select.Root>
 	{:else if field.kind === 'range'}
@@ -173,7 +188,7 @@
 			<Input
 				inputmode="decimal"
 				placeholder="Min"
-				aria-label="Minimum {field.label.toLowerCase()} in {field.unit}"
+				aria-label="Minimum {labelInSentence(field.label)} in {field.unit}"
 				class="h-9 min-w-0"
 				data-filter-input
 				value={values[field.minKey] ?? ''}
@@ -184,7 +199,7 @@
 			<Input
 				inputmode="decimal"
 				placeholder="Max"
-				aria-label="Maximum {field.label.toLowerCase()} in {field.unit}"
+				aria-label="Maximum {labelInSentence(field.label)} in {field.unit}"
 				class="h-9 min-w-0"
 				value={values[field.maxKey] ?? ''}
 				oninput={(e) => onChange({ ...values, [field.maxKey]: e.currentTarget.value })}
@@ -192,6 +207,20 @@
 			/>
 			<span class="text-xs text-muted-foreground">{field.unit}</span>
 		</div>
+	{:else if field.multiline}
+		<textarea
+			rows="3"
+			placeholder={field.placeholder}
+			aria-labelledby="{id}-label"
+			aria-invalid={!!error}
+			aria-describedby="{id}-note"
+			class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30 {field.mono
+				? 'font-mono text-xs'
+				: ''}"
+			data-filter-input
+			value={values[field.key] ?? ''}
+			oninput={(e) => onChange({ ...values, [field.key]: e.currentTarget.value })}
+		></textarea>
 	{:else}
 		<Input
 			placeholder={field.placeholder}

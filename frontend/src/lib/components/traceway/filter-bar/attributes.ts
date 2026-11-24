@@ -12,6 +12,7 @@ import type { AttributeConfig } from './fields';
 // only in these rules; the editor, the pills and the drawer are the same everywhere.
 export type AttributeRules = {
 	operators: readonly OperatorOption[];
+	hint?: string;
 	keyPlaceholder?: string;
 	valuePlaceholder?: string;
 	keys?: readonly string[];
@@ -76,6 +77,7 @@ export function attributeConfig(
 	return {
 		filters,
 		operators: rules.operators,
+		hint: rules.hint,
 		keyPlaceholder: rules.keyPlaceholder,
 		valuePlaceholder: rules.valuePlaceholder,
 		keys: rules.keys,
@@ -86,7 +88,17 @@ export function attributeConfig(
 }
 
 // Sessions and endpoint requests: values match as stored (one may really be empty or end in
-// a space), and only the value operators apply.
-export function storedValueRules(keyPlaceholder: string, valuePlaceholder: string): AttributeRules {
-	return { operators: operatorOptions, keyPlaceholder, valuePlaceholder, value: 'as-typed' };
+// a space), and only the value operators apply. noun: what the filters narrow ("sessions").
+export function storedValueRules(
+	keyPlaceholder: string,
+	valuePlaceholder: string,
+	noun: string
+): AttributeRules {
+	return {
+		operators: operatorOptions,
+		hint: `All filters must match. Contains ignores case; excluded filters also include ${noun} without the attribute.`,
+		keyPlaceholder,
+		valuePlaceholder,
+		value: 'as-typed'
+	};
 }

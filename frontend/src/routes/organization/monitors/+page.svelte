@@ -152,9 +152,11 @@
 	}
 
 	function handleCheckFilterApply(next: FilterApply) {
+		// The type is not kept in the URL, so only a new search makes a history entry for Back.
+		const searchChanged = next.search !== searchQuery;
 		searchQuery = next.search;
 		typeFilter = next.values.type ?? '';
-		syncUrl(true);
+		if (searchChanged) syncUrl(true);
 	}
 
 	function handleIncidentFilterApply(next: FilterApply) {
@@ -473,7 +475,6 @@
 			searchPlaceholder="Search incidents by title, monitor, or status page..."
 			onApply={handleIncidentFilterApply}
 			disabled={incidentsLoading}
-			noun="incidents"
 		>
 			<TableContainer minWidth="720px">
 				<Table.Root>

@@ -166,9 +166,11 @@
 	}
 
 	function handleFilterApply(next: FilterApply) {
+		// The type is not kept in the URL, so only a new search makes a history entry for Back.
+		const searchChanged = next.search !== searchQuery;
 		searchQuery = next.search;
 		typeFilter = next.values.type ?? '';
-		updateSearchUrl(true);
+		if (searchChanged) updateSearchUrl(true);
 	}
 
 	function uptimePct(check: CheckOverview): number | null {

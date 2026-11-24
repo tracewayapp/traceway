@@ -115,7 +115,7 @@
 	let searchQuery = $state(initialUrlParams.search);
 	let searchType = $state(initialUrlParams.searchType);
 
-	const filterFields: FilterField[] = [{ ...issueTypeField(), inSearch: true }];
+	const filterFields: FilterField[] = [issueTypeField()];
 	const filterValues = $derived({ searchType });
 	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 

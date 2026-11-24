@@ -131,7 +131,7 @@
 		const attrs: AttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
 			const parsed = parseAttributeFilter(raw);
-			// Only logs can filter on whether a key exists.
+			// The session search matches values only; it has no existence filter.
 			if (parsed && !parsed.exists) attrs.push(parsed);
 		}
 		return {
@@ -157,9 +157,10 @@
 	let attributeFilters = $state<AttributeFilter[]>(initialUrlParams.attributeFilters);
 
 	let filterBar = $state<ReturnType<typeof FilterBar>>();
+	const attributeRules = storedValueRules('userId', 'u_42', 'sessions');
 
 	// Clicking an attribute in a row opens the drawer with that filter filled in.
-	function addAttributeFilter(key: string, value: string) {
+	function filterByAttribute(key: string, value: string) {
 		filterBar?.openAttribute({ key, value, ...operatorFlags('=') });
 	}
 
@@ -172,12 +173,9 @@
 			label: `${rule.name}${rule.triggers === 0 ? ' (no triggers)' : ''}`
 		}))
 	]);
-	const triggerFieldOptions = $derived<FilterOption[]>([
-		...(triggerId && !reasonOptions.some((r) => r.triggerId === triggerId)
-			? [{ value: triggerId, label: triggerId }]
-			: []),
-		...reasonOptions.map((reason) => ({ value: reason.triggerId, label: reason.name }))
-	]);
+	const triggerFieldOptions = $derived<FilterOption[]>(
+		reasonOptions.map((reason) => ({ value: reason.triggerId, label: reason.name }))
+	);
 	const filterFields = $derived.by<FilterField[]>(() => {
 		const trigger: FilterField = {
 			kind: 'select',
@@ -406,16 +404,12 @@
 		fields={filterFields}
 		values={filterValues}
 		bind:this={filterBar}
-		attributes={attributeConfig(attributeFilters, storedValueRules('userId', 'u_42'))}
+		attributes={attributeConfig(attributeFilters, attributeRules)}
 		onApply={handleFilterApply}
 		disabled={loading}
 		noun="sessions"
 		rangeLabel={timeRangeLabel}
 	>
-		{@render results()}
-	</FilterBar>
-
-	{#snippet results()}
 		{#if ruleId}
 			<p class="text-xs text-muted-foreground">
 				Sessions in which a trigger of this rule asked for a recording.
@@ -520,7 +514,7 @@
 												aria-label={`Filter by ${key}=${value}`}
 												onclick={(event) => {
 													event.stopPropagation();
-													addAttributeFilter(key, value);
+													filterByAttribute(key, value);
 												}}
 											>
 												<span class="text-muted-foreground">{key}</span>={value || '""'}
@@ -577,5 +571,5 @@
 			{loading}
 			itemLabel="session"
 		/>
-	{/snippet}
+	</FilterBar>
 </div>

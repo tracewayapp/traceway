@@ -10,7 +10,6 @@
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { isRootFilterValue } from '$lib/components/ui/root-filter';
 	import { NonRootChip } from '$lib/components/ui/non-root-chip';
 	import { CalendarDate } from '@internationalized/date';
 	import { browser } from '$app/environment';
@@ -24,7 +23,8 @@
 		type FilterApply,
 		type FilterField,
 		describeTimeRange,
-		rootField
+		rootField,
+		rootFilterValue
 	} from '$lib/components/traceway/filter-bar';
 	import {
 		getTimeRangeFromPreset,
@@ -75,10 +75,9 @@
 	function readSearchAndFilterFromUrl() {
 		if (!browser) return { search: '', rootFilter: 'all' };
 		const params = new URLSearchParams(window.location.search);
-		const rootParam = params.get('rootFilter');
 		return {
 			search: params.get('search') || '',
-			rootFilter: isRootFilterValue(rootParam) ? rootParam : 'all'
+			rootFilter: rootFilterValue(params.get('rootFilter'))
 		};
 	}
 
@@ -244,9 +243,8 @@
 	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 
 	function handleFilterApply(next: FilterApply) {
-		const root = next.values.rootFilter ?? 'all';
 		searchQuery = next.search;
-		rootFilter = isRootFilterValue(root) ? root : 'all';
+		rootFilter = rootFilterValue(next.values.rootFilter);
 		page = 1;
 		loadData(true);
 	}
@@ -290,10 +288,6 @@
 		noun="tasks"
 		rangeLabel={timeRangeLabel}
 	>
-		{@render results()}
-	</FilterBar>
-
-	{#snippet results()}
 		<!-- Tasks Table -->
 		<TableContainer minWidth="640px" empty={loading || !!error || tasks.length === 0}>
 			<Table.Root>
@@ -396,5 +390,5 @@
 			{loading}
 			itemLabel="task"
 		/>
-	{/snippet}
+	</FilterBar>
 </div>

@@ -22,7 +22,8 @@
 		type FilterField,
 		describeTimeRange,
 		attributeConfig,
-		traceIdField
+		traceIdField,
+		valueOptions
 	} from '$lib/components/traceway/filter-bar';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
@@ -127,33 +128,24 @@
 	let orderBy = $state<SortField>(initialSort.field === 'duration' ? 'duration' : 'start_time');
 	let sortDirection = $state<SortDirection>(initialSort.direction);
 
-	const serviceOptions = $derived(
-		[...new Set([...services, filters.service].filter((name) => !!name))].map((name) => ({
-			value: name,
-			label: name
-		}))
-	);
 	const filterFields = $derived<FilterField[]>([
 		{
 			kind: 'select',
 			key: 'service',
 			label: 'Service',
-			anyLabel: 'Any service',
-			options: serviceOptions,
+			options: valueOptions(services),
 			searchable: true
 		},
 		{
 			kind: 'select',
 			key: 'kind',
 			label: 'Kind',
-			anyLabel: 'Any kind',
 			options: SPAN_KIND_OPTIONS
 		},
 		{
 			kind: 'select',
 			key: 'status',
 			label: 'Status',
-			anyLabel: 'Any status',
 			options: SPAN_STATUS_OPTIONS
 		},
 		{
@@ -455,85 +447,10 @@
 				{timeRangeLabel}
 				namePlaceholder="Slow checkout queries"
 				onApply={applySavedFilter}
+				disabled={loading}
 			/>
 		{/snippet}
 
-		{@render results()}
-	</FilterBar>
-
-	<AlertDialog.Root open={chartDialogOpen} onOpenChange={(open) => (chartDialogOpen = open)}>
-		<AlertDialog.Content>
-			<AlertDialog.Header>
-				<AlertDialog.Title>Chart an attribute</AlertDialog.Title>
-				<AlertDialog.Description>
-					Charts the numeric values of one attribute across the spans the filters match, such as
-					<code class="font-mono">db.response.returned_rows</code>.
-				</AlertDialog.Description>
-			</AlertDialog.Header>
-			<div class="flex flex-col gap-3">
-				<FormField label="Attribute key">
-					<Input
-						placeholder="db.response.returned_rows"
-						bind:value={chartDialogKey}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') {
-								e.preventDefault();
-								submitChartDialog();
-							}
-						}}
-					/>
-				</FormField>
-				{#if chartDialogError}
-					<p class="text-xs text-red-500">{chartDialogError}</p>
-				{/if}
-			</div>
-			<AlertDialog.Footer>
-				<Button variant="outline" onclick={() => (chartDialogOpen = false)}>Cancel</Button>
-				<Button onclick={submitChartDialog}><ChartLine class="h-4 w-4" /> Chart values</Button>
-			</AlertDialog.Footer>
-		</AlertDialog.Content>
-	</AlertDialog.Root>
-
-	{#snippet chartHeading()}
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger
-				class="-ml-1 inline-flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs hover:bg-muted"
-				aria-label="What to chart"
-				title="What to chart"
-			>
-				{#if chart?.target.kind === 'attribute'}
-					<ChartLine class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-					<span class="truncate font-mono font-medium">{chart.target.key}</span>
-				{:else}
-					<Timer class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-					<span class="font-medium">Duration</span>
-				{/if}
-				<ChevronDown class="h-3 w-3 shrink-0 opacity-60" />
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content align="start" class="min-w-52">
-				<DropdownMenu.Label class="text-xs font-normal text-muted-foreground"
-					>Chart</DropdownMenu.Label
-				>
-				<DropdownMenu.Item onclick={() => setChartTarget({ kind: 'duration' })}>
-					<Check class="h-4 w-4 {chart?.target.kind === 'duration' ? '' : 'opacity-0'}" />
-					Duration
-				</DropdownMenu.Item>
-				{#if chart?.target.kind === 'attribute'}
-					<DropdownMenu.Item onclick={openChartDialog}>
-						<Check class="h-4 w-4" />
-						<span class="truncate font-mono">{chart.target.key}</span>
-					</DropdownMenu.Item>
-				{/if}
-				<DropdownMenu.Separator />
-				<DropdownMenu.Item onclick={openChartDialog}>
-					<Plus class="h-4 w-4" />
-					A numeric attribute...
-				</DropdownMenu.Item>
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
-	{/snippet}
-
-	{#snippet results()}
 		<!-- An empty search draws no chart: a flat line over empty buckets says nothing. -->
 		{#if chart && (loading || spans.length > 0)}
 			<ChartPanel
@@ -671,5 +588,77 @@
 			{loading}
 			itemLabel="span"
 		/>
+	</FilterBar>
+
+	<AlertDialog.Root open={chartDialogOpen} onOpenChange={(open) => (chartDialogOpen = open)}>
+		<AlertDialog.Content>
+			<AlertDialog.Header>
+				<AlertDialog.Title>Chart an attribute</AlertDialog.Title>
+				<AlertDialog.Description>
+					Charts the numeric values of one attribute across the spans the filters match, such as
+					<code class="font-mono">db.response.returned_rows</code>.
+				</AlertDialog.Description>
+			</AlertDialog.Header>
+			<div class="flex flex-col gap-3">
+				<FormField label="Attribute key">
+					<Input
+						placeholder="db.response.returned_rows"
+						bind:value={chartDialogKey}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault();
+								submitChartDialog();
+							}
+						}}
+					/>
+				</FormField>
+				{#if chartDialogError}
+					<p class="text-xs text-red-500">{chartDialogError}</p>
+				{/if}
+			</div>
+			<AlertDialog.Footer>
+				<Button variant="outline" onclick={() => (chartDialogOpen = false)}>Cancel</Button>
+				<Button onclick={submitChartDialog}><ChartLine class="h-4 w-4" /> Chart values</Button>
+			</AlertDialog.Footer>
+		</AlertDialog.Content>
+	</AlertDialog.Root>
+
+	{#snippet chartHeading()}
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger
+				class="-ml-1 inline-flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs hover:bg-muted"
+				aria-label="What to chart"
+				title="What to chart"
+			>
+				{#if chart?.target.kind === 'attribute'}
+					<ChartLine class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+					<span class="truncate font-mono font-medium">{chart.target.key}</span>
+				{:else}
+					<Timer class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+					<span class="font-medium">Duration</span>
+				{/if}
+				<ChevronDown class="h-3 w-3 shrink-0 opacity-60" />
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content align="start" class="min-w-52">
+				<DropdownMenu.Label class="text-xs font-normal text-muted-foreground"
+					>Chart</DropdownMenu.Label
+				>
+				<DropdownMenu.Item onclick={() => setChartTarget({ kind: 'duration' })}>
+					<Check class="h-4 w-4 {chart?.target.kind === 'duration' ? '' : 'opacity-0'}" />
+					Duration
+				</DropdownMenu.Item>
+				{#if chart?.target.kind === 'attribute'}
+					<DropdownMenu.Item onclick={openChartDialog}>
+						<Check class="h-4 w-4" />
+						<span class="truncate font-mono">{chart.target.key}</span>
+					</DropdownMenu.Item>
+				{/if}
+				<DropdownMenu.Separator />
+				<DropdownMenu.Item onclick={openChartDialog}>
+					<Plus class="h-4 w-4" />
+					A numeric attribute...
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
 	{/snippet}
 </div>

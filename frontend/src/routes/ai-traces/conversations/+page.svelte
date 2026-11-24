@@ -23,7 +23,8 @@
 		FilterBar,
 		type FilterApply,
 		type FilterField,
-		describeTimeRange
+		describeTimeRange,
+		valueOptions
 	} from '$lib/components/traceway/filter-bar';
 	import { formatCost, formatCount, formatTokens } from '$lib/utils/ai-format';
 	import AiNavTabs from '$lib/components/ai/ai-nav-tabs.svelte';
@@ -276,14 +277,6 @@
 		loadData(false);
 	}
 
-	// The facets list what the time range holds, so a value from a link or an earlier range is added back.
-	function facetOptions(facets: string[], applied: string) {
-		return [...new Set([...facets, applied].filter((v) => !!v))].map((v) => ({
-			value: v,
-			label: v
-		}));
-	}
-
 	const filterFields = $derived<FilterField[]>([
 		{
 			kind: 'select',
@@ -297,21 +290,19 @@
 			kind: 'select',
 			key: 'model',
 			label: 'Model',
-			anyLabel: 'Any model',
-			options: facetOptions(facetModels, modelFilter)
+			options: valueOptions(facetModels)
 		},
 		{
 			kind: 'select',
 			key: 'tool',
 			label: 'Tool',
-			anyLabel: 'Any tool',
-			options: facetOptions(facetTools, toolFilter)
+			options: valueOptions(facetTools)
 		},
 		{
 			kind: 'text',
 			key: 'userId',
 			label: 'User',
-			placeholder: 'e.g. user-2@shop.test',
+			placeholder: 'u_42',
 			hint: 'The exact user ID.'
 		}
 	]);
@@ -328,7 +319,9 @@
 		flaggedFilter = next.values.flagged === 'flagged' ? 'flagged' : 'all';
 		modelFilter = next.values.model ?? '';
 		toolFilter = next.values.tool ?? '';
-		userIdFilter = next.values.userId?.trim() ?? '';
+		// IDs match exactly, so one kept from a link is not trimmed unless it was edited.
+		const userId = next.values.userId ?? '';
+		userIdFilter = userId === userIdFilter ? userId : userId.trim();
 		page = 1;
 		loadData(true);
 	}
@@ -405,10 +398,6 @@
 		noun="conversations"
 		rangeLabel={timeRangeLabel}
 	>
-		{@render results()}
-	</FilterBar>
-
-	{#snippet results()}
 		<!-- Conversations Table -->
 		<TableContainer>
 			<Table.Root>
@@ -653,7 +642,7 @@
 			{loading}
 			itemLabel="conversation"
 		/>
-	{/snippet}
+	</FilterBar>
 </div>
 
 <EditProjectModal

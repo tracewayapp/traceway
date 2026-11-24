@@ -121,8 +121,7 @@ it('opens the drawer with a row attribute filled in, without navigating', async 
 	expect(within(drawer).getByDisplayValue('email')).toBeTruthy();
 	expect(within(drawer).getByDisplayValue('alice@example.com')).toBeTruthy();
 	expect(post.mock.calls.length).toBe(calls);
-	await fireEvent.click(within(drawer).getByRole('button', { name: 'Add filter' }));
-	await fireEvent.click(within(drawer).getByRole('button', { name: /^Apply/ }));
+	await fireEvent.click(within(drawer).getByRole('button', { name: 'Apply 1 change' }));
 	await waitFor(() =>
 		expect(post.mock.lastCall?.[1].attributeFilters).toEqual([
 			{ key: 'userId', value: 'u_42', exclude: false, contains: false, exists: false },

@@ -1,27 +1,23 @@
-import { METHOD_OPTIONS } from '$lib/components/ui/endpoint-filter';
-import { presetLabels } from '$lib/utils/saved-filters';
-import type { SelectField, TextField } from './fields';
+import { presetGroups } from '$lib/utils/time-presets';
+import type { FilterOption, SelectField, TextField } from './fields';
 
 // Fields that several pages share, so the same filter reads and behaves the same everywhere.
 
-// Worded like the time range picker ("Last 24 hours"), for "Applied to spans in the last 24 hours".
-const RANGE_WORDS: Record<string, string> = {
-	'5m': '5 minutes',
-	'30m': '30 minutes',
-	'60m': '60 minutes',
-	'3h': '3 hours',
-	'6h': '6 hours',
-	'12h': '12 hours',
-	'24h': '24 hours',
-	'3d': '3 days',
-	'7d': '7 days',
-	'1M': 'month',
-	'3M': '3 months'
-};
-
+// For "Applied to spans in the last 24 hours", in the picker's own words.
 export function describeTimeRange(preset: string | null | undefined): string {
 	if (!preset) return 'the custom range';
-	return RANGE_WORDS[preset] ? `last ${RANGE_WORDS[preset]}` : (presetLabels[preset] ?? preset);
+	const known = presetGroups.flat().find((p) => p.value === preset);
+	return known ? `last ${known.label}` : preset;
+}
+
+const ROOT_OPTIONS: readonly FilterOption[] = [
+	{ value: 'root', label: 'Root', pill: 'Root only' },
+	{ value: 'non_root', label: 'Non-root', pill: 'Non-root only' }
+];
+
+// A root filter from a link or the bar, with anything unknown read as no filter.
+export function rootFilterValue(value: string | null | undefined): string {
+	return ROOT_OPTIONS.find((option) => option.value === value)?.value ?? 'all';
 }
 
 // noun: what a root or non-root row is on that page ("requests", "runs", "calls").
@@ -31,33 +27,29 @@ export function rootField(noun: string, key = 'rootFilter'): SelectField {
 		key,
 		label: 'Root',
 		anyLabel: 'Root and non-root',
-		options: [
-			{ value: 'root', label: 'Root', pill: 'Root only' },
-			{ value: 'non_root', label: 'Non-root', pill: 'Non-root only' }
-		],
+		options: ROOT_OPTIONS,
 		emptyValue: 'all',
 		hint: `Non-root ${noun} were triggered by another trace.`
 	};
 }
 
-const METHOD_COLORS: Record<string, string> = {
-	GET: 'font-mono text-sky-700 dark:text-sky-400',
-	POST: 'font-mono text-emerald-700 dark:text-emerald-400',
-	PUT: 'font-mono text-amber-700 dark:text-amber-400',
-	PATCH: 'font-mono text-orange-700 dark:text-orange-400',
-	DELETE: 'font-mono text-rose-700 dark:text-rose-400',
-	HEAD: 'font-mono text-violet-700 dark:text-violet-400',
-	OPTIONS: 'font-mono text-violet-700 dark:text-violet-400'
-};
+// The values are what the endpoint search takes; `all` (no filter) is the field's empty value.
+const METHOD_OPTIONS: readonly FilterOption[] = [
+	{ value: 'get', label: 'GET', class: 'font-mono text-sky-700 dark:text-sky-400' },
+	{ value: 'post', label: 'POST', class: 'font-mono text-emerald-700 dark:text-emerald-400' },
+	{ value: 'put', label: 'PUT', class: 'font-mono text-amber-700 dark:text-amber-400' },
+	{ value: 'patch', label: 'PATCH', class: 'font-mono text-orange-700 dark:text-orange-400' },
+	{ value: 'delete', label: 'DELETE', class: 'font-mono text-rose-700 dark:text-rose-400' },
+	{ value: 'options', label: 'OPTIONS', class: 'font-mono text-violet-700 dark:text-violet-400' },
+	{ value: 'head', label: 'HEAD', class: 'font-mono text-violet-700 dark:text-violet-400' }
+];
+
+export function methodFilterValue(value: string | null | undefined): string {
+	return METHOD_OPTIONS.find((option) => option.value === value)?.value ?? 'all';
+}
 
 export function methodField(key = 'methodFilter'): SelectField {
-	return {
-		kind: 'select',
-		key,
-		label: 'Method',
-		options: METHOD_OPTIONS.map((o) => ({ ...o, class: METHOD_COLORS[o.label] })),
-		emptyValue: 'all'
-	};
+	return { kind: 'select', key, label: 'Method', options: METHOD_OPTIONS, emptyValue: 'all' };
 }
 
 export function issueTypeField(key = 'searchType'): SelectField {
@@ -67,6 +59,7 @@ export function issueTypeField(key = 'searchType'): SelectField {
 		label: 'Type',
 		anyLabel: 'Issues and messages',
 		emptyValue: 'all',
+		inSearch: true,
 		options: [
 			{ value: 'issues', label: 'Issues', pill: 'Issues only' },
 			{ value: 'messages', label: 'Messages', pill: 'Messages only' }

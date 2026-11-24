@@ -1,31 +1,35 @@
 import { api } from '$lib/api';
-import type { FilterOption } from '$lib/components/traceway/filter-bar';
+import { valueOptions, type FilterOption } from '$lib/components/traceway/filter-bar';
 
-const asOptions = (values: string[]): FilterOption[] =>
-	values.map((value) => ({ value, label: value }));
+// The values one tag takes in a metric. A metric without data, or a failed read, offers none.
+export async function loadTagValues(
+	projectId: string | undefined,
+	metric: string,
+	key: string
+): Promise<string[]> {
+	try {
+		const response = await api.get(
+			`/metrics/discover/tags?name=${encodeURIComponent(metric)}&key=${encodeURIComponent(key)}`,
+			{ projectId }
+		);
+		return response.values ?? [];
+	} catch {
+		return [];
+	}
+}
 
 // The values a client dimension (release, OS, country) takes in any of `metrics`, newest
-// release first. A metric without data offers nothing.
+// release first.
 export async function loadDimensionValues(
 	projectId: string,
 	metrics: readonly string[],
 	dimension: string
 ): Promise<FilterOption[]> {
-	const found = new Set<string>();
-	await Promise.all(
-		metrics.map(async (metric) => {
-			try {
-				const response = await api.get(
-					`/metrics/discover/tags?name=${encodeURIComponent(metric)}&key=${encodeURIComponent(dimension)}`,
-					{ projectId }
-				);
-				for (const value of response.values ?? []) found.add(value);
-			} catch {
-				// Nothing to offer from this metric.
-			}
-		})
+	const lists = await Promise.all(
+		metrics.map((metric) => loadTagValues(projectId, metric, dimension))
 	);
-	return asOptions([...found].sort((a, b) => b.localeCompare(a, undefined, { numeric: true })));
+	const found = new Set(lists.flat());
+	return valueOptions([...found].sort((a, b) => b.localeCompare(a, undefined, { numeric: true })));
 }
 
 // The instances (`server_name`) that reported in the range.
@@ -38,5 +42,5 @@ export async function loadInstances(projectId: string, from: string, to: string)
 	const names = discovered
 		.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
 		.map((v) => v.trim());
-	return asOptions([...new Set(names)].sort((a, b) => a.localeCompare(b)));
+	return valueOptions([...new Set(names)].sort((a, b) => a.localeCompare(b)));
 }

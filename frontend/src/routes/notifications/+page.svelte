@@ -671,7 +671,6 @@
 			searchPlaceholder="Search Historic Alerts..."
 			onApply={handleHistoryFilterApply}
 			disabled={historyLoading}
-			noun="alerts"
 		>
 			{#snippet actions()}
 				<TimeRangePicker
@@ -684,10 +683,6 @@
 				/>
 			{/snippet}
 
-			{@render results()}
-		</FilterBar>
-
-		{#snippet results()}
 			{#if historyError && !historyLoading}
 				<ErrorRetryBox message={historyError} onRetry={() => loadHistory(false)} />
 			{:else}
@@ -768,8 +763,9 @@
 				onPageChange={handleHistoryPageChange}
 				onPageSizeChange={handleHistoryPageSizeChange}
 				itemLabel="notification"
+				loading={historyLoading}
 			/>
-		{/snippet}
+		</FilterBar>
 	{/if}
 </div>
 

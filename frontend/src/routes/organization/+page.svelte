@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api } from '$lib/api';
 	import { organizationContext } from '$lib/state/organization-context.svelte';
+	import { projectsState } from '$lib/state/projects.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { formatRelativeTimeAgo } from '$lib/utils/formatters';
 	import { resolveHref } from '$lib/utils/links';
@@ -307,16 +308,24 @@
 		projectFilter = 'all';
 	}
 
+	// A filtered project that stopped reporting keeps its field and its name, so the pill
+	// still reads well and can be removed.
+	const projectFieldOptions = $derived.by(() => {
+		const options = projectOptions.map((p) => ({ value: p.id, label: p.name }));
+		if (projectFilter === 'all' || options.some((o) => o.value === projectFilter)) return options;
+		const name = projectsState.projects.find((p) => p.id === projectFilter)?.name;
+		return [{ value: projectFilter, label: name ?? projectFilter }, ...options];
+	});
+
 	const filterFields = $derived<FilterField[]>([
-		...(projectOptions.length > 1
+		...(projectFieldOptions.length > 1 || projectFilter !== 'all'
 			? [
 					{
 						kind: 'select' as const,
 						key: 'project',
 						label: 'Project',
-						anyLabel: 'Any project',
 						emptyValue: 'all',
-						options: projectOptions.map((p) => ({ value: p.id, label: p.name }))
+						options: projectFieldOptions
 					}
 				]
 			: []),
@@ -324,7 +333,6 @@
 			kind: 'select',
 			key: 'state',
 			label: 'Health',
-			anyLabel: 'Any health',
 			emptyValue: 'all',
 			options: STATE_ORDER.map((state) => ({
 				value: state,
@@ -456,6 +464,7 @@
 			values={filterValues}
 			onApply={handleFilterApply}
 			noun="servers"
+			rangeLabel="last 30 minutes"
 		>
 			{#snippet actions()}
 				{#if filtersActive}

@@ -94,7 +94,6 @@
 			key: 'result',
 			label: 'Result',
 			emptyValue: 'all',
-			anyLabel: 'Any result',
 			options: [
 				{ value: 'up', label: 'Up' },
 				{ value: 'down', label: 'Down' },

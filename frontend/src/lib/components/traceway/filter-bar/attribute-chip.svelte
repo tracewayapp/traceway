@@ -7,13 +7,16 @@
 		filter,
 		onEdit,
 		onRemove,
-		pending = false
+		pending = false,
+		removeDisabled = false
 	}: {
 		filter: AttributeFilter;
 		onEdit: () => void;
 		onRemove: () => void;
 		// In the drawer: added or changed, not applied yet.
 		pending?: boolean;
+		// On the page, where × runs the search: off while a request is out.
+		removeDisabled?: boolean;
 	} = $props();
 </script>
 
@@ -28,20 +31,22 @@
 		title="Edit filter"
 		aria-label="Edit filter {filter.key} {attributePill(filter)}{filter.exists
 			? ''
-			: ` ${filter.value}`}"
+			: ` ${filter.value || '""'}`}"
 		data-filter-pill
 		onclick={onEdit}
 	>
-		<span class="truncate text-muted-foreground">{filter.key}</span>
+		<span class="truncate text-muted-foreground" title={filter.key}>{filter.key}</span>
 		<span class={filter.exclude ? 'text-red-500' : ''}>{attributePill(filter)}</span>
 		{#if !filter.exists}
-			<span class="truncate">{filter.value}</span>
+			<!-- Stored-value pages match an empty value too, which would otherwise read as nothing. -->
+			<span class="truncate" title={filter.value}>{filter.value || '""'}</span>
 		{/if}
 	</button>
 	<button
 		type="button"
 		aria-label="Remove filter {filter.key}"
-		class="-mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+		class="-mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+		disabled={removeDisabled}
 		onclick={onRemove}
 	>
 		<X class="h-3 w-3" />

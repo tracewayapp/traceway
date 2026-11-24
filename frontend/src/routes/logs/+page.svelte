@@ -19,8 +19,7 @@
 		type FilterField,
 		describeTimeRange,
 		attributeConfig,
-		traceIdField,
-		type AttributeRules
+		traceIdField
 	} from '$lib/components/traceway/filter-bar';
 	import ExpandedLogRow from '$lib/components/trace-logs/expanded-log-row.svelte';
 	import LogMessage from '$lib/components/trace-logs/log-message.svelte';
@@ -32,20 +31,16 @@
 	import SavedFiltersMenu from '$lib/components/traceway/saved-filters-menu.svelte';
 	import ChartPanel, { type ChartSelection } from '$lib/components/value-chart/chart-panel.svelte';
 	import { Play } from '@lucide/svelte';
-	import {
-		filterOperator,
-		keyOperatorOptions,
-		operatorFlags,
-		type AttributeFilter,
-		type FilterOperator
-	} from '$lib/utils/attribute-filters';
+	import { filterOperator, operatorFlags, type FilterOperator } from '$lib/utils/attribute-filters';
 	import {
 		filtersEqual,
 		formatLogAttributeFilter,
 		formatLogAttributeTarget,
+		fromFlatLogFilter,
+		LOG_ATTRIBUTE_RULES,
 		parseLogAttributeFilter,
-		parseLogAttributeTarget,
 		sameFilterTarget,
+		toFlatLogFilter,
 		type LogAttributeFilter,
 		type LogAttributeTarget
 	} from '$lib/utils/log-filters';
@@ -157,9 +152,10 @@
 	let volumeLoading = $state(false);
 	let volumeEl = $state<HTMLDivElement | null>(null);
 	let volumeGen = 0;
-	// Charts only show for a search that found something.
+	// Charts show while a search loads, unless the volume already came back empty, and once
+	// it found rows (live tail adds rows the last volume count did not see).
 	const hasResults = $derived(
-		(loading || !!error || logs.length > 0) && !(volume?.total === 0 && !volumeLoading)
+		logs.length > 0 || (loading && !(volume?.total === 0 && !volumeLoading))
 	);
 
 	// Windowed rendering: only rows near the viewport are mounted, spacer rows
@@ -322,7 +318,6 @@
 			kind: 'select',
 			key: 'minSeverity',
 			label: 'Level',
-			anyLabel: 'Any level',
 			emptyValue: '0',
 			options: severityOptions,
 			inSearch: true
@@ -354,6 +349,7 @@
 			key: 'body',
 			label: 'Exact message',
 			placeholder: 'The whole message',
+			multiline: true,
 			hint: 'Matches the whole message exactly. Set it from a log row.'
 		}
 	];
@@ -368,39 +364,6 @@
 		body: bodyFilter
 	});
 
-	// FilterBar edits flat keys (`resource.service.name`); the page keeps the scope apart.
-	function toFlatFilter(f: LogAttributeFilter): AttributeFilter {
-		return {
-			key: formatLogAttributeTarget(f),
-			value: f.value,
-			exclude: f.exclude,
-			contains: f.contains,
-			exists: f.exists
-		};
-	}
-
-	function fromFlatFilter(f: AttributeFilter): LogAttributeFilter[] {
-		const target = parseLogAttributeTarget(f.key);
-		return target ? [{ ...f, ...target }] : [];
-	}
-
-	const LOG_ATTRIBUTE_RULES: AttributeRules = {
-		operators: keyOperatorOptions,
-		keyPlaceholder: 'resource.service.name',
-		valuePlaceholder: 'backend-service',
-		value: 'trim-end',
-		key: (key) => {
-			const target = parseLogAttributeTarget(key);
-			return target && target.key.trim()
-				? formatLogAttributeTarget(target)
-				: { error: 'Key must start with resource., scope., or log.' };
-		}
-	};
-
-	const attributeFilterConfig = $derived(
-		attributeConfig(attributeFilters.map(toFlatFilter), LOG_ATTRIBUTE_RULES)
-	);
-
 	function handleFilterApply(next: FilterApply) {
 		searchQuery = next.search;
 		searchType = next.values.searchType || 'body';
@@ -410,7 +373,7 @@
 		spanIdFilter = next.values.spanId ?? '';
 		scopeNameFilter = next.values.scopeName ?? '';
 		bodyFilter = next.values.body ?? '';
-		attributeFilters = next.attributes.flatMap(fromFlatFilter);
+		attributeFilters = next.attributes.flatMap(fromFlatLogFilter);
 		loadData(true);
 	}
 
@@ -978,7 +941,7 @@
 		searchPlaceholder="Search logs..."
 		fields={filterFields}
 		values={filterValues}
-		attributes={attributeFilterConfig}
+		attributes={attributeConfig(attributeFilters.map(toFlatLogFilter), LOG_ATTRIBUTE_RULES)}
 		onApply={handleFilterApply}
 		disabled={loading}
 		noun="logs"
@@ -990,18 +953,14 @@
 				currentQuery={appliedQuery}
 				{timeRangeLabel}
 				onApply={applySavedFilter}
+				disabled={loading}
 			/>
 		{/snippet}
 
-		{@render results()}
-	</FilterBar>
-
-	{#snippet results()}
 		<TableContainer>
+			<!-- An empty search draws no chart: a flat strip of empty buckets says nothing. -->
 			<div bind:this={volumeEl}>
-				{#if !hasResults}
-					<!-- An empty search draws no chart: a flat strip of empty buckets says nothing. -->
-				{:else if volume}
+				{#if hasResults && volume}
 					<LogVolumeChart
 						buckets={volume.buckets}
 						intervalSeconds={volume.intervalSeconds}
@@ -1010,7 +969,7 @@
 						loading={volumeLoading}
 						onRangeSelect={handleVolumeRangeSelect}
 					/>
-				{:else}
+				{:else if hasResults}
 					<div
 						class="flex h-[95px] items-center justify-center border-b text-xs text-muted-foreground"
 					>
@@ -1161,7 +1120,12 @@
 								<Table.Cell colspan={5}>
 									<div class="flex items-center justify-center gap-3 py-1">
 										{#if logs.length < displayTotal}
-											<Button variant="outline" size="sm" onclick={loadMore} disabled={loadingMore}>
+											<Button
+												variant="outline"
+												size="sm"
+												onclick={loadMore}
+												disabled={loadingMore || loading}
+											>
 												{loadingMore ? 'Loading…' : `Load ${pageSize} more`}
 											</Button>
 										{/if}
@@ -1179,5 +1143,5 @@
 				</Table.Root>
 			</div>
 		</TableContainer>
-	{/snippet}
+	</FilterBar>
 </div>

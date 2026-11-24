@@ -73,7 +73,6 @@
 			kind: 'select',
 			key: 'kind',
 			label: 'SLI kind',
-			anyLabel: 'Any SLI kind',
 			options: (isFrontendProject ? FRONTEND_SLI_KINDS : BACKEND_SLI_KINDS).map((kind) => ({
 				value: kind,
 				label: SLI_KIND_LABELS[kind]
@@ -130,9 +129,11 @@
 	}
 
 	function handleFilterApply(next: FilterApply) {
+		// The kind is not kept in the URL, so only a new search makes a history entry for Back.
+		const searchChanged = next.search !== searchQuery;
 		searchQuery = next.search;
 		kindFilter = next.values.kind ?? '';
-		updateSearchUrl(true);
+		if (searchChanged) updateSearchUrl(true);
 	}
 
 	const statusRank: Record<string, number> = { breached: 0, no_data: 1, ok: 2 };

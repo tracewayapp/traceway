@@ -256,12 +256,7 @@
 		searchPlaceholder="Search services..."
 		onApply={handleFilterApply}
 		disabled={loading}
-		noun="profiles"
 	>
-		{@render results()}
-	</FilterBar>
-
-	{#snippet results()}
 		<TableContainer>
 			<Table.Root>
 				{#if loading}
@@ -387,5 +382,5 @@
 			{loading}
 			itemLabel="profile"
 		/>
-	{/snippet}
+	</FilterBar>
 </div>

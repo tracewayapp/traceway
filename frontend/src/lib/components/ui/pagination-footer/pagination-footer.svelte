@@ -20,6 +20,7 @@
 		totalItems: number;
 		onPageChange: (page: number) => void;
 		onPageSizeChange: (size: number) => void;
+		// True while the list's request is out: paging and the page size wait for it to answer.
 		loading?: boolean;
 		pageSizeOptions?: number[];
 		itemLabel?: string;
@@ -32,19 +33,19 @@
 	);
 
 	function handlePrevPage() {
-		if (currentPage > 1) {
+		if (currentPage > 1 && !loading) {
 			onPageChange(currentPage - 1);
 		}
 	}
 
 	function handleNextPage() {
-		if (currentPage < totalPages) {
+		if (currentPage < totalPages && !loading) {
 			onPageChange(currentPage + 1);
 		}
 	}
 
 	function handlePageSizeSelect(value: string | undefined) {
-		if (value) {
+		if (value && !loading) {
 			onPageSizeChange(parseInt(value));
 		}
 	}
@@ -62,7 +63,12 @@
 		<div class="flex flex-wrap items-center gap-x-6 gap-y-2">
 			<div class="flex items-center space-x-2">
 				<p class="text-sm font-medium whitespace-nowrap">Rows per page</p>
-				<Select.Root type="single" value={pageSize.toString()} onValueChange={handlePageSizeSelect}>
+				<Select.Root
+					type="single"
+					value={pageSize.toString()}
+					onValueChange={handlePageSizeSelect}
+					disabled={loading}
+				>
 					<Select.Trigger class="h-8 w-[70px]">
 						{pageSize}
 					</Select.Trigger>

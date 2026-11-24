@@ -3,6 +3,7 @@ import { keyOperatorOptions, operatorFlags } from '$lib/utils/attribute-filters'
 import { parseAttributeInput, storedValueRules, type AttributeRules } from './attributes';
 import {
 	activeCount,
+	anyLabelOf,
 	clearedValues,
 	isFieldSet,
 	namedDefault,
@@ -65,6 +66,13 @@ describe('fields', () => {
 		expect(activeCount(fields, { rootFilter: 'root', maxMs: '3' }, [])).toBe(2);
 	});
 
+	it('reads a label inside a sentence, keeping acronyms', () => {
+		expect(anyLabelOf(kind)).toBe('Any kind');
+		expect(anyLabelOf({ ...kind, label: 'OS' })).toBe('Any OS');
+		expect(anyLabelOf({ ...kind, label: 'SLI kind' })).toBe('Any SLI kind');
+		expect(anyLabelOf(rootField('runs'))).toBe('Root and non-root');
+	});
+
 	it('names a default only when it narrows the list', () => {
 		expect(namedDefault(issueTypeField())).toBeNull();
 		expect(
@@ -109,7 +117,7 @@ describe('parseAttributeInput', () => {
 	});
 
 	it('keeps stored values as typed, and an unchanged trailing space under trim-end', () => {
-		expect(parseAttributeInput(storedValueRules('k', 'v'), 'k', ' x ', '=', [])).toEqual(
+		expect(parseAttributeInput(storedValueRules('k', 'v', 'rows'), 'k', ' x ', '=', [])).toEqual(
 			eq('k', ' x ')
 		);
 		const trimEnd: AttributeRules = { operators: keyOperatorOptions, value: 'trim-end' };
@@ -134,7 +142,7 @@ describe('presets', () => {
 
 	it('describes preset and custom ranges', () => {
 		expect(describeTimeRange('24h')).toBe('last 24 hours');
-		expect(describeTimeRange('1M')).toBe('last month');
+		expect(describeTimeRange('1M')).toBe('last 1 month');
 		expect(describeTimeRange(null)).toBe('the custom range');
 	});
 });

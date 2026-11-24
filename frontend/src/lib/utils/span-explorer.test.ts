@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
 	parseSpanAttributeFilter,
-	parseSpanFilter,
 	readSpanChart,
 	readSpanSearchFilters,
 	spanChartBody,
@@ -10,8 +9,10 @@ import {
 	spanSearchBody,
 	spanSearchUrlParams,
 	spanTraceHref,
-	summarizeSpanTrace
+	summarizeSpanTrace,
+	SPAN_ATTRIBUTE_RULES
 } from './span-explorer';
+import { parseAttributeInput } from '$lib/components/traceway/filter-bar/attributes';
 import type { Span } from '$lib/types/spans';
 
 function urlOf(params: Record<string, string | string[] | undefined>): string {
@@ -86,29 +87,31 @@ describe('span search filters', () => {
 	});
 });
 
-describe('explorer filter dialog', () => {
+describe('explorer attribute rules', () => {
 	it('takes an operator and needs no value to check a key', () => {
-		expect(parseSpanFilter(' cache.hit ', 'ignored', '!?=', [])).toEqual({
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, ' cache.hit ', 'ignored', '!?=', [])).toEqual({
 			key: 'cache.hit',
 			value: '',
 			exclude: true,
 			contains: false,
 			exists: true
 		});
-		expect(parseSpanFilter('db.rows', '', '~=', [])).toMatch(/value/);
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'db.rows', '', '~=', [])).toMatch(/value/);
 	});
 
 	it('lets an edited pill keep its place but not copy another', () => {
-		const a = parseSpanFilter('a', '1', '=', []) as never;
-		const b = parseSpanFilter('b', '2', '=', []) as never;
-		expect(parseSpanFilter('a', '1', '=', [a, b], 0)).toEqual(a);
-		expect(parseSpanFilter('b', '2', '=', [a, b], 0)).toMatch(/already/);
+		const a = parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'a', '1', '=', []) as never;
+		const b = parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'b', '2', '=', []) as never;
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'a', '1', '=', [a, b], 0)).toEqual(a);
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'b', '2', '=', [a, b], 0)).toMatch(/already/);
 		const full = Array.from(
 			{ length: 10 },
-			(_, i) => parseSpanFilter(`k${i}`, 'v', '=', []) as never
+			(_, i) => parseAttributeInput(SPAN_ATTRIBUTE_RULES, `k${i}`, 'v', '=', []) as never
 		);
-		expect(parseSpanFilter('k0', 'w', '=', full, 0)).not.toBeTypeOf('string');
-		expect(parseSpanFilter('k', 'v', '=', full)).toMatch(/at most 10/);
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'k0', 'w', '=', full, 0)).not.toBeTypeOf(
+			'string'
+		);
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'k', 'v', '=', full)).toMatch(/at most 10/);
 	});
 });
 

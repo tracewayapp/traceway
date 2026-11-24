@@ -29,7 +29,9 @@
 		type FilterField,
 		describeTimeRange,
 		methodField,
-		rootField
+		methodFilterValue,
+		rootField,
+		rootFilterValue
 	} from '$lib/components/traceway/filter-bar';
 	import ToolbarSelect from '$lib/components/traceway/toolbar-select.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
@@ -49,8 +51,6 @@
 		handleSortClick,
 		type SortDirection
 	} from '$lib/utils/sort-storage';
-	import { isMethodFilterValue } from '$lib/components/ui/endpoint-filter';
-	import { isRootFilterValue } from '$lib/components/ui/root-filter';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -133,13 +133,11 @@
 		}
 		const params = new URLSearchParams(window.location.search);
 		const timeParams = parseTimeRangeFromUrl(timezone, '24h');
-		const rootParam = params.get('rootFilter');
-		const methodParam = params.get('methodFilter');
 		return {
 			...timeParams,
 			search: params.get('search') || '',
-			rootFilter: isRootFilterValue(rootParam) ? rootParam : 'all',
-			methodFilter: isMethodFilterValue(methodParam) ? methodParam : 'all'
+			rootFilter: rootFilterValue(params.get('rootFilter')),
+			methodFilter: methodFilterValue(params.get('methodFilter'))
 		};
 	}
 
@@ -390,11 +388,9 @@
 	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 
 	function handleFilterApply(next: FilterApply) {
-		const method = next.values.methodFilter ?? 'all';
-		const root = next.values.rootFilter ?? 'all';
 		searchQuery = next.search;
-		methodFilter = isMethodFilterValue(method) ? method : 'all';
-		rootFilter = isRootFilterValue(root) ? root : 'all';
+		methodFilter = methodFilterValue(next.values.methodFilter);
+		rootFilter = rootFilterValue(next.values.rootFilter);
 		page = 1;
 		loadData(true);
 	}
@@ -489,10 +485,6 @@
 		noun="endpoints"
 		rangeLabel={timeRangeLabel}
 	>
-		{@render results()}
-	</FilterBar>
-
-	{#snippet results()}
 		<!-- Performance Chart -->
 		<ChartCard
 			title="Performance"
@@ -676,5 +668,5 @@
 			{loading}
 			itemLabel="endpoint"
 		/>
-	{/snippet}
+	</FilterBar>
 </div>

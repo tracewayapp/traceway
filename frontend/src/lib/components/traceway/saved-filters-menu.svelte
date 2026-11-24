@@ -34,7 +34,8 @@
 		currentQuery,
 		timeRangeLabel,
 		namePlaceholder = 'Slow telegrams on node 7',
-		onApply
+		onApply,
+		disabled = false
 	}: {
 		page: SavedFilterPage;
 		// The page's filters as a URL query string, time range included.
@@ -42,6 +43,8 @@
 		timeRangeLabel: string;
 		namePlaceholder?: string;
 		onApply: (filter: SavedFilter) => void;
+		// True while the page's search is out: a saved filter cannot run another until it answers.
+		disabled?: boolean;
 	} = $props();
 
 	let filters = $state<SavedFilter[]>([]);
@@ -156,6 +159,7 @@
 	}
 
 	function apply(filter: SavedFilter) {
+		if (disabled) return;
 		open = false;
 		onApply(filter);
 	}
@@ -205,7 +209,8 @@
 					<li class="group flex items-start gap-1 px-1">
 						<button
 							type="button"
-							class="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+							class="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+							{disabled}
 							onclick={() => apply(filter)}
 						>
 							<Check

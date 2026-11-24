@@ -1,5 +1,4 @@
 import {
-	attributeFiltersEqual,
 	operatorOption,
 	filterOperator,
 	type AttributeFilter,
@@ -48,6 +47,13 @@ export type SelectField = FieldBase & {
 
 export const SEARCHABLE_AFTER = 10;
 
+// Options named by their own value (services, models, instances). A value applied from a
+// link that the data no longer lists stays pickable without being added here: the drawer
+// keeps the current value in its list.
+export function valueOptions(values: readonly string[]): FilterOption[] {
+	return values.map((value) => ({ value, label: value }));
+}
+
 export type RangeField = FieldBase & {
 	kind: 'range';
 	minKey: string;
@@ -58,6 +64,8 @@ export type RangeField = FieldBase & {
 export type TextField = FieldBase & {
 	kind: 'text';
 	placeholder?: string;
+	// For values that hold newlines (a whole log message), which a one-line input drops.
+	multiline?: boolean;
 	// An error message for a value the backend would refuse, shown once, under the field.
 	validate?: (value: string) => string | null;
 };
@@ -69,6 +77,8 @@ export type FilterValues = Record<string, string>;
 export type AttributeConfig = {
 	filters: readonly AttributeFilter[];
 	operators: readonly OperatorOption[];
+	// What the filters match, under the drawer's Attributes heading.
+	hint?: string;
 	keyPlaceholder?: string;
 	valuePlaceholder?: string;
 	// Suggestions for the key box, and for the value box once a key is typed.
@@ -92,8 +102,14 @@ export type FilterApply = {
 
 const empty = (field: SelectField) => field.emptyValue ?? '';
 
+// A label as it reads inside a sentence: "Service" becomes "service", but an acronym keeps
+// its capitals ("OS", "SLI kind", "Trace ID" as "trace ID").
+export function labelInSentence(label: string): string {
+	return /^[A-Z]{2}/.test(label) ? label : label.charAt(0).toLowerCase() + label.slice(1);
+}
+
 export function anyLabelOf(field: FilterField): string {
-	return (field.kind === 'select' && field.anyLabel) || `Any ${field.label.toLowerCase()}`;
+	return (field.kind === 'select' && field.anyLabel) || `Any ${labelInSentence(field.label)}`;
 }
 
 // The applied option's own pill text, when it has one.
@@ -175,13 +191,6 @@ export function valuesEqual(
 	return fields.every((field) =>
 		fieldKeys(field).every((k) => (a[k] ?? '').trim() === (b[k] ?? '').trim())
 	);
-}
-
-export function attributesEqual(
-	a: readonly AttributeFilter[],
-	b: readonly AttributeFilter[]
-): boolean {
-	return a.length === b.length && a.every((f, i) => attributeFiltersEqual(f, b[i]));
 }
 
 export function activeCount(

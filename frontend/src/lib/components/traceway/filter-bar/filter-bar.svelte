@@ -5,7 +5,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
 	import * as Sheet from '$lib/components/ui/sheet';
-	import { attributeFiltersEqual, type AttributeFilter } from '$lib/utils/attribute-filters';
+	import {
+		attributeFiltersEqual,
+		filterOperator,
+		type AttributeFilter
+	} from '$lib/utils/attribute-filters';
 	import AttributeChip from './attribute-chip.svelte';
 	import AttributeEditor from './attribute-editor.svelte';
 	import FieldInput from './field-input.svelte';
@@ -15,6 +19,7 @@
 		clearedField,
 		clearedValues,
 		fieldError,
+		fieldValueLabel,
 		isFieldSet,
 		isSearchField,
 		namedDefault,
@@ -41,6 +46,9 @@
 		values?: FilterValues;
 		attributes?: AttributeConfig;
 		onApply: (next: FilterApply) => void;
+		// True while the page's request is out. Nothing that runs a search (Go, Enter, Apply, a
+		// pill's ×, Clear all) works until it answers, so the backend cannot be sent the same
+		// search again and again.
 		disabled?: boolean;
 		// What the filters narrow, for the drawer's subtitle ("spans").
 		noun?: string;
@@ -69,9 +77,8 @@
 
 	const uid = $props.id();
 	const searchFields = $derived(fields.filter(isSearchField) as SelectField[]);
-	const drawerFields = $derived(fields);
 	const pillFields = $derived(fields.filter((f) => !isSearchField(f)));
-	const hasFilters = $derived(drawerFields.length > 0 || !!attributes);
+	const hasFilters = $derived(fields.length > 0 || !!attributes);
 	const appliedAttrs = $derived(attributes?.filters ?? []);
 	// Quick dropdowns are hidden on phones, so a value set in one shows as a pill there instead.
 	const appliedFields = $derived(fields.filter((f) => isFieldSet(f, values)));
@@ -86,16 +93,16 @@
 	let draftValues = $derived<FilterValues>({ ...values });
 	let draftAttrs = $derived<AttributeFilter[]>([...appliedAttrs]);
 
-	const invalid = $derived(drawerFields.some((f) => fieldError(f, draftValues)));
+	const invalid = $derived(fields.some((f) => fieldError(f, draftValues)));
 	const changedFields = $derived(
-		new Set(drawerFields.filter((f) => !valuesEqual([f], draftValues, values)).map((f) => f.key))
+		new Set(fields.filter((f) => !valuesEqual([f], draftValues, values)).map((f) => f.key))
 	);
 	const attrChanges = $derived(
 		draftAttrs.filter((f) => !appliedAttrs.some((a) => attributeFiltersEqual(a, f))).length +
 			appliedAttrs.filter((a) => !draftAttrs.some((f) => attributeFiltersEqual(a, f))).length
 	);
 	const changeCount = $derived(changedFields.size + attrChanges);
-	const draftCount = $derived(activeCount(drawerFields, draftValues, draftAttrs));
+	const draftCount = $derived(activeCount(fields, draftValues, draftAttrs));
 
 	let drawerOpen = $state(false);
 	let focusKey = $state<string | null>(null);
@@ -104,6 +111,7 @@
 	let attrSeed = $state<AttributeFilter | null>(null);
 	let loadedOptions = $state<Record<string, FilterOption[]>>({});
 	let loadingOptions = $state<Record<string, boolean>>({});
+	let failedOptions = $state<Record<string, boolean>>({});
 	let loadRound = 0;
 
 	const rangeText = $derived(
@@ -114,10 +122,11 @@
 	// opened after the time range changed offers what that range holds.
 	function loadFieldOptions() {
 		const round = ++loadRound;
-		for (const field of drawerFields) {
+		for (const field of fields) {
 			if (field.kind !== 'select' || !field.loadOptions) continue;
 			const key = field.key;
 			loadingOptions = { ...loadingOptions, [key]: true };
+			failedOptions = { ...failedOptions, [key]: false };
 			field
 				.loadOptions()
 				.then((options) => {
@@ -125,6 +134,7 @@
 				})
 				.catch(() => {
 					// The field keeps the options it had; the applied value stays pickable.
+					if (round === loadRound) failedOptions = { ...failedOptions, [key]: true };
 				})
 				.finally(() => {
 					if (round === loadRound) loadingOptions = { ...loadingOptions, [key]: false };
@@ -136,10 +146,16 @@
 		return Object.fromEntries(searchFields.map((f) => [f.key, draftValues[f.key] ?? '']));
 	}
 
+	// Every search goes through here.
+	function run(next: FilterApply): boolean {
+		if (disabled) return false;
+		onApply(next);
+		return true;
+	}
+
 	// Go runs the search box with the filters already applied; drawer edits only run from Apply.
 	function go() {
-		if (disabled) return;
-		onApply({
+		run({
 			search: draftSearch.trim(),
 			values: { ...values, ...searchValues() },
 			attributes: [...appliedAttrs]
@@ -147,13 +163,13 @@
 	}
 
 	function apply() {
-		if (invalid || disabled) return;
-		onApply({
+		if (invalid) return;
+		const ran = run({
 			search: draftSearch.trim(),
 			values: { ...draftValues },
 			attributes: [...draftAttrs]
 		});
-		drawerOpen = false;
+		if (ran) drawerOpen = false;
 	}
 
 	function resetDrawer() {
@@ -170,10 +186,11 @@
 		focusKey = target.field ?? null;
 		if (target.attr !== undefined) {
 			editIndex = target.attr;
-			attrEditor = true;
-			focusKey = 'attributes';
 		} else if (target.seed) {
-			attrSeed = target.seed;
+			editIndex = stageSeed(target.seed);
+		}
+		// With attributes as the only filters, Add filter goes straight to a new one.
+		if (target.attr !== undefined || target.seed || (!target.field && fields.length === 0)) {
 			attrEditor = true;
 			focusKey = 'attributes';
 		}
@@ -181,8 +198,22 @@
 		loadFieldOptions();
 	}
 
-	// For a value clicked in the results: the drawer opens with a new attribute filter
-	// filled in, so its operator or value can change before Apply.
+	// A filter from a value clicked in the results is staged at once, so Apply alone runs it,
+	// and the editor opens on it for a change of operator or value first. One the page refuses
+	// (past its limit) only fills the editor, whose Add filter then says why.
+	function stageSeed(seed: AttributeFilter): number | null {
+		const staged = draftAttrs.findIndex((f) => attributeFiltersEqual(f, seed));
+		if (staged >= 0) return staged;
+		const parsed = attributes?.parse(seed.key, seed.value, filterOperator(seed), draftAttrs, null);
+		if (!parsed || typeof parsed === 'string') {
+			attrSeed = seed;
+			return null;
+		}
+		draftAttrs = [...draftAttrs, parsed];
+		return draftAttrs.length - 1;
+	}
+
+	// For a value clicked in the results.
 	export function openAttribute(seed: AttributeFilter) {
 		openDrawer({ seed });
 	}
@@ -200,23 +231,24 @@
 	}
 
 	function removeField(field: FilterField) {
-		onApply({ search, values: clearedField(field, values), attributes: [...appliedAttrs] });
+		run({ search, values: clearedField(field, values), attributes: [...appliedAttrs] });
 	}
 
 	function removeAttr(index: number) {
-		onApply({
+		run({
 			search,
 			values: { ...values },
 			attributes: appliedAttrs.filter((_, i) => i !== index)
 		});
 	}
 
+	// Clears what the pills show; the quick dropdowns belong to the search, which it keeps.
 	function clearFilters() {
-		onApply({ search, values: clearedValues(drawerFields, values), attributes: [] });
+		run({ search, values: clearedValues(pillFields, values), attributes: [] });
 	}
 
 	function clearDrafts() {
-		draftValues = clearedValues(drawerFields, draftValues);
+		draftValues = clearedValues(fields, draftValues);
 		draftAttrs = [];
 		attrEditor = false;
 		editIndex = null;
@@ -249,10 +281,7 @@
 	}
 
 	function searchFieldLabel(field: SelectField) {
-		const v = draftValues[field.key] ?? field.emptyValue ?? '';
-		return v === (field.emptyValue ?? '')
-			? anyLabelOf(field)
-			: (field.options.find((o) => o.value === v)?.label ?? v);
+		return isFieldSet(field, draftValues) ? fieldValueLabel(field, draftValues) : anyLabelOf(field);
 	}
 </script>
 
@@ -366,7 +395,8 @@
 				<button
 					type="button"
 					aria-label="Remove {field.label} filter"
-					class="-mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+					class="-mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+					{disabled}
 					onclick={() => removeField(field)}
 				>
 					<X class="h-3 w-3" />
@@ -378,12 +408,14 @@
 				filter={f}
 				onEdit={() => openDrawer({ attr: i })}
 				onRemove={() => removeAttr(i)}
+				removeDisabled={disabled}
 			/>
 		{/each}
 		{#if pillCount > 1}
 			<button
 				type="button"
-				class="h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+				class="h-6 px-1 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+				{disabled}
 				onclick={clearFilters}>Clear all</button
 			>
 		{/if}
@@ -408,7 +440,7 @@
 				</Sheet.Description>
 			</Sheet.Header>
 			<div class="flex-1 space-y-5 overflow-y-auto p-4">
-				{#each drawerFields as field (field.key)}
+				{#each fields as field (field.key)}
 					<FieldInput
 						{field}
 						id="{uid}-{field.key}"
@@ -416,6 +448,7 @@
 						changed={changedFields.has(field.key)}
 						options={loadedOptions[field.key]}
 						loading={loadingOptions[field.key] ?? false}
+						failed={failedOptions[field.key] ?? false}
 						values={draftValues}
 						onChange={(v) => (draftValues = v)}
 						onSubmit={apply}
@@ -429,6 +462,9 @@
 							: ''}"
 					>
 						<span class="text-xs font-medium">Attributes</span>
+						{#if attributes.hint}
+							<p class="text-xs text-muted-foreground">{attributes.hint}</p>
+						{/if}
 						<div class="flex flex-wrap items-center gap-2">
 							{#each draftAttrs as f, i (i)}
 								<AttributeChip
@@ -462,18 +498,21 @@
 								<p class="mb-2 text-xs text-muted-foreground">
 									{editIndex !== null ? 'Edit attribute filter' : 'New attribute filter'}
 								</p>
-								<AttributeEditor
-									config={attributes}
-									filters={draftAttrs}
-									{editIndex}
-									seed={attrSeed}
-									onSubmit={submitAttr}
-									onCancel={() => {
-										attrEditor = false;
-										editIndex = null;
-										attrSeed = null;
-									}}
-								/>
+								<!-- A fresh editor per filter, so an error shown for one does not stay on the next. -->
+								{#key editIndex}
+									<AttributeEditor
+										config={attributes}
+										filters={draftAttrs}
+										{editIndex}
+										seed={attrSeed}
+										onSubmit={submitAttr}
+										onCancel={() => {
+											attrEditor = false;
+											editIndex = null;
+											attrSeed = null;
+										}}
+									/>
+								{/key}
 							</div>
 						{/if}
 					</div>

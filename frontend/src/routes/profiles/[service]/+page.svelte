@@ -30,6 +30,7 @@
 	import {
 		FilterBar,
 		attributeConfig,
+		describeTimeRange,
 		type AttributeRules,
 		type FilterApply
 	} from '$lib/components/traceway/filter-bar';
@@ -257,15 +258,25 @@
 		loadData(true);
 	}
 
-	// Profile labels are a key → value map, so each label takes one exact value.
+	// Profile labels are a key → value map, so each label takes one exact value. The backend
+	// refuses a key outside the project's label allowlist, so only reported labels are taken.
+	const labelKeys = $derived(Object.keys(availableLabels));
 	const labelRules = $derived<AttributeRules>({
 		operators: [operatorOption('=')],
 		keyPlaceholder: 'label',
 		valuePlaceholder: 'value',
 		requireValue: true,
 		uniqueKeys: true,
-		keys: Object.keys(availableLabels),
-		loadValues: (key) => Promise.resolve(availableLabels[key] ?? [])
+		keys: labelKeys,
+		loadValues: (key) => Promise.resolve(availableLabels[key] ?? []),
+		key: (key) =>
+			labelKeys.includes(key)
+				? key
+				: {
+						error: labelKeys.length
+							? 'Pick one of the labels this profile reports.'
+							: 'This profile type reports no labels.'
+					}
 	});
 	const labelFilters = $derived<AttributeFilter[]>(
 		Object.entries(selectedLabels).map(([key, value]) => ({ key, value, ...operatorFlags('=') }))
@@ -545,12 +556,15 @@
 		showSearch={false}
 		attributes={attributeConfig(labelFilters, labelRules)}
 		onApply={handleLabelApply}
+		disabled={loading}
 		noun="profiles"
+		rangeLabel={describeTimeRange(selectedPreset)}
 	>
 		{#snippet actions()}
 			<Select.Root
 				type="single"
 				value={groupBy}
+				disabled={loading}
 				onValueChange={(v) => {
 					groupBy = v ?? '';
 					loadData(false);
@@ -570,6 +584,7 @@
 				<Button
 					variant={normalize ? 'secondary' : 'outline'}
 					size="sm"
+					disabled={loading}
 					aria-pressed={normalize}
 					onclick={() => {
 						normalize = !normalize;

@@ -45,6 +45,18 @@ const fields: FilterField[] = [
 	}
 ];
 const route = { key: 'http.route', value: '/a', ...operatorFlags('=') };
+const level: FilterField = {
+	kind: 'select',
+	key: 'level',
+	label: 'Level',
+	emptyValue: '0',
+	inSearch: true,
+	options: [
+		{ value: '13', label: 'WARN+' },
+		{ value: '17', label: 'ERROR+' }
+	]
+};
+const traceId = '4bf92f3577b34da6a3ce929d0e0e4736';
 
 function setup(overrides: Record<string, unknown> = {}) {
 	const onApply = vi.fn();
@@ -113,13 +125,13 @@ it('opens the drawer on the clicked field and applies only on Apply', async () =
 	expect(within(drawer).getByText('Applied to spans in the last 1h')).toBeTruthy();
 	await waitFor(() => expect(document.activeElement?.closest('[id$="-kind"]')).not.toBeNull());
 	await fireEvent.input(within(drawer).getByRole('textbox', { name: 'Trace ID' }), {
-		target: { value: '4bf92f3577b34da6a3ce929d0e0e4736' }
+		target: { value: traceId }
 	});
 	expect(onApply).not.toHaveBeenCalled();
 	await fireEvent.click(within(drawer).getByRole('button', { name: /^Apply/ }));
 	expect(onApply).toHaveBeenLastCalledWith({
 		search: 'checkout',
-		values: { kind: '2', trace: '4bf92f3577b34da6a3ce929d0e0e4736', status: 'active' },
+		values: { kind: '2', trace: traceId, status: 'active' },
 		attributes: [route]
 	});
 	await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -173,6 +185,12 @@ it('edits an attribute pill in the drawer, and opens a new one filled in from ou
 	drawer = await screen.findByRole('dialog');
 	expect(within(drawer).getByDisplayValue('user.id')).toBeTruthy();
 	expect(within(drawer).getByDisplayValue('u_1')).toBeTruthy();
+	// Staged already: Apply alone runs it.
+	await fireEvent.click(within(drawer).getByRole('button', { name: 'Apply 1 change' }));
+	expect(onApply.mock.lastCall?.[0].attributes).toEqual([
+		route,
+		{ key: 'user.id', value: 'u_1', ...operatorFlags('=') }
+	]);
 });
 
 it('asks fields with loaded options again each time the drawer opens', async () => {
@@ -194,20 +212,7 @@ it('asks fields with loaded options again each time the drawer opens', async () 
 
 it('shows a quick dropdown in the search bar and the drawer, and a pill only on phones', async () => {
 	const { onApply } = setup({
-		fields: [
-			{
-				kind: 'select',
-				key: 'level',
-				label: 'Level',
-				emptyValue: '0',
-				inSearch: true,
-				options: [
-					{ value: '13', label: 'WARN+' },
-					{ value: '17', label: 'ERROR+' }
-				]
-			},
-			fields[0]
-		],
+		fields: [level, fields[0]],
 		values: { level: '13', kind: '' },
 		attributes: undefined
 	});
@@ -234,4 +239,65 @@ it('shows a quick dropdown in the search bar and the drawer, and a pill only on 
 	const drawer = await screen.findByRole('dialog');
 	expect(within(drawer).getByRole('button', { name: /^Level/ }).textContent).toContain('ERROR+');
 	expect(within(drawer).getByRole('button', { name: 'Kind' })).toBeTruthy();
+});
+
+it('clears what the pills show and leaves the quick dropdowns to the search', async () => {
+	const { onApply } = setup({
+		fields: [level, ...fields],
+		values: { level: '13', kind: '2', trace: traceId, status: 'active' },
+		attributes: undefined
+	});
+	await fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+	expect(onApply).toHaveBeenLastCalledWith({
+		search: 'checkout',
+		values: { level: '13', kind: '', trace: '', status: 'active' },
+		attributes: []
+	});
+});
+
+it('drops an editor error when another attribute is picked for editing', async () => {
+	const user = { key: 'user.id', value: 'u_1', ...operatorFlags('=') };
+	setup({
+		attributes: attributeConfig([route, user], {
+			operators: keyOperatorOptions,
+			requireValue: true
+		})
+	});
+	await fireEvent.click(screen.getByRole('button', { name: 'Edit filter http.route = /a' }));
+	const drawer = await screen.findByRole('dialog');
+	await fireEvent.input(within(drawer).getByDisplayValue('/a'), { target: { value: '' } });
+	await fireEvent.click(within(drawer).getByRole('button', { name: 'Update filter' }));
+	expect(within(drawer).getByRole('alert').textContent).toMatch(/value/);
+	await fireEvent.click(within(drawer).getByRole('button', { name: 'Edit filter user.id = u_1' }));
+	expect(within(drawer).getByDisplayValue('u_1')).toBeTruthy();
+	expect(within(drawer).queryByRole('alert')).toBeNull();
+});
+
+it('runs no search while a request is out, then runs again once it answered', async () => {
+	const { onApply, rerender } = setup({ disabled: true });
+	const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
+	for (const name of ['Go', 'Remove Kind filter', 'Remove filter http.route', 'Clear all']) {
+		expect(button(name).disabled, name).toBe(true);
+	}
+	await fireEvent.keyDown(screen.getByPlaceholderText('Search spans...'), { key: 'Enter' });
+
+	await fireEvent.click(button('Edit filter Kind = Server'));
+	const drawer = await screen.findByRole('dialog');
+	expect(
+		(within(drawer).getByRole('button', { name: /^Apply/ }) as HTMLButtonElement).disabled
+	).toBe(true);
+	await fireEvent.keyDown(within(drawer).getByRole('textbox', { name: 'Trace ID' }), {
+		key: 'Enter'
+	});
+	// Removing a filter inside the drawer only edits the draft, so it stays available.
+	expect(
+		(within(drawer).getByRole('button', { name: 'Remove filter http.route' }) as HTMLButtonElement)
+			.disabled
+	).toBe(false);
+	expect(onApply).not.toHaveBeenCalled();
+	expect(screen.getByRole('dialog')).toBeTruthy();
+
+	await rerender({ disabled: false });
+	await fireEvent.click(within(drawer).getByRole('button', { name: /^Apply/ }));
+	expect(onApply).toHaveBeenCalledTimes(1);
 });

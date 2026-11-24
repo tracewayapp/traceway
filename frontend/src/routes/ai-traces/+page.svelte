@@ -28,7 +28,8 @@
 		type FilterApply,
 		type FilterField,
 		describeTimeRange,
-		rootField
+		rootField,
+		rootFilterValue
 	} from '$lib/components/traceway/filter-bar';
 	import { formatCost, formatCount, formatTokens } from '$lib/utils/ai-format';
 	import AiNavTabs from '$lib/components/ai/ai-nav-tabs.svelte';
@@ -91,7 +92,7 @@
 		return {
 			...timeParams,
 			search: params.get('search') || '',
-			rootFilter: params.get('rootFilter') || 'all'
+			rootFilter: rootFilterValue(params.get('rootFilter'))
 		};
 	}
 
@@ -256,7 +257,7 @@
 
 	function handleFilterApply(next: FilterApply) {
 		searchQuery = next.search;
-		rootFilter = next.values.rootFilter || 'all';
+		rootFilter = rootFilterValue(next.values.rootFilter);
 		page = 1;
 		loadData(true);
 	}
@@ -302,10 +303,6 @@
 		noun="AI traces"
 		rangeLabel={timeRangeLabel}
 	>
-		{@render results()}
-	</FilterBar>
-
-	{#snippet results()}
 		<!-- AI Traces Table -->
 		<TableContainer>
 			<Table.Root>
@@ -449,5 +446,5 @@
 			{loading}
 			itemLabel="trace"
 		/>
-	{/snippet}
+	</FilterBar>
 </div>

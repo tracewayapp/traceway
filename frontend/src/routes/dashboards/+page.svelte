@@ -66,6 +66,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { toast } from 'svelte-sonner';
 	import type { DashboardWidgetConfig, DiscoveredMetric } from '$lib/types/dashboard';
+	import { provideWidgetLoads } from '$lib/components/dashboard/widget-loads.svelte';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -94,6 +95,8 @@
 
 	let dashboards = $state<Dashboard[]>([]);
 	let loading = $state(true);
+	// The scope filters wait until every widget has answered the last change.
+	const widgetLoads = provideWidgetLoads();
 	let listError = $state('');
 	let activeTabId = $state<string>('');
 	let activeDashboard = $state<DashboardWithWidgets | null>(null);
@@ -249,7 +252,6 @@
 			kind: 'select',
 			key,
 			label,
-			anyLabel: `Any ${label === 'OS' ? label : label.toLowerCase()}`,
 			options: [],
 			searchable: true,
 			loadOptions: () =>
@@ -271,9 +273,9 @@
 						kind: 'select',
 						key: 'server',
 						label: 'Instance',
-						anyLabel: 'Any instance',
 						options: [],
 						searchable: true,
+						mono: true,
 						hint: 'Instances that reported in the time range.',
 						loadOptions: () =>
 							loadInstances(
@@ -1180,6 +1182,7 @@
 			fields={scopeFields}
 			values={scopeValues}
 			onApply={handleScopeApply}
+			disabled={widgetLoads.pending > 0}
 			noun="every widget"
 			rangeLabel={describeTimeRange(selectedPreset)}
 		/>

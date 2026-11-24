@@ -29,6 +29,24 @@ Canonical span storage preserves IDs across export batches. Entity classificatio
 
 Span reads look 24 hours either side of the endpoint, task or AI trace you opened. A span recorded further away than that is not shown on its page.
 
+## Spans stored more than once
+
+OpenTelemetry does not promise that a span arrives exactly once. An exporter resends a batch when the answer comes late, and the first attempt may already have been stored. Two Collector pipelines that export the same data store a copy of every span.
+
+Traceway keeps every copy it receives, and every page reads one copy of each span, identified by its trace ID and span ID:
+
+- The copy kept is the one with the longest duration. When two copies took the same time, their content decides, so the same copy is kept every time.
+- Filters apply to the kept copy. An attribute value that only the other copy carries does not match, and **Not equals** or **Key does not exist** also look at the kept copy.
+- Counts, pages and charts count the span once, so the chart's count equals the table's.
+
+### What a search costs
+
+The figures in this section are for ClickHouse. Retried spans are rare, so a search first looks for the spans stored more than once and compares copies only for those. Every other span is filtered as it is read. A search or chart uses about 35 MB per million spans of the project in its time range, whatever the filters: about 140 MB for a day of 4 million spans.
+
+Each search may use up to 1 GB, which is reached at around 30 million spans in the range. A search that reaches it, or that runs too long, asks you to narrow the range or add a filter.
+
+When every span is stored twice, a search uses about ten times as much memory and filters that match few spans get slower. That pattern points at a doubled exporter or Collector pipeline. Fix it where the data is sent, since both copies also take up storage.
+
 ## Span explorer
 
 The **Spans** page searches every span of the project in a time range, the last hour by default and up to 31 days: by name, service, kind, status, minimum and maximum duration, trace ID and span attributes. Click a result to open its whole trace with that span selected.

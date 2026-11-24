@@ -72,11 +72,10 @@ func spanChartValues(search shared.OtelSpanSearch, attribute string, step int64)
 	if step > 0 {
 		bucket = epochBucket("recorded_at", int(step))
 	}
+	source, args := shared.OtelClickHouseChartSource(search, attribute, clickhouseSearchDialect)
 	if attribute == "" {
-		source, args := shared.OtelChartSource(search, attribute, clickhouseSearchDialect)
 		return "SELECT " + bucket + " AS bucket, toUInt8(1) AS num, duration / 1e6 AS v FROM " + source, args
 	}
-	source, args := shared.OtelClickHouseAttributeChartSource(search, attribute, clickhouseSearchDialect)
 	return `SELECT bucket, ` + chartNumber + `
 		FROM (SELECT ` + bucket + ` AS bucket, chart_raw AS raw FROM ` + source + `)`, args
 }

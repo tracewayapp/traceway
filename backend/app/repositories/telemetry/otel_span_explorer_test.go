@@ -165,6 +165,58 @@ func TestOtelSpanSearch(t *testing.T) {
 	}
 }
 
+// A span stored twice is found, counted, shown and ordered as its winning version (the longer one), whatever
+// version the filters match.
+func TestOtelSpanSearchFiltersTheWinningVersion(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	project := uuid.New()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	retried := canonicalSpan(project, uuid.New(), uuid.New(), nil)
+	retried.Name, retried.Duration, retried.StartTime, retried.RecordedAt = "winner", 90*time.Millisecond, now.Add(-time.Minute), now.Add(-time.Minute)
+	retried.Attributes = map[string]string{"shared": "yes", "only.winner": "yes"}
+	loser := retried
+	loser.Name, loser.Duration = "loser", 10*time.Millisecond
+	loser.Attributes = map[string]string{"shared": "yes", "only.loser": "yes"}
+	other := canonicalSpan(project, uuid.New(), uuid.New(), nil)
+	other.Name, other.Duration, other.StartTime, other.RecordedAt = "other", 50*time.Millisecond, now.Add(-2*time.Minute), now.Add(-2*time.Minute)
+	other.Attributes = map[string]string{"shared": "yes"}
+	for _, span := range []models.OtelSpan{retried, loser, other} {
+		if _, err := OtelSpanRepository.InsertAsync(ctx, []models.OtelSpan{span}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	search := func(order string, page, pageSize int, filters ...shared.OtelAttributeFilter) ([]string, uint64) {
+		t.Helper()
+		found, total, err := OtelSpanRepository.Search(ctx, shared.OtelSpanSearch{ProjectId: project, From: now.Add(-time.Hour), To: now.Add(time.Minute),
+			Attributes: filters, OrderBy: order, Page: page, PageSize: pageSize})
+		if err != nil {
+			t.Fatal(err)
+		}
+		names := make([]string, len(found))
+		for i, span := range found {
+			names[i] = span.Name
+		}
+		return names, total
+	}
+	if names, total := search("", 1, 50, shared.OtelAttributeFilter{Key: "only.loser", Exists: true}); total != 0 || len(names) != 0 {
+		t.Errorf("a filter only the losing version matches: %v of %d, want nothing", names, total)
+	}
+	if names, total := search("", 1, 50, shared.OtelAttributeFilter{Key: "only.winner", Value: "yes"}); total != 1 || strings.Join(names, ",") != "winner" {
+		t.Errorf("a filter only the winning version matches: %v of %d, want [winner] of 1", names, total)
+	}
+	if names, total := search("", 1, 50, shared.OtelAttributeFilter{Key: "only.loser", Exclude: true, Exists: true}); total != 2 || strings.Join(names, ",") != "winner,other" {
+		t.Errorf("a negated filter the losing version fails: %v of %d, want [winner other] of 2", names, total)
+	}
+	common := shared.OtelAttributeFilter{Key: "shared", Value: "yes"}
+	if names, total := search("duration asc", 1, 1, common); total != 2 || strings.Join(names, ",") != "other" {
+		t.Errorf("fastest first, first page: %v of %d, want [other] of 2: the retried span takes 90ms, not its loser's 10ms", names, total)
+	}
+	if names, total := search("duration asc", 2, 1, common); total != 2 || strings.Join(names, ",") != "winner" {
+		t.Errorf("fastest first, second page: %v of %d, want [winner] of 2", names, total)
+	}
+}
+
 func TestOtelWholeTraceKeepsTheMostImportantSpansPastTheCap(t *testing.T) {
 	setupTestDB(t)
 	ctx := context.Background()

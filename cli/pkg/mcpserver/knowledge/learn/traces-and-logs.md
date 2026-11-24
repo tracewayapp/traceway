@@ -33,6 +33,16 @@ A search over every span of the project. Hidden in the sidebar for browser and m
 - **Saved filters** work as on the logs page and keep the spans page's own search, filters and chart.
 - From a trace: in any waterfall, the filter icon on a span attribute opens the span explorer filtered on it, and **Chart values** on a numeric attribute opens its chart for the same operation (service and span name).
 
+### Spans stored more than once
+
+OTLP does not promise that a span arrives exactly once. An exporter resends a batch when the answer is late, and the first attempt may already be stored; two Collector pipelines exporting the same data store a copy of every span. Traceway keeps every copy (same trace id and span id) and every read uses one of them:
+
+- The copy kept is the one with the **longest duration**, with ties broken by content, so it is the same copy every time.
+- **Filters apply to the kept copy.** A value only the other copy carries does not match, and a negated filter also follows the kept copy. This explains a span that a filter does not find although some stored copy has the value.
+- Counts, pages and charts count the span once, so the chart's count equals the table's.
+
+Cost, on ClickHouse: a search first finds the spans stored more than once and compares copies only for those, so a search or chart uses about 35 MB per million spans of the project in its range (a day of 4 million spans, about 140 MB), whatever the filters. Each query may use up to 1 GB, reached around 30 million spans in the range, and a query that reaches it answers with the same "narrow the range or add a filter" warning as a slow one. When every span is stored twice, a search uses about ten times as much memory and selective filters get slower: that pattern points at a doubled exporter or Collector pipeline, which is worth fixing at the source.
+
 ## The trace page (`/spans/<traceId>`)
 
 The whole trace as one waterfall, across every service and **every project of the organization**, because the services of one trace usually report to different projects. Other organizations stay out.

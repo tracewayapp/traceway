@@ -215,7 +215,6 @@ const otelSearchSettings = ` SETTINGS max_execution_time=15, timeout_overflow_mo
 
 var clickhouseSearchDialect = shared.OtelSearchDialect{
 	WinnerOrder:    shared.OtelClickHouseWinnerOrder,
-	Prefilter:      true,
 	Project:        func(id uuid.UUID) any { return id },
 	Time:           clickhouseOtelCodec.Time,
 	Trace:          func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },
@@ -231,7 +230,7 @@ var clickhouseSearchDialect = shared.OtelSearchDialect{
 }
 
 func (r *otelSpanRepository) Search(ctx context.Context, search shared.OtelSpanSearch) ([]models.OtelSpan, uint64, error) {
-	page, pageArgs, count, countArgs := shared.OtelSearchQueries(search, clickhouseSearchDialect)
+	page, pageArgs, count, countArgs := shared.OtelClickHouseSearchQueries(search, clickhouseSearchDialect)
 	var total uint64
 	if err := chdb.Conn.QueryRow(ctx, count, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err

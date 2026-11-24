@@ -45,13 +45,9 @@ type OtelSearchDialect struct {
 	StartOrder  string
 	ReadSetting string
 	WinnerOrder string
-	// Prefilter narrows the winner sort to the spans that match the filters.
-	// Only ClickHouse sets it: that is where the sort was measured to run out
-	// of memory, and DuckDB returns no rows for an attribute filter in this form.
-	Prefilter bool
-	Bucket    func(column string, seconds int) string
-	Count     string
-	CountIf   func(condition string) string
+	Bucket      func(column string, seconds int) string
+	Count       string
+	CountIf     func(condition string) string
 }
 
 var otelSearchOrders = map[string]string{
@@ -114,23 +110,16 @@ func otelSearchPredicate(search OtelSpanSearch, dialect OtelSearchDialect) (stri
 // otelSearchSource is what a search reads, as a FROM clause: the matching spans, one retry version of each.
 func otelSearchSource(search OtelSpanSearch, dialect OtelSearchDialect) (string, []any) {
 	predicate, args := otelSearchPredicate(search, dialect)
-	scope, scopeArgs := otelSearchPredicate(OtelSpanSearch{ProjectId: search.ProjectId, From: search.From, To: search.To, TraceId: search.TraceId}, dialect)
-	// The winner of every span in the range is picked by a sort, and a filter on
-	// the result makes that sort carry the filtered columns (the attribute map
-	// among them) for all of those spans: on ClickHouse a day of 4M spans ran out
-	// of the search's memory. So the sort only sees the spans that have a version
-	// matching the filters; the filters are still applied to the winner.
-	inner, innerArgs := scope, scopeArgs
-	if dialect.Prefilter && len(args) > len(scopeArgs) {
-		inner = scope + " AND (trace_id, span_id) IN (SELECT trace_id, span_id FROM " + SpansTable + " WHERE " + predicate + ")"
-		innerArgs = append(append([]any{}, scopeArgs...), args...)
-	}
-	winners := OtelWinningRows("*", inner, dialect.WinnerOrder)
-	return winners + " WHERE " + predicate, append(innerArgs, args...)
+	scope, scopeArgs := otelSearchScope(search, dialect)
+	return OtelWinningRows("*", scope, dialect.WinnerOrder) + " WHERE " + predicate, append(scopeArgs, args...)
+}
+
+func otelSearchScope(search OtelSpanSearch, dialect OtelSearchDialect) (string, []any) {
+	return otelSearchPredicate(OtelSpanSearch{ProjectId: search.ProjectId, From: search.From, To: search.To, TraceId: search.TraceId}, dialect)
 }
 
 // OtelChartSource is what a span chart reads, as a FROM clause: the spans Search would match. An attribute chart
-// reads only the spans that carry the attribute, which on ClickHouse also keeps the version sort to those spans.
+// reads only the spans that carry the attribute.
 func OtelChartSource(search OtelSpanSearch, attribute string, dialect OtelSearchDialect) (string, []any) {
 	if attribute != "" {
 		search.Attributes = append(append([]OtelAttributeFilter{}, search.Attributes...), OtelAttributeFilter{Key: attribute, Exists: true})
@@ -138,43 +127,87 @@ func OtelChartSource(search OtelSpanSearch, attribute string, dialect OtelSearch
 	return otelSearchSource(search, dialect)
 }
 
-// OtelClickHouseAttributeChartSource is OtelChartSource for an attribute chart on ClickHouse, with the columns
-// recorded_at and chart_raw. ClickHouse evaluates span_attributes[key] after the winner sort, so the generic source
-// makes that sort carry the whole attribute map of every span with the attribute: a day of 4M spans that all carry it
-// ran out of the search's memory, where the duration chart of the same spans did not. Here the value and the verdict
-// of the filters are computed per stored version and close the sort order, which is what makes ClickHouse compute
-// them before the sort. The order was total already (span_version is a digest of the span), so the winner is the same,
-// and it is still the winner the filters are applied to.
-func OtelClickHouseAttributeChartSource(search OtelSpanSearch, attribute string, dialect OtelSearchDialect) (string, []any) {
-	scope, scopeArgs := otelSearchPredicate(OtelSpanSearch{ProjectId: search.ProjectId, From: search.From, To: search.To, TraceId: search.TraceId}, dialect)
-	_, filterArgs := otelSearchPredicate(search, dialect)
-	search.Attributes = append(append([]OtelAttributeFilter{}, search.Attributes...), OtelAttributeFilter{Key: attribute, Exists: true})
+// otelClickHouseMatchingSpans is a FROM clause over the winning version of every span the search matches, on
+// ClickHouse, with the columns project_id, trace_id, span_id, duration, the extra plain columns, and chart_raw when
+// value (an expression whose placeholders valueArgs fill) is given.
+//
+// The generic source picks the winner of every span in the range with a sort, which costs memory in proportion to
+// every span in the range (about 633 MB for 4M spans with nothing but the keys in it), although a span is stored
+// more than once only when an export was retried, which is rare. So the spans stored more than once are found
+// first, by grouping a 64-bit hash of their identity (about 135 MB for 4M spans). Every other span has one version,
+// which is its winner, and is filtered as it is read. Only the spans with several versions go through the winner
+// sort. A hash collision only sends a span through that sort, so the result stays exact.
+//
+// In the sort, the verdict of the filters and the value are computed per stored version and close the order, which
+// is what makes ClickHouse compute them before it (it evaluates an expression the order does not read after the
+// sort, which would make the sort carry the attribute map). The order was total already (span_version is a digest of
+// the span), so the winner is the same, and the filters are still applied to the winner.
+//
+// The filters are an explicit PREWHERE on the single versions: left to itself, ClickHouse moves the hash test into
+// PREWHERE ahead of them and hashes every span in the range before a selective filter has removed any.
+func otelClickHouseMatchingSpans(search OtelSpanSearch, extra []string, value string, valueArgs []any, dialect OtelSearchDialect) (string, []any) {
+	scope, scopeArgs := otelSearchScope(search, dialect)
 	predicate, args := otelSearchPredicate(search, dialect)
-	inner, innerArgs := scope, scopeArgs
-	// The chart's own attribute is no reason to narrow the sort: it no longer carries the map.
-	if len(filterArgs) > len(scopeArgs) {
-		inner = scope + " AND (trace_id, span_id) IN (SELECT trace_id, span_id FROM " + SpansTable + " WHERE " + predicate + ")"
-		innerArgs = append(append([]any{}, scopeArgs...), args...)
+	columns := append([]string{"project_id", "trace_id", "span_id", "duration"}, extra...)
+	selected := strings.Join(columns, ", ")
+	order := dialect.WinnerOrder + ", otel_match"
+	if value != "" {
+		selected += ", " + value + " AS chart_raw"
+		columns = append(columns, "chart_raw")
+		order += ", chart_raw"
 	}
-	source := "(SELECT recorded_at, chart_raw FROM (SELECT recorded_at, chart_raw, chart_match, ROW_NUMBER() OVER (PARTITION BY project_id, trace_id, span_id ORDER BY " +
-		dialect.WinnerOrder + ", chart_match, chart_raw) AS otel_version FROM (SELECT project_id, trace_id, span_id, recorded_at, duration, span_version, " +
-		dialect.AttributeValue + " AS chart_raw, toUInt8(" + predicate + ") AS chart_match FROM " + SpansTable + " WHERE " + inner +
-		") versions) ranked WHERE otel_version = 1 AND chart_match) winners"
-	return source, append(append([]any{attribute}, args...), innerArgs...)
+	duplicated := "(SELECT cityHash64(trace_id, span_id) FROM " + SpansTable + " WHERE " + scope +
+		" GROUP BY cityHash64(trace_id, span_id) HAVING count() > 1)"
+	single := "SELECT " + selected + " FROM " + SpansTable + " PREWHERE " + predicate +
+		" WHERE cityHash64(trace_id, span_id) NOT IN " + duplicated
+	several := "SELECT " + strings.Join(columns, ", ") + " FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY project_id, trace_id, span_id ORDER BY " +
+		order + ") AS otel_version FROM (SELECT " + selected + ", span_version, toUInt8(" + predicate + ") AS otel_match FROM " + SpansTable +
+		" PREWHERE " + scope + " WHERE cityHash64(trace_id, span_id) IN " + duplicated + ") versions) ranked WHERE otel_version = 1 AND otel_match"
+	var all []any
+	for _, part := range [][]any{valueArgs, args, scopeArgs, valueArgs, args, scopeArgs, scopeArgs} {
+		all = append(all, part...)
+	}
+	return "(" + single + " UNION ALL " + several + ") spans", all
 }
 
-// OtelSearchQueries returns the page query, which selects OtelTopologyColumns, and the matching count query.
-func OtelSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page string, pageArgs []any, count string, countArgs []any) {
+// OtelClickHouseChartSource is OtelChartSource on ClickHouse, with the columns recorded_at and duration, plus
+// chart_raw, the attribute's value, for an attribute chart.
+func OtelClickHouseChartSource(search OtelSpanSearch, attribute string, dialect OtelSearchDialect) (string, []any) {
+	if attribute == "" {
+		return otelClickHouseMatchingSpans(search, []string{"recorded_at"}, "", nil, dialect)
+	}
+	search.Attributes = append(append([]OtelAttributeFilter{}, search.Attributes...), OtelAttributeFilter{Key: attribute, Exists: true})
+	return otelClickHouseMatchingSpans(search, []string{"recorded_at"}, dialect.AttributeValue, []any{attribute}, dialect)
+}
+
+func otelSearchOrder(search OtelSpanSearch, dialect OtelSearchDialect) string {
 	order, known := otelSearchOrders[search.OrderBy]
 	if !known {
 		order = otelSearchOrders["start_time desc"]
 	}
-	order = strings.ReplaceAll(order, "%s", dialect.StartOrder)
-	order += ", trace_id, span_id"
+	return strings.ReplaceAll(order, "%s", dialect.StartOrder) + ", trace_id, span_id"
+}
+
+// OtelSearchQueries returns the page query, which selects OtelTopologyColumns, and the matching count query.
+func OtelSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page string, pageArgs []any, count string, countArgs []any) {
+	order := otelSearchOrder(search, dialect)
 	source, args := otelSearchSource(search, dialect)
 	page = "SELECT " + OtelTopologyColumns + " FROM " + source + " ORDER BY " + order + " LIMIT ? OFFSET ?" + dialect.ReadSetting
 	pageArgs = append(append([]any{}, args...), search.PageSize, (search.Page-1)*search.PageSize)
 	return page, pageArgs, "SELECT count(*) FROM " + source + dialect.ReadSetting, args
+}
+
+// OtelClickHouseSearchQueries is OtelSearchQueries on ClickHouse, over otelClickHouseMatchingSpans. The page is found
+// in two steps: the spans of the page are chosen by what the page order reads, and their topology is read afterwards,
+// for those spans only.
+func OtelClickHouseSearchQueries(search OtelSpanSearch, dialect OtelSearchDialect) (page string, pageArgs []any, count string, countArgs []any) {
+	order := otelSearchOrder(search, dialect)
+	keys, keyArgs := otelClickHouseMatchingSpans(search, []string{"start_time_unix_nano"}, "", nil, dialect)
+	scope, scopeArgs := otelSearchScope(search, dialect)
+	selected := scope + " AND (trace_id, span_id) IN (SELECT trace_id, span_id FROM " + keys + " ORDER BY " + order + " LIMIT ? OFFSET ?)"
+	page = "SELECT " + OtelTopologyColumns + " FROM " + OtelWinningRows(OtelTopologyColumns, selected, dialect.WinnerOrder) + " ORDER BY " + order + dialect.ReadSetting
+	pageArgs = append(append(append([]any{}, scopeArgs...), keyArgs...), search.PageSize, (search.Page-1)*search.PageSize)
+	return page, pageArgs, "SELECT count(*) FROM " + keys + dialect.ReadSetting, keyArgs
 }
 
 // OtelServicesQuery lists the services that reported spans in the range, busiest first, for the explorer's filter.

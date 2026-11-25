@@ -78,4 +78,4 @@ A queue worker whose span is parented to the request that enqueued it shares tha
 | One task run | `traceway tasks show <id> --recorded-at <t>` | `get_task` |
 | Mark an endpoint slow (write) | `traceway-write endpoints mark-slow <endpoint> --offset-ms N --reason R` | `set_slow_endpoint` |
 
-There is no task list command. Find a task's runs through its exceptions, its trace id or the dashboard. Latency percentiles only come from endpoints, never from `metrics query`. The `traceway` skill's performance flow covers a full latency investigation.
+There is no task list command. Find a task's runs through its exceptions, its trace id or the dashboard. Use `endpoints list` for request latency percentiles by endpoint and `metrics query` for percentiles of a recorded histogram. The `traceway` skill's performance flow covers a full latency investigation.

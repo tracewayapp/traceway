@@ -12,10 +12,6 @@ import (
 	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
-// metricAggregations is the canonical list of aggregations the server accepts.
-// Kept in lockstep with the --aggregation flag's help text.
-var metricAggregations = client.MetricAggregations
-
 func newMetricsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "metrics",
@@ -33,7 +29,7 @@ func newMetricsQueryCmd() *cobra.Command {
 	}
 	addTimeRangeFlags(cmd)
 	cmd.Flags().String("name", "", "Metric name (required)")
-	cmd.Flags().String("aggregation", "avg", "Aggregation: avg, sum, count, min, max, rate, last; for a distribution metric also p50, p75, p90, p95, p99, good_ratio")
+	cmd.Flags().String("aggregation", "avg", "Aggregation: "+strings.Join(client.MetricAggregations, ", ")+". Use percentiles and good_ratio with distribution metrics. Use last with point metrics.")
 	cmd.Flags().Float64("threshold", 0, "good_ratio only: the share of observations at or under this value (rated web vitals have a default)")
 	cmd.Flags().Bool("whole-range", false, "One value per series for the whole range, as an alert over that window computes it, instead of a time series")
 	cmd.Flags().StringSlice("tag", nil, "Tag filter as key=value (repeatable)")
@@ -61,9 +57,9 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 			"traceway metrics query --name <metric-name>")
 	}
 	agg, _ := cmd.Flags().GetString("aggregation")
-	if err := validateEnumFlag("--aggregation", agg, metricAggregations); err != nil {
+	if err := validateEnumFlag("--aggregation", agg, client.MetricAggregations); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
-			enumFlagHint(appdir.Binary+" metrics query", "--aggregation", metricAggregations))
+			enumFlagHint(appdir.Binary+" metrics query", "--aggregation", client.MetricAggregations))
 	}
 	var threshold *float64
 	if cmd.Flags().Changed("threshold") {

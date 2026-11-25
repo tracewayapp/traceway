@@ -82,17 +82,40 @@ func TestMetricsQuery_requiresName(t *testing.T) {
 }
 
 func TestMetricsQuery_aggregationAcceptsAllDocumentedValues(t *testing.T) {
-	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"results":[]}`))
-	}))
-	defer srv.Close()
-	seedSessionFor(t, srv.URL)
-
-	for _, agg := range []string{"avg", "sum", "count", "min", "max", "p50", "p95", "p99"} {
+	for _, agg := range []string{"avg", "sum", "count", "min", "max", "rate", "last", "p50", "p75", "p90", "p95", "p99", "good_ratio"} {
 		t.Run(agg, func(t *testing.T) {
-			_, stderr, err := runCmd(t, "", "metrics", "query", "--name", "x", "--aggregation", agg, "--output", "json")
+			received := make(chan string, 1)
+			srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req struct {
+					Queries []struct {
+						Aggregation string `json:"aggregation"`
+					} `json:"queries"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Queries) != 1 {
+					http.Error(w, "expected one metric query", http.StatusBadRequest)
+					return
+				}
+				received <- req.Queries[0].Aggregation
+				_, _ = w.Write([]byte(`{"results":[]}`))
+			}))
+			defer srv.Close()
+			seedSessionFor(t, srv.URL)
+
+			name := "browser.web_vital.lcp"
+			if agg == "last" {
+				name = "system.cpu.utilization"
+			}
+			_, stderr, err := runCmd(t, "", "metrics", "query", "--name", name, "--aggregation", agg, "--output", "json")
 			if err != nil {
 				t.Fatalf("aggregation %q rejected: %v\nstderr: %s", agg, err, stderr.String())
+			}
+			select {
+			case got := <-received:
+				if got != agg {
+					t.Errorf("sent aggregation %q, want %q", got, agg)
+				}
+			default:
+				t.Fatal("server did not receive a metric query")
 			}
 		})
 	}

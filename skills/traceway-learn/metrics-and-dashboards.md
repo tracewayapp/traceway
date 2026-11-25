@@ -20,7 +20,7 @@ Aggregations:
 
 A widget source can also be **inverted** (1 minus the value). The agent reports `system.cpu.utilization` per state, and `idle` inverted is the busy share.
 
-Distribution queries support p50/p75/p90/p95/p99 and `good_ratio`; point metrics cannot supply percentiles. Merge buckets over the whole window before calculating a headline percentile, never average percentiles. Distribution `count` counts observations; delta-counter `sum` counts events. Query good ratios use 0..1; alert thresholds use 0..100. See [rum.md](rum.md) for current CLI/MCP limitations.
+Distribution queries support p50/p75/p90/p95/p99 and `good_ratio`; point metrics cannot supply percentiles. Merge buckets over the whole window before calculating a headline percentile, never average percentiles. Distribution `count` counts observations; delta-counter `sum` counts events. Query good ratios use 0..1; alert thresholds use 0..100. See [rum.md](rum.md) for example queries.
 
 ## Dashboards (`/dashboards`)
 
@@ -77,8 +77,8 @@ Use the dashboard menu for interactive sharing and the HTTP endpoint for applica
 - An unknown metric name returns an empty series, so probing names is safe.
 - A grouped query keeps the first 200 groups and says `truncatedGroups: true` when it cut some.
 - The server widens buckets so no series has more than 2000 points, and returns the bucket size it used as `intervalMinutes`.
-- Agents can query `avg`, `sum`, `count`, `min`, `max`, `rate` and `last`. Inversion is a widget display setting.
-- Current MCP `query_metrics` refuses percentiles; CLI accepts p50/p95/p99 and the current server computes them for distributions. Neither surface currently exposes the full RUM query contract (`wholeRange`, p75, p90, `good_ratio`, threshold). Use the dashboard for those. Inspect API query errors instead of treating empty CLI results as health.
+- Both the CLI and MCP support `avg`, `sum`, `count`, `min`, `max` and `rate`. Point metrics also support `last`. Distributions also support `p50`, `p75`, `p90`, `p95`, `p99` and `good_ratio`. Inversion is a widget display setting.
+- Use `--whole-range` in the CLI or `whole_range: true` in MCP for one value per series over the full window. Set the cutoff for `good_ratio` with `--threshold` or the query’s `threshold` field. Rated web vitals have a default cutoff.
 - Use `traceway metrics discover --since 24h` for recorded names, types, units and tag keys; add `--name <metric> --key <tag>` for tag values. The MCP equivalent is `discover_metrics` with optional `name` and `key`.
 
 Use `traceway-write dashboards import --file dashboard.json` to create and apply dashboards, or `--mode upsert` to replace by organization-wide name. Read `dashboard-building.md` in the `traceway-write` skill for chart selection from instrumented code, JSON examples and verification. Read-only `dashboards list` and `dashboards export <id>` are available in both CLIs.

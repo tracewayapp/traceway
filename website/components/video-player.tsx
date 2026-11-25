@@ -11,6 +11,8 @@ type Props = {
   className?: string;
 };
 
+type NativeFullscreenVideo = HTMLVideoElement & { webkitEnterFullscreen?: () => void };
+
 const STYLES = `
 .vp {
   position: relative;
@@ -22,6 +24,11 @@ const STYLES = `
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 36px 72px -36px rgba(10, 14, 24, 0.6);
   isolation: isolate;
+}
+.vp:fullscreen {
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
 }
 .vp-video {
   position: absolute;
@@ -81,14 +88,27 @@ const STYLES = `
   padding: 28px 14px 12px;
   background: linear-gradient(to top, rgba(5, 7, 12, 0.85), transparent);
   opacity: 0;
+  pointer-events: none;
   transform: translateY(6px);
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
-.vp:hover .vp-controls,
-.vp:focus-within .vp-controls,
-.vp[data-paused="true"] .vp-controls {
+.vp[data-paused="true"] .vp-controls,
+.vp[data-controls="true"] .vp-controls {
   opacity: 1;
+  pointer-events: auto;
   transform: translateY(0);
+}
+.vp:has(:focus-visible) .vp-controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+@media (hover: hover) {
+  .vp:hover .vp-controls {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
 }
 .vp-btn {
   display: grid;
@@ -154,6 +174,14 @@ const STYLES = `
 .vp-progress:hover .vp-progress-thumb {
   transform: translate(-50%, -50%) scale(1);
 }
+@media (pointer: coarse) {
+  .vp-progress {
+    height: 32px;
+  }
+  .vp-progress-thumb {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
 .vp-time {
   flex: none;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -164,6 +192,18 @@ const STYLES = `
 }
 `;
 
+const CONTROLS_HIDE_MS = 3000;
+
+// Cloudflare's static assets ignore Range requests, which leaves a video
+// unseekable in Chromium and unplayable on iOS, so the site's worker serves
+// the same files under /stream with byte ranges (functions/worker.ts).
+// `next dev` has no worker and its own server handles ranges.
+function playableSrc(src: string) {
+  return process.env.NODE_ENV === "production" && src.startsWith("/videos/")
+    ? `/stream${src}`
+    : src;
+}
+
 function fmt(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
   const m = Math.floor(seconds / 60);
@@ -172,15 +212,18 @@ function fmt(seconds: number) {
 }
 
 export function VideoPlayer({ src, poster, className }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<NativeFullscreenVideo>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const userPausedRef = useRef(false);
+  const pointerTypeRef = useRef("mouse");
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [paused, setPaused] = useState(true);
   const [muted, setMuted] = useState(true);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
+  const [controlsShown, setControlsShown] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -224,6 +267,7 @@ export function VideoPlayer({ src, poster, className }: Props) {
       video.removeEventListener("volumechange", onVolume);
       document.removeEventListener("fullscreenchange", onFs);
       io.disconnect();
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
   }, []);
 
@@ -236,6 +280,27 @@ export function VideoPlayer({ src, poster, className }: Props) {
     } else {
       userPausedRef.current = true;
       video.pause();
+    }
+  }
+
+  // Touch has no hover: a tap on the playing video brings the controls up for
+  // a moment instead of pausing it, and a second tap pauses.
+  function showControls() {
+    setControlsShown(true);
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => setControlsShown(false), CONTROLS_HIDE_MS);
+  }
+
+  function onPointerActivity(e: React.PointerEvent) {
+    pointerTypeRef.current = e.pointerType;
+    if (controlsShown) showControls();
+  }
+
+  function onVideoClick() {
+    if (pointerTypeRef.current === "touch" && !paused && !controlsShown) {
+      showControls();
+    } else {
+      togglePlay();
     }
   }
 
@@ -260,34 +325,61 @@ export function VideoPlayer({ src, poster, className }: Props) {
   }
 
   function onProgressMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) seekFromPointer(e);
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    seekFromPointer(e);
+    if (controlsShown) showControls();
   }
 
   function toggleFullscreen() {
     const el = containerRef.current;
-    if (!el) return;
+    const video = videoRef.current;
+    if (!el || !video) return;
     if (document.fullscreenElement === el) {
       document.exitFullscreen().catch(() => {});
-    } else {
-      el.requestFullscreen().catch(() => {});
+      return;
     }
+
+    // iPhones have no Fullscreen API for a plain element, only the video's
+    // own native player, which throws until the metadata has loaded.
+    const enterNative = () => {
+      try {
+        video.webkitEnterFullscreen?.();
+      } catch {}
+    };
+    if (typeof el.requestFullscreen !== "function") {
+      enterNative();
+      return;
+    }
+    el.requestFullscreen().then(() => {
+      if (video.videoWidth < video.videoHeight) return;
+      const orientation = screen.orientation as ScreenOrientation & {
+        lock?: (orientation: string) => Promise<void>;
+      };
+      orientation?.lock?.("landscape").catch(() => {});
+    }, enterNative);
   }
 
   const pct = duration ? (current / duration) * 100 : 0;
 
   return (
-    <div ref={containerRef} className={cn("vp", className)} data-paused={paused}>
+    <div
+      ref={containerRef}
+      className={cn("vp", className)}
+      data-paused={paused}
+      data-controls={controlsShown}
+      onPointerDown={onPointerActivity}
+    >
       <style>{STYLES}</style>
       <video
         ref={videoRef}
         className="vp-video"
-        src={src}
+        src={playableSrc(src)}
         poster={poster}
         muted
         loop
         playsInline
         preload="metadata"
-        onClick={togglePlay}
+        onClick={onVideoClick}
       />
 
       <button

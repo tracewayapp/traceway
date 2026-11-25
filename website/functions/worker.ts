@@ -1,12 +1,27 @@
 interface Env {
+	ASSETS: { fetch(request: Request): Promise<Response> };
 	SENDGRID_API_KEY: string;
 	SENDGRID_FROM_EMAIL: string;
 	SENDGRID_TO_EMAIL: string;
 }
 
+declare class FixedLengthStream extends TransformStream<Uint8Array, Uint8Array> {
+	constructor(length: number);
+}
+
+const STREAM_PREFIX = "/stream";
+const assetSizes = new Map<string, number>();
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
+
+		if (
+			url.pathname.startsWith(`${STREAM_PREFIX}/videos/`) &&
+			(request.method === "GET" || request.method === "HEAD")
+		) {
+			return handleVideo(request, env, url);
+		}
 
 		if (url.pathname === "/api/contact" && request.method === "POST") {
 			return handleContact(request, env);
@@ -23,6 +38,112 @@ export default {
 		return new Response("Not Found", { status: 404 });
 	},
 };
+
+// Workers static assets ignore Range and answer 200 with the whole file
+// (cloudflare/workers-sdk#8967). Chromium cannot seek in such a response and
+// iOS Safari will not play it at all, so /stream/videos/* serves the assets
+// under /videos/ with byte ranges.
+async function handleVideo(request: Request, env: Env, url: URL): Promise<Response> {
+	const assetUrl = new URL(url.pathname.slice(STREAM_PREFIX.length), url.origin);
+	const asset = await env.ASSETS.fetch(new Request(assetUrl));
+
+	// A missing file comes back as the SPA fallback page with a 200.
+	const isVideo = (asset.headers.get("Content-Type") ?? "").startsWith("video/");
+	if (!asset.ok || !asset.body || !isVideo) {
+		await asset.body?.cancel();
+		return new Response("Not Found", { status: 404 });
+	}
+
+	const etag = asset.headers.get("ETag");
+	const headers = new Headers(asset.headers);
+	headers.set("Accept-Ranges", "bytes");
+	headers.delete("Content-Length");
+
+	if (etag && request.headers.get("If-None-Match") === etag) {
+		await asset.body.cancel();
+		return new Response(null, { status: 304, headers });
+	}
+
+	// The assets binding does not report a length, and a range answer needs the
+	// total, so the first request for a file in each isolate reads it whole.
+	// Later ones stream. The ETag is a content hash, so the size never goes stale.
+	const sizeKey = etag ?? assetUrl.pathname;
+	let body = asset.body;
+	let size = assetSizes.get(sizeKey);
+	if (size === undefined) {
+		const bytes = await asset.arrayBuffer();
+		size = bytes.byteLength;
+		assetSizes.set(sizeKey, size);
+		body = new Response(bytes).body!;
+	}
+
+	const ifRange = request.headers.get("If-Range");
+	const range =
+		!ifRange || ifRange === etag ? parseRange(request.headers.get("Range"), size) : null;
+	if (range === "unsatisfiable") {
+		await body.cancel();
+		headers.set("Content-Range", `bytes */${size}`);
+		return new Response(null, { status: 416, headers });
+	}
+
+	const start = range ? range.start : 0;
+	const length = (range ? range.end : size - 1) - start + 1;
+	if (range) {
+		headers.set("Content-Range", `bytes ${start}-${range.end}/${size}`);
+	}
+	const status = range ? 206 : 200;
+
+	if (request.method === "HEAD") {
+		await body.cancel();
+		headers.set("Content-Length", String(length));
+		return new Response(null, { status, headers });
+	}
+
+	const { readable, writable } = new FixedLengthStream(length);
+	body
+		.pipeThrough(byteSlice(start, length))
+		.pipeTo(writable)
+		.catch(() => {});
+	return new Response(readable, { status, headers });
+}
+
+function parseRange(
+	header: string | null,
+	size: number
+): { start: number; end: number } | "unsatisfiable" | null {
+	const match = /^bytes=(\d*)-(\d*)$/.exec(header ?? "");
+	if (!match || (!match[1] && !match[2])) return null;
+	const [, first, last] = match;
+
+	if (!first) {
+		const suffix = Number(last);
+		if (suffix === 0 || size === 0) return "unsatisfiable";
+		return { start: Math.max(0, size - suffix), end: size - 1 };
+	}
+
+	const start = Number(first);
+	if (last && Number(last) < start) return null;
+	if (start >= size) return "unsatisfiable";
+	return { start, end: last ? Math.min(Number(last), size - 1) : size - 1 };
+}
+
+function byteSlice(start: number, length: number): TransformStream<Uint8Array, Uint8Array> {
+	let skip = start;
+	let remaining = length;
+	return new TransformStream({
+		transform(chunk, controller) {
+			if (skip >= chunk.byteLength) {
+				skip -= chunk.byteLength;
+				return;
+			}
+			const part = chunk.subarray(skip, skip + remaining);
+			skip = 0;
+			remaining -= part.byteLength;
+			controller.enqueue(part);
+			if (remaining === 0) controller.terminate();
+		},
+	});
+}
 
 async function handleContact(request: Request, env: Env): Promise<Response> {
 	try {

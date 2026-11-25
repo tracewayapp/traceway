@@ -84,7 +84,7 @@ func boundedSetting(value string, fallback, max int) int {
 func Start(ctx context.Context) {
 	go func() {
 		defer traceway.Recover()
-		defer releaseShards()
+		defer releaseShards(context.Background())
 		ticker := time.NewTicker(pollInterval())
 		defer ticker.Stop()
 		runTick(ctx)

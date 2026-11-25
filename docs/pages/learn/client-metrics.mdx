@@ -28,7 +28,7 @@ Histogram buckets are about 9% wide, with roughly 4.5% midpoint resolution for o
 | `browser.request.duration` (ms), `browser.request.failed` | distribution, ratio | By `host`, from the requests the SDK traces |
 | `browser.page_view`, `browser.session`, `browser.js_error`, `browser.rage_click` | counter | |
 | `browser.view.inp` (ms), `browser.view.cls` | rated distribution | Per view: the first page view and every single-page-app route change, by the route it happened on. `view_type` is `load` or `soft`. The web vitals above cover the whole page and belong to the landing route |
-| `browser.web_vital.attribution` | counter | One per LCP, INP or CLS that is not good, with the `target` element behind it, `vital` and `rating` |
+| `browser.web_vital.attribution` | counter | One per LCP, INP or CLS that is not good, with the `target` element behind it, `vital` and `rating`; for INP also `phase`, the largest part of the interaction (`input_delay`, `processing` or `presentation`), sent by browser SDK releases after 2.0.2 |
 | `browser.long_task.script_time` (ms) | distribution | Main-thread time by `script`, in browsers that report long animation frames |
 | `browser.user`, `browser.user.affected` | counter | People, not page views: each browser profile counts once per UTC day, and once per day per `issue` (`js_error`, `poor_lcp`, `poor_inp`, `poor_cls`, `rage_click`, `failed_request`). The device does the deduplication, so no id is sent |
 | `app.start.duration` (ms) | distribution | Dimension `start_type`: cold, warm, hot |

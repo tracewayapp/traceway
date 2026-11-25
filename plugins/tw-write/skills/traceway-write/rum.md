@@ -58,7 +58,12 @@ For collection changes, inspect rules in order, preserve unrelated fields, targe
 
 Discover before querying: `traceway metrics discover --since 24h`, then `--name browser.web_vital.inp --key service.version` for release values. MCP has `discover_metrics`. Read sessions with `sessions show <id> --started-at <timestamp>` / `get_session`; no session-list CLI exists.
 
-Current CLI accepts metric p50/p75/p90/p95/p99; current MCP `query_metrics` still rejects percentile aggregations. CLI does not expose `good_ratio`, `threshold` or `wholeRange`. Its response model also omits per-query errors, so an empty CLI result alone is not enough to diagnose a distribution query. Use the dashboard for unsupported reads, or an authorized account-authenticated API query (never a public ingest token). Do not invent flags or bypass Agent Access restrictions.
+`traceway metrics query` and MCP `query_metrics` take p50/p75/p90/p95/p99 and `good_ratio` on distributions, with `--threshold`/`threshold` for `good_ratio` and `--whole-range`/`whole_range` for one value over the whole window. A window's percentile cannot be put together from its buckets' percentiles, so read what an alert saw ("INP p75 over 24 hours") with `--whole-range`, not by averaging buckets. A query the server cannot answer (a percentile of a point metric, `last` of a distribution, `good_ratio` without a threshold on an unrated metric) fails the whole request with 422 and its reason; an empty series means no data. For example:
+
+```bash
+traceway metrics query --name browser.web_vital.inp --aggregation p75 --whole-range --since 24h --group-by service.version
+traceway metrics query --name browser.web_vital.inp --aggregation good_ratio --threshold 200 --whole-range --since 24h
+```
 
 The current server accepts p50/p75/p90/p95/p99 and `good_ratio` on distributions. `POST /api/metrics/query?projectId=PROJECT_UUID` accepts UTC `from`/`to`, `queries`, and `wholeRange: true` to merge the full range:
 
@@ -77,7 +82,7 @@ The current server accepts p50/p75/p90/p95/p99 and `good_ratio` on distributions
 
 Replace the example dates with the requested range. Use `tagFilters` for environment/population. For trends omit `wholeRange` and optionally set `intervalMinutes`. Inspect errors and truncation. `good_ratio` query results are fractions (0..1); alert rule thresholds are percentages (0..100). Percentiles require distributions; point metrics cannot yield them.
 
-Current CLI/MCP dashboard import validation still rejects percentile/good-ratio sources and `rating_bar`/`breakdown_table`, although the dashboard supports them. Use the dashboard editor/JSON UI for these, preserving existing widget IDs; do not strip unsupported widgets from an export to force an import. Exemplars also use the dashboard. Read SLOs with `traceway slos list` / `slos show <id>` (`list_slos`, `get_slo`) and try a definition with `slos preview`; creating, changing and deleting them needs `traceway-write slos` (`create_slo`, `update_slo`, `delete_slo`) with its normal permission checks, like alert and OpAMP writes. A distribution SLO is `sliKind: metric` with `aggregation: distribution`.
+Dashboard import in the write CLI/MCP accepts percentile and `good_ratio` sources and the `rating_bar`/`breakdown_table` widgets, so the Web Performance layout can be exported, edited and imported; preserve existing widget IDs. Exemplars use the dashboard. Read SLOs with `traceway slos list` / `slos show <id>` (`list_slos`, `get_slo`) and try a definition with `slos preview`; creating, changing and deleting them needs `traceway-write slos` (`create_slo`, `update_slo`, `delete_slo`) with its normal permission checks, like alert and OpAMP writes. A distribution SLO is `sliKind: metric` with `aggregation: distribution`.
 
 ## Verify delivery and operate it
 

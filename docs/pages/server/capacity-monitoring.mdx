@@ -68,9 +68,11 @@ The backend reports these gauges every 30 seconds. Each `_30s` value covers the 
 | `traceway.ingest.logs.limiter_saturated_30s` | Requests denied because the bounded IP limiter cannot track another active project/IP |
 | `traceway.ingest.failures_30s` | Ingest requests ending in HTTP 4xx or 5xx, including requests without a sampled trace |
 | `traceway.ingest.admission_rejected.delta` | Requests rejected by the ingest concurrency gate since the previous reporting tick (503, clients may retry) |
-| `traceway.ingest.oversized_discarded` | `/api/report` bodies over `REPORT_MAX_BODY_MB` that were answered `200` and discarded, so the SDK drops the batch instead of resending it. The request carries `ingest.oversized_discarded=true` and the project id |
+| `traceway.ingest.oversized_discarded` | `/api/report` bodies over `REPORT_MAX_BODY_MB` that were answered `200` and discarded, so the SDK drops the batch instead of resending it. Tagged `project_id`, so an alert grouped by it names the app whose SDK sends them. The request carries `ingest.oversized_discarded=true` and the project and organization ids |
 | `traceway.ingest.body_rejected` | Ingest bodies turned away while they were being read, tagged `reason`: `body_too_slow` (the client stalled; 503), `client_aborted` (the client hung up or lost its connection mid-upload; 400), `invalid_body` (malformed; 400) or `body_too_large` (413) |
-| `traceway.ingest.body.network_ms` | Longest time one ingest request spent blocked on its client's upload in the interval. High values with normal `traceway.ingest.batch.*` timings mean slow clients, not a slow server |
+| `traceway.ingest.body.network_ms` | Longest time one ingest request spent blocked on its client's upload in the interval, on every ingest route. High values with normal `traceway.ingest.batch.*` timings mean slow clients, not a slow server. Each request also carries `ingest.body.network_ms` and `ingest.<table>.store_ms`, so one slow request shows which of the two it waited on |
+| `traceway.ingest.prefetch.budget_used_pcnt` | Largest share of `INGEST_PREFETCH_BUDGET_MB` in use in the interval. Bodies are read in full before they take an ingest slot while there is room; at 100 new uploads are read under a slot again |
+| `traceway.ingest.prefetch.skipped` | Bodies not read ahead, tagged `reason`: `no_length` (no `Content-Length`), `too_large` (over the route cap or a quarter of the budget) or `budget_full` |
 | `traceway.admission.in_use_pcnt` | Largest share of an admission gate's slots in use in the interval, tagged `gate` (`ingest`, `upload`, `opamp`). It reaches 100 before the first request has to wait |
 | `traceway.admission.wait_ms` | Longest a request waited for a slot of that gate in the interval. Above zero the gate is saturated; at `INGEST_ADMISSION_WAIT_SECONDS` requests are being rejected |
 | `traceway.storage.rows_dropped.delta` | Rows rejected by instrumented storage validation paths since the previous reporting tick |
@@ -126,6 +128,7 @@ Not emitted in SQLite mode.
 | `traceway.ch.parts.active` / `traceway.ch.parts.rows` | Active parts and rows per telemetry table (tagged `table`) |
 | `traceway.ch.parts.max_per_partition` | Largest part count in any single partition, per table (tagged `table`). ClickHouse delays inserts at 1000 parts/partition and rejects them at 3000 |
 | `traceway.ch.merges.running` | Background merges currently running |
+| `traceway.ch.queries.running` / `longest_sec` / `memory_bytes` | Queries running on the Traceway database when sampled, the longest one's age and their memory, tagged `kind` (`insert`, `read`). A long or memory-hungry read here when every `traceway.ingest.batch.insert_ms` rises at once is what slowed the inserts |
 | `traceway.ch.inserted_rows.delta` | Rows inserted since the last tick |
 | `traceway.ch.failed_inserts.delta` | Failed insert queries since the last tick |
 | `traceway.ch.delayed_inserts.delta` | Inserts ClickHouse throttled since the last tick (parts back-pressure) |

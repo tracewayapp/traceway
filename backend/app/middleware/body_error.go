@@ -82,7 +82,12 @@ func DiscardOversizedReport(c *gin.Context, err error) bool {
 	traceway.SetAttribute(c, "ingest.body_limit_bytes", strconv.FormatInt(maxBytesErr.Limit, 10))
 	traceway.SetAttribute(c, "ingest.content_length", strconv.FormatInt(c.Request.ContentLength, 10))
 	traceway.SetAttribute(c, "ingest.oversized_discarded", "true")
-	traceway.CaptureCount("traceway.ingest.oversized_discarded", 1, nil)
+	// Tagged by project: the batches come from one app's SDK, and that is who an alert on this has to name.
+	var tags map[string]string
+	if projectId, err := GetProjectId(c); err == nil {
+		tags = map[string]string{"project_id": projectId.String()}
+	}
+	traceway.CaptureCount("traceway.ingest.oversized_discarded", 1, tags)
 	c.Header("X-Traceway-Discarded", "body_too_large")
 	c.JSON(http.StatusOK, gin.H{"discarded": "body_too_large"})
 	return true

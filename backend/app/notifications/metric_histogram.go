@@ -463,8 +463,8 @@ func buildReleaseRegressionMessage(cfg releaseRegressionConfig, newest, previous
 	if segment != "" {
 		where = " for " + segment
 	}
-	headline := fmt.Sprintf("Release %s has a %s %s of %.2f%s, %.0f%% worse than release %s (%.2f) over the last %d minutes.",
-		newest, cfg.MetricName, cfg.Aggregation, current, where, change, previous, baseline, cfg.LookbackMinutes)
+	headline := fmt.Sprintf("Release %s has a %s %s of %.2f%s, %.0f%% worse than release %s (%.2f) over the last %s.",
+		newest, cfg.MetricName, cfg.Aggregation, current, where, change, previous, baseline, models.WindowPhrase(cfg.LookbackMinutes))
 	if adjusted {
 		headline += " The older release is weighted to the same mix of devices and operating systems."
 	}

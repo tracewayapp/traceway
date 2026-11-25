@@ -272,10 +272,10 @@ SID=$(jq -r '.sessionId // empty' <<<"$OCC")
 
 ```bash
 traceway metrics query --name system.cpu.utilization --tag state=idle --aggregation min --since 24h   # busy = 1 - idle
-traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
+traceway metrics query --name <name> --aggregation avg|sum|count|min|max|p75|p95 [--whole-range] [--tag key=value] [--group-by <tag>]
 ```
 
-Current servers compute CLI p50/p75/p90/p95/p99 for distribution metrics; point metrics cannot yield percentiles. MCP query validation still rejects these aggregations. Use endpoint statistics for request-population percentiles and [rum.md](rum.md) for browser distributions and query limits. Discover names with `traceway metrics discover`; no `metrics list` exists. Host metrics use `system.*`; explicit-bound backend histograms retain `.avg`/`.count` alongside distributions. An empty series can mean missing data or an unsupported query; inspect errors before drawing conclusions.
+Distribution metrics answer p50/p75/p90/p95/p99 and `good_ratio` (`--threshold`) in both the CLI and MCP `query_metrics`; a point metric answers 422 to them. Use endpoint statistics for request-population percentiles and [rum.md](rum.md) for browser distributions and query limits. Discover names with `traceway metrics discover`; no `metrics list` exists. Host metrics use `system.*`; explicit-bound backend histograms retain `.avg`/`.count` alongside distributions. A successful query with an empty series has no matching data. An incompatible aggregation returns HTTP 422.
 
 ### 4. Correlate with the code
 

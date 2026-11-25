@@ -70,7 +70,7 @@ traceway metrics query --name http.server.duration --aggregation avg --since 1h
 | `traceway ai-traces show <id> --recorded-at <t>` | A single AI trace by id + its conversation |
 | `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
-| `traceway metrics query` | Time-series metric queries |
+| `traceway metrics query` | Time-series metric queries, including percentiles of distribution metrics (`--whole-range` for one value per window) |
 | `traceway pages {list,show}` | On-call pages and their delivery log |
 | `traceway alerts list` | Alert rules with enabled and snoozed state |
 | `traceway slos list` / `slos show <id>` / `slos series <id> --file F` / `slos preview --file F` | SLOs: definition, status, current SLI and error budget, history, and a dry run of a definition |

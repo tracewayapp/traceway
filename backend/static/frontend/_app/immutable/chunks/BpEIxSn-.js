@@ -1,1 +1,0 @@
-import{D as o,E as u,au as f,e as h,M as c}from"./Dpw_JtvN.js";function v(i,a,e,r,t){if(o&&u(),a.$$host?.$$shadowRoot){const n=f("slot");if(e!=="default"&&(n.name=e),h(i,n),t!==null){const l=c();n.append(l),t(l)}return}var s=a.$$slots?.[e],d=!1;s===!0&&(s=a[e==="default"?"children":e],d=!0),s===void 0?t!==null&&t(i):s(i,d?()=>r:r)}export{v as s};

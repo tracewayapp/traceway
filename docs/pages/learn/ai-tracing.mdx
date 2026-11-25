@@ -151,3 +151,11 @@ Any AI provider or gateway that exports OTLP traces with `gen_ai.*` semantic con
 ## Getting Started
 
 See the [OpenRouter integration guide](/client/openrouter) for a step-by-step setup, or the [OpenTelemetry guide](/client/otel) if you're instrumenting your own AI calls.
+
+An AI coding agent can do the instrumentation for you. With the Traceway skills installed (`npx skills add tracewayapp/skills --all`), run this in your repository:
+
+```
+/traceway-setup track ai use
+```
+
+The skill looks for backend model calls, including calls made through shared wrappers or HTTP clients. It shows you the inventory before editing the application. Each instrumented call reports its feature name, available token usage, estimated cost, and any conversation or user IDs the application supplies. Prompt and completion capture is opt-in.

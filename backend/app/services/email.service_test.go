@@ -1,8 +1,10 @@
 package services
 
 import (
+	"html/template"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 )
@@ -194,5 +196,27 @@ func TestPageTemplateSwitchesCopyOnEscalation(t *testing.T) {
 	}
 	if strings.Contains(escalated, "You are on call and a page needs your attention. Acknowledge") {
 		t.Error("escalated delivery should not also show the first-delivery copy")
+	}
+}
+
+func TestRegisteredTemplatesRenderNextToTheCoreOnes(t *testing.T) {
+	prev := emailTemplates
+	emailTemplates = template.Must(template.New("emails").ParseFS(emailTemplateFS, "emailtemplates/*.gohtml"))
+	t.Cleanup(func() { emailTemplates = prev })
+
+	extension := fstest.MapFS{"mail/support_request.gohtml": {Data: []byte(`<p>{{.Title}}: {{.Data}}</p>`)}}
+	if err := RegisterEmailTemplates(extension, "mail/*.gohtml"); err != nil {
+		t.Fatalf("RegisterEmailTemplates: %v", err)
+	}
+
+	html, err := RenderEmail(Email{Template: "support_request", Title: "Help", Data: "<script>"})
+	if err != nil {
+		t.Fatalf("RenderEmail: %v", err)
+	}
+	if html != "<p>Help: &lt;script&gt;</p>" {
+		t.Errorf("rendered %q", html)
+	}
+	if _, err := RenderEmail(Email{Template: models.EmailTemplateTest, Data: &models.NotificationEmail{Test: &models.EmailTest{Target: "channel"}}}); err != nil {
+		t.Errorf("a core template stopped rendering: %v", err)
 	}
 }

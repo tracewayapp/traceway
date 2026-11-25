@@ -168,6 +168,46 @@ func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSe
 	return out, rows.Err()
 }
 
+// attributeValues is the subquery every attribute chart reads: one row per
+// matching log that carries the attribute, with its bucket, whether its value
+// is a number, and the number. step 0 puts every row in bucket 0.
+func (r *logRecordRepository) attributeValues(params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) (string, []interface{}, bool) {
+	col := attrColumn(target.Scope)
+	if col == "" {
+		return "", nil, false
+	}
+	where, whereArgs := r.buildWhere(params)
+	bucket := "toInt64(0)"
+	if step > 0 {
+		bucket = epochBucket("timestamp", int(step))
+	}
+	query := `SELECT bucket, ` + chartNumber + `
+		FROM (SELECT ` + bucket + ` AS bucket, ` + col + `[?] AS raw
+			FROM log_records WHERE ` + where + ` AND mapContains(` + col + `, ?))`
+	args := append([]interface{}{target.Key}, whereArgs...)
+	args = append(args, target.Key)
+	return query, args, true
+}
+
+// AttributeStats summarises the numeric values of one attribute per step-second
+// bucket of the logs Search would match (step 0: one row for the whole range).
+func (r *logRecordRepository) AttributeStats(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) ([]shared.ChartStatsRow, error) {
+	values, args, ok := r.attributeValues(params, target, step)
+	if !ok {
+		return nil, nil
+	}
+	return queryChartStats(ctx, values, args, "")
+}
+
+// AttributeBins counts the numeric values of one attribute per bin.
+func (r *logRecordRepository) AttributeBins(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, binning shared.ChartBinning) ([]shared.ChartBinRow, error) {
+	values, args, ok := r.attributeValues(params, target, 0)
+	if !ok {
+		return nil, nil
+	}
+	return queryChartBins(ctx, values, args, binning, "")
+}
+
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
 	query := `SELECT ` + chLogRecordColumns + `
 	FROM log_records
@@ -300,6 +340,15 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 	for _, f := range params.AttributeFilters {
 		col := attrColumn(f.Scope)
 		if col == "" {
+			continue
+		}
+		if f.Exists {
+			if f.Exclude {
+				clauses = append(clauses, "NOT mapContains("+col+", ?)")
+			} else {
+				clauses = append(clauses, "mapContains("+col+", ?)")
+			}
+			args = append(args, f.Key)
 			continue
 		}
 		if f.Contains {

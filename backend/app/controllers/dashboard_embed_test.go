@@ -34,9 +34,19 @@ func TestEmbeddedDashboard(t *testing.T) {
 	if rec := f.do(t, writer, http.MethodPost, issue+f.otherProject.Id.String(), view); rec.Code != 403 {
 		t.Fatalf("foreign project issuance: %d", rec.Code)
 	}
-	if rec := f.do(t, f.pat(t, models.ScopeRead), http.MethodPost, issue+f.project.Id.String(), view); rec.Code != 403 {
-		t.Fatalf("read-only issuance: %d", rec.Code)
+	// A link only reads a dashboard that already exists, so a read token issues it
+	// without the organization's agent-write opt-in, but a readonly member may not.
+	f.setAgentWrites(t, false)
+	if rec := f.do(t, f.pat(t, models.ScopeRead), http.MethodPost, issue+f.project.Id.String(), view); rec.Code != http.StatusCreated {
+		t.Fatalf("read token issuance: %d %s", rec.Code, rec.Body)
 	}
+	if rec := f.do(t, f.pat(t, models.ScopeRead), http.MethodPost, issue+f.otherProject.Id.String(), view); rec.Code != 403 {
+		t.Fatalf("read token foreign project issuance: %d", rec.Code)
+	}
+	if _, readonly, _ := f.member(t, "embed-reader@example.com", "readonly"); f.do(t, readonly, http.MethodPost, issue+f.project.Id.String(), view).Code != 403 {
+		t.Fatal("readonly member issued a link")
+	}
+	f.setAgentWrites(t, true)
 	if rec := f.do(t, writer, http.MethodPost, issue+f.project.Id.String(), map[string]any{"filters": map[string]string{"account": "one"}}); rec.Code != 400 {
 		t.Fatalf("unknown filter accepted: %d", rec.Code)
 	}

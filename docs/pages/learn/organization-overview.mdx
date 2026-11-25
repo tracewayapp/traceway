@@ -45,7 +45,7 @@ The page refreshes itself every minute, and **Refresh** forces it. A refresh tha
 |---|---|
 | CPU | `system.cpu.utilization` where `state=idle`, inverted, with a 30-minute sparkline |
 | Memory | `system.memory.utilization` where `state=used` |
-| Disk | `system.filesystem.utilization` where `state=used` |
+| Disk | `system.filesystem.utilization` of the fullest writable mount (`mode=rw`), or of the fullest mount when a host reports no writable one |
 | Network | `system.network.io` split by `direction`, as a rate |
 | Last signal | Most recent metric point from that server |
 

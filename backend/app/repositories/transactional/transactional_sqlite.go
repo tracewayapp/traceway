@@ -34,6 +34,7 @@ var (
 	ProjectRepository                = sqliterepo.ProjectRepository
 	ProjectUserRoleRepository        = sqliterepo.ProjectUserRoleRepository
 	RefreshTokenRepository           = sqliterepo.RefreshTokenRepository
+	SavedFilterRepository            = sqliterepo.SavedFilterRepository
 	SetupPlanRepository              = sqliterepo.SetupPlanRepository
 	SetupTokenRepository             = sqliterepo.SetupTokenRepository
 	SLORepository                    = sqliterepo.SLORepository

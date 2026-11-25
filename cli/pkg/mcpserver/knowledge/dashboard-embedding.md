@@ -7,7 +7,7 @@ Use this guide when the user wants a Traceway dashboard shown inside their own p
 A shared dashboard is the read-only page `/embed/dashboard` on the Traceway instance. It needs no Traceway account and any site may frame it. A signed link decides what it shows: one dashboard in one project, a time range, optional tag filters and an expiry.
 
 1. The viewer opens a page of the host application.
-2. The host backend checks that the viewer may see the data, then asks Traceway for a link with `POST /api/dashboards/{id}/embed-token`, authenticated with a write token it keeps server-side.
+2. The host backend checks that the viewer may see the data, then asks Traceway for a link with `POST /api/dashboards/{id}/embed-token`, authenticated with a personal access token it keeps server-side.
 3. Traceway answers with `embedPath`. The host backend resolves it against the Traceway origin and returns the URL to its own frontend.
 4. The frontend sets it as the `src` of an iframe. The page reads the dashboard from Traceway with the token in the URL fragment.
 5. Shortly before the link expires the frontend asks its backend for a new one and assigns it to the same iframe.
@@ -18,15 +18,15 @@ Traceway stores nothing per link. It verifies the signature and the dashboard's 
 
 - **The dashboard and project.** `traceway dashboards list --output json` gives the numeric dashboard id; `traceway projects list` gives the project UUID. The dashboard must be applied to that project.
 - **A tag that separates viewers.** To show each customer their own numbers, every metric on the dashboard must carry a tag that names the customer, such as `account_id`. Confirm it with `traceway metrics discover --name <metric> --key account_id --since 24h --output json`. A widget whose metric lacks the tag shows nothing under the filter. Without any such tag an embed shows every customer's data: say so and do not embed it for customers.
-- **The credential.** A **Read and write** personal access token (`tww_`), created by the user in **Account > Personal Access Tokens**. It expires within 90 days, so tell the user the date it must be rotated by. Its owner needs write access to the project, and an owner or admin must switch on **Settings > Agent Access > Allow agent writes**. A project ingest token or a read-only token cannot issue links.
-- **Where the credential lives.** In the host backend's secret store, read from an environment variable such as `TRACEWAY_EMBED_TOKEN`. Never in frontend code, never committed, never printed. Ask the user to put it there themselves; do not ask them to paste it into chat.
+- **The credential.** A **Read only** personal access token (`twp_`), created by the user in **Account > Personal Access Tokens**. A link only reads a dashboard that already exists, so it needs no write token and no **Allow agent writes**, and a read token can be created without an expiry. Its owner needs write access to the project (a `readonly` member cannot share). A project ingest token cannot issue links. If the user sets an expiry, tell them the date it must be rotated by. With the write CLI or MCP server you can create it yourself: `traceway-write tokens create --name "<app> dashboard embed" --yes --output json` (`create_read_token`), signed in as a member who can write to the project. Creating a token, unlike issuing a link, is an agent write: it needs **Allow agent writes** and appears in the agent activity log.
+- **Where the credential lives.** In the host backend's secret store, read from an environment variable such as `TRACEWAY_EMBED_TOKEN`. Never in frontend code, never committed, never printed. A token you created goes straight from the command's output into that store, without echoing it or repeating it in chat. A token the user created they put there themselves; do not ask them to paste it into chat.
 - **Two addresses.** The URL the host backend calls Traceway at, and the origin the viewer's browser reaches Traceway at. They differ when the backend uses an internal address. The iframe needs the second.
 
 ## The request
 
 ```http
 POST {traceway}/api/dashboards/{dashboardId}/embed-token?projectId={projectUuid}&timeframe=7d&theme=light
-Authorization: Bearer tww_...
+Authorization: Bearer twp_...
 Content-Type: application/json
 
 {"tagFilters": {"account_id": "acme"}}
@@ -123,7 +123,7 @@ The MCP equivalent is `create_dashboard_embed` on the write server (`id`, option
 
 | Symptom | Cause |
 |---|---|
-| Issuance **403** | A read-only token, **Allow agent writes** switched off, or the token's owner cannot write to the project. |
+| Issuance **403** | The token's owner is a `readonly` member or cannot reach the project in `projectId`. |
 | Issuance **404** | The dashboard is not applied to the project in `projectId`. |
 | Issuance **422** | The message names it: a malformed or repeated `timeframe`, `timeframe` together with timestamps, half or a reversed range, a window over 731 days, an expiry that is past or more than 90 days ahead, or an empty tag filter. |
 | The frame says the link is invalid or has expired | It was not renewed in time, or the instance's signing key changed. Request a new link. |

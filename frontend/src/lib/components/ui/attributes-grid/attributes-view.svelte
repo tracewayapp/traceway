@@ -1,12 +1,15 @@
 <script lang="ts">
 	import JSONTree from '@sveltejs/svelte-json-tree';
-	import { Filter, FilterX } from '@lucide/svelte';
+	import { ChartLine, Filter, FilterX } from '@lucide/svelte';
 	import CopyButton from '$lib/components/traceway/copy-button.svelte';
 	import FilterOperatorMenu from '$lib/components/traceway/filter-operator-menu.svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import {
 		operatorFlags,
+		operatorOption,
 		operatorOptions,
-		type FilterOperator
+		type FilterOperator,
+		type OperatorOption
 	} from '$lib/utils/attribute-filters';
 
 	let {
@@ -14,7 +17,9 @@
 		value,
 		onFilterToggle,
 		activeOperator = null,
-		onFilterOperator
+		onFilterOperator,
+		operators = operatorOptions,
+		onChart
 	}: {
 		title: string;
 		value: string;
@@ -22,6 +27,9 @@
 		activeOperator?: FilterOperator | null;
 		// Opens the operator menu instead of toggling; null clears the filter.
 		onFilterOperator?: (operator: FilterOperator | null) => void;
+		operators?: readonly OperatorOption[];
+		// Adds "Chart values" to the operator menu.
+		onChart?: () => void;
 	} = $props();
 
 	// Hidden-until-hover only where hovering exists: always visible on small
@@ -33,7 +41,7 @@
 		activeOperator === null ? 'none' : operatorFlags(activeOperator).exclude ? 'exclude' : 'include'
 	);
 
-	const activeOption = $derived(operatorOptions.find((o) => o.value === activeOperator));
+	const activeOption = $derived(activeOperator ? operatorOption(activeOperator) : undefined);
 
 	const filterTitle = $derived(
 		!activeOption
@@ -88,9 +96,18 @@
 				{/if}
 			{/snippet}
 			{#if onFilterOperator}
+				{#snippet chartItem()}
+					<DropdownMenu.Item onclick={onChart}>
+						<ChartLine class="h-4 w-4" />
+						<span class="w-4"></span>
+						Chart values
+					</DropdownMenu.Item>
+				{/snippet}
 				<FilterOperatorMenu
 					active={activeOperator}
 					label={title}
+					options={operators}
+					extra={onChart ? chartItem : undefined}
 					onSelect={onFilterOperator}
 					onClear={() => onFilterOperator?.(null)}
 					triggerClass="inline-flex items-center gap-0.5 {filterButtonClass} data-[state=open]:opacity-100"

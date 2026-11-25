@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
 	parseSpanAttributeFilter,
+	readSpanChart,
 	readSpanSearchFilters,
+	spanChartBody,
+	spanChartUrlParams,
+	spanExplorerHref,
 	spanSearchBody,
 	spanSearchUrlParams,
 	spanTraceHref,
-	summarizeSpanTrace
+	summarizeSpanTrace,
+	SPAN_ATTRIBUTE_RULES
 } from './span-explorer';
+import { parseAttributeInput } from '$lib/components/traceway/filter-bar/attributes';
 import type { Span } from '$lib/types/spans';
 
 function urlOf(params: Record<string, string | string[] | undefined>): string {
@@ -29,15 +35,39 @@ describe('span search filters', () => {
 			maxMs: '900',
 			traceId: '0af7651916cd43dd8448eb211c80319c',
 			attributes: [
-				{ key: 'http.request.method', value: 'GET' },
-				{ key: 'url.query', value: 'a=b&c=d' }
+				{
+					key: 'http.request.method',
+					value: 'GET',
+					exclude: false,
+					contains: false,
+					exists: false
+				},
+				{ key: 'url.query', value: 'a=b&c=d', exclude: true, contains: false, exists: false },
+				{ key: 'db.statement', value: 'orders', exclude: false, contains: true, exists: false },
+				{ key: 'cache.hit', value: '', exclude: true, contains: false, exists: true },
+				{ key: 'weird=key!', value: 'x', exclude: false, contains: false, exists: false }
 			]
 		};
 		expect(readSpanSearchFilters(urlOf(spanSearchUrlParams(filters)))).toEqual(filters);
 	});
 
+	it('read links made before the operators', () => {
+		expect(readSpanSearchFilters('?attr=url.path%3D%2Fcheckout').attributes).toEqual([
+			{ key: 'url.path', value: '/checkout', exclude: false, contains: false, exists: false }
+		]);
+	});
+
 	it('drop attribute entries that have no key or no value', () => {
-		expect(readSpanSearchFilters('?attr=novalue&attr==x&attr=k=').attributes).toEqual([]);
+		expect(readSpanSearchFilters('?attr=novalue&attr==x&attr=k=&attr=k!~=').attributes).toEqual([]);
+		expect(readSpanSearchFilters('?attr=k?=').attributes).toHaveLength(1);
+	});
+
+	it('send the operators and no value for a key check', () => {
+		const body = spanSearchBody(readSpanSearchFilters('?attr=cache.hit!%3F%3D&attr=db.rows~%3D5'));
+		expect(body.attributeFilters).toEqual([
+			{ key: 'cache.hit', value: '', exclude: true, contains: false, exists: true },
+			{ key: 'db.rows', value: '5', exclude: false, contains: true, exists: false }
+		]);
 	});
 
 	it('send only the filters that are set', () => {
@@ -57,7 +87,99 @@ describe('span search filters', () => {
 	});
 });
 
-describe('attribute filter dialog', () => {
+describe('explorer attribute rules', () => {
+	it('takes an operator and needs no value to check a key', () => {
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, ' cache.hit ', 'ignored', '!?=', [])).toEqual({
+			key: 'cache.hit',
+			value: '',
+			exclude: true,
+			contains: false,
+			exists: true
+		});
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'db.rows', '', '~=', [])).toMatch(/value/);
+	});
+
+	it('lets an edited pill keep its place but not copy another', () => {
+		const a = parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'a', '1', '=', []) as never;
+		const b = parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'b', '2', '=', []) as never;
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'a', '1', '=', [a, b], 0)).toEqual(a);
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'b', '2', '=', [a, b], 0)).toMatch(/already/);
+		const full = Array.from(
+			{ length: 10 },
+			(_, i) => parseAttributeInput(SPAN_ATTRIBUTE_RULES, `k${i}`, 'v', '=', []) as never
+		);
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'k0', 'w', '=', full, 0)).not.toBeTypeOf(
+			'string'
+		);
+		expect(parseAttributeInput(SPAN_ATTRIBUTE_RULES, 'k', 'v', '=', full)).toMatch(/at most 10/);
+	});
+});
+
+describe('explorer chart', () => {
+	it('charts the duration unless the URL closes it', () => {
+		expect(readSpanChart('')).toEqual({
+			target: { kind: 'duration' },
+			view: 'series',
+			aggregations: ['p50', 'p95', 'p99']
+		});
+		expect(readSpanChart('?chart=none')).toBeNull();
+		expect(spanChartUrlParams(null).chart).toBe('none');
+		expect(spanChartUrlParams(readSpanChart(''))).toEqual({
+			chart: undefined,
+			chartView: undefined,
+			chartAgg: undefined
+		});
+	});
+
+	it('round trips an attribute chart', () => {
+		const chart = readSpanChart('?chart=attr.db.rows&chartView=distribution&chartAgg=p95')!;
+		expect(chart.target).toEqual({ kind: 'attribute', key: 'db.rows' });
+		expect(spanChartUrlParams(chart)).toEqual({
+			chart: 'attr.db.rows',
+			chartView: 'distribution',
+			chartAgg: 'p95'
+		});
+		expect(spanChartBody(chart.target)).toEqual({ attribute: 'db.rows' });
+		expect(spanChartBody({ kind: 'duration' })).toEqual({});
+	});
+});
+
+describe('links from a span to the explorer', () => {
+	const span = {
+		recordedAt: '2026-11-20T10:00:00Z',
+		projectId: 'p2',
+		name: 'SELECT orders',
+		serviceName: 'checkout-api'
+	};
+	it('search the hour around the span in its own project', () => {
+		const filter = {
+			key: 'db.system',
+			value: 'postgresql',
+			exclude: false,
+			contains: false,
+			exists: false
+		};
+		const href = new URL(spanExplorerHref(span, { filter }, '?at=x'), 'http://x');
+		expect(href.pathname).toBe('/spans');
+		expect(href.searchParams.get('projectId')).toBe('p2');
+		expect(href.searchParams.get('from')).toBe('2026-11-20T09:30:00.000Z');
+		expect(href.searchParams.get('to')).toBe('2026-11-20T10:30:00.000Z');
+		expect(href.searchParams.getAll('attr')).toEqual(['db.system=postgresql']);
+	});
+	it('keep the page time range and chart one operation', () => {
+		const href = new URL(
+			spanExplorerHref(span, { chartKey: 'db.rows' }, '?preset=24h'),
+			'http://x'
+		);
+		expect(href.searchParams.get('preset')).toBe('24h');
+		expect(href.searchParams.get('from')).toBeNull();
+		expect(href.searchParams.get('chart')).toBe('attr.db.rows');
+		expect(href.searchParams.get('name')).toBe('SELECT orders');
+		expect(href.searchParams.get('service')).toBe('checkout-api');
+	});
+});
+
+describe('SLO attribute filter', () => {
 	it('trims and accepts a filter', () => {
 		expect(parseSpanAttributeFilter(' url.path ', ' /checkout ', [])).toEqual({
 			key: 'url.path',

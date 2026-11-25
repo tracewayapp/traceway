@@ -1,6 +1,6 @@
 # Instrumenting an AI Agent or Chatbot for Traceway
 
-Read this file when "Analyze the Architecture" detected a conversational AI product: a chatbot, a multi-turn assistant, a tool-calling agent, or anything built on an agent framework. The base rules from the "AI Traces" section of SKILL.md still apply (one span per model call, and a `gen_ai.*` attribute promotes that span to an AI Trace). This file adds what conversational products need on top, so Traceway's Conversations and Users analytics light up: conversation grouping, per-user attribution, tool calls, and sub-agents.
+Read this file when the analysis detected a conversational AI product: a chatbot, a multi-turn assistant, a tool-calling agent, or anything built on an agent framework. The base procedure is `ai-usage.md` in this skill directory (inventory the call sites, one OpenTelemetry GenAI span per model call, the attributes Traceway reads, verification). This file adds what conversational products need on top, so Traceway's Conversations and Users analytics light up: conversation grouping, per-user attribution, tool calls, and sub-agents.
 
 ## Before you write anything: three preconditions
 
@@ -10,7 +10,7 @@ Get these wrong and the export still returns 200 while the dashboard stays empty
 
 Traceway promotes a span to an AI Trace only when it carries an attribute literally prefixed `gen_ai.`. Agent-framework auto-instrumentation is split on this:
 
-| Instrumentation | Emits | Works out of the box? |
+| Instrumentation | Emits | Promoted to an AI Trace? |
 |---|---|---|
 | OpenLLMetry / Traceloop (`traceloop-sdk`, `@traceloop/node-server-sdk`) | `gen_ai.*` including `gen_ai.prompt` / `gen_ai.completion` | Yes |
 | OpenLIT (`openlit`) | `gen_ai.*` | Yes |
@@ -18,42 +18,15 @@ Traceway promotes a span to an AI Trace only when it carries an attribute litera
 | OpenInference / Arize (`openinference-instrumentation-langchain`, `-llama-index`, `-crewai`, `-openai`) | `openinference.span.kind`, `llm.model_name`, `llm.token_count.*`, `input.value`, `output.value`, and **no `gen_ai.*`** | **No** |
 | Langfuse / LangSmith OTel exporters | vendor-prefixed attributes | **No** |
 
-An OpenInference-style span is not merely missing tokens. It is a root INTERNAL span that matches no promotion rule, so it is dropped outright: no AI trace, no span row, nothing on any page, while every OTLP export answers 200. If the project uses one of the "No" rows, pick one of these: switch to OpenLLMetry or OpenLIT, add a span processor that copies the vendor attributes onto their `gen_ai.*` equivalents, or instrument the model calls by hand with the skeleton below.
+An OpenInference-style span is not merely missing tokens. It matches no promotion rule, so it is stored as a plain span and nothing else: no AI Trace, no tokens, no conversation, while every OTLP export answers 200. If the project uses one of the "No" rows, pick one of these: switch to OpenLLMetry or OpenLIT, add a span processor that copies the vendor attributes onto their `gen_ai.*` equivalents, or instrument the model calls by hand with the skeleton below.
+
+"Yes" only means the span is promoted. Content, cost, the conversation id and the user id still have to be on the attributes Traceway reads, so check one exported span against "Self-check a span" in `ai-usage.md` whichever library produced it.
 
 ### 2. Content must land on the attribute names Traceway reads
 
 Traceway reads the prompt from `gen_ai.prompt`, falling back to `trace.input`, then `span.input`. It reads the completion from `gen_ai.completion`, falling back to `trace.output`, then `span.output`. It does **not** read the newer OTel semconv names `gen_ai.input.messages` / `gen_ai.output.messages`, nor the Vercel AI SDK's `ai.prompt.messages` / `ai.response.text`.
 
-Content on an unread name is stored as an inert attribute. The symptom is confusing: tokens and cost look perfectly healthy while the chat timeline is blank, tool calls are 0, and content flagging can never fire. If your SDK emits the semconv or `ai.*` names, copy them across with a span processor that runs before the exporting one:
-
-```typescript
-import type { ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base";
-
-class CopyGenAiContent implements SpanProcessor {
-  onStart() {}
-  onEnd(span: ReadableSpan) {
-    const attrs = span.attributes as Record<string, unknown>;
-    const copy = (target: string, ...sources: string[]) => {
-      if (attrs[target] !== undefined) return;
-      for (const source of sources) {
-        const value = attrs[source];
-        if (value === undefined) continue;
-        attrs[target] = typeof value === "string" ? value : JSON.stringify(value);
-        return;
-      }
-    };
-    copy("gen_ai.prompt", "gen_ai.input.messages", "ai.prompt.messages");
-    copy("gen_ai.completion", "gen_ai.output.messages", "ai.response.text");
-  }
-  async forceFlush() {}
-  async shutdown() {}
-}
-
-// Order matters: this must come before the batch processor that exports.
-new NodeSDK({
-  spanProcessors: [new CopyGenAiContent(), new BatchSpanProcessor(exporter)],
-});
-```
+With content capture enabled, format the captured messages in a library hook or a Traceway-specific export transformation. A direct copy of the conventions’ `parts` arrays leaves the chat view without renderable messages. Map text parts to `content`, tool requests to assistant `tool_calls`, and tool responses to `role: "tool"` messages with the matching `tool_call_id`. Wrap output in one of the provider shapes under “Tool calls” below. With capture off, omit prompts, completions, tool arguments and results from the Traceway export, including vendor-specific keys and events.
 
 ### 3. `gen_ai.*` belongs on the model-call span and nowhere else
 
@@ -61,7 +34,7 @@ The `gen_ai.*` rule is the last one Traceway evaluates, so three earlier rules s
 
 - A root `SERVER` or `INTERNAL` span with any HTTP attribute (`http.route`, `http.request.method`, `url.path`) becomes an **Endpoint**. Never decorate the `/api/chat` route span with `gen_ai.conversation.id` or `user.id`, or the model call disappears from AI Traces.
 - A `CONSUMER` span becomes a **Task**. An LLM call inside a queue worker needs its own child span, it cannot ride on the consumer span.
-- An `INTERNAL` span carrying `exception.*` attributes is dropped entirely. The Issue is still recorded, the AI trace is not.
+- An `INTERNAL` span carrying `exception.*` attributes is never promoted. The Issue is recorded and the span is stored, but there is no AI Trace.
 
 Use `SpanKind.CLIENT` for model calls, as the skeleton below does. That is not decoration, it is what keeps a failed call's AI trace alive.
 
@@ -119,76 +92,74 @@ The simplest correct choice is to serialize the provider's raw response: `JSON.s
 
 Two rules for the tool executions themselves:
 
-1. **Wrap each tool execution in a plain child span of the enclosing request or task span, not of the model-call span.** Name it `tool <name>` with attributes like `tool.name` and `tool.args`. Traceway re-roots every unpromoted child span onto its nearest promoted ancestor, and AI Traces have no waterfall view, so a tool span parented to the model call is stored and then rendered nowhere.
+1. **Wrap each tool execution in a plain span, started after the model-call span has ended.** Name it `execute_tool <name>` (the GenAI conventions' name for it) with `tool.name` and `tool.call.id`. Arguments and results (`tool.args`, `tool.result`) are content, so add them only when content capture is on. Because the model call is over by then, the tool span becomes a child of the enclosing request or task span and sits next to the model calls in that Endpoint's or Task's waterfall, in the order things happened:
 
    ```
-   POST /api/chat            SERVER   -> Endpoint (has a Spans tab)
-   ├── chat gpt-4o           CLIENT   -> AI Trace (turn 1)
-   ├── tool lookup_order     INTERNAL -> Span, shown on the Endpoint's Spans tab   OK
-   └── db SELECT orders      CLIENT   -> Span, shown on the Endpoint's Spans tab   OK
-
-   POST /api/chat            SERVER   -> Endpoint
-   └── chat gpt-4o           CLIENT   -> AI Trace
-       └── tool lookup_order INTERNAL -> re-rooted onto the AI Trace, rendered nowhere   BAD
+   POST /api/chat                 SERVER   -> Endpoint
+   ├── chat gpt-4o                CLIENT   -> AI Trace (turn 1, asks for the tool)
+   ├── execute_tool lookup_order  INTERNAL -> plain span
+   │   └── SELECT orders          CLIENT   -> plain span
+   └── chat gpt-4o                CLIENT   -> AI Trace (turn 2, answers)
    ```
 
-   In practice: end the model-call span before you run the tools, or start the tool span from the request context instead of from inside `startActiveSpan` of the model call. The AI Trace still links back to its Endpoint through the shared distributed trace id either way.
+   A span started while the model-call span is still active becomes its child instead. It is then shown on that AI Trace's own Spans card as well, which is the right place for the provider HTTP request and wrong for a tool that ran afterwards. Each AI Trace also links back to its Endpoint through the shared trace id.
 
 2. **Do NOT put `gen_ai.*` attributes on tool-execution spans.** Any `gen_ai.*` attribute, including `gen_ai.operation.name = "execute_tool"`, promotes the span to its own AI Trace row. If it also carries the conversation id it becomes an extra *turn*, and if the model span already reported that tool in its completion payload the tool is counted twice: one model call plus one `execute_tool` span in the same conversation reports `turns: 2, toolCallCount: 2`. Use `execute_tool` plus `gen_ai.tool.name` only when you have no completion payload at all and accept one AI-trace row per tool invocation. Otherwise keep tool spans free of `gen_ai.*` and let the completion payload carry the names.
+
+## Side calls
+
+Some calls serve a conversation without being a turn of it: a title for the chat, a summary, a moderation check, an embedding for retrieval. Give them their own `trace.name` ("Chat Title"), and choose deliberately whether they carry the conversation's id:
+
+- **With the id** (the default): the call's cost counts toward the conversation, which is what the `ai_conversation_cost` alert and the cost columns need. It also counts as a turn, and because its prompt is not the running history, the conversation page shows every turn as its own block instead of one merged chat.
+- **Without the id**: Traceway falls back to the span or resource `session.id`, then to the trace id. Calls with the same fallback id still group together. To guarantee separate attribution, supply a distinct stable conversation id for the side work.
 
 ## Sub-agents
 
 When the main agent delegates to sub-agents (a researcher, a planner, a summarizer), give each sub-agent's model calls their own `trace.name` ("Research Sub-Agent") while keeping the SAME `gen_ai.conversation.id` and `user.id`. Each agent then appears separately on the Traces tab with its own latency and cost profile, while the Conversations tab aggregates the whole delegation as one conversation: turns ordered by time, models and tool names unioned across agents.
 
-The single merged chat timeline needs one more thing: each turn's `gen_ai.prompt` must be a superset of the previous turn's message list, with the same role order. A sub-agent that sends its own system prompt or a compacted history breaks that match, and the conversation page falls back to rendering each turn as its own input/output block. That is cosmetic. Turn counts, costs and tool names are unaffected.
+The single merged chat timeline needs one more thing: each turn’s input must start with the complete previous input and its assistant response, in order. A sub-agent that sends its own system prompt or a compacted history breaks that match, and the conversation page falls back to rendering each turn as its own input/output block. That is cosmetic. Turn counts, costs and tool names are unaffected.
 
 ## Putting it together (agent loop skeleton)
+
+`tracedChat` is the helper from Step D of `ai-usage.md`: it starts the model-call span, sets the request-side attributes before the request so a failed call keeps them, records tokens, cost, content and errors, and ends the span. A conversation adds three things to it: the same `conversationId` and `userId` on every call, the full history in every prompt, and tool spans between the calls.
 
 ```typescript
 import { SpanKind, trace } from "@opentelemetry/api";
 
 const tracer = trace.getTracer("agent");
-const MODEL = "gpt-4o";
 
-// Traceway has no server-side price list. You compute cost, in USD per token.
-const PRICES: Record<string, { in: number; out: number }> = {
-  "gpt-4o": { in: 2.5 / 1_000_000, out: 10 / 1_000_000 },
-};
+async function answer(conversationId: string, userId: string, history: Message[], userMessage: string) {
+  // Same three values on every call of the conversation. A sub-agent changes only `feature`.
+  const call = { feature: "Support Chat Agent", conversationId, userId };
+  history.push({ role: "user", content: userMessage });
 
-async function agentTurn(conversationId: string, userId: string, messages: Message[]) {
-  // CLIENT, not INTERNAL: an INTERNAL span carrying exception.* attributes is
-  // dropped, so a failed call would lose its AI trace.
-  const span = tracer.startSpan(`chat ${MODEL}`, { kind: SpanKind.CLIENT });
-  try {
-    const response = await llm.chat({ model: MODEL, messages, tools });
-    const usage = response.usage;
-    const price = PRICES[MODEL] ?? { in: 0, out: 0 };
-    span.setAttributes({
-      "trace.name": "Support Chat Agent",          // sub-agents use their own name here
-      "gen_ai.conversation.id": conversationId,     // same for every call in the conversation
-      "user.id": userId,                            // stable end-customer id
-      "gen_ai.system": "openai",
-      "gen_ai.operation.name": "chat",
-      "gen_ai.request.model": MODEL,
-      "gen_ai.response.model": response.model,
-      "gen_ai.usage.input_tokens": usage.prompt_tokens,       // integers, never strings
-      "gen_ai.usage.output_tokens": usage.completion_tokens,
-      "gen_ai.usage.input_cost": usage.prompt_tokens * price.in,        // doubles
-      "gen_ai.usage.output_cost": usage.completion_tokens * price.out,
-      "gen_ai.response.finish_reason": response.choices[0].finish_reason,
-      "gen_ai.prompt": JSON.stringify({ messages }),
-      "gen_ai.completion": JSON.stringify({ choices: response.choices }),
-    });
-    return response;
-  } finally {
-    // End before running the tools, so tool spans attach to the request span
-    // rather than to this one.
-    span.end();
+  for (let step = 0; step < MAX_STEPS; step++) {
+    // One iteration = one provider request = one span = one turn.
+    const response = await tracedChat(openai, call, { model: MODEL, messages: history, tools });
+    const message = response.choices[0].message;
+    history.push(message);                       // the assistant message, tool calls included
+    if (!message.tool_calls?.length) return message.content;
+
+    // The model-call span has ended, so these become its siblings under the request span.
+    for (const toolCall of message.tool_calls) {
+      if (toolCall.type !== "function") throw new Error("Expected a function tool call");
+      const { name, arguments: args } = toolCall.function;
+      await tracer.startActiveSpan(`execute_tool ${name}`, { kind: SpanKind.INTERNAL }, async (span) => {
+        try {
+          span.setAttributes({ "tool.name": name, "tool.call.id": toolCall.id });
+          const result = await runTool(name, JSON.parse(args));
+          history.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
+        } finally {
+          span.end();
+        }
+      });
+    }
   }
+  throw new Error("Agent step limit reached");
 }
 ```
 
-Each iteration of the tool-call loop is its own span and call. That is what "turns" counts. Resending the full message history in `gen_ai.prompt` each turn is expected, the conversation view deduplicates it by role-sequence prefix. Include the assistant tool-call message and the `role: "tool"` result message in the resent history, because that is where the chat view gets tool results from.
+Each iteration of the tool-call loop is its own span and call. That is what "turns" counts. Resending the full message history in `gen_ai.prompt` each turn is expected, the conversation view deduplicates matching messages at the start of the history. Include the assistant tool-call message and the `role: "tool"` result message in the resent history, because that is where the chat view gets tool results from.
 
 **Cost is yours to compute.** Traceway stores whatever you send and has no model price list. Without `gen_ai.usage.input_cost` / `.output_cost` (or `.total_cost` directly) every cost figure stays at 0.00: the Conversations cost column, the Users cost-per-conversation and total cost, the P95 outlier highlighting, and the `ai_trace_cost` / `ai_conversation_cost` notification rules. Keep a small per-model price map in the app and multiply by the token counts. Send them as numeric OTLP attributes, integers for tokens and doubles for costs. A number sent as a JSON string is silently dropped and stored as 0, with no error on the export.
 
@@ -200,11 +171,11 @@ When a dashboard column is blank, work backwards from here.
 |---|---|---|
 | Traces tab grouping name | `trace.name`, else the span name | never blank |
 | Model / Response model | `gen_ai.request.model` / `gen_ai.response.model` | attribute unset |
-| Provider | `gen_ai.system`, else `gen_ai.provider.name` | neither set |
+| Provider | `gen_ai.provider.name` (the older `gen_ai.system` wins when both are set) | neither set |
 | Tokens | `gen_ai.usage.input_tokens` / `.output_tokens` (integers only); `total_tokens` defaults to their sum | unset, or sent as a string |
-| Cached / Reasoning tokens | `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.output_tokens.reasoning` | unset |
+| Cached / Reasoning tokens | `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.output_tokens.reasoning` | unset, or only the conventions' `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.reasoning.output_tokens` were sent |
 | Cost | `gen_ai.usage.input_cost` / `.output_cost` (doubles); `total_cost` defaults to their sum | you did not compute pricing |
-| Finish reason | `gen_ai.response.finish_reason`, else `gen_ai.response.finish_reasons` (array, joined with commas) | unset |
+| Finish reason | `gen_ai.response.finish_reasons` (array, joined with commas); a scalar `gen_ai.response.finish_reason` wins when both are set | unset |
 | Conversation id | `gen_ai.conversation.id`, then `session.id` (span), then `session.id` (resource), then the trace id as a UUID | never blank |
 | User | `user.id` | unset, and the Users tab stays empty |
 | Tool count / names | tool calls parsed from `gen_ai.completion`, then `trace.output`, then `span.output`; else `gen_ai.operation.name=execute_tool` plus `gen_ai.tool.name` | payload not in one of the three shapes above |
@@ -253,10 +224,10 @@ Mention these when you finish the integration. A runaway-cost alert on a custome
 
 ## Verify
 
-After wiring, run one real multi-turn chat with a tool call, then check in the dashboard (or via the API):
+Use the test environment agreed in Step E of `ai-usage.md` for a multi-turn chat with a tool call. If it was exported, check the dashboard. These pages need a dashboard login: an agent holding only the ingest token finishes with "Self-check a span" in `ai-usage.md` and hands these checks to the user, with the conversation id and user id of the test chat.
 
 1. **AI Traces, Traces tab**: your `trace.name` appears with the right call count. Nothing here at all means no span carries a `gen_ai.*` attribute. Re-check precondition 1, and check you did not hang the attributes on the HTTP route span.
-2. **AI Traces, Conversations tab**: exactly ONE row for the chat, turn count matching the number of model calls, tool names listed, non-zero cost. A list of UUID-named one-turn rows means `gen_ai.conversation.id` is missing and Traceway fell back to the trace id. Cost 0.00 means no `gen_ai.usage.*_cost` attributes. Blank tool columns mean the completion payload is not in one of the three exact shapes above.
+2. **AI Traces, Conversations tab**: exactly ONE row for the chat, turn count matching the number of model calls, expected cost, and tool names when completions were captured. A list of UUID-named one-turn rows means `gen_ai.conversation.id` is missing and Traceway fell back to the trace id. For a billable test call, check the numeric cost attributes if the cost is unexpectedly zero. Blank tool columns mean the completion payload is not in one of the three exact shapes above.
 3. **AI Traces, Users tab**: the test user appears with 1 conversation. Empty means `user.id` is unset.
 4. Open the conversation: the chat timeline renders with tool calls inline, and each turn links to its call. Turns present but the chat body blank means the content landed on attribute names Traceway does not read (`gen_ai.input.messages`, `ai.prompt.messages`, and so on). Confirm with the Raw JSON toggle on that page.
-5. Open the Endpoint that wrapped the chat request: the tool-execution spans appear on its Spans tab. Missing means they were parented to the model-call span instead of the request span.
+5. Open the Endpoint that wrapped the chat request: the model calls and the tool-execution spans appear in its waterfall in the order they ran. A tool span nested under a model call was started before that model-call span ended. A tool listed as its own row on the Traces tab carries a `gen_ai.*` attribute.

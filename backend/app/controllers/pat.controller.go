@@ -47,6 +47,10 @@ func (c *patController) Create(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Access must be read or write"})
 		return
 	}
+	if identity := middleware.GetBearerIdentity(ctx); scope == models.ScopeWrite && identity != nil && identity.IsAgent() {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "The CLI, MCP clients and personal access tokens can create read tokens only. Create a write token in the dashboard under Account > Personal Access Tokens."})
+		return
+	}
 	if scope == models.ScopeWrite && (req.ExpiresInDays == nil || *req.ExpiresInDays < 1 || *req.ExpiresInDays > maxWritePATDays) {
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Write tokens must expire within 90 days"})
 		return

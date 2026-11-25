@@ -26,15 +26,21 @@ type spanExplorerController struct{}
 
 var SpanExplorerController = spanExplorerController{}
 
+// SpanAttributeFilterRequest matches one span attribute with the operators of
+// the logs page: Contains for a substring, Exclude to negate, Exists to match on
+// the key alone.
 type SpanAttributeFilterRequest struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	Exclude  bool   `json:"exclude"`
+	Contains bool   `json:"contains"`
+	Exists   bool   `json:"exists"`
 }
 
-type SpanSearchRequest struct {
+// SpanFilterRequest is the selection the span search and its charts share.
+type SpanFilterRequest struct {
 	FromDate         time.Time                    `json:"fromDate"`
 	ToDate           time.Time                    `json:"toDate"`
-	OrderBy          string                       `json:"orderBy"`
 	ServiceName      string                       `json:"serviceName"`
 	Name             string                       `json:"name"`
 	TraceId          string                       `json:"traceId"`
@@ -43,7 +49,22 @@ type SpanSearchRequest struct {
 	MinDurationMs    float64                      `json:"minDurationMs"`
 	MaxDurationMs    float64                      `json:"maxDurationMs"`
 	AttributeFilters []SpanAttributeFilterRequest `json:"attributeFilters"`
-	Pagination       PaginationParams             `json:"pagination"`
+}
+
+type SpanSearchRequest struct {
+	SpanFilterRequest
+	OrderBy    string           `json:"orderBy"`
+	Pagination PaginationParams `json:"pagination"`
+}
+
+// SpanChartRequest charts the spans a search matches: their duration in
+// milliseconds, or with Attribute the numeric values of that attribute. A
+// series takes MaxBuckets, a distribution Bins.
+type SpanChartRequest struct {
+	SpanFilterRequest
+	Attribute  string `json:"attribute"`
+	MaxBuckets int    `json:"maxBuckets"`
+	Bins       int    `json:"bins"`
 }
 
 type SpanSearchResponse struct {
@@ -74,6 +95,8 @@ const spanSearchMaxRange = 31*24*time.Hour + 5*time.Minute
 
 const spanSearchTooSlow = "The search took too long. Narrow the time range or add a filter."
 
+const spanSearchTimeout = 20 * time.Second
+
 func validTraceHex(id string) bool {
 	decoded, err := hex.DecodeString(id)
 	return err == nil && len(decoded) == 16 && strings.Trim(id, "0") != ""
@@ -85,11 +108,18 @@ func validSpanHex(id string) bool {
 	return err == nil && (len(decoded) == 8 || len(decoded) == 16)
 }
 
-func (s spanExplorerController) searchParams(request SpanSearchRequest) (shared.OtelSpanSearch, string) {
-	search := shared.OtelSpanSearch{From: request.FromDate, To: request.ToDate, OrderBy: request.OrderBy, Service: request.ServiceName,
+// spanAttributeKeyProblem rejects keys the SQLite and DuckDB JSON paths cannot quote.
+func spanAttributeKeyProblem(key string) string {
+	if strings.ContainsAny(key, `"\`) || len(key) > 256 {
+		return "Attribute keys cannot contain quotes or backslashes."
+	}
+	return ""
+}
+
+func (s spanExplorerController) searchParams(request SpanFilterRequest) (shared.OtelSpanSearch, string) {
+	search := shared.OtelSpanSearch{From: request.FromDate, To: request.ToDate, Service: request.ServiceName,
 		Name: request.Name, TraceId: shared.NormalizeTraceId(request.TraceId), Kind: request.Kind, Status: request.Status,
-		MinDuration: time.Duration(request.MinDurationMs * float64(time.Millisecond)), MaxDuration: time.Duration(request.MaxDurationMs * float64(time.Millisecond)),
-		Page: request.Pagination.Page, PageSize: request.Pagination.PageSize}
+		MinDuration: time.Duration(request.MinDurationMs * float64(time.Millisecond)), MaxDuration: time.Duration(request.MaxDurationMs * float64(time.Millisecond))}
 	switch {
 	case request.FromDate.IsZero() || request.ToDate.IsZero():
 		return search, "A time range is required."
@@ -115,16 +145,33 @@ func (s spanExplorerController) searchParams(request SpanSearchRequest) (shared.
 		if filter.Key == "" {
 			continue
 		}
-		if strings.ContainsAny(filter.Key, `"\`) || len(filter.Key) > 256 {
-			return search, "Attribute keys cannot contain quotes or backslashes."
+		if problem := spanAttributeKeyProblem(filter.Key); problem != "" {
+			return search, problem
+		}
+		if filter.Exists {
+			search.Attributes = append(search.Attributes, shared.OtelAttributeFilter{Key: filter.Key, Exists: true, Exclude: filter.Exclude})
+			continue
 		}
 		// A ClickHouse Map answers '' for a key it does not hold, so an empty value would match every span without the attribute there and none elsewhere.
 		if filter.Value == "" {
-			return search, "An attribute filter needs a value."
+			return search, "An attribute filter needs a value. To find spans without an attribute, filter on the key not existing."
 		}
-		search.Attributes = append(search.Attributes, shared.OtelAttributeFilter{Key: filter.Key, Value: filter.Value})
+		search.Attributes = append(search.Attributes, shared.OtelAttributeFilter{Key: filter.Key, Value: filter.Value, Exclude: filter.Exclude, Contains: filter.Contains})
 	}
 	return search, ""
+}
+
+// traceSpanSearch records on the request's span what a search or chart was asked for: the range and which filters
+// narrowed it. Filter values stay out, they are whatever the user typed.
+func traceSpanSearch(ctx context.Context, search shared.OtelSpanSearch) {
+	traceway.SetAttribute(ctx, "spans.range_seconds", strconv.FormatFloat(search.To.Sub(search.From).Seconds(), 'f', 0, 64))
+	traceway.SetAttribute(ctx, "spans.name_filter", strconv.FormatBool(search.Name != ""))
+	traceway.SetAttribute(ctx, "spans.service_filter", strconv.FormatBool(search.Service != ""))
+	traceway.SetAttribute(ctx, "spans.trace_filter", strconv.FormatBool(search.TraceId != ""))
+	traceway.SetAttribute(ctx, "spans.kind_filter", strconv.FormatBool(search.Kind != nil))
+	traceway.SetAttribute(ctx, "spans.status_filter", strconv.FormatBool(search.Status != nil))
+	traceway.SetAttribute(ctx, "spans.duration_filter", strconv.FormatBool(search.MinDuration > 0 || search.MaxDuration > 0))
+	traceway.SetAttribute(ctx, "spans.attribute_filter_count", strconv.Itoa(len(search.Attributes)))
 }
 
 func spanSearchTimedOut(ctx context.Context, err error) bool {
@@ -142,29 +189,21 @@ func (s spanExplorerController) Search(c *gin.Context) {
 		middleware.RejectBindError(c, err, err.Error())
 		return
 	}
-	search, problem := s.searchParams(request)
+	search, problem := s.searchParams(request.SpanFilterRequest)
 	if problem != "" {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": problem})
 		return
 	}
 	search.ProjectId = projectId
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	search.OrderBy, search.Page, search.PageSize = request.OrderBy, request.Pagination.Page, request.Pagination.PageSize
+	ctx, cancel := context.WithTimeout(c.Request.Context(), spanSearchTimeout)
 	defer cancel()
 
 	spanCtx, span := traceway.StartSpan(ctx, "searching spans")
-	// What a slow search was asked for: the range and which filters narrowed it.
-	// Filter values stay out, they are whatever the user typed.
-	traceway.SetAttribute(spanCtx, "spans.range_seconds", strconv.FormatFloat(search.To.Sub(search.From).Seconds(), 'f', 0, 64))
+	traceSpanSearch(spanCtx, search)
 	traceway.SetAttribute(spanCtx, "spans.order_by", search.OrderBy)
 	traceway.SetAttribute(spanCtx, "spans.page", strconv.Itoa(search.Page))
 	traceway.SetAttribute(spanCtx, "spans.page_size", strconv.Itoa(search.PageSize))
-	traceway.SetAttribute(spanCtx, "spans.name_filter", strconv.FormatBool(search.Name != ""))
-	traceway.SetAttribute(spanCtx, "spans.service_filter", strconv.FormatBool(search.Service != ""))
-	traceway.SetAttribute(spanCtx, "spans.trace_filter", strconv.FormatBool(search.TraceId != ""))
-	traceway.SetAttribute(spanCtx, "spans.kind_filter", strconv.FormatBool(search.Kind != nil))
-	traceway.SetAttribute(spanCtx, "spans.status_filter", strconv.FormatBool(search.Status != nil))
-	traceway.SetAttribute(spanCtx, "spans.duration_filter", strconv.FormatBool(search.MinDuration > 0 || search.MaxDuration > 0))
-	traceway.SetAttribute(spanCtx, "spans.attribute_filter_count", strconv.Itoa(len(search.Attributes)))
 	found, total, err := telemetry.OtelSpanRepository.Search(spanCtx, search)
 	if err == nil {
 		traceway.SetAttribute(spanCtx, "spans.total", strconv.FormatUint(total, 10))
@@ -193,6 +232,97 @@ func (s spanExplorerController) Search(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, SpanSearchResponse{Data: spans, Services: services, Pagination: Pagination{
 		Page: search.Page, PageSize: search.PageSize, Total: int64(total), TotalPages: (int64(total) + int64(search.PageSize) - 1) / int64(search.PageSize)}})
+}
+
+// chartRequest reads the selection of a span chart. It answers the request itself and returns false when it must stop.
+func (s spanExplorerController) chartRequest(c *gin.Context) (SpanChartRequest, shared.OtelSpanSearch, bool) {
+	var request SpanChartRequest
+	projectId, err := middleware.GetProjectId(c)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("RequireProjectAccess middleware must be applied: %w", err))
+		return request, shared.OtelSpanSearch{}, false
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		middleware.RejectBindError(c, err, err.Error())
+		return request, shared.OtelSpanSearch{}, false
+	}
+	search, problem := s.searchParams(request.SpanFilterRequest)
+	if problem == "" && request.Attribute != "" {
+		problem = spanAttributeKeyProblem(request.Attribute)
+	}
+	if problem != "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": problem})
+		return request, search, false
+	}
+	search.ProjectId = projectId
+	return request, search, true
+}
+
+// A chart reads every span the search matches, like its count, so a slow one answers the way a slow search does.
+func (s spanExplorerController) answerChartError(c *gin.Context, ctx context.Context, err error) {
+	if spanSearchTimedOut(ctx, err) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": spanSearchTooSlow})
+		return
+	}
+	c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("error charting spans: %w", err))
+}
+
+// Series charts the duration of the matching spans, or one numeric attribute, over time: count, sum, average,
+// minimum, maximum and P50/P95/P99 per bucket.
+func (s spanExplorerController) Series(c *gin.Context) {
+	request, search, ok := s.chartRequest(c)
+	if !ok {
+		return
+	}
+	maxBuckets := request.MaxBuckets
+	if maxBuckets == 0 {
+		maxBuckets = shared.LogHistogramDefaultBuckets
+	}
+	maxBuckets = min(max(maxBuckets, shared.LogHistogramMinBuckets), shared.LogHistogramMaxBuckets)
+	step := shared.LogHistogramStep(search.From, search.To, maxBuckets)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), spanSearchTimeout)
+	defer cancel()
+
+	spanCtx, span := traceway.StartSpan(ctx, "charting spans")
+	traceSpanSearch(spanCtx, search)
+	traceway.SetAttribute(spanCtx, "spans.chart_attribute", strconv.FormatBool(request.Attribute != ""))
+	traceway.SetAttribute(spanCtx, "spans.chart_step_seconds", strconv.FormatInt(step, 10))
+	rows, err := telemetry.OtelSpanRepository.ChartStats(spanCtx, search, request.Attribute, step)
+	span.End()
+	if err != nil {
+		s.answerChartError(c, ctx, err)
+		return
+	}
+	buckets, present, numeric := shared.BuildChartSeries(rows)
+	c.JSON(http.StatusOK, ChartSeriesResponse{IntervalSeconds: step, Present: present, Numeric: numeric, Buckets: buckets})
+}
+
+// Distribution counts the duration of the matching spans, or one numeric attribute, in bins next to its summary
+// statistics. Durations that span a wide range get bins of equal ratio (log scale).
+func (s spanExplorerController) Distribution(c *gin.Context) {
+	request, search, ok := s.chartRequest(c)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), spanSearchTimeout)
+	defer cancel()
+
+	spanCtx, span := traceway.StartSpan(ctx, "charting span distribution")
+	traceSpanSearch(spanCtx, search)
+	traceway.SetAttribute(spanCtx, "spans.chart_attribute", strconv.FormatBool(request.Attribute != ""))
+	stats, err := telemetry.OtelSpanRepository.ChartStats(spanCtx, search, request.Attribute, 0)
+	var response ChartDistributionResponse
+	if err == nil {
+		response, err = chartDistribution(stats, chartBinCount(request.Bins), request.Attribute == "", func(binning shared.ChartBinning) ([]shared.ChartBinRow, error) {
+			return telemetry.OtelSpanRepository.ChartBins(spanCtx, search, request.Attribute, binning)
+		})
+	}
+	span.End()
+	if err != nil {
+		s.answerChartError(c, ctx, err)
+		return
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // organizationProjects lists what a whole trace is read from: every project of the current project's organization.

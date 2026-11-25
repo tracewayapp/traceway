@@ -10,28 +10,19 @@
 
 	type Props = {
 		messages: ChatMessage[];
+		pairedResults?: ReturnType<typeof pairToolResults>;
 	};
 
-	let { messages }: Props = $props();
+	let { messages, pairedResults }: Props = $props();
 
-	const toolResults = $derived(pairToolResults(messages));
+	const toolResults = $derived(pairedResults ?? pairToolResults(messages));
 
 	// Tool-result messages that render inside their call's ToolCallBlock are
 	// hidden from the top-level list; unpaired ones still render standalone.
-	const visibleMessages = $derived(
-		messages.filter(
-			(msg) =>
-				!(
-					(msg.role === 'tool' || msg.role === 'function') &&
-					msg.toolCallId &&
-					toolResults.get(msg.toolCallId) === msg &&
-					messages.some((m) => m.toolCalls?.some((c) => c.id === msg.toolCallId))
-				)
-		)
-	);
+	const visibleMessages = $derived(messages.filter((msg) => !toolResults.pairedMessages.has(msg)));
 </script>
 
-<div class="space-y-3">
+<div class="space-y-3 empty:hidden">
 	{#each visibleMessages as msg, __index (__index)}
 		<div class="flex gap-3">
 			<div
@@ -74,7 +65,7 @@
 					</div>
 				{/if}
 				{#each msg.toolCalls ?? [] as call, __index (__index)}
-					<ToolCallBlock {call} result={call.id ? toolResults.get(call.id) : undefined} />
+					<ToolCallBlock {call} result={toolResults.byCall.get(call)} />
 				{/each}
 			</div>
 		</div>

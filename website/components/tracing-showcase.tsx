@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ListFilter, Network, ScanSearch } from "lucide-react";
+import { ChartColumn, ListFilter, Network, ScanSearch } from "lucide-react";
 import { ScreenshotZoom } from "@/components/screenshot-zoom";
 import { tracingScreenshots } from "@/lib/tracing-screenshots";
 
-const icons = [ListFilter, Network, ScanSearch];
+const icons = [ListFilter, ChartColumn, Network, ScanSearch];
 
 export function TracingShowcase() {
   const [active, setActive] = useState(0);
@@ -13,8 +13,8 @@ export function TracingShowcase() {
 
   return (
     <div className="overflow-hidden rounded-xl border border-hair-2 bg-ink-1">
-      <div className="grid grid-cols-3 border-b border-hair-2" role="group" aria-label="Tracing screenshots">
-        {tracingScreenshots.slice(0, 3).map(({ label }, index) => {
+      <div className="grid grid-cols-4 border-b border-hair-2" role="group" aria-label="Tracing screenshots">
+        {tracingScreenshots.slice(0, 4).map(({ label }, index) => {
           const Icon = icons[index];
           return (
             <button

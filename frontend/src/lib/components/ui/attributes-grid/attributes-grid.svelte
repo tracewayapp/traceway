@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { ChevronDown, ChevronUp } from '@lucide/svelte';
 	import AttributesView from './attributes-view.svelte';
-	import type { FilterOperator } from '$lib/utils/attribute-filters';
+	import {
+		operatorOptions,
+		type FilterOperator,
+		type OperatorOption
+	} from '$lib/utils/attribute-filters';
 
 	let {
 		attributes,
@@ -9,6 +13,9 @@
 		collapsedCount = 3,
 		filterOperatorFor,
 		onFilterOperator,
+		operators = operatorOptions,
+		canChart,
+		onChart,
 		expanded = $bindable(false)
 	}: {
 		attributes: Record<string, string>;
@@ -17,6 +24,9 @@
 		filterOperatorFor?: (key: string, value: string) => FilterOperator | null;
 		// null clears the filter on that key and value.
 		onFilterOperator?: (key: string, value: string, operator: FilterOperator | null) => void;
+		operators?: readonly OperatorOption[];
+		canChart?: (key: string, value: string) => boolean;
+		onChart?: (key: string) => void;
 		expanded?: boolean;
 	} = $props();
 
@@ -43,6 +53,8 @@
 			onFilterOperator={onFilterOperator
 				? (operator) => onFilterOperator(key, value, operator)
 				: undefined}
+			{operators}
+			onChart={onChart && canChart?.(key, value) ? () => onChart(key) : undefined}
 		/>
 	{/each}
 	{#if collapsible}

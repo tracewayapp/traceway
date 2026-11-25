@@ -24,6 +24,7 @@ import {
   Goal,
 } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
+import { Harvest } from "@/components/harvest";
 import { DiscordIcon } from "@/components/discord-icon";
 import { cn } from "@/lib/utils";
 import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
@@ -194,7 +195,7 @@ export function SiteHeader() {
             />
           </Link>
 
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden md:flex phone-landscape:hidden items-center gap-1">
             <div
               ref={dropdownRef}
               className="relative"
@@ -222,7 +223,7 @@ export function SiteHeader() {
 
               <div
                 className={cn(
-                  "absolute top-full left-0 mt-2 w-[560px] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[14px] lg:w-[860px]",
+                  "absolute top-full left-0 mt-2 w-[560px] max-w-[calc(100vw-1.5rem)] max-h-[calc(100dvh-4.5rem)] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[14px] lg:w-[860px]",
                   "transition-all duration-150",
                   open
                     ? "opacity-100 translate-y-0 pointer-events-auto"
@@ -367,7 +368,13 @@ export function SiteHeader() {
           </div>
         </div>
 
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden md:flex phone-landscape:hidden items-center gap-3">
+          <Harvest
+            src="/harvest/pumpkin-pie.svg"
+            width={128}
+            height={128}
+            className="hidden xl:block size-9 select-none"
+          />
           <Link
             href={GITHUB_URL}
             target="_blank"
@@ -388,7 +395,7 @@ export function SiteHeader() {
           </Link>
           <Link
             href="https://cloud.tracewayapp.com/login"
-            className="h-9 px-4 inline-flex items-center text-[14px] font-medium rounded-md transition-colors text-[color:var(--fg-1)] hover:text-[color:var(--fg-0)] hover:bg-[color:var(--ink-2)]"
+            className="h-9 px-4 inline-flex items-center whitespace-nowrap text-[14px] font-medium rounded-md transition-colors text-[color:var(--fg-1)] hover:text-[color:var(--fg-0)] hover:bg-[color:var(--ink-2)]"
             style={{ fontFamily: "var(--font-display)" }}
           >
             Sign in

@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import SdkSelector from "./components/SdkSelector";
 import HiddenItem from "./components/HiddenItem";
 import { useSdk } from "./components/SdkContext";
+import Harvest from "./components/Harvest";
 
 // Keyed by the first path segment after /client/. Every OTel-based backend guide
 // now lives under /client/otel/*, so the whole backend story is one `otel` entry.
@@ -35,7 +36,19 @@ export default {
   },
   docsRepositoryBase: "https://github.com/tracewayapp/traceway/tree/main/docs",
   footer: {
-    text: `${new Date().getFullYear()} Traceway. All rights reserved.`,
+    text: function FooterText() {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          <Harvest
+            src="/harvest/wheat-divider.svg"
+            width={280}
+            height={56}
+            style={{ width: "180px", height: "auto", marginLeft: "-16px" }}
+          />
+          <span>{new Date().getFullYear()} Traceway. All rights reserved.</span>
+        </div>
+      );
+    },
   },
   useNextSeoProps() {
     const { asPath } = useRouter();

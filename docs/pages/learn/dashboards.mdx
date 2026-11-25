@@ -48,7 +48,7 @@ An AI agent can add this to your codebase for you: the `traceway-setup` and `tra
 POST /api/dashboards/{dashboardId}/embed-token?projectId={projectId}&timeframe=7d
 ```
 
-Use the dashboard's **numeric ID** and the project's **UUID**. The dashboard must already be applied to that project. Create a **Read and write** personal access token in **Account > Personal Access Tokens** and keep it on your backend. Its owner needs write access to the project, and an organization owner or admin must switch on **Allow agent writes** in **Settings > Agent Access**. Write tokens expire within 90 days, so plan to rotate it, and every link issued with one is recorded in the organization's agent activity log. See [Agent write access](/learn/agent-write-access).
+Use the dashboard's **numeric ID** and the project's **UUID**. The dashboard must already be applied to that project. Create a **Read only** personal access token in **Account > Personal Access Tokens** and keep it on your backend. Issuing a link changes nothing, so it needs neither a write token nor **Allow agent writes**, and a read token can be created without an expiry. Its owner needs write access to the project: a `readonly` member cannot share a dashboard. A write token works too.
 
 Use the optional `timeframe` query parameter to choose how much history every widget displays. Omit it for the **last 42 hours**. Use a positive whole number followed by `m` (minutes), `h` (hours) or `d` (24-hour days), up to 731 days. For example, `timeframe=30m`, `timeframe=42h` and `timeframe=7d` show the last half hour, 42 hours and week respectively. The `last` prefix is also accepted, as in `timeframe=last42h`.
 
@@ -127,7 +127,7 @@ Reads of a shared dashboard are limited per client address: 60 opens and 600 wid
 
 | Symptom | Cause |
 | --- | --- |
-| Issuance returns **403** | The token is read-only, **Allow agent writes** is off for the organization, or the token's owner cannot write to the project. |
+| Issuance returns **403** | The token's owner is a `readonly` member or cannot reach the project in `projectId`. |
 | Issuance returns **404** | The dashboard is not applied to the project in `projectId`. |
 | Issuance returns **422** | Check the error message. Common causes include a malformed or repeated `timeframe`, mixing `timeframe` with timestamps, a missing or reversed range boundary, a window over 731 days, an expiry that is past, conflicting or more than 90 days away, or an empty tag filter. |
 | The iframe says the link is invalid or has expired | Request a fresh link for the authorized viewer. |
@@ -176,9 +176,9 @@ This is where a row on the organization's [Servers page](/learn/organization-ove
 
 Host metrics such as `system.network.io` and `system.disk.io` are cumulative counters: the value only ever grows. Charted as an average they climb forever, so give such a source the **rate** aggregation. Each series (every distinct tag set, so a counter per device or direction stays on its own) is differenced against its previous sample, resets are dropped, and the result is a per-second rate with a matching unit: bytes become `B/s`, packets become packets per second. A rate keeps the same reach as any other aggregation. On ClickHouse a range over six hours reads the minute rollup and one over three days reads the hourly rollup, so buckets there are at least an hour wide.
 
-A source can also be **inverted**, which charts 1 − value. The OTel agent reports `system.cpu.utilization` per state, and the `idle` state inverted is the busy share; that is how the Server Agent template draws CPU. The template's other widgets carry the matching state filters (`used` for memory and filesystem, `ESTABLISHED` TCP for open connections) so a widget never averages unrelated states together.
+A source can also be **inverted**, which charts 1 − value. The OTel agent reports `system.cpu.utilization` per state, and the `idle` state inverted is the busy share; that is how the Server Agent template draws CPU. The template's other widgets carry the matching filters (state `used` for memory and filesystem usage, `ESTABLISHED` TCP for open connections) so a widget never averages unrelated states together. `system.filesystem.utilization` has no state, one series per mount, so its widget charts the fullest writable mount (`mode=rw`): read-only mounts such as snap images always read as full.
 
-Dashboards installed from the Server Agent template before these sources existed are upgraded once at startup: a widget that still carries the original plain average takes the template's current sources for its metric, a widget you have edited is left as it is.
+Dashboards installed from the Server Agent template before these sources existed are upgraded once at startup: a widget that still carries the original plain average takes the template's current sources for its metric, and so does a Filesystem Utilization widget that still filters on state `used`, which matched no data. A widget you have edited is left as it is.
 
 ## Dashboards as code
 

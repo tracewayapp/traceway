@@ -5,7 +5,6 @@
 	import { organizationContext } from '$lib/state/organization-context.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import * as Table from '$lib/components/ui/table';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
@@ -14,6 +13,13 @@
 	import IssueTrendChart from '$lib/components/issue-trend-chart.svelte';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		describeTimeRange,
+		issueTypeField
+	} from '$lib/components/traceway/filter-bar';
 	import CountPill from '../count-pill.svelte';
 	import PartialNotice from '../partial-notice.svelte';
 	import { getErrorMessage } from '$lib/utils/errors';
@@ -47,11 +53,7 @@
 	let sortField = $state(initialSort.field);
 	let sortDirection = $state<SortDirection>(initialSort.direction);
 
-	const searchTypeOptions = [
-		{ value: 'all', label: 'All' },
-		{ value: 'issues', label: 'Issues' },
-		{ value: 'messages', label: 'Messages' }
-	];
+	const filterFields: FilterField[] = [issueTypeField()];
 
 	function readSearchParams() {
 		if (!browser) return { search: '', searchType: 'all' };
@@ -65,6 +67,8 @@
 	const initialSearch = readSearchParams();
 	let searchQuery = $state(initialSearch.search);
 	let searchType = $state(initialSearch.searchType);
+	const filterValues = $derived({ searchType });
+	const timeRangeLabel = $derived(describeTimeRange(range.preset));
 
 	let issues = $state<OrgIssueRow[]>([]);
 	let loading = $state(true);
@@ -142,7 +146,9 @@
 		loadData(true);
 	}
 
-	function handleSearch() {
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
+		searchType = next.values.searchType || 'all';
 		page = 1;
 		loadData(true);
 	}
@@ -217,121 +223,123 @@
 		{/snippet}
 	</PageHeader>
 
-	<SearchBar
-		placeholder="Search issues..."
-		bind:value={searchQuery}
-		bind:typeValue={searchType}
-		typeOptions={searchTypeOptions}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search issues..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
-	/>
+		noun="issues"
+		rangeLabel={timeRangeLabel}
+	>
+		{#if partial}
+			<PartialNotice />
+		{/if}
 
-	{#if partial}
-		<PartialNotice />
-	{/if}
-
-	<TableContainer minWidth="880px">
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={5} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={5} class="h-24 text-center text-red-500">{error}</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if issues.length === 0}
-				<Table.Body>
-					<TableEmptyState colspan={5} message="No issues found in the selected range." />
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader
-							label="Issue"
-							tooltip="The error message or exception that occurred"
-						/>
-						<TracewayTableHeader label="Project" class="w-[180px]" />
-						<TracewayTableHeader
-							label="Trend"
-							tooltip="Hourly occurrence pattern over the last 24h"
-							class="w-[190px]"
-						/>
-						<TracewayTableHeader
-							label="Events"
-							tooltip="Total number of times this issue occurred in the selected range"
-							align="right"
-							class="w-[90px]"
-							sortField="count"
-							currentSortField={sortField}
-							{sortDirection}
-							onSort={handleSort}
-						/>
-						<TracewayTableHeader
-							label="Last seen"
-							tooltip="When this issue last occurred"
-							class="w-[180px]"
-							sortField="last_seen"
-							currentSortField={sortField}
-							{sortDirection}
-							onSort={handleSort}
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each issues as issue (issue.projectId + issue.exceptionHash)}
-						{@const title = issueTitle(issue)}
-						<Table.Row
-							class="group cursor-pointer"
-							onclick={createRowClickHandler(
-								`/issues/${issue.exceptionHash}?projectId=${issue.projectId}`
-							)}
-						>
-							<Table.Cell class="max-w-[520px] py-3">
-								<div class="min-w-0">
-									<div
-										class="truncate text-[15px]/6 font-semibold text-foreground group-hover:text-primary dark:group-hover:text-blue-300"
-									>
-										{title.type}
-									</div>
-									{#if title.message}
-										<div class="truncate text-sm text-muted-foreground">{title.message}</div>
-									{/if}
+		<TableContainer minWidth="880px">
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={5} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
 								</div>
 							</Table.Cell>
-							<Table.Cell class="text-sm text-muted-foreground">{issue.projectName}</Table.Cell>
-							<Table.Cell>
-								<IssueTrendChart trend={issue.hourlyTrend || []} />
-							</Table.Cell>
-							<Table.Cell class="text-right text-[15px] font-semibold tabular-nums">
-								{issue.count.toLocaleString()}
-							</Table.Cell>
-							<Table.Cell class="text-muted-foreground tabular-nums">
-								{formatDateTime(issue.lastSeen, { timezone })}
-							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={5} class="h-24 text-center text-red-500">{error}</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if issues.length === 0}
+					<Table.Body>
+						<TableEmptyState colspan={5} message="No issues found in the selected range." />
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader
+								label="Issue"
+								tooltip="The error message or exception that occurred"
+							/>
+							<TracewayTableHeader label="Project" class="w-[180px]" />
+							<TracewayTableHeader
+								label="Trend"
+								tooltip="Hourly occurrence pattern over the last 24h"
+								class="w-[190px]"
+							/>
+							<TracewayTableHeader
+								label="Events"
+								tooltip="Total number of times this issue occurred in the selected range"
+								align="right"
+								class="w-[90px]"
+								sortField="count"
+								currentSortField={sortField}
+								{sortDirection}
+								onSort={handleSort}
+							/>
+							<TracewayTableHeader
+								label="Last seen"
+								tooltip="When this issue last occurred"
+								class="w-[180px]"
+								sortField="last_seen"
+								currentSortField={sortField}
+								{sortDirection}
+								onSort={handleSort}
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each issues as issue (issue.projectId + issue.exceptionHash)}
+							{@const title = issueTitle(issue)}
+							<Table.Row
+								class="group cursor-pointer"
+								onclick={createRowClickHandler(
+									`/issues/${issue.exceptionHash}?projectId=${issue.projectId}`
+								)}
+							>
+								<Table.Cell class="max-w-[520px] py-3">
+									<div class="min-w-0">
+										<div
+											class="truncate text-[15px]/6 font-semibold text-foreground group-hover:text-primary dark:group-hover:text-blue-300"
+										>
+											{title.type}
+										</div>
+										{#if title.message}
+											<div class="truncate text-sm text-muted-foreground">{title.message}</div>
+										{/if}
+									</div>
+								</Table.Cell>
+								<Table.Cell class="text-sm text-muted-foreground">{issue.projectName}</Table.Cell>
+								<Table.Cell>
+									<IssueTrendChart trend={issue.hourlyTrend || []} />
+								</Table.Cell>
+								<Table.Cell class="text-right text-[15px] font-semibold tabular-nums">
+									{issue.count.toLocaleString()}
+								</Table.Cell>
+								<Table.Cell class="text-muted-foreground tabular-nums">
+									{formatDateTime(issue.lastSeen, { timezone })}
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="issue"
-	/>
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="issue"
+		/>
+	</FilterBar>
 </div>

@@ -17,9 +17,14 @@
 	import { Button } from '$lib/components/ui/button';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { SearchBar } from '$lib/components/ui/search-bar';
-	import * as Select from '$lib/components/ui/select';
-	import { Check, Plus, Snail, X } from '@lucide/svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		describeTimeRange,
+		attributeConfig,
+		storedValueRules
+	} from '$lib/components/traceway/filter-bar';
+	import { Check, Snail } from '@lucide/svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { CalendarDate } from '@internationalized/date';
@@ -57,14 +62,9 @@
 		type SortDirection
 	} from '$lib/utils/sort-storage';
 	import {
-		attributeFiltersEqual,
 		formatAttributeFilter,
 		parseAttributeFilter,
-		filterOperator,
-		operatorFlags,
-		operatorOptions,
-		type AttributeFilter,
-		type FilterOperator
+		type AttributeFilter
 	} from '$lib/utils/attribute-filters';
 
 	const timezone = $derived(getTimezone());
@@ -148,75 +148,24 @@
 		const attrs: AttributeFilter[] = [];
 		for (const raw of params.getAll('attr')) {
 			const parsed = parseAttributeFilter(raw);
-			if (parsed) attrs.push(parsed);
+			// The request search matches values only; it has no existence filter.
+			if (parsed && !parsed.exists) attrs.push(parsed);
 		}
 		return { search: params.get('search') ?? '', attributeFilters: attrs };
 	}
 
 	let searchQuery = $state('');
 	let attributeFilters = $state<AttributeFilter[]>([]);
+	const attributeRules = storedValueRules('user.id', 'u_42', 'traces');
 
-	let addFilterOpen = $state(false);
-	let dialogKey = $state('');
-	let dialogValue = $state('');
-	let dialogError = $state('');
-	let dialogOperator = $state<FilterOperator>('=');
-	let dialogEditIndex = $state<number | null>(null);
-	function openAddFilterDialog() {
-		dialogKey = '';
-		dialogValue = '';
-		dialogOperator = '=';
-		dialogEditIndex = null;
-		dialogError = '';
-		addFilterOpen = true;
-	}
-
-	function openEditFilterDialog(index: number) {
-		const filter = attributeFilters[index];
-		dialogKey = filter.key;
-		dialogValue = filter.value;
-		dialogOperator = filterOperator(filter);
-		dialogEditIndex = index;
-		dialogError = '';
-		addFilterOpen = true;
-	}
-
-	function submitDialogFilter() {
-		const key = dialogKey.trim();
-		if (!key) {
-			dialogError = 'Attribute key is required';
-			return;
-		}
-		const filter: AttributeFilter = { key, value: dialogValue, ...operatorFlags(dialogOperator) };
-		const others = attributeFilters.filter((_, i) => i !== dialogEditIndex);
-		const duplicate = others.some((f) => attributeFiltersEqual(f, filter));
-		attributeFilters = duplicate
-			? others
-			: dialogEditIndex === null
-				? [...others, filter]
-				: attributeFilters.map((f, i) => (i === dialogEditIndex ? filter : f));
-		addFilterOpen = false;
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
+		attributeFilters = next.attributes;
 		page = 1;
 		loadData(true);
 	}
 
-	function handleDialogKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			submitDialogFilter();
-		}
-	}
-
-	function removeAttributeFilter(index: number) {
-		attributeFilters = attributeFilters.filter((_, i) => i !== index);
-		page = 1;
-		loadData(true);
-	}
-
-	function handleSearch() {
-		page = 1;
-		loadData(true);
-	}
+	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 
 	function updateEndpointUrl(pushToHistory = true) {
 		updateUrl(
@@ -597,163 +546,130 @@
 			</div>
 		{/if}
 
-		<SearchBar
-			placeholder="Search attribute values..."
-			bind:value={searchQuery}
-			onSearch={handleSearch}
+		<FilterBar
+			search={searchQuery}
+			searchPlaceholder="Search attribute values..."
+			attributes={attributeConfig(attributeFilters, attributeRules)}
+			onApply={handleFilterApply}
 			disabled={loading}
-		/>
-
-		<div class="flex flex-wrap items-center gap-2">
-			<button
-				type="button"
-				class="inline-flex items-center gap-1 rounded-full border border-dashed px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
-				onclick={openAddFilterDialog}
-				disabled={loading}
-			>
-				<Plus class="h-3 w-3" />
-				Add filter
-			</button>
-			{#each attributeFilters as f, i (i)}
-				<span
-					class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
-				>
-					<button
-						type="button"
-						aria-label="Edit filter"
-						class="inline-flex cursor-pointer items-center gap-1 hover:text-primary"
-						onclick={() => openEditFilterDialog(i)}
-					>
-						<span class="text-muted-foreground">{f.key}</span>
-						<span class={f.exclude ? 'text-red-500' : ''}>{filterOperator(f)}</span>
-						<span class="max-w-64 truncate" title={f.value}>{f.value || '""'}</span>
-					</button>
-					<button
-						type="button"
-						aria-label="Remove filter"
-						class="ml-1 text-muted-foreground hover:text-foreground"
-						onclick={() => removeAttributeFilter(i)}
-					>
-						<X class="h-3 w-3" />
-					</button>
-				</span>
-			{/each}
-		</div>
-
-		<!-- Traces Table -->
-		<TableContainer minWidth="960px" empty={!loading && transactions.length === 0}>
-			<Table.Root>
-				{#if loading || transactions.length > 0}
-					<Table.Header>
-						<Table.Row>
-							<TracewayTableHeader
-								label="Recorded At"
-								sortField="recorded_at"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[180px]"
-							/>
-							<TracewayTableHeader
-								label="Duration"
-								sortField="duration"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[120px]"
-							/>
-							<TracewayTableHeader
-								label="Status"
-								sortField="status_code"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[100px]"
-							/>
-							<TracewayTableHeader
-								label="Body Size"
-								sortField="body_size"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[100px]"
-							/>
-							<TracewayTableHeader label="Client IP" class="w-[140px]" />
-							<TracewayTableHeader label="Server" class="w-[120px]" />
-							<TracewayTableHeader label="Version" class="w-[100px]" />
-							<TracewayTableHeader label="Attributes" />
-						</Table.Row>
-					</Table.Header>
-				{/if}
-				<Table.Body>
-					{#if loading}
-						<Table.Row>
-							<Table.Cell colspan={8} class="h-48">
-								<div class="flex h-full items-center justify-center">
-									<LoadingCircle size="xlg" />
-								</div>
-							</Table.Cell>
-						</Table.Row>
-					{:else if transactions.length === 0}
-						<TableEmptyState
-							colspan={8}
-							message={searchQuery.trim() || attributeFilters.length
-								? 'No traces match your search and filters.'
-								: 'No traces found in this time range.'}
-						/>
-					{:else}
-						{#each transactions as transaction, __index (__index)}
-							<Table.Row
-								class="cursor-pointer"
-								onclick={createRowClickHandler(
-									`/endpoints/${encodeURIComponent(decodeURIComponent(data.endpoint))}/${transaction.id}?t=${encodeURIComponent(transaction.recordedAt)}`,
-									'preset',
-									'from',
-									'to'
-								)}
-							>
-								<Table.Cell class="text-muted-foreground">
-									{formatDateTime(transaction.recordedAt, { timezone })}
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm">
-									{formatDuration(transaction.duration)}
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm {getStatusColor(transaction.statusCode)}">
-									{transaction.statusCode}
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm">
-									{formatBytes(transaction.bodySize)}
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm text-muted-foreground">
-									{transaction.clientIP}
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm text-muted-foreground">
-									{transaction.serverName || '-'}
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm text-muted-foreground">
-									{transaction.appVersion || '-'}
-								</Table.Cell>
-								<Table.Cell>
-									<AttributesDisplay attributes={transaction.attributes} />
+			noun="traces"
+			rangeLabel={timeRangeLabel}
+		>
+			<!-- Traces Table -->
+			<TableContainer minWidth="960px" empty={!loading && transactions.length === 0}>
+				<Table.Root>
+					{#if loading || transactions.length > 0}
+						<Table.Header>
+							<Table.Row>
+								<TracewayTableHeader
+									label="Recorded At"
+									sortField="recorded_at"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[180px]"
+								/>
+								<TracewayTableHeader
+									label="Duration"
+									sortField="duration"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[120px]"
+								/>
+								<TracewayTableHeader
+									label="Status"
+									sortField="status_code"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[100px]"
+								/>
+								<TracewayTableHeader
+									label="Body Size"
+									sortField="body_size"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[100px]"
+								/>
+								<TracewayTableHeader label="Client IP" class="w-[140px]" />
+								<TracewayTableHeader label="Server" class="w-[120px]" />
+								<TracewayTableHeader label="Version" class="w-[100px]" />
+								<TracewayTableHeader label="Attributes" />
+							</Table.Row>
+						</Table.Header>
+					{/if}
+					<Table.Body>
+						{#if loading}
+							<Table.Row>
+								<Table.Cell colspan={8} class="h-48">
+									<div class="flex h-full items-center justify-center">
+										<LoadingCircle size="xlg" />
+									</div>
 								</Table.Cell>
 							</Table.Row>
-						{/each}
-					{/if}
-				</Table.Body>
-			</Table.Root>
-		</TableContainer>
+						{:else if transactions.length === 0}
+							<TableEmptyState
+								colspan={8}
+								message={searchQuery.trim() || attributeFilters.length
+									? 'No traces match your search and filters.'
+									: 'No traces found in this time range.'}
+							/>
+						{:else}
+							{#each transactions as transaction, __index (__index)}
+								<Table.Row
+									class="cursor-pointer"
+									onclick={createRowClickHandler(
+										`/endpoints/${encodeURIComponent(decodeURIComponent(data.endpoint))}/${transaction.id}?t=${encodeURIComponent(transaction.recordedAt)}`,
+										'preset',
+										'from',
+										'to'
+									)}
+								>
+									<Table.Cell class="text-muted-foreground">
+										{formatDateTime(transaction.recordedAt, { timezone })}
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm">
+										{formatDuration(transaction.duration)}
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm {getStatusColor(transaction.statusCode)}">
+										{transaction.statusCode}
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm">
+										{formatBytes(transaction.bodySize)}
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm text-muted-foreground">
+										{transaction.clientIP}
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm text-muted-foreground">
+										{transaction.serverName || '-'}
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm text-muted-foreground">
+										{transaction.appVersion || '-'}
+									</Table.Cell>
+									<Table.Cell>
+										<AttributesDisplay attributes={transaction.attributes} />
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						{/if}
+					</Table.Body>
+				</Table.Root>
+			</TableContainer>
 
-		<!-- Pagination Footer -->
-		<PaginationFooter
-			currentPage={page}
-			{totalPages}
-			{pageSize}
-			totalItems={total}
-			onPageChange={handlePageChange}
-			onPageSizeChange={handlePageSizeChange}
-			{loading}
-			itemLabel="trace"
-		/>
+			<!-- Pagination Footer -->
+			<PaginationFooter
+				currentPage={page}
+				{totalPages}
+				{pageSize}
+				totalItems={total}
+				onPageChange={handlePageChange}
+				onPageSizeChange={handlePageSizeChange}
+				{loading}
+				itemLabel="trace"
+			/>
+		</FilterBar>
 	{/if}
 </div>
 
@@ -802,60 +718,6 @@
 			<Button onclick={saveSlowEndpoint} disabled={slowLoading}>
 				<Check class="mr-2 h-4 w-4" />
 				{slowLoading ? 'Updating...' : 'Update Expected Performance'}
-			</Button>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
-
-<AlertDialog.Root open={addFilterOpen} onOpenChange={(open) => (addFilterOpen = open)}>
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title
-				>{dialogEditIndex === null
-					? 'Add attribute filter'
-					: 'Edit attribute filter'}</AlertDialog.Title
-			>
-			<AlertDialog.Description>
-				Filter traces by attributes such as <code class="font-mono">user.id</code> or
-				<code class="font-mono">tenant</code>. All filters must match. Contains ignores case;
-				excluded filters also include traces without the attribute.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<div class="flex flex-col gap-3">
-			<FormField label="Attribute key">
-				<Input placeholder="user.id" bind:value={dialogKey} onkeydown={handleDialogKeydown} />
-			</FormField>
-			<FormField label="Operator">
-				<Select.Root
-					type="single"
-					value={dialogOperator}
-					onValueChange={(v) => (dialogOperator = v as FilterOperator)}
-				>
-					<Select.Trigger class="w-full"
-						>{operatorOptions.find((o) => o.value === dialogOperator)?.label}</Select.Trigger
-					>
-					<Select.Content>
-						{#each operatorOptions as option (option.value)}
-							<Select.Item value={option.value} label={option.label}>{option.label}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-			</FormField>
-			<FormField label="Value">
-				<Input placeholder="u_42" bind:value={dialogValue} onkeydown={handleDialogKeydown} />
-			</FormField>
-			{#if dialogError}
-				<p class="text-xs text-red-500">{dialogError}</p>
-			{/if}
-		</div>
-		<AlertDialog.Footer>
-			<Button variant="outline" onclick={() => (addFilterOpen = false)}>Cancel</Button>
-			<Button onclick={submitDialogFilter}>
-				{#if dialogEditIndex === null}
-					<Plus class="h-4 w-4" /> Add filter
-				{:else}
-					<Check class="h-4 w-4" /> Update filter
-				{/if}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

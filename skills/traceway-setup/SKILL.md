@@ -1,6 +1,6 @@
 ---
 name: traceway-setup
-description: Analyze and instrument repositories for Traceway observability. Use when the user wants to plan, add, migrate, or verify Traceway or OpenTelemetry monitoring for backend, browser, full-stack, mobile or iOS, or AI-agent software, including project topology and user-approved setup-plan creation. Also use it to embed a Traceway dashboard in the user's own application. Backends use OTLP/HTTP; browser frontends and independently released mobile clients use separate Traceway SDK projects. Accept either an existing project token and instance URL or an organization setup token (`tws_...`) and URL; with no token, analyze first and guide setup-token acquisition. Treat any `tws_` token as a setup token.
+description: Analyze and instrument repositories for Traceway observability. Use when the user wants to plan, add, migrate, or verify Traceway or OpenTelemetry monitoring for backend, browser, full-stack, mobile or iOS, or AI-agent software, including project topology and user-approved setup-plan creation. Also runs on one part of a codebase when the request names it, e.g. `/traceway-setup track ai use` (find the LLM calls and instrument them with the OpenTelemetry GenAI conventions), background jobs, logs, metrics, the browser app, or a single directory. Also use it to embed a Traceway dashboard in the user's own application. Backends use OTLP/HTTP; browser and mobile clients use separate Traceway SDK projects. Accept a project token and instance URL or an organization setup token (`tws_...`) and URL; with no token, analyze first and guide setup-token acquisition. Treat any `tws_` token as a setup token.
 ---
 
 # Set Up Traceway
@@ -11,7 +11,7 @@ Analyze the application first, agree on its Traceway project structure with the 
 
 - Inspect before asking for credentials or changing code.
 - Explain what was detected, what is already tracked, and how each production component should report to Traceway.
-- Present a proposed project map and wait for the user to confirm it before implementation.
+- Present the proposed project map, or the one-line plan for a scoped run, and wait for the user to confirm it before implementation.
 - There are two classes of credentials, treated differently:
   - **Setup tokens** (prefix `tws_`) are org-scoped, expire in 6 hours, and can only propose a setup plan; nothing is created until the user approves the plan on the Traceway website. They are designed to transit chat, and asking the user to paste one is expected.
   - **Project ingest tokens and upload tokens** are long-lived. Never print their values, never ask the user to paste them into chat, and never commit them. When Step 3's apply script (or the `traceway` CLI) writes an approved plan's ingest tokens into env files, read only the variable names and statuses from its output, never the values.
@@ -25,6 +25,7 @@ Analyze the application first, agree on its Traceway project structure with the 
 | A project ingest token + url | Fast Path for a single component, otherwise Steps 1-2, then integrate against the existing project |
 | A setup token (`tws_`) + url | Steps 1-2, then Step 3 from "Write the plan file" (3b) |
 | No token | Steps 1-2, then Step 3 from the top |
+| Words naming one part of the codebase (`track ai use`, `instrument the background jobs`, `only apps/worker`), with or without a token | "Scoped Runs" below; the token rows above still decide how the credential is obtained |
 
 **Every backend integrates with OpenTelemetry.** There is one backend path, not one per language or web framework: Go, Node, Python, PHP, Java, .NET, Ruby, and everything else export OTLP/HTTP to `<instance>/api/otel/*`. The Traceway project is created with framework **OpenTelemetry**, which is the only backend option in the dashboard's framework picker. The native Traceway Go SDK is a deliberate exception used only when the user explicitly asks for it.
 
@@ -37,6 +38,38 @@ When all of the following hold, skip Steps 2 and 3 and go straight to the integr
 - the token's project already matches that component.
 
 Still run Step 1, because it decides *how* to instrument. Collapse "Propose and Confirm the Project Map" to a single confirmation line ("This is a Go API; it reports to your existing `<name>` project over OpenTelemetry") and skip the project-creation step entirely. The full map-and-creation ceremony exists for repositories with more than one deployable component, or where no project exists yet. Do not make a user who handed you a token sit through a project-map review for a single service.
+
+## Scoped Runs
+
+The skill also runs on one part of a codebase. A request that names a part, instead of asking for the whole setup, is a scoped run: `/traceway-setup track ai use`, "instrument the background jobs", "add Traceway to `apps/worker` only", "check that the setup works". The words after the skill name, or the request that loaded the skill, carry the scope. A part is an **area** (one kind of telemetry) or a **path** (a directory, package or named component), and the two combine: "track AI use in `services/assistant`".
+
+| The request names | Typical wording | Do |
+|---|---|---|
+| **AI / LLM usage** | integrate, instrument, track or monitor: AI use, LLM or model calls, tokens, cost, prompts, agents, a chatbot | Follow [ai-usage.md](ai-usage.md) from top to bottom. It carries its own analysis (its Steps A and B are rule 1 below for this scope), instrumentation and verification; read a step of this file only when it sends you here. |
+| **Background work** | tasks, jobs, cron, queues, workers, schedulers, CLI commands | Step 1 items 1, 3 and 5, then Step 5, then the task check of Step 9 |
+| **Endpoints** | routes, endpoint grouping, request tracing | Step 1 items 1-4, then Step 4 through "Verify endpoint grouping" |
+| **Errors**, **logs** or **metrics** | exceptions, issues; log shipping; custom or business metrics | Step 1 items 1 and 3, then "Errors", "Logs" or "Metrics" in Step 4, then the matching check of Step 9 |
+| **Browser app** | frontend, RUM, web vitals, session replay, source maps | Step 1 items 1, 3, 4 and 7, then the browser part of Step 7 with [rum.md](rum.md), then check 2 of Step 9 |
+| **Mobile app** | Flutter, React Native, Android, iOS, crashes, symbols | Step 1 items 1, 3 and 8, then the mobile part of Step 7, then check 3 of Step 9 |
+| **Host or cluster metrics** | server metrics, the agent, Kubernetes | Step 1 item 9, then Step 8 |
+| **Dashboard embedding** | embed a dashboard, customer-facing charts | "Embedding Dashboards in the User's Application" |
+| **Verification** | verify, check, "is it working", "why is nothing showing up" | Step 1 item 3, then Step 9 for what is already set up. Change nothing; report what fails and why. |
+| **A path or component** | a directory, "only the worker", "just the API" | The whole flow with every step limited to that path. One component with a token is usually the Fast Path. |
+
+For a verification-only request, use existing configuration and report missing prerequisites. The implementation and project-creation steps apply only when the user asks to set up instrumentation. Combine verification with any named area or path to select the relevant checks.
+
+The wording varies, so match on meaning. When a request fits no row, name the scopes that exist and ask which one is meant. When it names no part at all, run the full setup.
+
+Rules for every scoped run:
+
+1. **Inspect first, but only what the scope needs.** Always run Step 1 items 1 and 3 for the code in scope: the language, and the observability that is already there, including where it exports and which variable names carry the endpoint and token. Add the Step 1 items the table lists. Follow imports to shared clients and deployment configuration when the scoped component depends on them.
+2. **Reuse what exists.** A scoped run adds to the current setup: the same Traceway project, the same token variable, the same exporter and `service.name`. Do not rebuild the project map, do not rename projects or variables, and do not touch instrumentation outside the scope, even when it looks wrong. Report it instead.
+3. **Make sure the scope can reach Traceway.** If the code in scope already exports to Traceway, build on that. If it exports OpenTelemetry somewhere else, ask whether Traceway replaces that destination or runs next to it. If it exports nothing, set up the minimum the scope needs (for a backend area: the exporter from "Exporter configuration" in Step 4 and the one signal the area uses) with the credential path from "Invocation Forms", limited to the one project this code reports to. Say plainly that the rest of the setup was not done.
+4. **Confirm in one line, not with a project map.** State the scope, the project it reports to and what will change ("I will trace the 4 OpenAI call sites in `src/llm/`; they report to your existing `Shop Backend` project"). Wait for confirmation before changing code or provisioning a project.
+5. **Verify only the scope**, with the checks named in the table, and never report success for a check you did not run.
+6. **Finish with a scope report**: what changed, what was verified and how, what could not be verified, and what you noticed outside the scope, each with the scoped request that would handle it (for example "the nightly export job has no task span: `/traceway-setup instrument background jobs`").
+
+The Operating Contract applies unchanged: the same credential rules, and no code change before the user has seen what you found.
 
 ## Step 1: Analyze the Architecture
 
@@ -52,7 +85,7 @@ Before changing anything, build a picture of what is deployed and what is alread
 
    Frontend-only means integrate ONLY the browser side with the frontend SDK; do NOT add OTel to, or otherwise instrument, the framework's server side. A separate backend is its own component with its own Traceway project.
 5. **Background work**: find cron jobs, queue consumers, schedulers, CLI commands, and long-running workers. Record whether libraries already emit `CONSUMER` spans.
-6. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`, and agent frameworks (`langgraph`, `crewai`, `autogen` / `ag2`, `pydantic-ai`, `@openai/agents`, `@mastra/*`, `llamaindex` / `llama-index`, `semantic-kernel`). Then decide whether this is a **conversational product** (chatbot, assistant, agent) rather than one-shot LLM calls: look for chat or streaming-chat routes (`/chat`, `/completions`, SSE or websocket handlers feeding an LLM), message-history persistence (a `messages`/`conversations` table or thread ids), tool/function-calling definitions passed to the model, or any agent framework above. If conversational or tool-calling, read `ai-agent.md` in this skill directory before proposing the AI integration.
+6. **AI/LLM usage**: look for provider HTTP requests and shared model clients as well as dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`, and agent frameworks (`langgraph`, `crewai`, `autogen` / `ag2`, `pydantic-ai`, `@openai/agents`, `@mastra/*`, `llamaindex` / `llama-index`, `semantic-kernel`). Then decide whether this is a **conversational product** (chatbot, assistant, agent) rather than one-shot LLM calls: look for chat or streaming-chat routes (`/chat`, `/completions`, SSE or websocket handlers feeding an LLM), message-history persistence (a `messages`/`conversations` table or thread ids), tool/function-calling definitions passed to the model, or any agent framework above. When any of these turn up, the AI integration follows `ai-usage.md` in this skill directory (Step 6), which starts with a call-site inventory; if the product is conversational or tool-calling, also read `ai-agent.md` before proposing it.
 7. **Browser build and release flow**: identify the bundler, output directory, source-map settings, deploy pipeline, and existing artifact uploads.
 8. **Mobile build and release flow**: determine whether Flutter is obfuscated, Android uses R8/minification, iOS produces dSYMs, and whether multiple platform directories are one cross-platform product or independently released apps.
 9. **Deployment and host metrics**: inspect Dockerfiles, Compose, Kubernetes, Helm, Terraform, Ansible, cloud-init, PaaS configs, and CI/CD. Determine whether the backend runs on a host where the Traceway OTel Agent is applicable.
@@ -652,46 +685,16 @@ async function runScheduledJob() {
 
 ## Step 6: AI Traces
 
-If "Analyze the Architecture" found AI/LLM dependencies, instrument the model calls. A span becomes an **AI Trace** when it carries at least one `gen_ai.*` attribute *and* matched none of the earlier classification rules. In practice that means: keep `gen_ai.*` off the HTTP route span (it becomes an Endpoint), keep it off `CONSUMER` spans (they become Tasks), and give the model call its own child span with `SpanKind.CLIENT` rather than `INTERNAL`, so a failed call that records `exception.*` attributes still produces its AI Trace. Since calls happen inside a request or task, that child span stays linked to its Endpoint or Task by trace ID.
+If "Analyze the Architecture" found model calls, instrument the model calls by following [ai-usage.md](ai-usage.md) in this skill directory. It is the same procedure a scoped `/traceway-setup track ai use` run follows: inventory every call site, instrument each as an OpenTelemetry GenAI span, verify. In a full setup its Step A is already done (the exporter from Step 4), so start at its Step B.
 
-Boundaries: **one span per model call** (one provider API request = one AI Trace row). A multi-step agent run is multiple spans sharing a stable `trace.name` (same labeling discipline as task names: no IDs or timestamps). For streaming, end the span when the stream finishes.
+What that file establishes, in short:
 
-**Conversational product?** If "Analyze the Architecture" flagged a chatbot, assistant, or tool-calling agent, follow `ai-agent.md` in this skill directory instead of stopping at the table below. It covers `gen_ai.conversation.id` (multi-turn grouping), what value belongs in `user.id` (a stable end-customer id, never a session id), tool-call payload shapes, and sub-agents. Without those the Users tab stays empty, and the Conversations tab fills with one throwaway single-turn conversation per request, because Traceway falls back to the OTel trace id. That is worse than empty: it looks like the feature is working.
+- **One span per model call** (one provider API request = one AI Trace row), kind `CLIENT`, named `{operation} {model}` as the GenAI conventions say, and always a span of its own. A span becomes an **AI Trace** when it carries at least one `gen_ai.*` attribute *and* matched none of the earlier classification rules, so `gen_ai.*` on the HTTP route span is ignored (it is an Endpoint), on a `CONSUMER` span too (it is a Task), and an `INTERNAL` span that records `exception.*` attributes is never promoted. Since calls happen inside a request or task, the span stays linked to its Endpoint or Task by trace ID.
+- **Traceway reads most of the GenAI conventions as written and differs in a few places**: content goes on `gen_ai.prompt` / `gen_ai.completion` rather than `gen_ai.input.messages` / `gen_ai.output.messages`, cost is `gen_ai.usage.input_cost` / `.output_cost` and yours to compute, `trace.name` is the grouping name, `user.id` is the customer, and tool or agent wrapper spans must carry no `gen_ai.*` attribute or they count as model calls. The full table is "Where Traceway differs from the spec" in `ai-usage.md`.
+- **Token counts are integer attributes and costs are doubles.** A number sent as a string is silently stored as 0, with no error on the export.
+- **Streaming**: end the span when the stream finishes, not when the call returns.
 
-Attributes Traceway reads (all optional, set what is available):
-
-| Attribute | Meaning |
-|---|---|
-| `gen_ai.request.model` / `gen_ai.response.model` | Requested / serving model |
-| `gen_ai.system` or `gen_ai.provider.name` | Provider (`openai`, `anthropic`, ...) |
-| `gen_ai.operation.name` | Operation (`chat`, `embeddings`, ...) |
-| `gen_ai.usage.input_tokens` / `.output_tokens` / `.total_tokens` | Token counts |
-| `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.output_tokens.reasoning` | Cached / reasoning tokens |
-| `gen_ai.usage.input_cost` / `.output_cost` / `.total_cost` | Cost, when you compute pricing |
-| `trace.name` | Agent/workflow grouping name |
-| `gen_ai.conversation.id` | Multi-turn conversation grouping (falls back to `session.id`, then the OTel trace id) |
-| `user.id` | End-user attribution: a stable customer id (account id, tenant id, or email), the same value across all of that user's conversations |
-| `gen_ai.response.finish_reason` | Why generation stopped |
-| `gen_ai.prompt` / `gen_ai.completion` | Conversation content, shown on the trace detail page (skip if content must not leave the app) |
-
-Conversation content is also read from `trace.input`/`trace.output` (or `span.input`/`span.output`) when `gen_ai.prompt`/`gen_ai.completion` are absent, and missing `total_tokens`/`total_cost` are computed from the input + output values. Token counts must be integer attributes and costs must be double or integer attributes. A number sent as a string is silently dropped and stored as 0, with no error on the export.
-
-```typescript
-import { SpanKind } from "@opentelemetry/api";
-
-return tracer.startActiveSpan("chat-completion", { kind: SpanKind.CLIENT }, async (span) => {
-  const response = await openai.chat.completions.create({ model: "gpt-4o", messages });
-  span.setAttributes({
-    "gen_ai.system": "openai",
-    "gen_ai.request.model": "gpt-4o",
-    "gen_ai.usage.input_tokens": response.usage?.prompt_tokens ?? 0,
-    "gen_ai.usage.output_tokens": response.usage?.completion_tokens ?? 0,
-    "trace.name": "support-agent",
-  });
-  span.end();
-  return response;
-});
-```
+**Conversational product?** If "Analyze the Architecture" flagged a chatbot, assistant, or tool-calling agent, also follow `ai-agent.md` in this skill directory. It covers `gen_ai.conversation.id` (multi-turn grouping), what value belongs in `user.id` (a stable end-customer id, never a session id), tool-call payload shapes, and sub-agents. Without those the Users tab stays empty, and the Conversations tab fills with one throwaway single-turn conversation per request, because Traceway falls back to the OTel trace id. That is worse than empty: it looks like the feature is working.
 
 Zero-code path for OpenRouter users: in OpenRouter Settings -> Observability, add an OpenTelemetry Collector destination pointing at `https://<instance>/api/otel/v1/traces` with header `{"Authorization": "Bearer <project-token>"}`. Docs: https://docs.tracewayapp.com/client/openrouter
 
@@ -776,7 +779,7 @@ When the CLI applied the plan, the local env files hold real values, so run loca
    - Open one endpoint row: database queries and outgoing HTTP calls appear as child spans.
    - Run each background job once, then open `/tasks`. One row per job, under a stable name with no ids or timestamps in it.
    - If logs were wired, emit one INFO and one ERROR line inside a request, then open `/logs`. Both carry the same trace id as that endpoint.
-   - If "AI Traces" applied, make one model call, then open `/ai-traces`. The call is listed with model, tokens, and cost where available.
+   - If "AI Traces" applied, run the checks in Step E of `ai-usage.md`: one call per instrumented feature, then `/ai-traces` lists each feature by name with model, tokens and cost.
    - If the OTel Agent was installed, host metrics reach this same backend project within about 60 seconds, each host under its own `server_name` tag.
    - Run `traceway metrics discover --since 15m`. With metrics off (the default) only the agent's `system.*` names appear. If the app exports its own metrics, they appear too, and no `http.server.*` name is among them; if one is, the view from "Metrics" is missing.
    - If host or Kubernetes metrics were set up, open `/organization`. Every host and node appears as its own instance row with CPU, memory and disk. Kubernetes nodes are grouped by cluster. One row where you expected several means `service.name` is not distinct per machine; empty rings mean the `*.utilization` metrics are not enabled.

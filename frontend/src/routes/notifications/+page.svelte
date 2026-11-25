@@ -24,7 +24,7 @@
 	import ConfirmDeleteDialog from '$lib/components/traceway/confirm-delete-dialog.svelte';
 	import PageBadges from '$lib/components/traceway/page-badges.svelte';
 	import { Pencil, Trash2, Zap, ZapOff, Clock, Send } from '@lucide/svelte';
-	import { SearchBar } from '$lib/components/ui/search-bar';
+	import { FilterBar, type FilterApply } from '$lib/components/traceway/filter-bar';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { CalendarDate } from '@internationalized/date';
@@ -278,7 +278,8 @@
 		}
 	}
 
-	function handleHistorySearch() {
+	function handleHistoryFilterApply(next: FilterApply) {
+		searchQuery = next.search;
 		historyPage = 1;
 		loadHistory(true);
 	}
@@ -665,14 +666,13 @@
 			</TableContainer>
 		{/if}
 	{:else if activeTab === 'history'}
-		<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-			<SearchBar
-				placeholder="Search Historic Alerts..."
-				bind:value={searchQuery}
-				onSearch={handleHistorySearch}
-				disabled={historyLoading}
-			/>
-			<div class="w-full sm:w-auto">
+		<FilterBar
+			search={searchQuery}
+			searchPlaceholder="Search Historic Alerts..."
+			onApply={handleHistoryFilterApply}
+			disabled={historyLoading}
+		>
+			{#snippet actions()}
 				<TimeRangePicker
 					bind:fromDate
 					bind:toDate
@@ -681,89 +681,91 @@
 					bind:preset={selectedPreset}
 					onApply={handleTimeRangeChange}
 				/>
-			</div>
-		</div>
+			{/snippet}
 
-		{#if historyError && !historyLoading}
-			<ErrorRetryBox message={historyError} onRetry={() => loadHistory(false)} />
-		{:else}
-			<TableContainer>
-				<Table.Root>
-					{#if historyLoading}
-						<Table.Body>
-							<Table.Row>
-								<Table.Cell colspan={6} class="h-48">
-									<div class="flex h-full items-center justify-center">
-										<LoadingCircle size="xlg" />
-									</div>
-								</Table.Cell>
-							</Table.Row>
-						</Table.Body>
-					{:else if history.length === 0}
-						<Table.Body>
-							<TableEmptyState colspan={6} message="No Historic Alerts found." />
-						</Table.Body>
-					{:else}
-						<Table.Header>
-							<Table.Row>
-								<Table.Head>Severity</Table.Head>
-								<Table.Head>Rule</Table.Head>
-								<Table.Head>Subject</Table.Head>
-								<Table.Head>Channel</Table.Head>
-								<Table.Head>Status</Table.Head>
-								<Table.Head>Sent At</Table.Head>
-							</Table.Row>
-						</Table.Header>
-						<Table.Body>
-							{#each history as item, __index (__index)}
+			{#if historyError && !historyLoading}
+				<ErrorRetryBox message={historyError} onRetry={() => loadHistory(false)} />
+			{:else}
+				<TableContainer>
+					<Table.Root>
+						{#if historyLoading}
+							<Table.Body>
 								<Table.Row>
-									<Table.Cell>
-										<PageBadges severity={item.severity} fallback />
+									<Table.Cell colspan={6} class="h-48">
+										<div class="flex h-full items-center justify-center">
+											<LoadingCircle size="xlg" />
+										</div>
 									</Table.Cell>
-									<Table.Cell class="font-medium">{item.ruleName}</Table.Cell>
-									<Table.Cell class="max-w-xs truncate">
-										{#if item.url}
-											<a
-												{...{ href: resolveHref(item.url) }}
-												class="text-blue-600 hover:underline dark:text-blue-400">{item.subject}</a
-											>
-										{:else}
-											{item.subject}
-										{/if}
-									</Table.Cell>
-									<Table.Cell>{item.channelName}</Table.Cell>
-									<Table.Cell>
-										{#if item.status === 'sent'}
-											<Badge class="bg-green-600 text-white">Sent</Badge>
-										{:else if item.status === 'failed'}
-											<Badge variant="destructive">Failed</Badge>
-										{:else if item.status === 'deduped'}
-											<Badge variant="secondary" title="Folded into a page that was already open">
-												Deduped
-											</Badge>
-										{:else}
-											<Badge variant="secondary">Skipped</Badge>
-										{/if}
-									</Table.Cell>
-									<Table.Cell class="text-muted-foreground">{formatDate(item.createdAt)}</Table.Cell
-									>
 								</Table.Row>
-							{/each}
-						</Table.Body>
-					{/if}
-				</Table.Root>
-			</TableContainer>
-		{/if}
+							</Table.Body>
+						{:else if history.length === 0}
+							<Table.Body>
+								<TableEmptyState colspan={6} message="No Historic Alerts found." />
+							</Table.Body>
+						{:else}
+							<Table.Header>
+								<Table.Row>
+									<Table.Head>Severity</Table.Head>
+									<Table.Head>Rule</Table.Head>
+									<Table.Head>Subject</Table.Head>
+									<Table.Head>Channel</Table.Head>
+									<Table.Head>Status</Table.Head>
+									<Table.Head>Sent At</Table.Head>
+								</Table.Row>
+							</Table.Header>
+							<Table.Body>
+								{#each history as item, __index (__index)}
+									<Table.Row>
+										<Table.Cell>
+											<PageBadges severity={item.severity} fallback />
+										</Table.Cell>
+										<Table.Cell class="font-medium">{item.ruleName}</Table.Cell>
+										<Table.Cell class="max-w-xs truncate">
+											{#if item.url}
+												<a
+													{...{ href: resolveHref(item.url) }}
+													class="text-blue-600 hover:underline dark:text-blue-400">{item.subject}</a
+												>
+											{:else}
+												{item.subject}
+											{/if}
+										</Table.Cell>
+										<Table.Cell>{item.channelName}</Table.Cell>
+										<Table.Cell>
+											{#if item.status === 'sent'}
+												<Badge class="bg-green-600 text-white">Sent</Badge>
+											{:else if item.status === 'failed'}
+												<Badge variant="destructive">Failed</Badge>
+											{:else if item.status === 'deduped'}
+												<Badge variant="secondary" title="Folded into a page that was already open">
+													Deduped
+												</Badge>
+											{:else}
+												<Badge variant="secondary">Skipped</Badge>
+											{/if}
+										</Table.Cell>
+										<Table.Cell class="text-muted-foreground"
+											>{formatDate(item.createdAt)}</Table.Cell
+										>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						{/if}
+					</Table.Root>
+				</TableContainer>
+			{/if}
 
-		<PaginationFooter
-			currentPage={historyPage}
-			totalPages={historyTotalPages}
-			pageSize={historyPageSize}
-			totalItems={historyTotal}
-			onPageChange={handleHistoryPageChange}
-			onPageSizeChange={handleHistoryPageSizeChange}
-			itemLabel="notification"
-		/>
+			<PaginationFooter
+				currentPage={historyPage}
+				totalPages={historyTotalPages}
+				pageSize={historyPageSize}
+				totalItems={historyTotal}
+				onPageChange={handleHistoryPageChange}
+				onPageSizeChange={handleHistoryPageSizeChange}
+				itemLabel="notification"
+				loading={historyLoading}
+			/>
+		</FilterBar>
 	{/if}
 </div>
 

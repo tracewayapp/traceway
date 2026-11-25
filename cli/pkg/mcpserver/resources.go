@@ -96,7 +96,7 @@ var knowledgeResources = []struct {
 	},
 	{
 		uri: "traceway://knowledge/dashboard-embedding", file: "dashboard-embedding.md", name: "Embed dashboards in another application",
-		description: "How a host application shows a Traceway dashboard to its own users: the embed-token request, the backend endpoint and iframe to add to the user's code, per-customer tag filters, renewal, limits and verification. Read when the user wants to embed or share a dashboard. Issuing a link needs a write credential.",
+		description: "How a host application shows a Traceway dashboard to its own users: the embed-token request, the backend endpoint and iframe to add to the user's code, per-customer tag filters, renewal, limits and verification. Read when the user wants to embed or share a dashboard. Issuing a link needs a personal access token (read is enough) whose owner can write to the project.",
 	},
 	{
 		uri: "traceway://knowledge/tool-map", file: "tool-map.md", name: "CLI to MCP tool map",

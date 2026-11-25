@@ -13,7 +13,7 @@ import { tracingScreenshots } from "@/lib/tracing-screenshots";
 
 export const metadata: Metadata = {
   title: "OpenTelemetry Tracing & Span Explorer | Traceway",
-  description: "Search OpenTelemetry spans by service, duration, status and attributes. Follow a trace across services, inspect its waterfall and read correlated logs in Traceway.",
+  description: "Search OpenTelemetry spans by service, duration, status and attributes, chart their latency and save the searches you repeat. Follow a trace across services, inspect its waterfall and read correlated logs in Traceway.",
 };
 
 const tracingDocs = "https://docs.tracewayapp.com/client/otel/traces";
@@ -29,9 +29,10 @@ export default function TracesPage() {
             Search any span.<br /><em>Follow the whole trace.</em>
           </h1>
           <p className="hero-sub">
-            Find the slow query, failed request or background job. Open its trace
-            to see the services involved, where the time went, and what the logs
-            say—all connected by the original OpenTelemetry trace ID.
+            Find the slow query, failed request or background job, and chart how
+            its latency changed. Open its trace to see the services involved,
+            where the time went, and what the logs say—all connected by the
+            original OpenTelemetry trace ID.
           </p>
           <div className="hero-cta-row">
             <Link href={tracingDocs} className="btn btn-accent">
@@ -89,7 +90,7 @@ export default function TracesPage() {
             description="Read logs carrying the same trace ID alongside the waterfall. See the emitting service and span, then expand a record for its attributes. Logs stay scoped to the selected project."
           />
           <figure className="overflow-hidden rounded-xl border border-hair-2 bg-ink-1">
-            <ScreenshotZoom images={tracingScreenshots} index={3} />
+            <ScreenshotZoom images={tracingScreenshots} index={4} />
             <figcaption className="px-5 py-4 text-sm leading-relaxed text-fg-2">
               The same checkout shown above: a 950 ms payment timeout, followed by
               a failed-order event and the gateway&apos;s 502 response. Demo data.
@@ -125,7 +126,15 @@ export default function TracesPage() {
             },
             {
               q: "What can I search in the span explorer?",
-              a: "Search received spans by name, service, span kind, status, minimum or maximum duration, trace ID and exact attribute values within a time range. HTTP calls, database queries, internal spans and messaging operations are all available. Open a result to view its trace with that span selected.",
+              a: "Search received spans by name, service, span kind, status, minimum or maximum duration, trace ID and attributes within a time range. An attribute filter can match a value exactly, contain it, exclude either, or check whether the key exists at all. HTTP calls, database queries, internal spans and messaging operations are all available. Open a result to view its trace with that span selected.",
+            },
+            {
+              q: "Can I chart span latency?",
+              a: "Yes. A chart above the results draws the P50, P95 and P99 duration of every span the search matches, plus average, minimum, maximum, sum and count if you want them. Switch it to Distribution to see durations on a log scale, where cache hits and misses or fast and slow paths show up as separate humps. Any numeric attribute, such as rows returned, can be charted the same way, and dragging across the chart zooms into that time range.",
+            },
+            {
+              q: "Can I save a span search?",
+              a: "Yes. Saved filters keep the search, its attribute filters and the chart, with or without the time range, and are shared with everyone in the project. Applying one restores the whole search in a click.",
             },
             {
               q: "How are spans connected across services?",

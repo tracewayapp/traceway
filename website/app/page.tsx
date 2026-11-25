@@ -20,6 +20,7 @@ import { AgentDebugTerminal } from "@/components/agent-debug-terminal";
 import { StatsStrip } from "@/components/stats-strip";
 import { HeroEmailCTA } from "@/components/hero-email-cta";
 import { HeroCarousel } from "@/components/hero-carousel";
+import { Harvest } from "@/components/harvest";
 import { getCalendlyUrl } from "@/lib/calendly";
 import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
 
@@ -111,6 +112,12 @@ export default function Home() {
 
       {/* HERO: centered chip, title, subhead, email form */}
       <section className="hero">
+        <Harvest
+          src="/harvest/autumn-bunting.svg"
+          width={280}
+          height={60}
+          className="pointer-events-none absolute left-1/2 top-3 w-[240px] -translate-x-1/2 select-none"
+        />
         <div className="wrap">
           <div className="text-center max-w-4xl mx-auto flex flex-col items-center">
             <Image

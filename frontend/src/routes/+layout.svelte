@@ -99,6 +99,7 @@
 	const SIDEBAR_OPEN_KEY = 'traceway_sidebar_open';
 	let sidebarOpen = $state(dashboardStorage()?.getItem(SIDEBAR_OPEN_KEY) !== 'false');
 	let CrossSiteNotificationBanner = $state<Component<{ organizationId: number }> | null>(null);
+	let OverlaySlot = $state<Component | null>(null);
 
 	const contextOrganizationId = $derived(
 		organizationContext.active
@@ -260,6 +261,14 @@
 			.catch(() => {
 				// Billing extension not available - expected for open source builds
 			});
+
+		import('$billing/overlay-slot.svelte')
+			.then((module) => {
+				OverlaySlot = module.default;
+			})
+			.catch(() => {
+				// Billing extension not available - expected for open source builds
+			});
 	});
 
 	function handleLogout() {
@@ -339,6 +348,9 @@
 	{#if dashboardsAvailable}
 		<DashboardCommand bind:open={showCommandPalette} />
 	{/if}
+	{#if OverlaySlot}
+		<OverlaySlot />
+	{/if}
 	<Toaster position="top-center" />
 {/snippet}
 
@@ -363,6 +375,9 @@
 				{@render children()}
 			</main>
 		</div>
+		{#if OverlaySlot}
+			<OverlaySlot />
+		{/if}
 		<Toaster position="top-center" />
 	{:else if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
 		<Sidebar.SidebarProvider

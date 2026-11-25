@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { parseAttributeInput } from '$lib/components/traceway/filter-bar/attributes';
+import { operatorFlags } from './attribute-filters';
 import {
-	displayKeyToFilter,
 	filtersEqual,
 	formatLogAttributeFilter,
+	fromFlatLogFilter,
+	LOG_ATTRIBUTE_RULES,
+	logAttributeEntries,
 	parseLogAttributeFilter,
-	sameFilterTarget
+	parseLogAttributeTarget,
+	sameFilterTarget,
+	toFlatLogFilter
 } from './log-filters';
 
 describe('log attribute filter URLs', () => {
@@ -17,8 +23,8 @@ describe('log attribute filter URLs', () => {
 		'log.url=https://example.com/?a=b',
 		'log.exception.stacktrace=line 1\nline 2\n',
 		'log.message!=ends with a space ',
-		'log.~=1',
-		'log.!=1'
+		'log.NodeId?=',
+		'resource.k8s.pod.name!?='
 	])('round trips %s', (input) => {
 		const filter = parseLogAttributeFilter(input)!;
 		expect(filter).not.toBeNull();
@@ -31,18 +37,21 @@ describe('log attribute filter URLs', () => {
 			key: 'a.b',
 			value: 'c=d',
 			exclude: false,
-			contains: false
+			contains: false,
+			exists: false
 		});
 	});
 
-	it('reads a key that starts with an operator character as part of the key', () => {
-		expect(parseLogAttributeFilter('log.=a=b')).toEqual({
-			scope: 'log',
-			key: '=a',
-			value: 'b',
-			exclude: false,
-			contains: false
-		});
+	it('reads old links whose key starts with an operator character', () => {
+		expect(parseLogAttributeFilter('log.=a=b')).toMatchObject({ key: '=a', value: 'b' });
+		expect(parseLogAttributeFilter('log.~=1')).toMatchObject({ key: '~', value: '1' });
+		expect(parseLogAttributeFilter('log.!=1')).toMatchObject({ key: '!', value: '1' });
+	});
+
+	it('escapes such keys when it writes them', () => {
+		const filter = parseLogAttributeFilter('log.~=1')!;
+		expect(formatLogAttributeFilter(filter)).toBe('log.%7E=1');
+		expect(parseLogAttributeFilter(formatLogAttributeFilter(filter))).toEqual(filter);
 	});
 
 	it.each(['foo=bar', 'log.=value', 'resource.service.name', 'event.name=x'])(
@@ -53,14 +62,34 @@ describe('log attribute filter URLs', () => {
 	);
 });
 
-describe('displayKeyToFilter', () => {
+describe('logAttributeEntries', () => {
+	const entries = logAttributeEntries({
+		resourceAttributes: { 'service.name': 'gateway' },
+		scopeAttributes: { 'otel.library': 'http' },
+		logAttributes: { TimerSend: '12', 'resource.id': 'r-1', 'scope.depth': '3', 'log.level': 'x' }
+	});
+
 	it.each([
 		['resource.service.name', { scope: 'resource', key: 'service.name' }],
 		['scope.otel.library', { scope: 'scope', key: 'otel.library' }],
 		['TimerSend', { scope: 'log', key: 'TimerSend' }],
-		['http.route', { scope: 'log', key: 'http.route' }]
+		['log.resource.id', { scope: 'log', key: 'resource.id' }],
+		['log.scope.depth', { scope: 'log', key: 'scope.depth' }],
+		['log.level', { scope: 'log', key: 'log.level' }]
 	])('maps %s', (displayKey, expected) => {
-		expect(displayKeyToFilter(displayKey)).toEqual(expected);
+		expect(entries.targets.get(displayKey)).toEqual(expected);
+	});
+
+	it('shows a log attribute named like another layer under log.', () => {
+		expect(entries.attributes['log.resource.id']).toBe('r-1');
+		expect(entries.attributes['resource.id']).toBeUndefined();
+	});
+});
+
+describe('parseLogAttributeTarget', () => {
+	it('reads the layer prefix', () => {
+		expect(parseLogAttributeTarget('log.TimerSend')).toEqual({ scope: 'log', key: 'TimerSend' });
+		expect(parseLogAttributeTarget('TimerSend')).toBeNull();
 	});
 });
 
@@ -77,5 +106,24 @@ describe('filter comparison', () => {
 	it('distinguishes scopes', () => {
 		const resource = parseLogAttributeFilter('resource.TimerSend=7')!;
 		expect(sameFilterTarget(equals, resource)).toBe(false);
+	});
+});
+
+describe('log attribute rules', () => {
+	it('stores a scoped key and refuses one without a scope', () => {
+		expect(
+			parseAttributeInput(LOG_ATTRIBUTE_RULES, 'resource.service.name', 'api', '=', [])
+		).toMatchObject({
+			key: 'resource.service.name',
+			value: 'api'
+		});
+		expect(parseAttributeInput(LOG_ATTRIBUTE_RULES, 'service.name', 'api', '=', [])).toMatch(
+			/resource\./
+		);
+	});
+
+	it('round-trips a scoped filter through the flat key the filter bar edits', () => {
+		const filter = { scope: 'log' as const, key: 'user.id', value: 'u_1', ...operatorFlags('!=') };
+		expect(fromFlatLogFilter(toFlatLogFilter(filter))).toEqual([filter]);
 	});
 });

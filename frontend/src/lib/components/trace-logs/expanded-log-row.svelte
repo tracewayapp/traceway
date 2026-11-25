@@ -16,13 +16,16 @@
 <script lang="ts">
 	import * as Table from '$lib/components/ui/table';
 	import { AttributesGrid, AttributesView } from '$lib/components/ui/attributes-grid';
-	import type { FilterOperator } from '$lib/utils/attribute-filters';
+	import { keyOperatorOptions, type FilterOperator } from '$lib/utils/attribute-filters';
+	import { isNumericAttributeValue } from '$lib/utils/value-chart';
+	import { logAttributeEntries, type LogAttributeTarget } from '$lib/utils/log-filters';
 
 	let {
 		log,
 		colspan,
 		filterOperatorFor,
 		onFilterOperator,
+		onChart,
 		isMetaFilterActive,
 		onMetaFilterToggle,
 		onHeightChange,
@@ -30,8 +33,14 @@
 	}: {
 		log: ExpandedLogRecord;
 		colspan: number;
-		filterOperatorFor?: (key: string, value: string) => FilterOperator | null;
-		onFilterOperator?: (key: string, value: string, operator: FilterOperator | null) => void;
+		filterOperatorFor?: (target: LogAttributeTarget, value: string) => FilterOperator | null;
+		onFilterOperator?: (
+			target: LogAttributeTarget,
+			value: string,
+			operator: FilterOperator | null
+		) => void;
+		// Offered on attributes whose value is a number.
+		onChart?: (target: LogAttributeTarget) => void;
 		isMetaFilterActive?: (field: MetaFilterField, value: string) => boolean;
 		onMetaFilterToggle?: (field: MetaFilterField, value: string) => void;
 		onHeightChange?: (height: number) => void;
@@ -39,6 +48,9 @@
 		// whenever the list reloads (every filter change) or scrolls back in.
 		showAllAttributes?: boolean;
 	} = $props();
+
+	// The grid works with the keys it shows; the page with the layer and key.
+	const entries = $derived(logAttributeEntries(log));
 
 	let row = $state<HTMLTableRowElement | null>(null);
 	let contentHeight = $state(0);
@@ -59,23 +71,8 @@
 		};
 	}
 
-	function mergedAttributes(): Record<string, string> {
-		const out: Record<string, string> = {};
-		const push = (m: Record<string, string> | null | undefined, prefix: string) => {
-			if (!m) return;
-			for (const [k, v] of Object.entries(m)) {
-				out[`${prefix}${k}`] = v;
-			}
-		};
-		push(log.resourceAttributes, 'resource.');
-		push(log.scopeAttributes, 'scope.');
-		push(log.logAttributes, '');
-		return out;
-	}
-
-	function hasAttributes(): boolean {
-		for (const _ in mergedAttributes()) return true;
-		return false;
+	function targetOf(displayKey: string): LogAttributeTarget {
+		return entries.targets.get(displayKey) ?? { scope: 'log', key: displayKey };
 	}
 </script>
 
@@ -113,12 +110,19 @@
 					/>
 				{/if}
 			</div>
-			{#if hasAttributes()}
+			{#if entries.targets.size > 0}
 				<AttributesGrid
-					attributes={mergedAttributes()}
+					attributes={entries.attributes}
 					collapsedCount={6}
-					{filterOperatorFor}
-					{onFilterOperator}
+					operators={keyOperatorOptions}
+					filterOperatorFor={filterOperatorFor
+						? (key, value) => filterOperatorFor(targetOf(key), value)
+						: undefined}
+					onFilterOperator={onFilterOperator
+						? (key, value, operator) => onFilterOperator(targetOf(key), value, operator)
+						: undefined}
+					canChart={(_, value) => isNumericAttributeValue(value)}
+					onChart={onChart ? (key) => onChart(targetOf(key)) : undefined}
 					bind:expanded={showAllAttributes}
 				/>
 			{/if}

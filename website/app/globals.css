@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+/* Phones in landscape are wider than `md` but too short for the desktop header's
+   dropdown, so they get the mobile menu. */
+@custom-variant phone-landscape (@media (pointer: coarse) and (max-height: 500px));
 
 /* =============================================================
    Traceway Design Tokens: dark-first, with light override
@@ -2178,4 +2181,9 @@
 }
 .cookie-banner-link:hover {
   color: var(--fg-0);
+}
+
+/* Thanksgiving decorations: hidden unless the head script marked the season. */
+html:not(.harvest-season) .harvest {
+  display: none;
 }

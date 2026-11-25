@@ -33,7 +33,9 @@ func newMetricsQueryCmd() *cobra.Command {
 	}
 	addTimeRangeFlags(cmd)
 	cmd.Flags().String("name", "", "Metric name (required)")
-	cmd.Flags().String("aggregation", "avg", "Aggregation: avg, sum, count, min, max, rate, last, p50, p95, p99")
+	cmd.Flags().String("aggregation", "avg", "Aggregation: avg, sum, count, min, max, rate, last; for a distribution metric also p50, p75, p90, p95, p99, good_ratio")
+	cmd.Flags().Float64("threshold", 0, "good_ratio only: the share of observations at or under this value (rated web vitals have a default)")
+	cmd.Flags().Bool("whole-range", false, "One value per series for the whole range, as an alert over that window computes it, instead of a time series")
 	cmd.Flags().StringSlice("tag", nil, "Tag filter as key=value (repeatable)")
 	cmd.Flags().String("group-by", "", "Tag to group series by")
 	cmd.Flags().Int("interval-minutes", 0, "Time bucket size in minutes (0 = auto)")
@@ -63,6 +65,16 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(),
 			enumFlagHint(appdir.Binary+" metrics query", "--aggregation", metricAggregations))
 	}
+	var threshold *float64
+	if cmd.Flags().Changed("threshold") {
+		if agg != "good_ratio" {
+			return renderUsageError(cmd.ErrOrStderr(), mode, "--threshold only applies to --aggregation good_ratio",
+				appdir.Binary+" metrics query --name <metric> --aggregation good_ratio --threshold <value>")
+		}
+		v, _ := cmd.Flags().GetFloat64("threshold")
+		threshold = &v
+	}
+	wholeRange, _ := cmd.Flags().GetBool("whole-range")
 	groupBy, _ := cmd.Flags().GetString("group-by")
 	intervalMin, _ := cmd.Flags().GetInt("interval-minutes")
 	tags, _ := cmd.Flags().GetStringSlice("tag")
@@ -77,8 +89,9 @@ func runMetricsQuery(cmd *cobra.Command, _ []string) error {
 	resp, err := c.QueryMetrics(ctx, sess.ProjectID, client.QueryMetricsRequest{
 		TimeRange:       tr,
 		IntervalMinutes: intervalMin,
+		WholeRange:      wholeRange,
 		Queries: []client.MetricQueryItem{
-			{Name: name, Aggregation: agg, TagFilters: tagFilters, GroupBy: groupBy},
+			{Name: name, Aggregation: agg, TagFilters: tagFilters, GroupBy: groupBy, Threshold: threshold},
 		},
 	})
 	if err != nil {

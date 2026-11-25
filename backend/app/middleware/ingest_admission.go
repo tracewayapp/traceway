@@ -94,8 +94,14 @@ func newAdmissionGate(name string, capacity int, wait time.Duration, message str
 	}
 }
 
+// IngestSlotsPerCPU sizes the ingest gate when INGEST_MAX_CONCURRENT is unset.
+// A slot holds a decoded body while the store inserts it, mostly waiting, so
+// the bound is memory, not CPU: the default keeps a memory-capped container
+// safe, and a binary that knows its host has memory to spare raises it before Run.
+var IngestSlotsPerCPU = 4
+
 func ingestCapacityFromEnv() int {
-	n := runtime.NumCPU() * 4
+	n := runtime.NumCPU() * IngestSlotsPerCPU
 	if n < 4 {
 		n = 4
 	}

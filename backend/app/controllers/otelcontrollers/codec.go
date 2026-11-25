@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientlogs"
 	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
+	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	colprofilespb "go.opentelemetry.io/proto/otlp/collector/profiles/v1development"
@@ -28,6 +30,21 @@ const (
 	otlpBodyTotal = 2 * time.Minute
 )
 
+// PrefetchBody reads an OTLP body ahead of the ingest gate (middleware.PrefetchIngestBody).
+var PrefetchBody = middleware.PrefetchIngestBody(otlpBodyIdle, otlpBodyTotal, maxBodySize)
+
+// PrefetchMetricsBody leaves client projects alone: their bodies are capped at
+// clientmetrics.MaxBodyBytes and their gate is sized for slow phones already.
+func PrefetchMetricsBody(c *gin.Context) {
+	if project, ok := c.Get(middleware.ProjectContextKey); ok {
+		if p, ok := project.(*models.Project); ok && clientlogs.IsClient(p) {
+			c.Next()
+			return
+		}
+	}
+	PrefetchBody(c)
+}
+
 func readBody(c *gin.Context) ([]byte, error) {
 	return readBodyUpTo(c, maxBodySize)
 }
@@ -35,6 +52,7 @@ func readBody(c *gin.Context) ([]byte, error) {
 // readBodyUpTo bounds both the raw and the decompressed body, so gzip cannot raise the limit.
 func readBodyUpTo(c *gin.Context, maxBodySize int64) ([]byte, error) {
 	middleware.GuardBodyRead(c, otlpBodyIdle, otlpBodyTotal)
+	defer middleware.MeterRawIngestBody(c)()
 
 	raw := http.MaxBytesReader(c.Writer, c.Request.Body, maxBodySize)
 

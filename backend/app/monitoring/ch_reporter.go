@@ -119,6 +119,7 @@ func reportOnce(ctx context.Context, b *chBaselines) {
 	reportPartsByTable(qCtx)
 	reportMaxPartsPerPartition(qCtx)
 	reportMergesRunning(qCtx)
+	reportRunningQueries(qCtx)
 	reportEventDeltas(qCtx, b)
 	reportDiskUsage(qCtx)
 	reportServerMemory(qCtx)
@@ -194,6 +195,54 @@ func reportMergesRunning(ctx context.Context) {
 		return
 	}
 	traceway.CaptureMetric("traceway.ch.merges.running", float64(merges))
+}
+
+type runningQueries struct {
+	count      uint64
+	longestSec float64
+	memory     int64
+}
+
+// reportRunningQueries samples what ClickHouse is busy with. When every insert
+// slows down at once, the insert and merge counters only show that it happened;
+// a long read running at the same moment, and its memory, show why.
+func reportRunningQueries(ctx context.Context) {
+	byKind, err := readRunningQueries(ctx)
+	if err != nil {
+		captureMonitoringErr(fmt.Errorf("monitoring: system.processes query failed: %w", err))
+		return
+	}
+	for kind, q := range byKind {
+		tags := map[string]string{"kind": kind}
+		traceway.CaptureMetricWithTags("traceway.ch.queries.running", float64(q.count), tags)
+		traceway.CaptureMetricWithTags("traceway.ch.queries.longest_sec", q.longestSec, tags)
+		traceway.CaptureMetricWithTags("traceway.ch.queries.memory_bytes", float64(q.memory), tags)
+	}
+}
+
+// readRunningQueries reports both kinds every time, zero when idle, so a chart
+// of them has no gaps.
+func readRunningQueries(ctx context.Context) (map[string]runningQueries, error) {
+	byKind := map[string]runningQueries{"insert": {}, "read": {}}
+	err := withRetry(func() error {
+		rows, err := chdb.Conn.Query(ctx,
+			`SELECT if(match(query, '(?i)^\\s*insert'), 'insert', 'read') AS kind, count(), max(elapsed), sum(memory_usage)
+			FROM system.processes WHERE current_database = currentDatabase() AND query_id != queryID() GROUP BY kind`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var kind string
+			var q runningQueries
+			if err := rows.Scan(&kind, &q.count, &q.longestSec, &q.memory); err != nil {
+				return err
+			}
+			byKind[kind] = q
+		}
+		return rows.Err()
+	})
+	return byKind, err
 }
 
 func reportEventDeltas(ctx context.Context, b *chBaselines) {

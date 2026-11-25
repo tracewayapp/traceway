@@ -13,6 +13,9 @@ type MetricQueryItem struct {
 	Aggregation string            `json:"aggregation,omitempty"`
 	TagFilters  map[string]string `json:"tagFilters,omitempty"`
 	GroupBy     string            `json:"groupBy,omitempty"`
+	// Threshold is good_ratio's "good" limit: the share of observations at or
+	// under it. A rated catalog metric (the web vitals) has a default.
+	Threshold *float64 `json:"threshold,omitempty"`
 }
 
 // QueryMetricsRequest is the body for POST /api/metrics/query.
@@ -23,6 +26,10 @@ type QueryMetricsRequest struct {
 	TimeRange       TimeRange         `json:"-"`
 	IntervalMinutes int               `json:"intervalMinutes,omitempty"`
 	Queries         []MetricQueryItem `json:"queries"`
+	// WholeRange returns one value per series for the whole range. A
+	// percentile of a range cannot be put together from its buckets'
+	// percentiles, so this is how an alert's "p75 over 24 hours" is read.
+	WholeRange bool `json:"wholeRange,omitempty"`
 }
 
 // MarshalJSON expands TimeRange into top-level from/to (NOT fromDate/toDate).

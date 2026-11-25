@@ -167,8 +167,8 @@ func TestDispatchChannelLoadFailureRecordsAppliedSeverityAndURL(t *testing.T) {
 	if row.Severity != "warning" {
 		t.Errorf("severity = %q, want warning", row.Severity)
 	}
-	if row.URL != "https://traceway.example.com/issues/0123456789abcdef" {
-		t.Errorf("URL = %q, want https://traceway.example.com/issues/0123456789abcdef", row.URL)
+	if want := "https://traceway.example.com/issues/0123456789abcdef?projectId=" + fixture.Rule.ProjectId.String(); row.URL != want {
+		t.Errorf("URL = %q, want %s", row.URL, want)
 	}
 	if row.Status != "failed" {
 		t.Errorf("status = %q, want failed", row.Status)
@@ -237,6 +237,8 @@ func TestDispatchDashboardLinks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := setupDispatchDB(t)
 			setAppBaseURL(t, tc.base)
+			// The link names the rule's project, or it opens whichever project the reader last selected.
+			tc.want += "?projectId=" + fixture.Rule.ProjectId.String()
 
 			details := ExceptionDetails{Hash: "0123456789abcdef", ErrorType: "RuntimeError"}
 			if !dispatch(context.Background(), fixture.Rule, buildNewErrorMessage(details, "api")) {

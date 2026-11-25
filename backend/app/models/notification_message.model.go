@@ -1,5 +1,7 @@
 package models
 
+import "fmt"
+
 type NotificationSeverity string
 
 const (
@@ -90,6 +92,24 @@ type EmailAlert struct {
 	Observed    string
 	Threshold   string
 	WindowMins  int
+}
+
+// Window is WindowMins as the alert email shows it.
+func (a EmailAlert) Window() string { return WindowPhrase(a.WindowMins) }
+
+// WindowPhrase names a rule's window in a sentence: "5 minutes", "24 hours", "30 days".
+func WindowPhrase(minutes int) string {
+	unit, n := "minute", minutes
+	switch {
+	case minutes >= 2880 && minutes%1440 == 0:
+		unit, n = "day", minutes/1440
+	case minutes >= 60 && minutes%60 == 0:
+		unit, n = "hour", minutes/60
+	}
+	if n == 1 {
+		return unit
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
 }
 
 type EmailFlagged struct {

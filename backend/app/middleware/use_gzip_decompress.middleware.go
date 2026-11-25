@@ -101,9 +101,11 @@ func (m *meteredBody) Read(b []byte) (int, error) {
 func (m *meteredBody) Close() error { return m.rc.Close() }
 
 func (m *ingestBodyMeter) record(c *gin.Context) {
+	// A prefetched body is read from memory here; its upload was timed before admission.
+	network := m.wireTime + m.discardTime + prefetchedNetworkTime(c)
 	traceway.SetAttribute(c, "ingest.body.wire_bytes", strconv.FormatInt(m.wireBytes+m.discardedBytes, 10))
-	traceway.SetAttribute(c, "ingest.body.network_ms", strconv.FormatInt((m.wireTime+m.discardTime).Milliseconds(), 10))
-	traceway.CaptureMetricMax("traceway.ingest.body.network_ms", float64((m.wireTime + m.discardTime).Milliseconds()), nil)
+	traceway.SetAttribute(c, "ingest.body.network_ms", strconv.FormatInt(network.Milliseconds(), 10))
+	traceway.CaptureMetricMax("traceway.ingest.body.network_ms", float64(network.Milliseconds()), nil)
 	if !m.gzip {
 		return
 	}

@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"context"
 	"strconv"
 	"sync/atomic"
 
@@ -29,7 +30,13 @@ func InFlightIngest() int64 {
 	return inFlightIngest.Load()
 }
 
-func RecordIngestBatch(signal, table string, convertMs, insertMs float64, size, bytes int) {
+// RecordIngestBatch reports one request's batch. Besides the per-interval
+// metrics it puts the request's own timings on its span, keyed by table (the
+// metrics route writes two), so a slow export shows whether storage was slow.
+func RecordIngestBatch(ctx context.Context, signal, table string, convertMs, insertMs float64, size, bytes int) {
+	traceway.SetAttribute(ctx, "ingest."+table+".convert_ms", strconv.FormatFloat(convertMs, 'f', 1, 64))
+	traceway.SetAttribute(ctx, "ingest."+table+".store_ms", strconv.FormatFloat(insertMs, 'f', 1, 64))
+	traceway.SetAttribute(ctx, "ingest."+table+".rows", strconv.Itoa(size))
 	tags := map[string]string{
 		"signal": signal,
 		"table":  table,

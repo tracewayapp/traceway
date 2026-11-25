@@ -75,8 +75,11 @@ var catalog = buildCatalog([]Metric{
 	{Name: "browser.session", Shape: Counter},
 	{Name: "browser.view.inp", Unit: "ms", Max: minute, Dims: viewDims, Good: 200, Poor: 500},
 	{Name: "browser.view.cls", Unit: "", Max: 10, Dims: viewDims, Good: 0.1, Poor: 0.25},
+	// phase is INP's largest part (input delay, processing or presentation): a slow interaction
+	// waiting on another task needs a different fix than a slow handler or a slow render.
 	{Name: "browser.web_vital.attribution", Shape: Counter, Dims: map[string][]string{
-		"vital": {"lcp", "inp", "cls"}, "rating": {"needs-improvement", "poor"}, "target": nil}},
+		"vital": {"lcp", "inp", "cls"}, "rating": {"needs-improvement", "poor"}, "target": nil,
+		"phase": {"input_delay", "processing", "presentation"}}},
 	{Name: "browser.long_task.script_time", Unit: "ms", Max: minute, Dims: map[string][]string{"script": nil}},
 	{Name: "browser.user", Shape: Counter, PerUser: true},
 	{Name: "browser.user.affected", Shape: Counter, PerUser: true, Dims: map[string][]string{

@@ -368,3 +368,25 @@ func TestPerUserCounterCountsOnePerPoint(t *testing.T) {
 		t.Errorf("browser.user = %v, want 1", total)
 	}
 }
+
+// A slow interaction says which part was slow, so the attribution of poor INP keeps the phase, and only the three
+// phases web-vitals defines.
+func TestInpAttributionKeepsItsPhase(t *testing.T) {
+	p, sink := newTestPipeline(Config{})
+	projectId := uuid.New()
+	req := sdkPayload(t, browserResource,
+		dataPoint{metric: "browser.web_vital.attribution", attrs: map[string]string{"vital": "inp", "rating": "poor", "target": "button[data-slot=\"button\"]", "phase": "processing"}, count: 1},
+		dataPoint{metric: "browser.web_vital.attribution", attrs: map[string]string{"vital": "inp", "rating": "poor", "target": "button", "phase": "made_up"}, count: 1},
+	)
+	p.IngestOTLP(projectId, req, Client{}, time.Now())
+	_ = p.Flush(context.Background())
+	phases := map[string]float64{}
+	for _, point := range sink.points {
+		if point.Name == "browser.web_vital.attribution" {
+			phases[point.Tags["phase"]] += point.Value
+		}
+	}
+	if phases["processing"] != 1 || phases[Other] != 1 {
+		t.Fatalf("phases %v", phases)
+	}
+}

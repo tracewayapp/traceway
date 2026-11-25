@@ -1,6 +1,6 @@
 ---
 name: traceway-setup
-description: Analyze and instrument repositories for Traceway observability. Use when the user wants to plan, add, migrate, or verify Traceway or OpenTelemetry monitoring for backend, browser, full-stack, mobile or iOS, or AI-agent software, including project topology and user-approved setup-plan creation. Backends use OTLP/HTTP; browser frontends and independently released mobile clients use separate Traceway SDK projects. Accept either an existing project token and instance URL or an organization setup token (`tws_...`) and URL; with no token, analyze first and guide setup-token acquisition. Treat any `tws_` token as a setup token.
+description: Analyze and instrument repositories for Traceway observability. Use when the user wants to plan, add, migrate, or verify Traceway or OpenTelemetry monitoring for backend, browser, full-stack, mobile or iOS, or AI-agent software, including project topology and user-approved setup-plan creation. Also runs on one part of a codebase when the request names it, e.g. `/traceway-setup track ai use` (find the LLM calls and instrument them with the OpenTelemetry GenAI conventions), background jobs, logs, metrics, the browser app, or a single directory. Also use it to embed a Traceway dashboard in the user's own application. Backends use OTLP/HTTP; browser and mobile clients use separate Traceway SDK projects. Accept a project token and instance URL or an organization setup token (`tws_...`) and URL; with no token, analyze first and guide setup-token acquisition. Treat any `tws_` token as a setup token.
 ---
 
 # Set Up Traceway
@@ -11,7 +11,7 @@ Analyze the application first, agree on its Traceway project structure with the 
 
 - Inspect before asking for credentials or changing code.
 - Explain what was detected, what is already tracked, and how each production component should report to Traceway.
-- Present a proposed project map and wait for the user to confirm it before implementation.
+- Present the proposed project map, or the one-line plan for a scoped run, and wait for the user to confirm it before implementation.
 - There are two classes of credentials, treated differently:
   - **Setup tokens** (prefix `tws_`) are org-scoped, expire in 6 hours, and can only propose a setup plan; nothing is created until the user approves the plan on the Traceway website. They are designed to transit chat, and asking the user to paste one is expected.
   - **Project ingest tokens and upload tokens** are long-lived. Never print their values, never ask the user to paste them into chat, and never commit them. When Step 3's apply script (or the `traceway` CLI) writes an approved plan's ingest tokens into env files, read only the variable names and statuses from its output, never the values.
@@ -25,6 +25,7 @@ Analyze the application first, agree on its Traceway project structure with the 
 | A project ingest token + url | Fast Path for a single component, otherwise Steps 1-2, then integrate against the existing project |
 | A setup token (`tws_`) + url | Steps 1-2, then Step 3 from "Write the plan file" (3b) |
 | No token | Steps 1-2, then Step 3 from the top |
+| Words naming one part of the codebase (`track ai use`, `instrument the background jobs`, `only apps/worker`), with or without a token | "Scoped Runs" below; the token rows above still decide how the credential is obtained |
 
 **Every backend integrates with OpenTelemetry.** There is one backend path, not one per language or web framework: Go, Node, Python, PHP, Java, .NET, Ruby, and everything else export OTLP/HTTP to `<instance>/api/otel/*`. The Traceway project is created with framework **OpenTelemetry**, which is the only backend option in the dashboard's framework picker. The native Traceway Go SDK is a deliberate exception used only when the user explicitly asks for it.
 
@@ -37,6 +38,38 @@ When all of the following hold, skip Steps 2 and 3 and go straight to the integr
 - the token's project already matches that component.
 
 Still run Step 1, because it decides *how* to instrument. Collapse "Propose and Confirm the Project Map" to a single confirmation line ("This is a Go API; it reports to your existing `<name>` project over OpenTelemetry") and skip the project-creation step entirely. The full map-and-creation ceremony exists for repositories with more than one deployable component, or where no project exists yet. Do not make a user who handed you a token sit through a project-map review for a single service.
+
+## Scoped Runs
+
+The skill also runs on one part of a codebase. A request that names a part, instead of asking for the whole setup, is a scoped run: `/traceway-setup track ai use`, "instrument the background jobs", "add Traceway to `apps/worker` only", "check that the setup works". The words after the skill name, or the request that loaded the skill, carry the scope. A part is an **area** (one kind of telemetry) or a **path** (a directory, package or named component), and the two combine: "track AI use in `services/assistant`".
+
+| The request names | Typical wording | Do |
+|---|---|---|
+| **AI / LLM usage** | integrate, instrument, track or monitor: AI use, LLM or model calls, tokens, cost, prompts, agents, a chatbot | Follow [ai-usage.md](ai-usage.md) from top to bottom. It carries its own analysis (its Steps A and B are rule 1 below for this scope), instrumentation and verification; read a step of this file only when it sends you here. |
+| **Background work** | tasks, jobs, cron, queues, workers, schedulers, CLI commands | Step 1 items 1, 3 and 5, then Step 5, then the task check of Step 9 |
+| **Endpoints** | routes, endpoint grouping, request tracing | Step 1 items 1-4, then Step 4 through "Verify endpoint grouping" |
+| **Errors**, **logs** or **metrics** | exceptions, issues; log shipping; custom or business metrics | Step 1 items 1 and 3, then "Errors", "Logs" or "Metrics" in Step 4, then the matching check of Step 9 |
+| **Browser app** | frontend, RUM, web vitals, session replay, source maps | Step 1 items 1, 3, 4 and 7, then the browser part of Step 7 with [rum.md](rum.md), then check 2 of Step 9 |
+| **Mobile app** | Flutter, React Native, Android, iOS, crashes, symbols | Step 1 items 1, 3 and 8, then the mobile part of Step 7, then check 3 of Step 9 |
+| **Host or cluster metrics** | server metrics, the agent, Kubernetes | Step 1 item 9, then Step 8 |
+| **Dashboard embedding** | embed a dashboard, customer-facing charts | "Embedding Dashboards in the User's Application" |
+| **Verification** | verify, check, "is it working", "why is nothing showing up" | Step 1 item 3, then Step 9 for what is already set up. Change nothing; report what fails and why. |
+| **A path or component** | a directory, "only the worker", "just the API" | The whole flow with every step limited to that path. One component with a token is usually the Fast Path. |
+
+For a verification-only request, use existing configuration and report missing prerequisites. The implementation and project-creation steps apply only when the user asks to set up instrumentation. Combine verification with any named area or path to select the relevant checks.
+
+The wording varies, so match on meaning. When a request fits no row, name the scopes that exist and ask which one is meant. When it names no part at all, run the full setup.
+
+Rules for every scoped run:
+
+1. **Inspect first, but only what the scope needs.** Always run Step 1 items 1 and 3 for the code in scope: the language, and the observability that is already there, including where it exports and which variable names carry the endpoint and token. Add the Step 1 items the table lists. Follow imports to shared clients and deployment configuration when the scoped component depends on them.
+2. **Reuse what exists.** A scoped run adds to the current setup: the same Traceway project, the same token variable, the same exporter and `service.name`. Do not rebuild the project map, do not rename projects or variables, and do not touch instrumentation outside the scope, even when it looks wrong. Report it instead.
+3. **Make sure the scope can reach Traceway.** If the code in scope already exports to Traceway, build on that. If it exports OpenTelemetry somewhere else, ask whether Traceway replaces that destination or runs next to it. If it exports nothing, set up the minimum the scope needs (for a backend area: the exporter from "Exporter configuration" in Step 4 and the one signal the area uses) with the credential path from "Invocation Forms", limited to the one project this code reports to. Say plainly that the rest of the setup was not done.
+4. **Confirm in one line, not with a project map.** State the scope, the project it reports to and what will change ("I will trace the 4 OpenAI call sites in `src/llm/`; they report to your existing `Shop Backend` project"). Wait for confirmation before changing code or provisioning a project.
+5. **Verify only the scope**, with the checks named in the table, and never report success for a check you did not run.
+6. **Finish with a scope report**: what changed, what was verified and how, what could not be verified, and what you noticed outside the scope, each with the scoped request that would handle it (for example "the nightly export job has no task span: `/traceway-setup instrument background jobs`").
+
+The Operating Contract applies unchanged: the same credential rules, and no code change before the user has seen what you found.
 
 ## Step 1: Analyze the Architecture
 
@@ -52,7 +85,7 @@ Before changing anything, build a picture of what is deployed and what is alread
 
    Frontend-only means integrate ONLY the browser side with the frontend SDK; do NOT add OTel to, or otherwise instrument, the framework's server side. A separate backend is its own component with its own Traceway project.
 5. **Background work**: find cron jobs, queue consumers, schedulers, CLI commands, and long-running workers. Record whether libraries already emit `CONSUMER` spans.
-6. **AI/LLM usage**: check dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`, and agent frameworks (`langgraph`, `crewai`, `autogen` / `ag2`, `pydantic-ai`, `@openai/agents`, `@mastra/*`, `llamaindex` / `llama-index`, `semantic-kernel`). Then decide whether this is a **conversational product** (chatbot, assistant, agent) rather than one-shot LLM calls: look for chat or streaming-chat routes (`/chat`, `/completions`, SSE or websocket handlers feeding an LLM), message-history persistence (a `messages`/`conversations` table or thread ids), tool/function-calling definitions passed to the model, or any agent framework above. If conversational or tool-calling, read `ai-agent.md` in this skill directory before proposing the AI integration.
+6. **AI/LLM usage**: look for provider HTTP requests and shared model clients as well as dependencies for `openai`, `@anthropic-ai/sdk`, `anthropic`, `langchain` / `@langchain/*`, `ai` (Vercel AI SDK), `litellm`, `google-generativeai`, `cohere`, `openrouter`, and agent frameworks (`langgraph`, `crewai`, `autogen` / `ag2`, `pydantic-ai`, `@openai/agents`, `@mastra/*`, `llamaindex` / `llama-index`, `semantic-kernel`). Then decide whether this is a **conversational product** (chatbot, assistant, agent) rather than one-shot LLM calls: look for chat or streaming-chat routes (`/chat`, `/completions`, SSE or websocket handlers feeding an LLM), message-history persistence (a `messages`/`conversations` table or thread ids), tool/function-calling definitions passed to the model, or any agent framework above. When any of these turn up, the AI integration follows `ai-usage.md` in this skill directory (Step 6), which starts with a call-site inventory; if the product is conversational or tool-calling, also read `ai-agent.md` before proposing it.
 7. **Browser build and release flow**: identify the bundler, output directory, source-map settings, deploy pipeline, and existing artifact uploads.
 8. **Mobile build and release flow**: determine whether Flutter is obfuscated, Android uses R8/minification, iOS produces dSYMs, and whether multiple platform directories are one cross-platform product or independently released apps.
 9. **Deployment and host metrics**: inspect Dockerfiles, Compose, Kubernetes, Helm, Terraform, Ansible, cloud-init, PaaS configs, and CI/CD. Determine whether the backend runs on a host where the Traceway OTel Agent is applicable.
@@ -72,7 +105,7 @@ Explain these default boundaries:
 
 | Application boundary | Traceway project | What belongs in it |
 |---|---|---|
-| **Backend system** | One project with framework **OpenTelemetry** | API endpoints, child spans, issues, background tasks, AI traces, logs, application/runtime metrics, and host metrics. APIs, workers, schedulers, and the host agent share the project token; distinguish them with stable `service.name` values. |
+| **Backend system** | One project with framework **OpenTelemetry** | API endpoints, child spans, issues, background tasks, AI traces, logs, host metrics, and the app's own custom metrics when it has some (Step 4, "Metrics"). APIs, workers, schedulers, and the host agent share the project token; distinguish them with stable `service.name` values. |
 | **Browser frontend** | One separate project per deployed browser application, using **React**, **Svelte**, **Vue.js**, or **jQuery** | Browser errors, web vitals, session replay, distributed-trace linkage, source maps, and browser release metadata. |
 | **Mobile app** | One separate project per independently released application, using **Flutter**, **React Native**, **Android**, or **iOS** | Mobile errors/crashes, replay where supported, and build symbols or mappings. A single Flutter product targeting Android and iOS normally uses one project; separate native apps use separate projects. |
 | **Full-stack JS app** | Two projects when its server runs in production | Server-side work goes to the OpenTelemetry backend project; browser-side work goes to the browser project. |
@@ -256,6 +289,15 @@ Pick the path by project type, and pick the project type from the "Analyze the A
 
 The rules every backend integration must satisfy, and the table of what each span becomes, are in Step 4 where they are applied.
 
+## Embedding Dashboards in the User's Application
+
+This is a separate integration from sending telemetry, and it needs no setup token. When the user wants a Traceway dashboard shown inside their own product, such as each customer's KPIs in an admin panel, read [dashboard-embedding.md](dashboard-embedding.md) and follow it: their backend asks Traceway for a short-lived signed link per authorized viewer, and their frontend shows it in an iframe.
+
+- It uses a **Read and write** personal access token (`tww_`) that the user creates and stores in their backend's secrets. Treat it like an ingest token: never print it, never ask for it in chat, never commit it. A project ingest token cannot issue links.
+- Per-customer embeds filter on a tag the metrics already carry, such as `account_id`. When you instrument the backend in Step 4 and the user plans to embed, put that attribute on the metrics the dashboard will chart, and keep its values bounded (an account or tenant id, never a user or request id).
+- The account in the filter comes from the viewer's server-side session, never from a browser parameter.
+- The dashboard itself is built in the Traceway UI or with the `traceway-write` skill; this skill only wires the embed into the application.
+
 ## Step 4: Backend OTel Setup
 
 The same shape in every language:
@@ -305,7 +347,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=https://<instance>/api/otel
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf        # required, several SDKs default to gRPC
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <project-token>"
 OTEL_TRACES_EXPORTER=otlp
-OTEL_METRICS_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=none                       # off by default, read "Metrics" below before enabling
 OTEL_LOGS_EXPORTER=otlp
 ```
 
@@ -324,8 +366,7 @@ Constraints: OTLP/HTTP only (protobuf or JSON). OTLP/gRPC is not supported, ther
 
 ```bash
 npm install @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node \
-  @opentelemetry/instrumentation @opentelemetry/api @opentelemetry/sdk-metrics \
-  @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-metrics-otlp-http
+  @opentelemetry/instrumentation @opentelemetry/api @opentelemetry/exporter-trace-otlp-http
 ```
 
 Declare `@opentelemetry/api` yourself even though it also arrives transitively. Relying on hoisting breaks under pnpm's strict `node_modules` and under Yarn PnP.
@@ -338,8 +379,6 @@ register("@opentelemetry/instrumentation/hook.mjs", import.meta.url);
 
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
-import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 
 const url = process.env.TRACEWAY_URL;
@@ -348,12 +387,6 @@ const headers = { Authorization: `Bearer ${process.env.TRACEWAY_BACKEND_TOKEN}` 
 const sdk = new NodeSDK({
   serviceName: process.env.OTEL_SERVICE_NAME ?? "my-service",
   traceExporter: new OTLPTraceExporter({ url: `${url}/api/otel/v1/traces`, headers }),
-  metricReaders: [
-    new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter({ url: `${url}/api/otel/v1/metrics`, headers }),
-      exportIntervalMillis: 30_000,
-    }),
-  ],
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
@@ -364,7 +397,7 @@ Three parts of that snippet are load-bearing:
 
 - **The two `register` lines install the ESM loader hook.** Without them an ESM app (`"type": "module"`, `import express from "express"`) still gets HTTP spans but no `http.route`, so every URL becomes its own endpoint row. A CommonJS app (`require("express")`) is patched without the hook, and the lines are harmless there, so keep them either way.
 - **`serviceName`** becomes the Server Name in Traceway. Leave it out and every span reports `unknown_service:node`. For release comparison also set `OTEL_RESOURCE_ATTRIBUTES=service.version=1.2.3`.
-- **`metricReaders` is a list.** The older singular `metricReader` option is deprecated.
+- **There is no metric reader on purpose.** The HTTP instrumentation records per-route histograms that duplicate the endpoint data and cost far more than the traces (see "Metrics" below). Keep `OTEL_METRICS_EXPORTER=none` from the env block so NodeSDK does not add a metric reader from the environment either. If the app has its own metrics to send, follow "Metrics": pass `metricReaders` (a list; the singular `metricReader` is deprecated) and drop the HTTP histograms with `views`.
 
 Auto-instrumentation covers Express routes (sets `http.route`), status codes, errors, and database clients (`pg`, `mysql2`, `mongodb`, `ioredis`). SQLite and custom business logic need manual `tracer.startActiveSpan()` child spans.
 
@@ -387,11 +420,9 @@ Keep every Node-only import and the SDK startup in the sibling module:
 ```typescript
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
-import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 
 (Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace = undefined;
@@ -406,12 +437,6 @@ new NodeSDK({
     "service.version": process.env.APP_VERSION ?? "development",
   }),
   traceExporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers }),
-  metricReaders: [
-    new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter({ url: `${base}/v1/metrics`, headers }),
-      exportIntervalMillis: 30_000,
-    }),
-  ],
   logRecordProcessors: [
     new BatchLogRecordProcessor({
       exporter: new OTLPLogExporter({ url: `${base}/v1/logs`, headers }),
@@ -421,7 +446,7 @@ new NodeSDK({
 }).start();
 ```
 
-Install the log exporter and SDK packages in addition to the generic Node dependencies: `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/sdk-logs`, `@opentelemetry/api-logs`, and `@opentelemetry/resources`. Next.js versions before 15 also need `experimental.instrumentationHook: true`. Full setup and verification: https://docs.tracewayapp.com/client/otel/nextjs
+Install the log exporter and SDK packages in addition to the generic Node dependencies: `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/sdk-logs`, `@opentelemetry/api-logs`, and `@opentelemetry/resources`. As in the generic example there is no metric reader; keep `OTEL_METRICS_EXPORTER=none` and see "Metrics" before adding one. Next.js versions before 15 also need `experimental.instrumentationHook: true`. Full setup and verification: https://docs.tracewayapp.com/client/otel/nextjs
 
 Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply source maps instead of leaving server Issues pointed at minified Next chunks. Production must also start with `NODE_OPTIONS=--enable-source-maps`, and the build must emit `.next/server/**/*.js.map`; verify both rather than assuming readable server stacks. If the webpack build omits them, add `experimental: { serverSourceMaps: true }` to `next.config`. Also list `@opentelemetry/auto-instrumentations-node` in `serverExternalPackages` so Next does not bundle the instrumentation registry or warn about its optional transports.
 
@@ -471,7 +496,7 @@ Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply
     ```
 
     `OTEL_PYTHON_LOG_LEVEL` on its own does nothing. Do **not** set `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true`; on current versions the bridge is already on and that variable switches it to the SDK's deprecated handler.
-  - **Metrics take a minute.** The SDK default for `OTEL_METRIC_EXPORT_INTERVAL` is 60000 ms, so a correct pipeline looks empty while you are checking it. Set `OTEL_METRIC_EXPORT_INTERVAL=10000` during verification.
+  - **Metrics take a minute** (only when the app exports its own, see "Metrics"). The SDK default for `OTEL_METRIC_EXPORT_INTERVAL` is 60000 ms, so a correct pipeline looks empty while you are checking it. Set `OTEL_METRIC_EXPORT_INTERVAL=10000` during verification only, and put it back afterwards.
   - **Django needs two extra things**: export `DJANGO_SETTINGS_MODULE` or `opentelemetry-instrument` fails to start Django at all, and add the route middleware from the Django guide, because `opentelemetry-instrumentation-django` reports `http.route` as Django's own pattern (`api/users/<int:user_id>/`), which has no leading `/` and is therefore discarded.
 
   Guides: https://docs.tracewayapp.com/client/otel/python and https://docs.tracewayapp.com/client/otel/django
@@ -497,7 +522,7 @@ Resetting `Error.prepareStackTrace` in `instrumentation.node.ts` lets Node apply
 
      `HTTPException` and validation errors keep their own handlers, so a 404 or 422 is not recorded as an Issue.
 
-  What it covers: SERVER spans with `http.route` in FastAPI syntax (`GET /users/{user_id}`), status codes, `fastapi.dependencies` / `fastapi.endpoint` / `fastapi.serialization` child spans, `traceparent` propagation, HTTP server metrics, and FastAPI's own exception and validation logs. It does **not** cover database queries, outgoing HTTP calls, or the app's own `logging` calls. If the user wants those, and most apps with a database will, use the generic Python path (`opentelemetry-instrument`) and turn off FastAPI's export: `FastAPI(telemetry={"auto_configure": False})`. Leave `auto_configure` on under `opentelemetry-instrument` and FastAPI adds a second exporter to the agent's provider, so every span is sent twice. (FastAPI does notice the contrib middleware and stops creating its own spans, so you never get two request spans, only duplicate exports.) State that trade-off in the setup plan rather than choosing silently.
+  What it covers: SERVER spans with `http.route` in FastAPI syntax (`GET /users/{user_id}`), status codes, `fastapi.dependencies` / `fastapi.endpoint` / `fastapi.serialization` child spans, `traceparent` propagation, HTTP server metrics (unwanted, see "Metrics": keep `OTEL_METRICS_EXPORTER=none` and confirm in the metric explorer that no `http.server.*` metric arrives after startup), and FastAPI's own exception and validation logs. It does **not** cover database queries, outgoing HTTP calls, or the app's own `logging` calls. If the user wants those, and most apps with a database will, use the generic Python path (`opentelemetry-instrument`) and turn off FastAPI's export: `FastAPI(telemetry={"auto_configure": False})`. Leave `auto_configure` on under `opentelemetry-instrument` and FastAPI adds a second exporter to the agent's provider, so every span is sent twice. (FastAPI does notice the contrib middleware and stops creating its own spans, so you never get two request spans, only duplicate exports.) State that trade-off in the setup plan rather than choosing silently.
 - **PHP**: Laravel via `composer require keepsuit/laravel-opentelemetry open-telemetry/exporter-otlp php-http/guzzle7-adapter`; Symfony via `composer require traceway/opentelemetry-symfony open-telemetry/exporter-otlp php-http/guzzle7-adapter` (the stock Symfony auto-instrumentation sets `http.route` to the route NAME, which Traceway discards; see `data-model.md`). PHP does not take `OTEL_PHP_AUTOLOAD_ENABLED` as a plain env var next to the block above. Laravel needs nothing extra, the keepsuit service provider starts the SDK. Symfony starts the SDK through `open_telemetry.sdk.autoload_enabled: true` in `config/packages/open_telemetry.yaml`, or through a real process environment variable set in php-fpm, the Dockerfile, or Apache. Never put `OTEL_PHP_AUTOLOAD_ENABLED` in `.env`: Dotenv reads it after Composer autoload, the bundle then skips starting the SDK, and every signal silently becomes a no-op. PHP also prefers `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`, though `http/protobuf` works too and is only slower without `ext-protobuf`.
   - **Symfony workers: never instrument `messenger:consume`.** The bundle already excludes it. `traces.console.excluded_commands` defaults to `['messenger:consume', 'messenger:consume-messages']`, and that key is a prototyped array node, so setting it in `config/packages/open_telemetry.yaml` REPLACES the default instead of adding to it. If you override it for any reason you MUST re-list both entries. A consumer runs in an endless loop, so its command span never ends, never exports, and swallows every child span for the life of the worker. Excluding the command does not silence the work inside it: the Messenger middleware still emits one CONSUMER span per message, and those are what become Tasks in Traceway. Check what actually resolved with `bin/console debug:config open_telemetry traces.console`.
 - **Java / .NET / anything else**: the standard OTel agent or SDK with the env vars above works as-is.
@@ -565,9 +590,61 @@ router.Use(otelRecovery())
 
 Emit from the **request** context (`c.Request.Context()` in Gin, `r.Context()` in net/http, the active context in Node). A line emitted from a background context carries no trace id and cannot be opened from the endpoint it belongs to. Traceway reads `severity_text` (or derives it from `severity_number`), the body, `service.name`, and the trace and span ids.
 
+### Metrics
+
+**Backends export no OTel metrics by default.** Keep `OTEL_METRICS_EXPORTER=none` from the env block and, when the SDK is configured in code, create no metric reader or meter provider. Nothing in the Traceway UI needs them:
+
+- Endpoint throughput, status codes and P50/P95/P99 latency are computed from spans.
+- Host CPU, memory, disk and network come from the Traceway OTel Agent or the Kubernetes collectors (Step 8).
+- An OTel project's runtime metrics (`go.*`, `jvm.*`, `process.runtime.*`) do not fill the built-in CPU and memory charts (`data-model.md`, "Built-in metric names").
+
+Leaving the SDK defaults on is expensive. Web framework instrumentation (`otelgin`, `otelhttp`, `otelchi`, `otelfiber`, Node's HTTP instrumentation, FastAPI's built-in telemetry, the Java agent) records `http.server.request.duration`, `http.server.request.body.size` and `http.server.response.body.size` (or the older `http.server.duration`) as one histogram series per route, method and status code. Three things compound:
+
+1. **The SDK default temporality is cumulative.** Every series the process has seen since it started is re-sent on every export with its running total, whether or not a request arrived. An idle server costs as much as a busy one.
+2. **Each series is about 550 bytes** of attributes, bucket counts and bucket boundaries. Usage is billed on the request body after decompression, so gzip does not reduce it.
+3. **HTTP metrics overlap endpoint analytics.** Current Traceway retains histogram distributions (and legacy average/count series), but endpoints already provide request latency and throughput. Enable HTTP histograms when a metric-based objective or integration needs them, rather than collecting duplicate signals by default. This backend policy does not apply to browser RUM metrics: keep those enabled for population coverage.
+
+Measured on a production Gin API serving about 1,400 requests a day, exporting every 30 seconds: about 117 histogram series per export, about 187 MB a day, 91% of the project's ingest. That uses up a 1 GB allowance in five days. Without the HTTP histograms the same project sends about 18 MB a day.
+
+Turn metrics on only when the user wants the application's own metrics (business counters, queue depth, cache hit rate), and then do all three of these:
+
+1. **Use delta temporality:** `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta`, which the Go, Python, Node, Java and .NET exporters read. Traceway stores each data point as it arrives, so with cumulative temporality a counter charts its running total and a histogram's `.avg` is the average since the process started. With delta, idle series send nothing. Traceway's own backend exports this way.
+2. **Drop the framework's HTTP histograms** with a view on `http.server.*` and the Drop aggregation. Zero-code agents (`opentelemetry-instrument`, the Java agent) have no environment variable for views: build the meter provider in code, or rely on delta temporality alone, which sends HTTP series only for intervals that had traffic.
+3. **Keep the SDK's 60-second export interval** in production. Every export repeats each active series, so a 5- or 10-second interval multiplies the volume by 12 or 6.
+
+Go:
+
+```go
+// imports: go.opentelemetry.io/otel,
+//          go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp,
+//          sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+exp, err := otlpmetrichttp.New(ctx,
+    otlpmetrichttp.WithEndpointURL(base+"/v1/metrics"),
+    otlpmetrichttp.WithHeaders(headers),
+    otlpmetrichttp.WithTemporalitySelector(sdkmetric.DeltaTemporalitySelector),
+)
+if err != nil {
+    return err
+}
+mp := sdkmetric.NewMeterProvider(
+    sdkmetric.WithResource(res),
+    sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp)), // 60 s default interval
+    sdkmetric.WithView(sdkmetric.NewView(
+        sdkmetric.Instrument{Name: "http.server.*"},
+        sdkmetric.Stream{Aggregation: sdkmetric.AggregationDrop{}},
+    )),
+)
+otel.SetMeterProvider(mp)
+defer mp.Shutdown(ctx)
+```
+
+Go's framework middleware reads the global meter provider, so an app that never calls `otel.SetMeterProvider` sends no HTTP metrics at all, and that is the default to keep. The view above covers `otelgin`, `otelhttp`, `otelchi` and `otelfiber` alike. To silence only Gin's middleware, pass `otelgin.WithMeterProvider(noop.NewMeterProvider())` (package `go.opentelemetry.io/otel/metric/noop`).
+
+Node: add `views: [{ instrumentName: "http.server.*", aggregation: { type: AggregationType.DROP } }]` to `NodeSDK` (`AggregationType` comes from `@opentelemetry/sdk-metrics`). Python, with the meter provider built in code: `MeterProvider(metric_readers=[...], views=[View(instrument_name="http.server.*", aggregation=DropAggregation())])` (`View` and `DropAggregation` come from `opentelemetry.sdk.metrics.view`).
+
 ### Go uses OpenTelemetry
 
-There is no separate Traceway Go SDK. It was retired, and Go instruments with `opentelemetry-go` exactly like every other backend: `go get go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp`, then the same env vars as the block above. Host CPU and memory come from the Traceway OTel Agent (see "Deployment and Server Metrics"), not from the app.
+There is no separate Traceway Go SDK. It was retired, and Go instruments with `opentelemetry-go` exactly like every other backend: `go get go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp`, then the same env vars as the block above. Set up traces and logs only; do not create a meter provider unless the app has its own metrics (see "Metrics"). Host CPU and memory come from the Traceway OTel Agent (see "Deployment and Server Metrics"), not from the app.
 
 ## Step 5: Background Tasks (Boundaries and Labeling)
 
@@ -608,70 +685,42 @@ async function runScheduledJob() {
 
 ## Step 6: AI Traces
 
-If "Analyze the Architecture" found AI/LLM dependencies, instrument the model calls. A span becomes an **AI Trace** when it carries at least one `gen_ai.*` attribute *and* matched none of the earlier classification rules. In practice that means: keep `gen_ai.*` off the HTTP route span (it becomes an Endpoint), keep it off `CONSUMER` spans (they become Tasks), and give the model call its own child span with `SpanKind.CLIENT` rather than `INTERNAL`, so a failed call that records `exception.*` attributes still produces its AI Trace. Since calls happen inside a request or task, that child span stays linked to its Endpoint or Task by trace ID.
+If "Analyze the Architecture" found model calls, instrument the model calls by following [ai-usage.md](ai-usage.md) in this skill directory. It is the same procedure a scoped `/traceway-setup track ai use` run follows: inventory every call site, instrument each as an OpenTelemetry GenAI span, verify. In a full setup its Step A is already done (the exporter from Step 4), so start at its Step B.
 
-Boundaries: **one span per model call** (one provider API request = one AI Trace row). A multi-step agent run is multiple spans sharing a stable `trace.name` (same labeling discipline as task names: no IDs or timestamps). For streaming, end the span when the stream finishes.
+What that file establishes, in short:
 
-**Conversational product?** If "Analyze the Architecture" flagged a chatbot, assistant, or tool-calling agent, follow `ai-agent.md` in this skill directory instead of stopping at the table below. It covers `gen_ai.conversation.id` (multi-turn grouping), what value belongs in `user.id` (a stable end-customer id, never a session id), tool-call payload shapes, and sub-agents. Without those the Users tab stays empty, and the Conversations tab fills with one throwaway single-turn conversation per request, because Traceway falls back to the OTel trace id. That is worse than empty: it looks like the feature is working.
+- **One span per model call** (one provider API request = one AI Trace row), kind `CLIENT`, named `{operation} {model}` as the GenAI conventions say, and always a span of its own. A span becomes an **AI Trace** when it carries at least one `gen_ai.*` attribute *and* matched none of the earlier classification rules, so `gen_ai.*` on the HTTP route span is ignored (it is an Endpoint), on a `CONSUMER` span too (it is a Task), and an `INTERNAL` span that records `exception.*` attributes is never promoted. Since calls happen inside a request or task, the span stays linked to its Endpoint or Task by trace ID.
+- **Traceway reads most of the GenAI conventions as written and differs in a few places**: content goes on `gen_ai.prompt` / `gen_ai.completion` rather than `gen_ai.input.messages` / `gen_ai.output.messages`, cost is `gen_ai.usage.input_cost` / `.output_cost` and yours to compute, `trace.name` is the grouping name, `user.id` is the customer, and tool or agent wrapper spans must carry no `gen_ai.*` attribute or they count as model calls. The full table is "Where Traceway differs from the spec" in `ai-usage.md`.
+- **Token counts are integer attributes and costs are doubles.** A number sent as a string is silently stored as 0, with no error on the export.
+- **Streaming**: end the span when the stream finishes, not when the call returns.
 
-Attributes Traceway reads (all optional, set what is available):
-
-| Attribute | Meaning |
-|---|---|
-| `gen_ai.request.model` / `gen_ai.response.model` | Requested / serving model |
-| `gen_ai.system` or `gen_ai.provider.name` | Provider (`openai`, `anthropic`, ...) |
-| `gen_ai.operation.name` | Operation (`chat`, `embeddings`, ...) |
-| `gen_ai.usage.input_tokens` / `.output_tokens` / `.total_tokens` | Token counts |
-| `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.output_tokens.reasoning` | Cached / reasoning tokens |
-| `gen_ai.usage.input_cost` / `.output_cost` / `.total_cost` | Cost, when you compute pricing |
-| `trace.name` | Agent/workflow grouping name |
-| `gen_ai.conversation.id` | Multi-turn conversation grouping (falls back to `session.id`, then the OTel trace id) |
-| `user.id` | End-user attribution: a stable customer id (account id, tenant id, or email), the same value across all of that user's conversations |
-| `gen_ai.response.finish_reason` | Why generation stopped |
-| `gen_ai.prompt` / `gen_ai.completion` | Conversation content, shown on the trace detail page (skip if content must not leave the app) |
-
-Conversation content is also read from `trace.input`/`trace.output` (or `span.input`/`span.output`) when `gen_ai.prompt`/`gen_ai.completion` are absent, and missing `total_tokens`/`total_cost` are computed from the input + output values. Token counts must be integer attributes and costs must be double or integer attributes. A number sent as a string is silently dropped and stored as 0, with no error on the export.
-
-```typescript
-import { SpanKind } from "@opentelemetry/api";
-
-return tracer.startActiveSpan("chat-completion", { kind: SpanKind.CLIENT }, async (span) => {
-  const response = await openai.chat.completions.create({ model: "gpt-4o", messages });
-  span.setAttributes({
-    "gen_ai.system": "openai",
-    "gen_ai.request.model": "gpt-4o",
-    "gen_ai.usage.input_tokens": response.usage?.prompt_tokens ?? 0,
-    "gen_ai.usage.output_tokens": response.usage?.completion_tokens ?? 0,
-    "trace.name": "support-agent",
-  });
-  span.end();
-  return response;
-});
-```
+**Conversational product?** If "Analyze the Architecture" flagged a chatbot, assistant, or tool-calling agent, also follow `ai-agent.md` in this skill directory. It covers `gen_ai.conversation.id` (multi-turn grouping), what value belongs in `user.id` (a stable end-customer id, never a session id), tool-call payload shapes, and sub-agents. Without those the Users tab stays empty, and the Conversations tab fills with one throwaway single-turn conversation per request, because Traceway falls back to the OTel trace id. That is worse than empty: it looks like the feature is working.
 
 Zero-code path for OpenRouter users: in OpenRouter Settings -> Observability, add an OpenTelemetry Collector destination pointing at `https://<instance>/api/otel/v1/traces` with header `{"Authorization": "Bearer <project-token>"}`. Docs: https://docs.tracewayapp.com/client/openrouter
 
 ## Step 7: Frontend and Mobile
 
-Browser and mobile integrations use the Traceway SDKs. Choose the browser SDK generation from the live npm registry, not from SDK versions seen in a source checkout or an assumption that `latest` has moved:
+For browser RUM setup, read [rum.md](rum.md): version capabilities, release/environment/route dimensions, production collection policy and verification. Full device-aggregated RUM needs a compatible server and stable SDK 2.0.0 or later; SDK 1.x and a `2.0.0-beta.N` prerelease do not satisfy that requirement. If the app cannot run such a release, report the limitation and integrate only available features.
 
-- **Read the dist-tags first**: `npm view @tracewayapp/frontend dist-tags --json`, and the same for the selected wrapper (`@tracewayapp/react`, `vue`, `svelte` or `jquery`). It lists every dist-tag, for example `{"latest": "1.2.2", "beta": "2.0.0-beta.1"}`. Do not query `@tracewayapp/frontend@2`: while 2.x exists only as `2.0.0-beta.N` that range matches nothing and npm exits `E404`, which says nothing about the registry being down.
-- **`latest` is 2.x on every package you need**: stable v2 is published. Install it (`npm install @tracewayapp/react@2`, or the plain package name) and read [frontend-js-v2.md](frontend-js-v2.md).
-- **`latest` is 1.x** (2.x only under `beta`, as today): a new integration installs the stable v1 SDK (`npm install @tracewayapp/react@1`, or the plain package name) and follows [frontend-js.md](frontend-js.md). Use the beta instead only when the user asked for v2 or for remote SDK config (Data Collection, OpAMP), or when the repository already depends on `@tracewayapp/*` `2.x`: then install the version in the `beta` tag (`npm install @tracewayapp/react@beta`) and read [frontend-js-v2.md](frontend-js-v2.md). Never mix v1 and v2 packages, never substitute a local checkout, and never add v2-only options to v1.
-- **An existing integration keeps its major**: a v2 app stays on v2 (`@beta` while 2.x is in beta), and a v1 app is not silently moved to the beta.
+Browser and mobile integrations use the Traceway SDKs. Choose the browser SDK generation from the app's installed packages and the live npm registry, not from SDK versions seen in a source checkout or an assumption about where `latest` points:
+
+- **Read the dist-tags first**: `npm view @tracewayapp/frontend dist-tags --json`, and the same for the selected wrapper (`@tracewayapp/react`, `vue`, `svelte` or `jquery`). It lists every dist-tag, for example `{"latest": "2.0.0", "beta": "2.0.2-beta.2"}`. Only `latest` decides: a `beta` tag can still name a prerelease older than the stable release, so do not install `@beta` unless the user asks for a prerelease.
+- **`latest` is 2.x on every package you need** (the public registry since 2.0.0): a new integration installs stable v2 (`npm install @tracewayapp/react`, or `@2` to pin the major) and reads [frontend-js-v2.md](frontend-js-v2.md).
+- **An existing integration keeps its major**: a v2 app stays on v2 (update within `@2`; propose moving a `2.0.0-beta.N` pin to stable 2.x, which RUM metrics need). A v1 app stays on v1 and follows [frontend-js.md](frontend-js.md); add or update its packages with `@1` (`npm install @tracewayapp/react@1`), because the plain package name now installs 2.x. Move a v1 app to v2 only when the user asked for the upgrade or for something only v2 has (RUM metrics, remote SDK config (Data Collection, OpAMP), `traceparent` trace linking). That is a migration, not a version bump: follow https://docs.tracewayapp.com/client/js-sdk/migration and [frontend-js-v2.md](frontend-js-v2.md). Never mix v1 and v2 packages, never substitute a local checkout, and never add v2-only options to v1.
+- **`latest` is still 1.x, or differs between the packages you need** (a registry mirror or proxy that lags): that is an answer from the registry, not a failure. Check whether stable v2 resolves there with `npm view @tracewayapp/frontend@2 version` and the same for the wrapper; `E404` means that registry has no stable 2.x. When every package resolves, install `@2`. Otherwise tell the user; a new integration then installs v1 with `@1` and follows [frontend-js.md](frontend-js.md), unless the user asked for v2 or a v2-only feature, which waits for the registry.
 - **The command itself fails** (network, proxy or authentication error, not an answer from the registry): retry once. If it still fails, say that the SDK version could not be verified, keep an existing integration on its current major, and for a new integration ask the user before choosing.
-- v2 exports logs/spans through OTLP, replay through `/api/recordings`, and receives browser-only remote configuration through OpAMP. Keep production defaults; do not turn on `recordAllSessions` merely to prove setup works.
-- **Mobile** SDKs retain their own versioning and `/api/report` transport. The browser-v2 branch and OpAMP controls do not apply to React Native, Flutter, Android, or iOS.
+- v2 exports logs, spans and device-aggregated performance metrics through OTLP, replay through `/api/recordings`, and receives browser-only remote configuration through OpAMP. Keep production defaults; do not turn on `recordAllSessions` merely to prove setup works.
+- **Mobile** SDKs retain their own versioning and `/api/report` transport. `@tracewayapp/react-native` is published as 2.x in step with the browser packages but is still that native SDK. The browser-v2 branch and OpAMP controls do not apply to React Native, Flutter, Android, or iOS.
 
-The legacy `<project-token>@https://<instance>/api/report` connection string remains accepted by both browser generations; v2 also accepts the server base URL.
+The `<project-token>@https://<instance>/api/report` connection string, the form the Connection page shows, is accepted by both browser generations; v2 also accepts the server base URL.
 
 **Browser** (React / Vue / Svelte / jQuery / plain JS), three pieces, all expected:
 
-1. **SDK**: install the registry-verified version of `@tracewayapp/react` (or `vue`, `svelte`, `jquery`, `frontend` for plain JS) and initialize with the connection string (React: wrap the app in `<TracewayProvider connectionString="...">`). Captures errors, web vitals, and session replay.
+1. **SDK**: install the registry-verified version of `@tracewayapp/react` (or `vue`, `svelte`, `jquery`, `frontend` for plain JS) and initialize with the connection string (React: wrap the app in `<TracewayProvider connectionString="...">`). Captures errors and session replay; v2 adds request spans, breadcrumbs, web vitals and other performance metrics.
 2. **Bundler plugin**: `npm install -D @tracewayapp/bundler-plugin`, then add `tracewayDebugIds()` from `@tracewayapp/bundler-plugin/vite` (or `/rollup`, or `TracewayDebugIdsWebpackPlugin` from `/webpack`) to the bundler config, with source maps enabled (`build.sourcemap: true` / `devtool: "source-map"`).
 3. **Source map upload**: `npm install -D @tracewayapp/sourcemap-upload`, then run `traceway-sourcemaps --url <instance> --token <source-map-upload-token> --directory ./dist` as a postbuild or CI step (env vars: `TRACEWAY_URL`, `TRACEWAY_SOURCEMAP_TOKEN`). The upload token comes from the browser project and is a CI secret, never committed.
 
-For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read the version-specific reference selected above (`frontend-js-v2.md` or `frontend-js.md`). Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
+For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read the version-specific reference selected above (`frontend-js-v2.md` or `frontend-js.md`). Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`); they describe 2.x, and the 1.x reference is https://docs.tracewayapp.com/client/js-sdk/v1.
 
 **Full-stack JS** (Next.js, SvelteKit, Remix): only when "Analyze the Architecture" confirmed the framework's server actually serves the app in production. A frontend-only deployment gets just the browser pieces above; a separate backend follows "Backend OTel Setup". When it is genuinely full-stack, integrate both sides under the two confirmed projects: server side follows "Backend OTel Setup" with the backend project's token, and browser side follows the three pieces above with the frontend project's token. For Next.js specifically, use the `instrumentation.ts` framework hook in the "Next.js server exception" above; never apply the generic Node preload to it.
 
@@ -694,7 +743,7 @@ Use the deployment and host-metrics choice confirmed in "Propose and Confirm the
 | Deployment | Wants host metrics | What to do |
 |---|---|---|
 | Docker on a VM, or directly on a VM/host | Yes | Install the **Traceway OTel Agent** on the host (below). For Docker deploys this is the default; the agent goes on the host, not in a container. |
-| Kubernetes | Any | Not the agent, which is a host service. Deploy the two collector workloads in `kubernetes.md` in this skill directory: a DaemonSet for node metrics, pod metrics and container logs, and a one-replica Deployment for cluster state and events. In-process app metrics still flow via the OTLP metrics exporter from "Backend OTel Setup". |
+| Kubernetes | Any | Not the agent, which is a host service. Deploy the two collector workloads in `kubernetes.md` in this skill directory: a DaemonSet for node metrics, pod metrics and container logs, and a one-replica Deployment for cluster state and events. In-process app metrics, when the app has its own, flow via the OTLP metrics exporter from "Backend OTel Setup" (see "Metrics" there). |
 | Serverless / PaaS | Any | No host to install on; skip. |
 | Anything | No | Skip. |
 
@@ -730,10 +779,12 @@ When the CLI applied the plan, the local env files hold real values, so run loca
    - Open one endpoint row: database queries and outgoing HTTP calls appear as child spans.
    - Run each background job once, then open `/tasks`. One row per job, under a stable name with no ids or timestamps in it.
    - If logs were wired, emit one INFO and one ERROR line inside a request, then open `/logs`. Both carry the same trace id as that endpoint.
-   - If "AI Traces" applied, make one model call, then open `/ai-traces`. The call is listed with model, tokens, and cost where available.
-   - Open `/dashboards` and confirm application/runtime metrics arrive. If the OTel Agent was installed, host metrics reach this same backend project within about 60 seconds, each host under its own `server_name` tag.
+   - If "AI Traces" applied, run the checks in Step E of `ai-usage.md`: one call per instrumented feature, then `/ai-traces` lists each feature by name with model, tokens and cost.
+   - If the OTel Agent was installed, host metrics reach this same backend project within about 60 seconds, each host under its own `server_name` tag.
+   - Run `traceway metrics discover --since 15m`. With metrics off (the default) only the agent's `system.*` names appear. If the app exports its own metrics, they appear too, and no `http.server.*` name is among them; if one is, the view from "Metrics" is missing.
    - If host or Kubernetes metrics were set up, open `/organization`. Every host and node appears as its own instance row with CPU, memory and disk. Kubernetes nodes are grouped by cluster. One row where you expected several means `service.name` is not distinct per machine; empty rings mean the `*.utilization` metrics are not enabled.
 2. **Browser project**
+   - Verify the installed SDK actually supports the requested RUM features. Set release/environment metadata and normalized route names; generate interactions and a SPA navigation, hide the page to flush metrics, allow the server flush interval, then inspect Web Performance and recorded metric names. Missing INP without an interaction is expected. Metrics and diagnostic replay are separate checks; do not enable full-session recording to make charts populate.
    - Trigger a test browser error and confirm it appears in this project, not the backend project.
    - Confirm the stack resolves to original source files and lines after the matching source maps and bundles are uploaded.
    - If distributed tracing was configured, confirm a browser issue or request links to its backend trace.

@@ -68,12 +68,13 @@ Use discovered endpoint/task/metric names; choose thresholds from observed traff
 | `task_failure_rate` | `taskName` (or `*`), `thresholdPercent`, `lookbackMinutes`, `minExecutions` |
 | `metric_threshold` | `metricName`, `aggregation`, `operator`, `thresholdValue`, `lookbackMinutes`; optional `tags` object and `groupBy` array |
 | `no_data` | `dataType` (`any`, `endpoints`, `exceptions`, `metrics`, `tasks`), `silenceMinutes` |
+| `metric_release_regression` | `metricName`, `aggregation` (percentile or avg; default p75), `thresholdPercent`, `minCount` (default 100), `lookbackMinutes`, optional `tags` and `groupBy` (Compare Within, at most two dimensions; never service.version) |
 | `ai_trace_cost` | `traceName` (or `*`), `thresholdCost` in dollars |
 | `ai_conversation_cost` | `thresholdCost` in dollars |
 | `ai_flagged_content` | `terms` array (empty means any configured flagged term) |
 | `slo_burn_rate` | `sloId`, `longWindowMinutes`, `shortWindowMinutes`, `burnRateThreshold` |
 | `slo_budget_consumed` | `sloId`, `consumedPercent` |
 
-Metric aggregations are `avg`, `max`, `min`, `sum`, `p95`, `p99`, `last`; operators are `gt`, `gte`, `lt`, `lte`, `eq`. Tags filter observed series and groupBy evaluates groups separately. Without grouping, an average can hide one unhealthy host: use `max`, `min` or grouping as appropriate. No data does not trigger a threshold rule; configure a No Data rule for missing telemetry. Browser/mobile projects accept only `new_error` and the SLO rule types.
+Metric aggregations are `avg`, `max`, `min`, `sum`, `count`, `last`, `p50`, `p75`, `p90`, `p95`, `p99`, `good_ratio`; operators are `gt`, `gte`, `lt`, `lte`, `eq`. Tags filter observed series and groupBy evaluates groups separately. Without grouping, an average can hide one unhealthy host: use `max`, `min` or grouping as appropriate. No data does not trigger a threshold rule; configure a No Data rule for missing telemetry. Browser/mobile projects also accept `metric_threshold` and `metric_release_regression`. Distribution threshold rules accept `minCount` (default 10 effective observations) and `goodThreshold` (the metric-unit limit counted by `good_ratio`); the comparison `thresholdValue` for good ratio is a percentage, not a fraction. Client evaluation lags by two minutes. See [rum.md](rum.md) for regression comparisons and SLO semantics. The two `slo_*` rule types need the id of an existing SLO: list or create it with the `slos` commands described in [slo-configuration.md](slo-configuration.md). Inspect an existing release-rule configuration before editing and preserve its cohort/sample settings.
 
 Read delivery history with `notification-history list --file query.json`, where the file is `{"pagination":{"page":1,"pageSize":20}}` with optional `search`, `fromDate`, `toDate`. A queued send retains the channel settings at enqueue time; edits do not rewrite pending notifications.

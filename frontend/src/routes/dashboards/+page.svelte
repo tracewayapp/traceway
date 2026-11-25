@@ -10,14 +10,25 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as Tabs from '$lib/components/ui/tabs';
+	import ShareDashboardDialog from '$lib/components/dashboard/share-dashboard-dialog.svelte';
 	import WidgetGrid from '$lib/components/dashboard/widget-grid.svelte';
 	import WidgetConfigPanel from '$lib/components/dashboard/widget-config-panel.svelte';
 	import DashboardCommand from '$lib/components/dashboard/dashboard-command.svelte';
-	import InstanceFilter from '$lib/components/dashboard/instance-filter.svelte';
+	import {
+		FilterBar,
+		describeTimeRange,
+		type FilterApply,
+		type FilterField
+	} from '$lib/components/traceway/filter-bar';
+	import { loadDimensionValues, loadInstances } from '$lib/utils/dashboard-scope';
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import {
+		projectsState,
+		isBrowserFramework,
+		isFrontendFramework
+	} from '$lib/state/projects.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { toUTCISO, calendarDateTimeToLuxon, formatDateTime } from '$lib/utils/formatters';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
@@ -41,7 +52,9 @@
 		Download,
 		Upload,
 		Share2,
+		Link2,
 		CircleMinus,
+		ChartNoAxesCombined,
 		Search
 	} from '@lucide/svelte';
 	import { WarningCallout } from '$lib/components/ui/warning-callout';
@@ -53,6 +66,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { toast } from 'svelte-sonner';
 	import type { DashboardWidgetConfig, DiscoveredMetric } from '$lib/types/dashboard';
+	import { provideWidgetLoads } from '$lib/components/dashboard/widget-loads.svelte';
 
 	const timezone = $derived(getTimezone());
 	const initialTimezone = getTimezone();
@@ -81,6 +95,8 @@
 
 	let dashboards = $state<Dashboard[]>([]);
 	let loading = $state(true);
+	// The scope filters wait until every widget has answered the last change.
+	const widgetLoads = provideWidgetLoads();
 	let listError = $state('');
 	let activeTabId = $state<string>('');
 	let activeDashboard = $state<DashboardWithWidgets | null>(null);
@@ -110,6 +126,7 @@
 	let jsonSaving = $state(false);
 	let jsonError = $state('');
 
+	let showShareDialog = $state(false);
 	let showApplyDialog = $state(false);
 	let applySelection = $state<Record<string, boolean>>({});
 	let applying = $state(false);
@@ -163,7 +180,7 @@
 	const initialUrlParams = parseTimeRangeFromUrl(initialTimezone);
 	const initialRange = getResolvedTimeRange(initialUrlParams, initialTimezone);
 
-	let selectedPreset = $state<string | null>(initialUrlParams.preset ?? '24h');
+	let selectedPreset = $state<string | null>(initialUrlParams.preset);
 	let fromDate = $state<CalendarDate>(dateToCalendarDate(initialRange.from, initialTimezone));
 	let toDate = $state<CalendarDate>(dateToCalendarDate(initialRange.to, initialTimezone));
 	let fromTime = $state(dateToTimeString(initialRange.from, initialTimezone));
@@ -180,26 +197,119 @@
 			: []
 	);
 	let serverScope = $state(page.url.searchParams.get('server')?.trim() ?? '');
-	const scopeTagFilters = $derived.by(
-		(): Record<string, string> => (serverScope ? { server_name: serverScope } : {})
+	// Client metrics are distributions over a population: nobody charts one phone. A client
+	// project is narrowed by release and OS where a backend project is narrowed by instance.
+	let releaseScope = $state(page.url.searchParams.get('release')?.trim() ?? '');
+	let osScope = $state(page.url.searchParams.get('os')?.trim() ?? '');
+	let countryScope = $state(page.url.searchParams.get('country')?.trim() ?? '');
+	const isClientProject = $derived(
+		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
+	const isBrowserProject = $derived(
+		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
+	);
+	const scopeMetrics = $derived(
+		isBrowserProject
+			? ['browser.page_view', 'browser.web_vital.lcp']
+			: ['app.session', 'app.start.duration']
+	);
+	const scopeTagFilters = $derived.by((): Record<string, string> => {
+		const filters: Record<string, string> = {};
+		if (serverScope) filters.server_name = serverScope;
+		if (isClientProject && releaseScope) filters['service.version'] = releaseScope;
+		if (isClientProject && osScope) filters['os.name'] = osScope;
+		if (isClientProject && countryScope) filters.country = countryScope;
+		return filters;
+	});
 
-	function setServerScope(scope: string) {
-		const normalized = scope.trim();
+	function setScopeParam(name: string, value: string): string {
+		const normalized = value.trim();
 		const url = new URL(window.location.href);
 		if (normalized) {
-			url.searchParams.set('server', normalized);
+			url.searchParams.set(name, normalized);
 		} else {
-			url.searchParams.delete('server');
+			url.searchParams.delete(name);
 		}
-		serverScope = normalized;
 		let target = resolve('/dashboards');
 		target += url.search + url.hash;
 		replaceState(target, {});
+		return normalized;
+	}
+
+	// Countries only show up where the deployment resolves them, so the field waits for one.
+	let countriesSeen = $state(false);
+	$effect(() => {
+		const projectId = projectsState.currentProjectId;
+		countriesSeen = false;
+		if (!projectId || !isClientProject) return;
+		void loadDimensionValues(projectId, scopeMetrics, 'country').then((options) => {
+			if (projectsState.currentProjectId === projectId) countriesSeen = options.length > 0;
+		});
+	});
+
+	function dimensionField(key: string, label: string, dimension: string): FilterField {
+		return {
+			kind: 'select',
+			key,
+			label,
+			options: [],
+			searchable: true,
+			loadOptions: () =>
+				loadDimensionValues(projectsState.currentProjectId ?? '', scopeMetrics, dimension)
+		};
+	}
+
+	const scopeFields = $derived<FilterField[]>(
+		isClientProject
+			? [
+					dimensionField('release', 'Release', 'service.version'),
+					dimensionField('os', 'OS', 'os.name'),
+					...(countriesSeen || countryScope
+						? [dimensionField('country', 'Country', 'country')]
+						: [])
+				]
+			: [
+					{
+						kind: 'select',
+						key: 'server',
+						label: 'Instance',
+						options: [],
+						searchable: true,
+						mono: true,
+						hint: 'Instances that reported in the time range.',
+						loadOptions: () =>
+							loadInstances(
+								projectsState.currentProjectId ?? '',
+								getFromDateTimeUTC(),
+								getToDateTimeUTC()
+							)
+					}
+				]
+	);
+	const scopeValues = $derived({
+		release: releaseScope,
+		os: osScope,
+		country: countryScope,
+		server: serverScope
+	});
+
+	function handleScopeApply(next: FilterApply) {
+		if (isClientProject) {
+			releaseScope = setScopeParam('release', next.values.release ?? '');
+			osScope = setScopeParam('os', next.values.os ?? '');
+			countryScope = setScopeParam('country', next.values.country ?? '');
+		} else {
+			serverScope = setScopeParam('server', next.values.server ?? '');
+		}
 	}
 
 	function updateDashboardUrl(params: Record<string, string>) {
-		updateUrl(serverScope ? { ...params, server: serverScope } : params);
+		const scoped = { ...params };
+		if (serverScope) scoped.server = serverScope;
+		if (releaseScope) scoped.release = releaseScope;
+		if (osScope) scoped.os = osScope;
+		if (countryScope) scoped.country = countryScope;
+		updateUrl(scoped);
 	}
 
 	function reloadDashboardWidgets() {
@@ -352,6 +462,34 @@
 	function handleTabDragEnd() {
 		tabDragIndex = null;
 		tabDropIndex = null;
+	}
+
+	// A client project created before its default dashboard existed (or by a seed) has none assigned.
+	const canInstallDefaultDashboard = $derived(
+		isClientProject && projectsState.canWriteCurrentProject
+	);
+	const defaultDashboardName = $derived(
+		isBrowserProject ? 'Web Performance' : 'Mobile Performance'
+	);
+	let installingDefaults = $state(false);
+
+	async function installDefaultDashboards() {
+		installingDefaults = true;
+		try {
+			await api.post(
+				'/dashboards/populate-defaults',
+				{},
+				{ projectId: projectsState.currentProjectId ?? undefined }
+			);
+			toast.success('Successfully created the Dashboard', { position: 'top-center' });
+			await loadDashboards();
+		} catch (e) {
+			if (getErrorStatus(e) !== 403) {
+				toast.error(getErrorMessage(e) || 'Failed to add the dashboard');
+			}
+		} finally {
+			installingDefaults = false;
+		}
 	}
 
 	async function reorderDashboards(dashboardIds: number[]) {
@@ -931,6 +1069,9 @@
 	afterNavigate(() => {
 		routerReady = true;
 		serverScope = page.url.searchParams.get('server')?.trim() ?? '';
+		releaseScope = page.url.searchParams.get('release')?.trim() ?? '';
+		osScope = page.url.searchParams.get('os')?.trim() ?? '';
+		countryScope = page.url.searchParams.get('country')?.trim() ?? '';
 	});
 
 	$effect(() => {
@@ -1023,13 +1164,6 @@
 						{isMac ? '⌘' : 'Ctrl'}K
 					</kbd>
 				</button>
-				<InstanceFilter
-					value={serverScope}
-					from={getFromDateTimeUTC()}
-					to={getToDateTimeUTC()}
-					projectId={projectsState.currentProjectId}
-					onValueChange={setServerScope}
-				/>
 				<TimeRangePicker
 					bind:fromDate
 					bind:toDate
@@ -1042,6 +1176,18 @@
 		{/snippet}
 	</PageHeader>
 
+	{#if !loading && dashboards.length > 0}
+		<FilterBar
+			showSearch={false}
+			fields={scopeFields}
+			values={scopeValues}
+			onApply={handleScopeApply}
+			disabled={widgetLoads.pending > 0}
+			noun="every widget"
+			rangeLabel={describeTimeRange(selectedPreset)}
+		/>
+	{/if}
+
 	{#if loading}
 		<div class="flex items-center justify-center py-20">
 			<LoadingCircle size="xlg" />
@@ -1053,6 +1199,20 @@
 			description={listError}
 			onRetry={() => loadDashboards()}
 		/>
+	{:else if dashboards.length === 0 && canInstallDefaultDashboard}
+		<EmptyState
+			message={isBrowserProject
+				? "No dashboards yet. Web Performance charts the web vitals, route changes and main-thread blocking this project's SDK reports, as percentiles over every page view."
+				: 'No dashboards yet. Mobile Performance charts app start, screen display times, frames, hangs and crashes, as percentiles over every session.'}
+			actionLabel={installingDefaults ? 'Adding…' : `Add ${defaultDashboardName} Dashboard`}
+			onAction={() => {
+				if (!installingDefaults) void installDefaultDashboards();
+			}}
+		>
+			{#snippet icon()}
+				<ChartNoAxesCombined class="h-6 w-6 text-muted-foreground" />
+			{/snippet}
+		</EmptyState>
 	{:else if dashboards.length === 0}
 		<EmptyState
 			message="No dashboards yet."
@@ -1140,6 +1300,12 @@
 												<Download class="mr-2 h-4 w-4" />
 												Export JSON
 											</DropdownMenu.Item>
+											{#if projectsState.canWriteCurrentProject}
+												<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
+													<Link2 class="mr-2 h-4 w-4" />
+													Share Dashboard
+												</DropdownMenu.Item>
+											{/if}
 											<DropdownMenu.Item onclick={openApplyDialog}>
 												<Share2 class="mr-2 h-4 w-4" />
 												Apply to Projects
@@ -1191,6 +1357,12 @@
 								<Download class="mr-2 h-4 w-4" />
 								Export JSON
 							</DropdownMenu.Item>
+							{#if projectsState.canWriteCurrentProject}
+								<DropdownMenu.Item onclick={() => (showShareDialog = true)}>
+									<Link2 class="mr-2 h-4 w-4" />
+									Share Dashboard
+								</DropdownMenu.Item>
+							{/if}
 							<DropdownMenu.Item onclick={openApplyDialog}>
 								<Share2 class="mr-2 h-4 w-4" />
 								Apply to Projects
@@ -1381,6 +1553,15 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
+
+{#if showShareDialog && projectsState.currentProjectId && projectsState.canWriteCurrentProject}
+	<ShareDashboardDialog
+		dashboardId={activeTabId}
+		projectId={projectsState.currentProjectId}
+		tagFilters={scopeTagFilters}
+		onClose={() => (showShareDialog = false)}
+	/>
+{/if}
 
 <AlertDialog.Root
 	bind:open={showApplyDialog}

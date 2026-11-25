@@ -240,8 +240,8 @@ func (r *aiTraceRepository) GetTraceNameStats(ctx context.Context, projectId uui
 		if(count() > 0, quantile(0.95)(duration) / 1000000, 0) as p95_duration_ms,
 		sum(total_tokens) as total_tokens,
 		sum(total_cost) as total_cost,
-		avg(input_tokens) as avg_input_tokens,
-		avg(output_tokens) as avg_output_tokens
+		if(count() > 0, avg(input_tokens), 0) as avg_input_tokens,
+		if(count() > 0, avg(output_tokens), 0) as avg_output_tokens
 	FROM ai_traces_v2
 	WHERE project_id = ? AND trace_name = ? AND recorded_at >= ? AND recorded_at <= ?`
 
@@ -409,7 +409,8 @@ func (r *aiTraceRepository) FindConversations(ctx context.Context, projectId uui
 
 	thresholds := &models.AiConversationThresholds{}
 	if err := chdb.Conn.QueryRow(ctx,
-		"SELECT quantile(0.95)(total_cost), quantile(0.95)(turns) FROM ("+groupedQuery+")",
+		// quantile() over zero rows is NaN, which encoding/json refuses to write.
+		"SELECT if(count() > 0, quantile(0.95)(total_cost), 0), if(count() > 0, quantile(0.95)(turns), 0) FROM ("+groupedQuery+")",
 		args...).Scan(&thresholds.P95Cost, &thresholds.P95Turns); err != nil {
 		return nil, 0, nil, err
 	}

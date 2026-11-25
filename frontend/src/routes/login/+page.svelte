@@ -13,6 +13,7 @@
 	import { themeState } from '$lib/state/theme.svelte';
 	import { toast } from 'svelte-sonner';
 	import OauthButtons from '$lib/components/oauth-buttons.svelte';
+	import { harvestSeason } from '$lib/utils/harvest';
 
 	const ERROR_MESSAGES: Record<string, string> = {
 		oauth_failed: 'Sign-in failed. Please try again.',
@@ -101,7 +102,15 @@
 </script>
 
 <div class="flex h-screen w-full items-center justify-center px-4">
-	<Card class="w-[350px]">
+	<Card class="relative w-[350px]">
+		{#if harvestSeason}
+			<img
+				src="/harvest/harvest-host.svg"
+				alt=""
+				aria-hidden="true"
+				class="pointer-events-none absolute -top-[54px] right-6 size-16 select-none"
+			/>
+		{/if}
 		<CardHeader>
 			<CardTitle class="text-2xl">
 				<div class="flex flex-row items-center justify-center gap-2">

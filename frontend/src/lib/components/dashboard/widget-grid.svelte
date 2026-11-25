@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { LoadEmbedWidget } from '$lib/utils/dashboard-embed';
 	import * as Card from '$lib/components/ui/card';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import {
@@ -40,6 +41,7 @@
 		onAddWidget,
 		onToggleStar,
 		onRangeSelect,
+		loadEmbedWidget,
 		scopeTagFilters = {}
 	} = $props<{
 		widgets: Widget[];
@@ -54,6 +56,7 @@
 		onAddWidget?: () => void;
 		onToggleStar?: (widget: Widget) => void;
 		onRangeSelect?: (from: Date, to: Date) => void;
+		loadEmbedWidget?: LoadEmbedWidget;
 		scopeTagFilters?: Record<string, string>;
 	}>();
 
@@ -315,6 +318,7 @@
 						{onRangeSelect}
 						{sharedHoverTime}
 						{scopeTagFilters}
+						{loadEmbedWidget}
 						onHoverTimeChange={(time) => (sharedHoverTime = time)}
 						isSourceChart={false}
 					/>

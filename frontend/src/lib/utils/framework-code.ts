@@ -69,13 +69,10 @@ export default App;`;
 			return `<!-- src/routes/+layout.svelte -->
 <script>
   import { setupTraceway } from "@tracewayapp/svelte";
-  import { browser } from "$app/environment";
 
-  if (browser) {
-    setupTraceway({
-      connectionString: "${connectionString}",
-    });
-  }
+  setupTraceway({
+    connectionString: "${connectionString}",
+  });
 </script>
 
 <slot />`;

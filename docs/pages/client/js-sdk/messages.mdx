@@ -19,6 +19,21 @@ captureMessage("Payment processed successfully");
 captureMessage("User visited pricing page");
 ```
 
+Every message becomes an issue, and messages are grouped by their exact text: two messages that differ in one character are two issues. Keep the text constant and put the variable parts in attributes.
+
+## Attributes
+
+In the 2.x SDK `captureMessage` takes an optional second argument with string attributes, shown on the issue like the attributes of an exception:
+
+```javascript
+captureMessage("Payment processed successfully", {
+  provider: "stripe",
+  amount: String(order.total),
+});
+```
+
+The 1.x SDK takes the message only. Global attributes set with `setAttribute` are attached in both versions.
+
 ## Use Cases
 
 ### User Actions
@@ -44,7 +59,10 @@ function enableBetaFeature(featureName) {
 ```javascript
 function processData(data) {
   if (data.items.length > 1000) {
-    captureMessage(`Large dataset processed: ${data.items.length} items`);
+    // The count goes in an attribute (2.x), so every occurrence stays one issue
+    captureMessage("Large dataset processed", {
+      items: String(data.items.length),
+    });
   }
   // ... process data
 }
@@ -65,6 +83,9 @@ function processData(data) {
 2. **Include context**: Add relevant identifiers when helpful
 3. **Avoid sensitive data**: Never include passwords, tokens, or PII
 4. **Use sparingly**: Messages add overhead; don't log every action
+5. **Mind the error filters**: `ignoreErrors` patterns and `beforeCapture` apply to messages too, so with the default patterns a text containing "timeout" or "Failed to fetch" is dropped. See [Error Filtering](/client/js-sdk/initialization#error-filtering)
+
+Messages are sent right away and each one is an issue occurrence. For an event that should only appear as a breadcrumb on the session timeline, use `recordAction(category, name, data)`; the 2.x SDK also has `track(name, attributes)` for named events a trigger can match. In 2.x both are buffered on the device by default.
 
 ## Viewing Messages
 

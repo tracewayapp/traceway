@@ -17,6 +17,7 @@
 		buildConversationTimeline,
 		extractMessages,
 		formatConversationContent,
+		pairToolResults,
 		type ConversationTurn,
 		type TimelineEntry
 	} from '$lib/utils/ai-conversation';
@@ -74,6 +75,11 @@
 	// to per-turn sections otherwise.
 	const timeline = $derived<TimelineEntry[] | null>(
 		turns.length > 0 ? buildConversationTimeline(turns) : null
+	);
+	const pairedResults = $derived(
+		pairToolResults(
+			timeline?.flatMap((entry) => (entry.kind === 'message' ? [entry.message] : [])) ?? []
+		)
 	);
 
 	function turnHref(turn: ApiTurn): string {
@@ -259,7 +265,7 @@
 					<div class="space-y-3">
 						{#each timeline as entry, i (i)}
 							{#if entry.kind === 'message'}
-								<ConversationMessages messages={[entry.message]} />
+								<ConversationMessages messages={[entry.message]} {pairedResults} />
 							{:else}
 								{@const turnNumber = timeline
 									.slice(0, i + 1)

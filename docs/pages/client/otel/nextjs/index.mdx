@@ -153,11 +153,13 @@ Defaults match the rest of the JS SDK family (no flags needed):
 
 | Option | Default | Purpose |
 |---|---|---|
-| `sessionRecording` | `true` | rrweb recorder runs; segments ride along with each exception |
-| `recordAllSessions` | `false` | Only exception-bound clips upload (no always-on recording) |
-| `captureLogs` | `true` | `console.{log,info,warn,error}` mirrored into the rolling buffer |
-| `captureNetwork` | `true` | `fetch` and XHR calls recorded as network actions |
-| `captureNavigation` | `true` | History API push/replace/pop recorded as navigation actions |
+| `sessionRecording` | `true` | rrweb recorder runs and keeps recent segments on the device; an error uploads a 30-second replay clip |
+| `recordAllSessions` | `false` | Only error clips upload (no always-on recording). `true` streams every replay segment and breadcrumb |
+| `captureLogs` | `true` | `console.{log,info,warn,error}` kept on the device as breadcrumbs; an error uploads up to the last 10 minutes of them |
+| `captureNetwork` | `true` | `fetch` and XHR calls recorded as CLIENT spans; same-origin requests carry the W3C `traceparent` header |
+| `captureNavigation` | `true` | History API push/replace/pop recorded as navigation breadcrumbs |
+
+See [TracewayProvider](/client/react/provider#options) for the other options and [Distributed Tracing](/client/js-sdk/distributed-tracing) for how the `traceparent` header links a browser request to the server trace.
 
 The `connectionString` uses the standard `{token}@{apiUrl}` value from the React browser project. Do not use the OpenTelemetry server project's token here.
 
@@ -401,7 +403,7 @@ export async function GET() {
 
 `root: true` detaches the job from the triggering HTTP request so it gets its own trace, which is what you want for a cron endpoint. Drop it when the work really is part of the request.
 
-The `kind` is the part that matters. A root span with the default kind (`INTERNAL`) and no HTTP attributes is dropped on ingest: no Task, no Endpoint, no span row, and no error to tell you why. If a job never shows up under Tasks, this is the first thing to check.
+> Set `kind: SpanKind.CONSUMER` to list this job under **Tasks**. With the default `INTERNAL` kind, the example remains visible in **Spans** and its logs keep their trace ID.
 
 ### Packages Next.js bundles
 

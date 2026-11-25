@@ -5,12 +5,16 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { Badge } from '$lib/components/ui/badge';
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField
+	} from '$lib/components/traceway/filter-bar';
 	import NewPostMortemDialog from './new-post-mortem-dialog.svelte';
-	import { FileText, Link2, X } from '@lucide/svelte';
+	import { FileText, Link2 } from '@lucide/svelte';
 	import { api } from '$lib/api';
 	import { resolve } from '$app/paths';
 	import { createRowClickHandler } from '$lib/utils/navigation';
@@ -73,7 +77,29 @@
 		});
 	});
 
-	function handleSearch() {
+	// Tags never contain a comma (the backend strips it on save), so a comma list round-trips.
+	const filterFields: FilterField[] = [
+		{
+			kind: 'text',
+			key: 'tags',
+			label: 'Tags',
+			placeholder: 'database, deploy',
+			hint: 'Post-mortems carrying every tag listed, separated by commas.'
+		}
+	];
+	const filterValues = $derived({ tags: tagFilters.join(', ') });
+
+	function parseTags(value: string): string[] {
+		const tags = value
+			.split(',')
+			.map((t) => t.trim().toLowerCase())
+			.filter((t) => t !== '');
+		return tags.filter((t, i) => tags.indexOf(t) === i);
+	}
+
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
+		tagFilters = parseTags(next.values.tags ?? '');
 		currentPage = 1;
 		load();
 	}
@@ -90,140 +116,121 @@
 </script>
 
 <div class="space-y-4">
-	<SearchBar
-		placeholder="Search post-mortems..."
-		bind:value={searchQuery}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search post-mortems..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
-	/>
-
-	{#if tagFilters.length > 0}
-		<div class="flex flex-wrap items-center gap-1.5">
-			{#each tagFilters as tag (tag)}
-				<span
-					class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-xs"
-				>
-					<span class="text-muted-foreground">tag</span>
-					<span>=</span>
-					<span>{tag}</span>
-					<button
-						type="button"
-						aria-label="Remove filter"
-						class="ml-1 cursor-pointer text-muted-foreground hover:text-foreground"
-						onclick={() => toggleTag(tag)}
-					>
-						<X class="h-3 w-3" />
-					</button>
-				</span>
-			{/each}
-		</div>
-	{/if}
-
-	{#if loading}
-		<div class="flex h-48 items-center justify-center">
-			<LoadingCircle size="xlg" />
-		</div>
-	{:else if error}
-		<div class="rounded-md border py-16 text-center text-red-500">{error}</div>
-	{:else if items.length === 0 && !hasFilters}
-		{#if canWrite}
-			<EmptyState
-				message="No post-mortems yet. Write one after your next incident so the lessons stick around."
-				actionLabel="Write your first Post-Mortem"
-				onAction={openCreate}
-			/>
+		noun="post-mortems"
+	>
+		{#if loading}
+			<div class="flex h-48 items-center justify-center">
+				<LoadingCircle size="xlg" />
+			</div>
+		{:else if error}
+			<div class="rounded-md border py-16 text-center text-red-500">{error}</div>
+		{:else if items.length === 0 && !hasFilters}
+			{#if canWrite}
+				<EmptyState
+					message="No post-mortems yet. Write one after your next incident so the lessons stick around."
+					actionLabel="Write your first Post-Mortem"
+					onAction={openCreate}
+				/>
+			{:else}
+				<EmptyState message="No post-mortems yet." />
+			{/if}
 		{:else}
-			<EmptyState message="No post-mortems yet." />
-		{/if}
-	{:else}
-		<TableContainer>
-			<Table.Root>
-				<Table.Header>
-					<Table.Row>
-						<Table.Head>Title</Table.Head>
-						<Table.Head>Tags</Table.Head>
-						<Table.Head class="w-[110px]">Incident</Table.Head>
-						<Table.Head class="w-[140px]">Updated</Table.Head>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#if items.length === 0}
-						<TableEmptyState colspan={4} message="No post-mortems match your search." />
-					{:else}
-						{#each items as item (item.id)}
-							<Table.Row
-								class="cursor-pointer"
-								onclick={createRowClickHandler(resolve(`/monitors/post-mortems/${item.id}`))}
-							>
-								<Table.Cell>
-									<div class="flex items-center gap-2 font-medium">
-										<FileText class="size-4 shrink-0 text-muted-foreground" />
-										{item.title}
-									</div>
-								</Table.Cell>
-								<Table.Cell>
-									{#if item.tags.length > 0}
-										<div class="flex flex-wrap gap-1">
-											{#each item.tags as tag (tag)}
-												<button
-													type="button"
-													class="cursor-pointer"
-													title={`Filter by tag "${tag}"`}
-													onclick={(e) => {
-														e.stopPropagation();
-														toggleTag(tag);
-													}}
-												>
-													<Badge variant={tagFilters.includes(tag) ? 'default' : 'secondary'}>
-														{tag}
-													</Badge>
-												</button>
-											{/each}
+			<TableContainer>
+				<Table.Root>
+					<Table.Header>
+						<Table.Row>
+							<Table.Head>Title</Table.Head>
+							<Table.Head>Tags</Table.Head>
+							<Table.Head class="w-[110px]">Incident</Table.Head>
+							<Table.Head class="w-[140px]">Updated</Table.Head>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#if items.length === 0}
+							<TableEmptyState colspan={4} message="No post-mortems match your search." />
+						{:else}
+							{#each items as item (item.id)}
+								<Table.Row
+									class="cursor-pointer"
+									onclick={createRowClickHandler(resolve(`/monitors/post-mortems/${item.id}`))}
+								>
+									<Table.Cell>
+										<div class="flex items-center gap-2 font-medium">
+											<FileText class="size-4 shrink-0 text-muted-foreground" />
+											{item.title}
 										</div>
-									{:else}
-										<span class="text-muted-foreground">—</span>
-									{/if}
-								</Table.Cell>
-								<Table.Cell>
-									{#if item.incidentId}
-										<span class="flex items-center gap-1 text-sm text-muted-foreground">
-											<Link2 class="size-3.5" /> Linked
-										</span>
-									{:else}
-										<span class="text-muted-foreground">—</span>
-									{/if}
-								</Table.Cell>
-								<Table.Cell class="text-muted-foreground">
-									<div>{formatRelativeTimeAgo(item.updatedAt)}</div>
-									{#if item.updatedByName || item.createdByName}
-										<div class="text-xs">by {item.updatedByName || item.createdByName}</div>
-									{/if}
-								</Table.Cell>
-							</Table.Row>
-						{/each}
-					{/if}
-				</Table.Body>
-			</Table.Root>
-		</TableContainer>
+									</Table.Cell>
+									<Table.Cell>
+										{#if item.tags.length > 0}
+											<div class="flex flex-wrap gap-1">
+												{#each item.tags as tag (tag)}
+													<button
+														type="button"
+														class="cursor-pointer"
+														title={`Filter by tag "${tag}"`}
+														onclick={(e) => {
+															e.stopPropagation();
+															toggleTag(tag);
+														}}
+													>
+														<Badge variant={tagFilters.includes(tag) ? 'default' : 'secondary'}>
+															{tag}
+														</Badge>
+													</button>
+												{/each}
+											</div>
+										{:else}
+											<span class="text-muted-foreground">—</span>
+										{/if}
+									</Table.Cell>
+									<Table.Cell>
+										{#if item.incidentId}
+											<span class="flex items-center gap-1 text-sm text-muted-foreground">
+												<Link2 class="size-3.5" /> Linked
+											</span>
+										{:else}
+											<span class="text-muted-foreground">—</span>
+										{/if}
+									</Table.Cell>
+									<Table.Cell class="text-muted-foreground">
+										<div>{formatRelativeTimeAgo(item.updatedAt)}</div>
+										{#if item.updatedByName || item.createdByName}
+											<div class="text-xs">by {item.updatedByName || item.createdByName}</div>
+										{/if}
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						{/if}
+					</Table.Body>
+				</Table.Root>
+			</TableContainer>
 
-		<PaginationFooter
-			{currentPage}
-			{totalPages}
-			{pageSize}
-			totalItems={total}
-			onPageChange={(page) => {
-				currentPage = page;
-				load();
-			}}
-			onPageSizeChange={(size) => {
-				pageSize = size;
-				currentPage = 1;
-				load();
-			}}
-			{loading}
-			itemLabel="post-mortem"
-		/>
-	{/if}
+			<PaginationFooter
+				{currentPage}
+				{totalPages}
+				{pageSize}
+				totalItems={total}
+				onPageChange={(page) => {
+					currentPage = page;
+					load();
+				}}
+				onPageSizeChange={(size) => {
+					pageSize = size;
+					currentPage = 1;
+					load();
+				}}
+				{loading}
+				itemLabel="post-mortem"
+			/>
+		{/if}
+	</FilterBar>
 </div>
 
 <NewPostMortemDialog bind:open={createOpen} />

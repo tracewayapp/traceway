@@ -2,11 +2,7 @@
 
 Integrate Traceway into your jQuery application with the `@tracewayapp/jquery` package.
 
-import { Callout } from "nextra/components";
-
-<Callout type="info">
-  This guide installs the stable 1.x SDK. The 2.x SDK, which adds [remote SDK config](/learn/remote-config) and on-device buffering, is in beta: install `@tracewayapp/jquery@beta` and follow the [JS SDK reference](/client/js-sdk), where the 1.x pages are under **SDK 1.x (stable)**.
-</Callout>
+Upgrading from 1.x? See the [migration guide](/client/js-sdk/migration).
 
 ## Installation
 
@@ -26,9 +22,9 @@ window.jQuery = window.$ = $;
 init("your-token@https://cloud.tracewayapp.com/api/report");
 ```
 
-`init()` binds `$(document).ajaxError()` on `window.jQuery` (or `window.$`). If jQuery is only a bundled module and never lands on `window`, uncaught errors and `captureException()` still work but AJAX errors are silently skipped. Call `init()` after jQuery is on the page. If jQuery already comes from a `<script>` tag, it is global already and you can drop the two jQuery lines above.
+`init()` binds `$(document).ajaxError()` on `window.jQuery` (or `window.$`). If jQuery is only a bundled module and never lands on `window`, uncaught errors and `captureException()` still work but AJAX errors are silently skipped. Call `init()` once, after jQuery is on the page. If jQuery already comes from a `<script>` tag, it is global already and you can drop the two jQuery lines above.
 
-Session recording is on by default. The last ~30s of DOM events ship with every captured exception.
+Session replay is on by default and buffered on the device: a captured error uploads a 30-second replay clip and up to 10 minutes of breadcrumbs (console, network, navigation, clicks). Set `recordAllSessions: true` to stream every session instead.
 
 ### Via CDN
 
@@ -36,7 +32,7 @@ No build step needed. Add two script tags after jQuery:
 
 ```html
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@1/dist/traceway-jquery.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@2/dist/traceway-jquery.iife.global.js"></script>
 <script>
   TracewayJQuery.init("your-token@https://cloud.tracewayapp.com/api/report");
 </script>
@@ -50,11 +46,12 @@ Once initialized, the SDK automatically:
 
 - Captures uncaught JavaScript errors and unhandled promise rejections
 - Captures jQuery AJAX errors via `$(document).ajaxError()`
-- Injects a `traceway-trace-id` header into same-origin `$.ajax()` and `fetch()` requests (no longer used by Traceway, see [Distributed Tracing](#distributed-tracing))
+- Records `$.ajax()`, `XMLHttpRequest` and `fetch()` calls as CLIENT spans and adds the W3C `traceparent` header to same-origin requests (see [Distributed Tracing](#distributed-tracing))
+- Keeps console output, requests, navigation and clicks on the device as breadcrumbs, and uploads them with the next error
 
 ## AJAX Error Capture
 
-jQuery AJAX errors are captured automatically. When `$.ajax()` fails, Traceway records the URL, HTTP method, status code, and error message.
+jQuery AJAX errors are captured automatically. When `$.ajax()` fails, Traceway reports an exception with the message `METHOD url failed: STATUS reason` (for example `GET /api/users failed: 500 Internal Server Error`) and the attributes `url`, `method` and `status`, all strings.
 
 ```javascript
 // This error is captured automatically
@@ -66,6 +63,8 @@ $.ajax({
   },
 });
 ```
+
+The request is recorded once more as a span, like any other XHR. That is a breadcrumb and a part of the trace, not a second issue. The `captureHttpServerErrors` option does create a second issue: it reports every `fetch` / XHR response with status >= 500 as a message, and `$.ajax()` uses XHR, so with it on, a 5xx AJAX response shows up both as that message and as the `ajaxError` exception. It is off by default.
 
 ## Manual Error Capture
 
@@ -94,27 +93,36 @@ init("your-token@https://cloud.tracewayapp.com/api/report", {
 
 ### Options Reference
 
+`init()` takes every option of the browser SDK (`TracewayJQueryOptions` adds nothing to `TracewayFrontendOptions`). The ones used most often are below; [Initialization](/client/js-sdk/initialization#options-reference) has the full list.
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log filtered-out events and failed uploads to the browser console. Successful captures are not logged |
-| `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
-| `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
-| `version` | `string` | `undefined` | Your application version |
-| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/v1/initialization#error-filtering) |
-| `beforeCapture` | `(exception) => boolean` | `undefined` | Return `false` to suppress an error. See [Error Filtering](/client/js-sdk/v1/initialization#error-filtering) |
-| `sessionRecording` | `boolean` | `true` | Enable the rrweb session recorder |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | rrweb segment length in ms |
-| `recordAllSessions` | `boolean` | `false` | Always-on session recording. See [Sessions](/learn/sessions) |
-| `captureLogs` | `boolean` | `true` | Mirror `console.*` calls into the rolling log buffer |
-| `captureNetwork` | `boolean` | `true` | Record `fetch` / `XHR` calls as network actions |
-| `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions |
-| `eventsWindowMs` | `number` | `10000` (`30000` w/ `recordAllSessions`) | Rolling window the log and action buffers retain |
-| `eventsMaxCount` | `number` | `200` (`600` w/ `recordAllSessions`) | Hard cap on entries kept independently in the log and action buffers |
-| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` response with status >= 500 as a synthetic exception. It is wired into the `fetch` wrapper only, so `$.ajax()` does not trigger it. Use the `ajaxError` capture below for jQuery requests |
+| `version` | `string` | none | Your application version, reported as `service.version` |
+| `environment` | `string` | none | Reported as `deployment.environment.name`, e.g. `"production"` |
+| `serviceName` | `string` | the page's host name | Reported as `service.name` |
+| `attributes` | `Record<string, string>` | `{}` | Initial global attributes, see [Custom Attributes](#custom-attributes) |
+| `debug` | `boolean` | `false` | Log a rejected project token and a `beforeCapture` callback that throws to the browser console. Captures and uploads are not logged |
+| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](#error-filtering) |
+| `beforeCapture` | `({ type, message, stack, attributes }) => boolean` | none | Return `false` to suppress an error. See [Error Filtering](#error-filtering) |
+| `sessionRecording` | `boolean` | `true` | Allow session replay at all |
+| `sessionRecordingSegmentDuration` | `number` | `30000` | Replay segment length in ms |
+| `recordAllSessions` | `boolean` | `false` | Stream every replay segment and breadcrumb instead of keeping them on the device for error clips. See [Session Replay](/client/js-sdk/session-replay) |
+| `sessions` | `boolean` | `true` | Record session start and end |
+| `captureLogs` | `boolean` | `true` | Allow `console.*` output to be collected as breadcrumbs |
+| `captureNetwork` | `boolean` | `true` | Instrument `fetch` / `XHR`, which includes `$.ajax()`: CLIENT spans and the `traceparent` header. The `ajaxError` capture does not depend on it |
+| `captureNavigation` | `boolean` | `true` | Allow History API navigation to be collected as breadcrumbs |
+| `captureUserActions` | `boolean` | `true` | Allow clicks to be collected as breadcrumbs |
+| `captureMetrics` | `boolean` | `true` | Allow the [performance metrics](/learn/client-metrics) aggregated on the device |
+| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` / `XHR` response with status >= 500 as a message issue. `$.ajax()` responses count, so a 5xx AJAX error is then reported twice, see [AJAX Error Capture](#ajax-error-capture) |
+| `propagateTraceHeaderCorsUrls` | `Array<string \| RegExp>` | none | Cross-origin URLs that also get the `traceparent` header |
+| `remoteConfig` | `boolean` | `true` | Fetch collection settings from Traceway, see [Remote SDK Config](/learn/remote-config) |
+| `exportDelayMs` | `number` | `1000` | Delay between uploads of queued telemetry, in ms |
+
+The `capture*`, `sessionRecording` and `sessions` options are ceilings: remote config can restrict what they allow, but never turns on what they switch off.
 
 ## Error Filtering
 
-By default, 4xx AJAX errors (e.g., 401, 422), network errors, and timeouts are **not** captured. This means `$.ajax()` calls that return 4xx status codes will not appear in your Traceway dashboard unless you opt in.
+By default, AJAX errors with a 4xx status (e.g., 401, 422) and AJAX timeouts are **not** captured: the built-in `ignoreErrors` patterns `/failed: 4\d{2}/` and `/timeout/i` match the message the `ajaxError` handler builds. This means `$.ajax()` calls that return 4xx status codes will not appear in your Traceway dashboard unless you opt in. A request that fails without a response (status `0`, for instance when the network is down) is reported, unless its message matches a pattern. See [Error Filtering](/client/js-sdk/initialization#error-filtering) for the full default list and how patterns match.
 
 To capture all AJAX errors including 4xx:
 
@@ -124,7 +132,7 @@ init("your-token@https://cloud.tracewayapp.com/api/report", {
 });
 ```
 
-The jQuery SDK records HTTP status codes as attributes on captured errors. You can use `beforeCapture` to selectively filter by status:
+The jQuery SDK records HTTP status codes as the string attribute `status` on captured AJAX errors. You can use `beforeCapture`, which receives `{ type, message, stack, attributes }`, to selectively filter by status:
 
 ```javascript
 init("your-token@https://cloud.tracewayapp.com/api/report", {
@@ -140,7 +148,7 @@ init("your-token@https://cloud.tracewayapp.com/api/report", {
 
 ## Custom Attributes
 
-Attach app-level identifiers (`userId`, `tenant`, feature flags, etc.) to every session and exception:
+Attach app-level identifiers (`user.id`, `tenant`, feature flags, etc.) to every session and exception:
 
 ```javascript
 import {
@@ -150,7 +158,7 @@ import {
   clearAttributes,
 } from "@tracewayapp/jquery";
 
-setAttribute("userId", "u_42");
+setAttribute("user.id", "u_42");
 setAttributes({ tenant: "acme", plan: "pro" });
 
 // On logout / tenant switch:
@@ -159,9 +167,30 @@ clearAttributes();
 
 Layering on each event: **defaults < global scope < per-call**. See [Sessions](/learn/sessions) for the full attribute model.
 
+## Events, Metrics and Lifecycle
+
+The package re-exports the rest of the browser SDK's API, on the npm build and on the `TracewayJQuery` global alike:
+
+| Function | Description |
+|----------|-------------|
+| `captureExceptionWithAttributes(error, attributes)` | Capture an error with string attributes |
+| `captureMessage(message, attributes?)` | Send a custom message, see [Messages](/client/js-sdk/messages) |
+| `track(eventName, attributes?)` | Record a named app event, e.g. `track("checkout_failed", { step: "payment" })`. Buffered on the device by default |
+| `metric(name, value, dims?)` | Record one observation of a custom distribution, e.g. `metric("checkout.duration", 840, { plan: "pro" })`. Aggregated on the device; at most two dimensions are kept |
+| `count(name, n?, dims?)` | Add to a custom counter, e.g. `count("cart.item_added")` |
+| `setMetricDimension(key, value)` | Set a dimension of your own on every performance metric from now on; `null` removes it. At most two keys with a small set of values each, never a user id |
+| `setRoute(template)` | Name the page being shown by its route template (`/orders/:id`), so performance metrics group by route and not by URL. Without it the SDK replaces id-like path segments itself |
+| `startInteraction(name)` | Trace an interaction explicitly, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
+| `refreshConfig()` | Fetch this client's [remote settings](/learn/remote-config) now instead of at the next poll, e.g. right after a login set `user.id` with `setAttribute` |
+| `flush(timeoutMs?)` | Send everything that is queued for sending. Buffered telemetry stays on the device. See [Flush](/client/js-sdk/flush) |
+| `shutdown()` | Flush, remove the instrumentations and stop recording. `init()` may be called again afterwards |
+| `getInstanceId()` | The id this browser profile reports as `service.instance.id`, which a dashboard capture can target |
+
+`recordAction` is not exported by this package; use `track()` for app events. See [Client Metrics](/learn/client-metrics) for the custom metric rules.
+
 ## Distributed Tracing
 
-The 1.x SDK adds a `traceway-trace-id` header to same-origin `$.ajax()` and `fetch()` calls, but Traceway no longer uses it, so 1.x does not link browser errors to backend requests, with any backend (the Symfony bundle included). Exceptions still carry their replay clip. To see a browser request and the backend work it caused in one trace, use the [2.x SDK (beta)](/client/js-sdk/distributed-tracing): it sends the W3C `traceparent` header, which a backend instrumented with OpenTelemetry, such as the [Symfony OpenTelemetry Bundle](/client/otel/symfony), picks up with no extra middleware. See [Distributed Tracing (SDK 1.x)](/client/js-sdk/v1/distributed-tracing) for what 1.x sends and which old setup code can go.
+`$.ajax()` goes through `XMLHttpRequest`, which the SDK records as a CLIENT span, and same-origin requests get the W3C `traceparent` header. A backend instrumented with OpenTelemetry, such as the [Symfony OpenTelemetry Bundle](/client/otel/symfony), picks it up with no extra middleware, so a browser request and the backend work it caused show up as one trace. For an API on another origin, list it in `propagateTraceHeaderCorsUrls`. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
 ## Test Your Integration
 
@@ -179,5 +208,7 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Next Steps
 
-- [Distributed Tracing](/client/js-sdk/v1/distributed-tracing): Frontend ↔ backend correlation
+- [Initialization](/client/js-sdk/initialization): Every SDK option
+- [Session Replay](/client/js-sdk/session-replay): What is recorded and when it is uploaded
+- [Distributed Tracing](/client/js-sdk/distributed-tracing): Frontend ↔ backend correlation
 - [JS SDK Reference](/client/js-sdk): Full API reference

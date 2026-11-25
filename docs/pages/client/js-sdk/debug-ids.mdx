@@ -83,7 +83,7 @@ When an exception is captured, the SDK reads `_tracewayDebugIds` (and `_sentryDe
 
 Debug IDs work the same way for server-side bundles: the injected snippet detects `globalThis`/`global`, and Node stack traces carry the bundle path just like browser ones. If you bundle a Node service with Vite, Rollup, or webpack, the same plugin applies.
 
-OpenTelemetry currently has **no debug ID convention**: there is no semantic-conventions attribute for source map linkage, and the JS SDKs do not collect anything like it. Traceway therefore carries debug IDs in its own report payload (a `debugIds` filename-to-ID map on each exception). Because the build artifacts follow the ECMA-426 format rather than anything Traceway-specific, a future Node/OTel integration can adopt the same uploads without rebuilding anything.
+OpenTelemetry currently has **no debug ID convention**: there is no semantic-conventions attribute for source map linkage, and the JS SDKs do not collect anything like it. The 1.x browser SDK sends a filename-to-ID map in the exception’s `debugIds` field. The 2.x browser SDK serializes the same map as JSON in the OTLP log attribute `traceway.debug_ids`. Node instrumentation can supply this attribute when reporting exceptions to Traceway.
 
 ## Interoperability Notes
 

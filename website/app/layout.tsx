@@ -2,31 +2,16 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { MotionPolish } from "@/components/motion-polish";
 import { CookieConsent } from "@/components/cookie-consent";
+import { HARVEST_SEASON_SCRIPT } from "@/components/harvest";
 import type { Metadata } from "next";
-import { JetBrains_Mono, IBM_Plex_Mono, Inter } from "next/font/google";
+import "@fontsource-variable/jetbrains-mono/wght.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/600.css";
+import "@fontsource-variable/inter/wght.css";
 import "./globals.css";
 
 // Dark-only site, no theme toggle.
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  variable: "--font-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  display: "swap",
-});
-
-const inter = Inter({
-  variable: "--font-body",
-  subsets: ["latin"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://tracewayapp.com"),
@@ -51,10 +36,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${jetbrainsMono.variable} ${ibmPlexMono.variable} ${inter.variable}`}
-    >
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: HARVEST_SEASON_SCRIPT }} />
+      </head>
       <body className="antialiased">
         <SiteHeader />
         {children}

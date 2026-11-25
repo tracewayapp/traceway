@@ -11,6 +11,8 @@ require (
 	google.golang.org/protobuf v1.36.12
 )
 
+require github.com/oschwald/maxminddb-golang/v2 v2.4.1 // indirect
+
 require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/ClickHouse/ch-go v0.69.0 // indirect

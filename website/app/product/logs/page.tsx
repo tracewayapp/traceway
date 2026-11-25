@@ -48,9 +48,10 @@ export default function LogsPage() {
               </h1>
               <p className="hero-sub">
                 Stop jumping between a log viewer and a trace viewer. See volume by
-                severity at a glance, search by service or attribute, tail new logs
-                live as they arrive, and open the exact request that produced any
-                log line in one click.
+                severity at a glance, search by service or attribute, chart any
+                numeric attribute, save the searches you repeat, tail new logs live
+                as they arrive, and open the exact request that produced any log
+                line in one click.
               </p>
               <div className="hero-cta-row">
                 <Link href="https://docs.tracewayapp.com/learn/logs" className="btn btn-accent">
@@ -64,7 +65,7 @@ export default function LogsPage() {
             <div className="mt-12 lg:mt-0 lg:flex-1">
               <Image
                 src="/images/logs-overview.png"
-                alt="The Logs page, with log volume by severity charted above the list"
+                alt="The Logs page filtered to payments logs without a decline code, with log volume above P50 and P95 payment latency charted over three hours and a saved filter applied"
                 width={1600}
                 height={900}
                 priority
@@ -115,7 +116,7 @@ export default function LogsPage() {
                 Include what matters. <em>Exclude the noise.</em>
               </>
             }
-            description="Every filter is a pill you can see, edit, and remove. Flip the operator to not-equals to mute a chatty logger, and set a severity threshold to keep a level and everything above it."
+            description="Every filter is a pill you can see, edit, and remove. Match a value exactly or by substring, flip either to its negation to mute a chatty logger, check whether a key exists at all, and set a severity threshold to keep a level and everything above it."
           />
           <div className="max-w-5xl mx-auto">
             <div className="md:flex md:items-start">
@@ -132,19 +133,77 @@ export default function LogsPage() {
                   src="/images/logs-filter-dialog-negative.png"
                   alt="Attribute filter dialog with the Not equals operator selected"
                   width={1024}
-                  height={760}
+                  height={744}
                 />
               </div>
             </div>
             <div className="relative z-20 mt-6 md:mx-auto md:-mt-12 md:w-[76%]">
               <Shot
                 src="/images/logs-filter-pills-zoom.png"
-                alt="Filter pills, one equals and one not equals"
-                width={1398}
-                height={100}
+                alt="Filter pills: a not equals, an equals and a key exists filter"
+                width={1454}
+                height={72}
               />
             </div>
           </div>
+        </section>
+
+        {/* Attribute charts */}
+        <section className="wrap pb-20">
+          <SectionHead
+            eyebrow="Attribute charts"
+            title={
+              <>
+                Chart any number <em>your logs already carry.</em>
+              </>
+            }
+            description="Open an attribute's menu and choose Chart values. Traceway draws its average, P50, P95, P99, minimum, maximum, sum or count over time for exactly the logs your filters match, or switches to a distribution with the percentiles marked. Drag across the chart to zoom into a spike."
+          />
+          <div
+            className="rounded-[12px] overflow-hidden bg-white"
+            style={{ border: "1px solid var(--hair)", boxShadow: "0 16px 48px rgba(15, 23, 42, 0.14)" }}
+          >
+            <Image
+              src="/images/logs-attribute-chart.png"
+              alt="The distribution of payment latency from the payments logs, with P50, P95 and P99 marked"
+              width={2620}
+              height={502}
+              className="w-full h-auto block"
+            />
+          </div>
+        </section>
+
+        {/* Saved filters */}
+        <section className="wrap pb-20">
+          <FeatureRow
+            eyebrow="Saved filters"
+            title={
+              <>
+                Name a search once, <em>share it with the team.</em>
+              </>
+            }
+            description="Save the filters, search and chart you keep rebuilding under a name. Saved filters belong to the project, so everyone on it gets them, and applying one restores the whole search in a click."
+            bullets={[
+              "Keep the time range, or let the filter follow the range you pick",
+              "Rename one or replace it with the current filters",
+              "The menu shows which saved filter is active",
+              "Works the same on the Spans page",
+            ]}
+          >
+            <div className="flex items-center justify-center p-6 md:p-10">
+              <Image
+                src="/images/logs-saved-filters.png"
+                alt="The saved filters menu with three shared filters, the active one checked"
+                width={832}
+                height={726}
+                className="w-full max-w-[416px] h-auto rounded-[10px]"
+                style={{
+                  border: "1px solid var(--hair)",
+                  boxShadow: "0 16px 48px rgba(0, 0, 0, 0.25)",
+                }}
+              />
+            </div>
+          </FeatureRow>
         </section>
 
         {/* Live tail */}
@@ -316,6 +375,10 @@ export default function LogsPage() {
                 {
                   q: "Can I tail logs in real time?",
                   a: "Yes. The Live button on the Logs page polls for new records every few seconds and streams them into the list, with all of your active filters applied. It works with any preset time range.",
+                },
+                {
+                  q: "Can I chart values from my logs?",
+                  a: "Yes. Any attribute whose value is a number, such as a latency, an amount or a queue depth, can be charted from its menu: over time as average, percentiles, minimum, maximum, sum or count, or as a distribution. The chart follows every filter on the page and its settings are part of the link and of saved filters.",
                 },
                 {
                   q: "How long are logs retained?",

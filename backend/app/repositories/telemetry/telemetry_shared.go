@@ -12,8 +12,13 @@ type (
 	CheckResult            = shared.CheckResult
 	LogAttributeFilter     = shared.LogAttributeFilter
 	LogSearchParams        = shared.LogSearchParams
+	LogAttributeTarget     = shared.LogAttributeTarget
 	SpanLookup             = shared.SpanLookup
 	SLOBucket              = shared.SLOBucket
+	Histogram              = shared.Histogram
+	MetricHistogramCell    = shared.MetricHistogramCell
+	MetricExemplar         = shared.MetricExemplar
+	HistogramSeriesPoint   = shared.HistogramSeriesPoint
 	SLOBucketPoint         = shared.SLOBucketPoint
 	EndpointSLISpec        = shared.EndpointSLISpec
 	TaskSLISpec            = shared.TaskSLISpec

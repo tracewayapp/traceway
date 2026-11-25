@@ -21,7 +21,9 @@ describe('badEventsHref', () => {
 		expect(filters.name).toBe('POST /checkout');
 		expect(filters.kind).toBe('2');
 		expect(filters.status).toBe('2');
-		expect(filters.attributes).toEqual([{ key: 'http.route', value: '/checkout' }]);
+		expect(filters.attributes).toEqual([
+			{ key: 'http.route', value: '/checkout', exclude: false, contains: false, exists: false }
+		]);
 	});
 
 	it('filters slow spans for a latency SLI', () => {

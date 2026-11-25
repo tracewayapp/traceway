@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Scan
-        uses: hashgraph-online/ai-plugin-scanner-action@1fb7eef6f7387abd0512e91ee8f336ac8bf07c95 # v1.2.789
+        uses: hashgraph-online/ai-plugin-scanner-action@fe3a28696ed8316792c076c495482f602a59205d # v1.2.818
         with:
           plugin_dir: "."
           config: ".plugin-scanner.toml"

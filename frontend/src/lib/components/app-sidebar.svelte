@@ -24,19 +24,22 @@
 		Server,
 		Settings,
 		BookOpen,
-		KeyRound
+		KeyRound,
+		Upload
 	} from '@lucide/svelte';
 	import { themeState } from '$lib/state/theme.svelte';
 	import {
 		projectsState,
 		isFrontendFramework,
 		isBrowserFramework,
-		isCloudflareFramework
+		isCloudflareFramework,
+		isProjectViewAvailable
 	} from '$lib/state/projects.svelte';
 	import { LayoutDashboard } from '@lucide/svelte';
 	import { page } from '$app/state';
 	import { addStickyParamsToHref, createRowClickHandler } from '$lib/utils/navigation';
 	import { resolveHref } from '$lib/utils/links';
+	import { harvestSeason } from '$lib/utils/harvest';
 	import { cn } from '$lib/utils';
 
 	interface SidebarItem {
@@ -54,12 +57,10 @@
 		'Endpoints',
 		'Tasks',
 		'Profiles',
-		'Dashboards',
 		'AI Traces',
 		'Monitors'
 	]);
-	// Browser projects report through the OpenTelemetry SDK, which exports logs and spans but no
-	// metrics; mobile projects report through the native SDKs, which send neither.
+	// Native SDKs do not populate the browser log and span views.
 	const hiddenForMobile = new Set([...hiddenForBrowser, 'Logs', 'Spans']);
 	const hiddenForCloudflare = new Set(['Dashboards']);
 	// Items that only make sense for frontend (browser) projects - dropped from
@@ -97,21 +98,25 @@
 		{ Icon: Goal, href: '/slos', title: 'SLOs', stickyParams: [] },
 		{ Icon: Bell, href: '/notifications', title: 'Alerts', stickyParams: ['preset', 'from', 'to'] },
 		{ Icon: PhoneCall, href: '/on-call', title: 'On-Call', stickyParams: [] },
+		{ Icon: Upload, href: '/data-collection', title: 'Data Collection', stickyParams: [] },
 		{ Icon: Link2, href: '/connection', title: 'Connection', stickyParams: [] }
 	];
 
 	const sidebarItems = $derived.by(() => {
 		const framework = projectsState.currentProject?.framework;
+		const items = allSidebarItems.filter((item) =>
+			framework ? isProjectViewAvailable(framework, item.href) : item.href !== '/data-collection'
+		);
 		if (framework && isFrontendFramework(framework)) {
 			const hidden = isBrowserFramework(framework) ? hiddenForBrowser : hiddenForMobile;
-			return allSidebarItems.filter((item) => !hidden.has(item.title));
+			return items.filter((item) => !hidden.has(item.title));
 		}
 		if (framework && isCloudflareFramework(framework)) {
-			return allSidebarItems.filter(
+			return items.filter(
 				(item) => !hiddenForCloudflare.has(item.title) && !frontendOnly.has(item.title)
 			);
 		}
-		return allSidebarItems.filter((item) => !frontendOnly.has(item.title));
+		return items.filter((item) => !frontendOnly.has(item.title));
 	});
 
 	const allOrganizationItems: SidebarItem[] = [
@@ -381,7 +386,10 @@
 			<span class="text-xs text-muted-foreground">&nbsp;</span>
 		</div>
 
-		<div class="group-data-[collapsible=icon]:hidden">
+		<div class="flex items-center gap-1.5 group-data-[collapsible=icon]:hidden">
+			{#if harvestSeason}
+				<img src="/harvest/maple-leaf.svg" alt="" aria-hidden="true" class="size-4 select-none" />
+			{/if}
 			<span class="text-xs text-muted-foreground">Traceway - v{__APP_VERSION__}</span>
 		</div>
 	</Sidebar.SidebarFooter>

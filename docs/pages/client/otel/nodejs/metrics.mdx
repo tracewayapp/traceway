@@ -102,9 +102,10 @@ meter.createObservableGauge("app.memory.heap_used", {
 |-----------|-------------------|
 | Gauge | Stored as-is |
 | Sum (Counter) | Stored as-is |
-| Histogram | Converted to `{name}.avg` and `{name}.count` |
+| Explicit histogram | Distribution under the instrument name, plus `{name}.avg` and `{name}.count` |
+| Exponential histogram | Distribution under the instrument name |
 
-A histogram named `app.request.duration` therefore shows up in the dashboard as two metrics, `app.request.duration.avg` (carrying your `unit`) and `app.request.duration.count`. Search for the base name and you will find neither.
+Search for `app.request.duration` to chart the histogram. The explicit-bucket export also supplies `app.request.duration.avg` and `app.request.duration.count`.
 
 See [OTel Metrics](/client/otel/metrics) for full details on histogram handling and supported types.
 

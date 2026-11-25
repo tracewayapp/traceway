@@ -24,6 +24,12 @@ func (r *dashboardRepository) FindById(tx *sql.Tx, id int) (*models.Dashboard, e
 	)
 }
 
+func (r *dashboardRepository) FindAppliedDashboard(tx *sql.Tx, projectId uuid.UUID, dashboardId int) (*models.Dashboard, error) {
+	return lit.SelectSingleNamed[models.Dashboard](tx,
+		"SELECT "+dashboardColumns+" FROM dashboards WHERE id = :id AND EXISTS (SELECT 1 FROM project_dashboards WHERE dashboard_id = dashboards.id AND project_id = :project)",
+		lit.P{"id": dashboardId, "project": projectId})
+}
+
 func (r *dashboardRepository) FindByOrganization(tx *sql.Tx, organizationId int) ([]*models.Dashboard, error) {
 	return lit.SelectNamed[models.Dashboard](
 		tx,

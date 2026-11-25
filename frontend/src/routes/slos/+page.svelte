@@ -8,10 +8,14 @@
 	import { ErrorDisplay } from '$lib/components/ui/error-display';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import InfoCallout from '$lib/components/traceway/info-callout.svelte';
 	import EmptyState from '$lib/components/traceway/empty-state.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField
+	} from '$lib/components/traceway/filter-bar';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import SloKindBadge from '$lib/components/slos/slo-kind-badge.svelte';
 	import SloStatusBadge from '$lib/components/slos/slo-status-badge.svelte';
@@ -64,14 +68,19 @@
 	const isFrontendProject = $derived(
 		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
-	const kindOptions = $derived([
-		{ value: '', label: 'All kinds' },
-		...(isFrontendProject ? FRONTEND_SLI_KINDS : BACKEND_SLI_KINDS).map((kind) => ({
-			value: kind,
-			label: SLI_KIND_LABELS[kind]
-		}))
+	const filterFields = $derived<FilterField[]>([
+		{
+			kind: 'select',
+			key: 'kind',
+			label: 'SLI kind',
+			options: (isFrontendProject ? FRONTEND_SLI_KINDS : BACKEND_SLI_KINDS).map((kind) => ({
+				value: kind,
+				label: SLI_KIND_LABELS[kind]
+			}))
+		}
 	]);
 	let kindFilter = $state('');
+	const filterValues = $derived({ kind: kindFilter });
 
 	function parseSearchFromUrl(): string {
 		if (!browser) return '';
@@ -119,8 +128,12 @@
 		setSortState(SORT_STORAGE_KEY, newSort);
 	}
 
-	function handleSearch() {
-		updateSearchUrl(true);
+	function handleFilterApply(next: FilterApply) {
+		// The kind is not kept in the URL, so only a new search makes a history entry for Back.
+		const searchChanged = next.search !== searchQuery;
+		searchQuery = next.search;
+		kindFilter = next.values.kind ?? '';
+		if (searchChanged) updateSearchUrl(true);
 	}
 
 	const statusRank: Record<string, number> = { breached: 0, no_data: 1, ok: 2 };
@@ -196,178 +209,186 @@
 		budget is what the target leaves over, and the burn rate says how fast it is being spent.
 	</InfoCallout>
 
-	<SearchBar
-		placeholder="Search SLOs..."
-		bind:value={searchQuery}
-		bind:typeValue={kindFilter}
-		typeOptions={kindOptions}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search SLOs..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
-	/>
-
-	{#if loading}
-		<div class="flex h-48 items-center justify-center">
-			<LoadingCircle size="xlg" />
-		</div>
-	{:else if error}
-		<ErrorDisplay status={400} title="Error" description={error} onRetry={() => loadData(false)} />
-	{:else if slos.length === 0}
-		{#if projectsState.canWriteCurrentProject}
-			<EmptyState
-				message={isFrontendProject
-					? 'No SLOs yet. Define a crash-free sessions target to start tracking its error budget.'
-					: 'No SLOs yet. Define a target for an endpoint, span, task, monitor or metric to start tracking its error budget.'}
-				actionLabel="Create your first SLO"
-				onAction={() => (sheetOpen = true)}
+		noun="SLOs"
+	>
+		{#if loading}
+			<div class="flex h-48 items-center justify-center">
+				<LoadingCircle size="xlg" />
+			</div>
+		{:else if error}
+			<ErrorDisplay
+				status={400}
+				title="Error"
+				description={error}
+				onRetry={() => loadData(false)}
 			/>
+		{:else if slos.length === 0}
+			{#if projectsState.canWriteCurrentProject}
+				<EmptyState
+					message={isFrontendProject
+						? 'No SLOs yet. Define a crash-free sessions target to start tracking its error budget.'
+						: 'No SLOs yet. Define a target for an endpoint, span, task, monitor or metric to start tracking its error budget.'}
+					actionLabel="Create your first SLO"
+					onAction={() => (sheetOpen = true)}
+				/>
+			{:else}
+				<EmptyState message="No SLOs yet." />
+			{/if}
 		{:else}
-			<EmptyState message="No SLOs yet." />
-		{/if}
-	{:else}
-		<TableContainer minWidth="960px" empty={visibleSlos.length === 0}>
-			<Table.Root>
-				{#if visibleSlos.length === 0}
-					<Table.Body>
-						<TableEmptyState colspan={8} message="No SLOs match your search." />
-					</Table.Body>
-				{:else}
-					<Table.Header>
-						<Table.Row>
-							<TracewayTableHeader
-								label="Name"
-								sortField="name"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-							/>
-							<TracewayTableHeader
-								label="SLI"
-								sortField="kind"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[110px]"
-							/>
-							<TracewayTableHeader
-								label="Target"
-								sortField="target"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[90px]"
-							/>
-							<TracewayTableHeader
-								label="Window"
-								sortField="window"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[90px]"
-							/>
-							<TracewayTableHeader
-								label="Current SLI"
-								tooltip="Share of good events over the whole window"
-								sortField="current_sli"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[120px]"
-							/>
-							<TracewayTableHeader
-								label="Budget left"
-								tooltip="Share of the error budget not yet spent; negative once the target is missed"
-								sortField="budget"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[170px]"
-							/>
-							<TracewayTableHeader
-								label="Burn 1h"
-								tooltip="How fast the budget burned over the last hour; 1x spends it exactly over the window"
-								sortField="burn_1h"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[100px]"
-							/>
-							<TracewayTableHeader
-								label="Status"
-								sortField="status"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								align="right"
-								class="w-[120px]"
-							/>
-						</Table.Row>
-					</Table.Header>
-					<Table.Body>
-						{#each visibleSlos as slo (slo.id)}
-							{@const tone = budgetTone(slo.budgetRemaining)}
-							<Table.Row
-								class="cursor-pointer"
-								onclick={createRowClickHandler(resolve(`/slos/${slo.id}`))}
-							>
-								<Table.Cell class="font-medium whitespace-normal">
-									{slo.name}
-									{#if slo.description}
-										<div
-											class="mt-0.5 max-w-[420px] truncate text-xs font-normal text-muted-foreground"
-										>
-											{slo.description}
-										</div>
-									{/if}
-									<div
-										class="mt-0.5 max-w-[420px] truncate font-mono text-xs font-normal text-muted-foreground"
-									>
-										{sliSummary(slo)}
-									</div>
-								</Table.Cell>
-								<Table.Cell>
-									<SloKindBadge kind={slo.sliKind} />
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm tabular-nums">{slo.targetPercent}%</Table.Cell>
-								<Table.Cell class="text-sm text-muted-foreground">{slo.windowDays}d</Table.Cell>
-								<Table.Cell class="font-mono text-sm tabular-nums {toneTextClass(tone)}">
-									{formatSloPercent(slo.currentSli, slo.targetPercent)}
-								</Table.Cell>
-								<Table.Cell>
-									{#if slo.budgetRemaining === null}
-										<span class="text-muted-foreground">—</span>
-									{:else}
-										<div class="flex items-center gap-2">
-											<span
-												class="w-16 shrink-0 font-mono text-sm tabular-nums {toneTextClass(tone)}"
-											>
-												{formatBudgetRemaining(slo.budgetRemaining)}
-											</span>
-											<div class="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-muted">
-												{#if slo.budgetRemaining > 0}
-													<div
-														class="h-full rounded-full {toneBarClass(tone)}"
-														style="width: {Math.max(Math.min(slo.budgetRemaining, 100), 4)}%"
-													></div>
-												{/if}
-											</div>
-										</div>
-									{/if}
-								</Table.Cell>
-								<Table.Cell
-									class="font-mono text-sm tabular-nums {toneTextClass(burnTone(slo.burnRate1h))}"
-								>
-									{formatBurnRate(slo.burnRate1h)}
-								</Table.Cell>
-								<Table.Cell class="text-right">
-									<SloStatusBadge status={slo.status} enabled={slo.enabled} />
-								</Table.Cell>
+			<TableContainer minWidth="960px" empty={visibleSlos.length === 0}>
+				<Table.Root>
+					{#if visibleSlos.length === 0}
+						<Table.Body>
+							<TableEmptyState colspan={8} message="No SLOs match your search." />
+						</Table.Body>
+					{:else}
+						<Table.Header>
+							<Table.Row>
+								<TracewayTableHeader
+									label="Name"
+									sortField="name"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+								/>
+								<TracewayTableHeader
+									label="SLI"
+									sortField="kind"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[110px]"
+								/>
+								<TracewayTableHeader
+									label="Target"
+									sortField="target"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[90px]"
+								/>
+								<TracewayTableHeader
+									label="Window"
+									sortField="window"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[90px]"
+								/>
+								<TracewayTableHeader
+									label="Current SLI"
+									tooltip="Share of good events over the whole window"
+									sortField="current_sli"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[120px]"
+								/>
+								<TracewayTableHeader
+									label="Budget left"
+									tooltip="Share of the error budget not yet spent; negative once the target is missed"
+									sortField="budget"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[170px]"
+								/>
+								<TracewayTableHeader
+									label="Burn 1h"
+									tooltip="How fast the budget burned over the last hour; 1x spends it exactly over the window"
+									sortField="burn_1h"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[100px]"
+								/>
+								<TracewayTableHeader
+									label="Status"
+									sortField="status"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									align="right"
+									class="w-[120px]"
+								/>
 							</Table.Row>
-						{/each}
-					</Table.Body>
-				{/if}
-			</Table.Root>
-		</TableContainer>
-	{/if}
+						</Table.Header>
+						<Table.Body>
+							{#each visibleSlos as slo (slo.id)}
+								{@const tone = budgetTone(slo.budgetRemaining)}
+								<Table.Row
+									class="cursor-pointer"
+									onclick={createRowClickHandler(resolve(`/slos/${slo.id}`))}
+								>
+									<Table.Cell class="font-medium whitespace-normal">
+										{slo.name}
+										{#if slo.description}
+											<div
+												class="mt-0.5 max-w-[420px] truncate text-xs font-normal text-muted-foreground"
+											>
+												{slo.description}
+											</div>
+										{/if}
+										<div
+											class="mt-0.5 max-w-[420px] truncate font-mono text-xs font-normal text-muted-foreground"
+										>
+											{sliSummary(slo)}
+										</div>
+									</Table.Cell>
+									<Table.Cell>
+										<SloKindBadge kind={slo.sliKind} />
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm tabular-nums"
+										>{slo.targetPercent}%</Table.Cell
+									>
+									<Table.Cell class="text-sm text-muted-foreground">{slo.windowDays}d</Table.Cell>
+									<Table.Cell class="font-mono text-sm tabular-nums {toneTextClass(tone)}">
+										{formatSloPercent(slo.currentSli, slo.targetPercent)}
+									</Table.Cell>
+									<Table.Cell>
+										{#if slo.budgetRemaining === null}
+											<span class="text-muted-foreground">—</span>
+										{:else}
+											<div class="flex items-center gap-2">
+												<span
+													class="w-16 shrink-0 font-mono text-sm tabular-nums {toneTextClass(tone)}"
+												>
+													{formatBudgetRemaining(slo.budgetRemaining)}
+												</span>
+												<div class="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-muted">
+													{#if slo.budgetRemaining > 0}
+														<div
+															class="h-full rounded-full {toneBarClass(tone)}"
+															style="width: {Math.max(Math.min(slo.budgetRemaining, 100), 4)}%"
+														></div>
+													{/if}
+												</div>
+											</div>
+										{/if}
+									</Table.Cell>
+									<Table.Cell
+										class="font-mono text-sm tabular-nums {toneTextClass(burnTone(slo.burnRate1h))}"
+									>
+										{formatBurnRate(slo.burnRate1h)}
+									</Table.Cell>
+									<Table.Cell class="text-right">
+										<SloStatusBadge status={slo.status} enabled={slo.enabled} />
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						</Table.Body>
+					{/if}
+				</Table.Root>
+			</TableContainer>
+		{/if}
+	</FilterBar>
 </div>
 
 <SloSheet bind:open={sheetOpen} slo={null} onSaved={() => loadData(false)} />

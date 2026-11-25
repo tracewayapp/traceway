@@ -27,7 +27,7 @@
 
 ---
 
-Traceway is an **OpenTelemetry-native** observability platform. It combines **logs, traces, metrics, session replay/RUM, exceptions, AI tracing, and on-call paging** in one place. Point an OTLP exporter at it and you're in business. No Collector, no glue code, no per-language vendor SDK.
+Traceway is an **OpenTelemetry-native** observability platform. It combines **logs, traces, metrics, real user monitoring (RUM) with session replay, exceptions, AI tracing, and on-call paging** in one place. Point an OTLP exporter at it and you're in business. No Collector, no glue code, no per-language vendor SDK.
 
 **MIT licensed. No BSL. No "open core."** Every feature is in the box. Self-host it for free, or run it on [Traceway Cloud](https://cloud.tracewayapp.com) if you'd rather not babysit infra.
 
@@ -51,6 +51,7 @@ Traceway is an **OpenTelemetry-native** observability platform. It combines **lo
 - **Metrics**: Host, runtime, and custom metrics. Any dimension, any chart, with custom widget groups.
 - **Exceptions**: Stack traces are normalized, given a SHA-256 fingerprint, and grouped into ranked issues. Source-mapped (webpack, esbuild, Vite).
 - **Profiling** _(experimental)_: Flame graphs for CPU, heap, and goroutines with version-to-version diffing and a top-functions table. Ingests native Go pprof and OTLP profiles.
+- **Real User Monitoring**: How fast your site is for real visitors, which release made it slower, and who was affected. Core Web Vitals from every visit, release regression alerts and frontend SLOs. [More below](#real-user-monitoring).
 - **Session Replay**: Watch what the user did right before the error. Available for web (any JS framework) and Flutter.
 - **AI Observability**: LLM cost, tokens, latency, and full conversations across providers (OpenRouter and any OTel-compatible AI gateway). Calls group into conversations via `gen_ai.conversation.id`, tool calls are parsed from completions and rendered in the chat view, and multi-language content flagging catches conversations containing terms you care about. Per-customer analytics (conversation length, cost per conversation) key on `user.id`: set it to a stable customer identifier such as your account or tenant id, the same value across all of that user's conversations, never a session id.
 - **On-Call & Paging**: Rotation schedules with layers and overrides, escalation policies, and pages that escalate until someone acknowledges. Delivered via email, Slack, Pushover, Telegram, or SMS, with one-click acknowledge links that need no login.
@@ -69,7 +70,7 @@ npx skills add tracewayapp/skills --all
 
 One command installs all four skills into Claude Code, Cursor, Codex, or any agent that reads `SKILL.md`:
 
-- **`/traceway-setup`** reads your repo and wires it up: OTel for backends, Traceway SDKs for web and mobile. Then it verifies data actually arrives.
+- **`/traceway-setup`** reads your repo and wires it up: OTel for backends, Traceway SDKs for web and mobile. Then it verifies data actually arrives. It also runs on one part of a codebase: `/traceway-setup track ai use` finds backend LLM calls and instruments them as OpenTelemetry GenAI spans. AI Traces shows token usage, estimated cost and, when enabled, conversation content.
 - **`/traceway`** installs the `traceway` CLI and uses it to query exceptions, logs, endpoints, and metrics, from bug report to root cause.
 - **`/traceway-learn`** is the full guide to the product: issues, endpoints, traces, logs, metrics, monitors, status pages, alerts, on-call schedules and paging, and settings. Ask it how anything in Traceway works.
 - **`/traceway-write`** teaches an agent to make routine on-call changes safely. It does nothing until you opt in to agent write access (below).
@@ -93,6 +94,29 @@ The symbolicator is pure Go and built to keep up with ingest. Every debug artifa
 The same engine ships as a standalone [OpenTelemetry Collector processor](./backend/app/symbolicator/otelprocessor), drop-in compatible with Honeycomb's `source_map_symbolicator`: same component type, same attribute contract, same config keys. Use it in your own pipeline, with or without Traceway behind it.
 
 Upload source maps from CI with `npx traceway-sourcemaps --directory ./dist`; dSYMs and R8 mappings post to the same endpoint. Benchmarks live in [`benchmarks/`](./benchmarks); run them on your fork. [Learn more →](https://tracewayapp.com/product/symbolication)
+
+## Real User Monitoring
+
+Real User Monitoring (RUM) shows how your site works for the people using it: how fast pages load and react, which errors happen, and what a user did right before something broke. Add the browser SDK to a React, Vue, Svelte, jQuery or plain JavaScript app and you get:
+
+- **A Web Performance dashboard**, set up when you create the project. It shows the Core Web Vitals (how long the main content takes to appear, how fast the page reacts to a click, how much the layout jumps around), split by page, release, browser, device and country.
+- **Release regression alerts and frontend SLOs.** Get told once when a new release is slower than the one before it, and set a target such as "95% of clicks respond within 200 ms".
+- **Errors with their history.** Every error arrives with up to 10 minutes of the clicks, requests and console output before it, and a 30 second replay of what the user saw.
+- **Captures and recording triggers.** When one customer reports a problem, ask their browser for its recent history. Or describe a situation, such as three failed requests within a minute, and have it recorded when it happens.
+- **Remote settings.** Change what browsers collect from the dashboard, for everyone or for one release, without shipping a build.
+
+<p align="center">
+  <img alt="Web Performance dashboard with Core Web Vitals from real browser visits" src="./website/public/images/rum-dashboard.png" width="900" />
+</p>
+
+Two things make it different from RUM tools that upload everything and then sample to keep the bill down:
+
+1. **Every visit is measured.** Each browser adds up its own page timings and sends one small summary, so nobody is left out of the numbers. What is stored grows with your pages and releases, not with your visitors.
+2. **Details stay in the browser until they are needed.** The last 10 minutes of activity and the page recording are kept in a ring buffer on the device. They are uploaded when an error happens, when a trigger matches, or when you start a capture. A visit with no problems never uploads them.
+
+The browser SDK is OpenTelemetry: it sends standard OTLP logs, traces and metrics and gets its settings over OpAMP, so a click in the browser and the backend work behind it show up as one trace. RUM needs the 2.x browser SDK: `npm install @tracewayapp/frontend`.
+
+[RUM guide](https://docs.tracewayapp.com/learn/rum) · [Best practices](https://docs.tracewayapp.com/learn/rum-best-practices) · [Product page](https://tracewayapp.com/product/rum)
 
 ## Why Traceway
 
@@ -219,7 +243,11 @@ A full-stack framework has two halves and two Traceway projects. Next.js and Rem
 
 <table width="100%">
 <tr>
-<td width="50%" valign="top"><b>Logs: trace-linked search</b><br><img src="./.github/screenshots/logs.png" alt="Logs" /></td>
+<td width="50%" valign="top"><b>Logs: chart any attribute, save any search</b><br><img src="./.github/screenshots/logs.png" alt="Logs filtered to payments, with payment latency percentiles charted over time and a saved filter applied" /></td>
+<td width="50%" valign="top"><b>Spans: search and chart latency</b><br><img src="./.github/screenshots/spans-explorer.png" alt="Span explorer with P50, P95 and P99 duration lines that step up after a deploy" /></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Spans: latency distribution</b><br><img src="./.github/screenshots/spans-latency.png" alt="Durations of a cache lookup on a log scale, with cache hits and misses as two humps" /></td>
 <td width="50%" valign="top"><b>Span waterfall</b><br><img src="./.github/screenshots/span-waterfall.png" alt="Spans" /></td>
 </tr>
 <tr>
@@ -298,6 +326,7 @@ Full documentation at **[docs.tracewayapp.com](https://docs.tracewayapp.com)**:
 - [**Client SDKs**](https://docs.tracewayapp.com/client): OpenTelemetry, Go, Node.js, Python, and more
 - [**Self-Hosting**](https://docs.tracewayapp.com/server): Docker Compose and production deployment
 - [**Concepts**](https://docs.tracewayapp.com/learn): How tracing, exception fingerprinting, metrics, and alerts work
+- [**Real User Monitoring**](https://docs.tracewayapp.com/learn/rum): Page speed, sessions, replay and errors from real visitors, plus [best practices](https://docs.tracewayapp.com/learn/rum-best-practices) for setting up a frontend app
 - [**Embedded Mode**](https://docs.tracewayapp.com/learn/embedded-mode): Run Traceway inside your Go app
 - [**Kubernetes**](https://docs.tracewayapp.com/learn/kubernetes): Instrument a whole cluster with the manifests in [`examples/kubernetes`](./examples/kubernetes)
 - [**Organization Overview**](https://docs.tracewayapp.com/learn/organization-overview): Servers, issues, monitors, and on-call pages across every project, one sidebar click apart

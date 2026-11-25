@@ -9,7 +9,18 @@
 	import * as Alert from '$lib/components/ui/alert';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
-	import { projectsState, isFrontendFramework } from '$lib/state/projects.svelte';
+	import {
+		projectsState,
+		isBrowserFramework,
+		isFrontendFramework
+	} from '$lib/state/projects.svelte';
+	import {
+		BROWSER_METRIC_NAMES,
+		MOBILE_METRIC_NAMES,
+		MOBILE_METRIC_PRESETS,
+		BROWSER_METRIC_PRESETS,
+		type BrowserMetricPreset
+	} from './browser-metric-presets';
 	import { ruleTypeOptions } from './rule-types';
 	import type { NotificationChannelConfig, NotificationRuleConfig } from '$lib/types/notifications';
 	import { BURN_RATE_PRESETS } from '$lib/utils/slo-math';
@@ -77,6 +88,19 @@
 	let operator = $state('gt');
 	let thresholdValue = $state(90);
 	let aggregation = $state('avg');
+	let metricMinCount = $state('');
+	let goodThreshold = $state('');
+	let regressionPercent = $state(20);
+	let regressionSplit = $state('');
+	const regressionSplits = [
+		{ value: '', label: 'The whole release (adjusted for device mix)' },
+		{ value: 'device.form_factor', label: 'Form factor' },
+		{ value: 'os.name', label: 'Operating system' },
+		{ value: 'browser.name', label: 'Browser' },
+		{ value: 'device.class', label: 'Device class' },
+		{ value: 'country', label: 'Country' },
+		{ value: 'network.type', label: 'Network type' }
+	];
 	let metricTags = $state('');
 	let metricGroupBy = $state('');
 	let dataType = $state('any');
@@ -163,12 +187,38 @@
 		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
 
-	const frontendRuleTypes = new Set(['new_error', 'slo_burn_rate', 'slo_budget_consumed']);
+	const isBrowserProject = $derived(
+		!!projectsState.currentProject && isBrowserFramework(projectsState.currentProject.framework)
+	);
+
+	// Client projects have metrics too: the performance their SDKs measure, stored as distributions.
+	const frontendRuleTypes = new Set([
+		'new_error',
+		'slo_burn_rate',
+		'slo_budget_consumed',
+		'metric_threshold',
+		'metric_release_regression'
+	]);
 	const visibleRuleTypes = $derived(
 		isFrontendProject
 			? ruleTypeOptions.filter((o) => frontendRuleTypes.has(o.value))
 			: ruleTypeOptions
 	);
+	const metricPresets = $derived(isBrowserProject ? BROWSER_METRIC_PRESETS : MOBILE_METRIC_PRESETS);
+	const metricNames = $derived(isBrowserProject ? BROWSER_METRIC_NAMES : MOBILE_METRIC_NAMES);
+
+	function applyBrowserMetricPreset(preset: BrowserMetricPreset) {
+		metricName = preset.metricName;
+		aggregation = preset.aggregation;
+		operator = preset.operator;
+		thresholdValue = preset.thresholdValue;
+		lookbackMinutes = preset.lookbackMinutes;
+		metricGroupBy = preset.groupBy;
+		metricTags = '';
+		metricMinCount = '';
+		goodThreshold = '';
+		if (!name.trim()) name = preset.ruleName;
+	}
 
 	$effect(() => {
 		if (open && !visibleRuleTypes.some((o) => o.value === ruleType)) {
@@ -212,6 +262,8 @@
 			'Fires when the Apdex satisfaction score drops below the threshold within the lookback window.',
 		metric_threshold:
 			'Fires when an aggregated metric value violates the configured comparison against the threshold within the lookback window.',
+		metric_release_regression:
+			'Fires once per release when the newest release is worse than the one before it by more than the allowed percentage, once it has enough observations to judge.',
 		no_data:
 			'Fires when no telemetry of the selected kind (endpoints, exceptions, metrics or tasks) has been received for the configured number of minutes.',
 		task_duration_threshold:
@@ -235,10 +287,23 @@
 		{ value: 'max', label: 'Maximum' },
 		{ value: 'min', label: 'Minimum' },
 		{ value: 'sum', label: 'Sum' },
+		{ value: 'count', label: 'Count' },
+		{ value: 'p50', label: 'P50' },
+		{ value: 'p75', label: 'P75' },
+		{ value: 'p90', label: 'P90' },
 		{ value: 'p95', label: 'P95' },
 		{ value: 'p99', label: 'P99' },
+		{ value: 'good_ratio', label: 'Good ratio (%)' },
 		{ value: 'last', label: 'Last' }
 	];
+	const regressionAggregations = aggregationOptions.filter(
+		(o) => o.value === 'avg' || /^p\d+$/.test(o.value)
+	);
+
+	function optionalNumber(value: string | number): number | undefined {
+		const n = typeof value === 'number' ? value : parseFloat(value);
+		return Number.isFinite(n) && n > 0 ? n : undefined;
+	}
 
 	const dataTypeOptions = [
 		{ value: 'any', label: 'Any' },
@@ -267,6 +332,7 @@
 		aggregation = 'avg';
 		metricTags = '';
 		metricGroupBy = '';
+		regressionSplit = '';
 		dataType = 'any';
 		silenceMinutes = 10;
 		thresholdCount = 100;
@@ -319,6 +385,16 @@
 					.join(', ');
 				metricGroupBy = (cfg.groupBy ?? []).join(', ');
 				lookbackMinutes = cfg.lookbackMinutes ?? 5;
+				metricMinCount = cfg.minCount ? String(cfg.minCount) : '';
+				goodThreshold = cfg.goodThreshold ? String(cfg.goodThreshold) : '';
+				break;
+			case 'metric_release_regression':
+				metricName = cfg.metricName ?? '';
+				aggregation = cfg.aggregation ?? 'p75';
+				regressionPercent = cfg.thresholdPercent ?? 20;
+				regressionSplit = (cfg.groupBy ?? [])[0] ?? '';
+				metricMinCount = cfg.minCount ? String(cfg.minCount) : '';
+				lookbackMinutes = cfg.lookbackMinutes ?? 180;
 				break;
 			case 'no_data':
 				dataType = cfg.dataType ?? 'any';
@@ -412,7 +488,18 @@
 					groupBy: metricGroupBy
 						.split(',')
 						.map((k) => k.trim())
-						.filter(Boolean)
+						.filter(Boolean),
+					minCount: optionalNumber(metricMinCount),
+					goodThreshold: aggregation === 'good_ratio' ? optionalNumber(goodThreshold) : undefined
+				};
+			case 'metric_release_regression':
+				return {
+					metricName,
+					aggregation,
+					thresholdPercent: regressionPercent,
+					minCount: optionalNumber(metricMinCount),
+					lookbackMinutes,
+					groupBy: regressionSplit ? [regressionSplit] : undefined
 				};
 			case 'no_data':
 				return { dataType, silenceMinutes };
@@ -556,7 +643,15 @@
 
 			<div class="space-y-2">
 				<Label for="rule-type">Rule Type</Label>
-				<Select.Root type="single" bind:value={ruleType}>
+				<Select.Root
+					type="single"
+					bind:value={ruleType}
+					onValueChange={(type) => {
+						// Releases are compared the way web vitals are read. A new rule would otherwise
+						// inherit the average the other rule types start from.
+						if (type === 'metric_release_regression' && !rule) aggregation = 'p75';
+					}}
+				>
 					<Select.Trigger class="w-full">
 						{ruleTypeOptions.find((o) => o.value === ruleType)?.label || 'Select type'}
 					</Select.Trigger>
@@ -634,10 +729,120 @@
 						<Label for="cfg-min-req-a">Min Requests</Label>
 						<Input id="cfg-min-req-a" type="number" bind:value={minRequests} min="1" />
 					</div>
+				{:else if ruleType === 'metric_release_regression'}
+					<div class="space-y-2">
+						<Label for="cfg-regression-metric">Metric Name</Label>
+						<Input
+							id="cfg-regression-metric"
+							bind:value={metricName}
+							placeholder={isFrontendProject ? metricNames[0] : 'http.server.request.duration'}
+							list={isFrontendProject ? 'cfg-client-metrics' : undefined}
+						/>
+						{#if isFrontendProject}
+							<datalist id="cfg-client-metrics">
+								{#each metricNames as metric (metric)}
+									<option value={metric}></option>
+								{/each}
+							</datalist>
+						{/if}
+						<p class="text-xs text-muted-foreground">
+							A distribution metric that carries the release as service.version.
+						</p>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-agg">Compared By</Label>
+						<Select.Root type="single" bind:value={aggregation}>
+							<Select.Trigger class="w-full">
+								{regressionAggregations.find((o) => o.value === aggregation)?.label || aggregation}
+							</Select.Trigger>
+							<Select.Content>
+								{#each regressionAggregations as option (option.value)}
+									<Select.Item value={option.value}>{option.label}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-split">Compare Within</Label>
+						<Select.Root type="single" bind:value={regressionSplit}>
+							<Select.Trigger id="cfg-regression-split" class="w-full">
+								{regressionSplits.find((o) => o.value === regressionSplit)?.label ||
+									regressionSplit}
+							</Select.Trigger>
+							<Select.Content>
+								{#each regressionSplits as option (option.value)}
+									<Select.Item value={option.value}>{option.label}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+						<p class="text-xs text-muted-foreground">
+							{regressionSplit
+								? 'Each value is compared with the same value of the earlier release and notifies on its own.'
+								: "The earlier release is weighted to the new release's mix of devices and operating systems."}
+							A percentile must be worse by more than chance explains.
+						</p>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-pct">Allowed Regression (%)</Label>
+						<Input id="cfg-regression-pct" type="number" bind:value={regressionPercent} min="1" />
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-min">Observations Before Judging</Label>
+						<Input
+							id="cfg-regression-min"
+							type="number"
+							bind:value={metricMinCount}
+							min="1"
+							placeholder="100"
+						/>
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-regression-lookback">Lookback (minutes)</Label>
+						<Input
+							id="cfg-regression-lookback"
+							type="number"
+							bind:value={lookbackMinutes}
+							min="60"
+							step="60"
+						/>
+					</div>
 				{:else if ruleType === 'metric_threshold'}
+					{#if isFrontendProject}
+						<div class="space-y-2">
+							<Label>Performance presets</Label>
+							<div class="flex flex-wrap gap-2">
+								{#each metricPresets as preset (preset.id)}
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onclick={() => applyBrowserMetricPreset(preset)}
+									>
+										{preset.label}
+									</Button>
+								{/each}
+							</div>
+							<p class="text-xs text-muted-foreground">
+								Performance metrics are aggregated on the device and stored as distributions, so a
+								percentile here is the one the dashboards show.
+							</p>
+						</div>
+					{/if}
 					<div class="space-y-2">
 						<Label for="cfg-metric">Metric Name</Label>
-						<Input id="cfg-metric" bind:value={metricName} placeholder="cpu.used_pcnt" />
+						<Input
+							id="cfg-metric"
+							bind:value={metricName}
+							placeholder={isFrontendProject ? metricNames[0] : 'cpu.used_pcnt'}
+							list={isFrontendProject ? 'cfg-browser-metrics' : undefined}
+						/>
+						{#if isFrontendProject}
+							<datalist id="cfg-browser-metrics">
+								{#each metricNames as metric (metric)}
+									<option value={metric}></option>
+								{/each}
+							</datalist>
+						{/if}
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-operator">Operator</Label>
@@ -669,9 +874,38 @@
 							</Select.Content>
 						</Select.Root>
 					</div>
+					{#if aggregation === 'good_ratio'}
+						<div class="space-y-2">
+							<Label for="cfg-good-threshold">Good At Or Under (optional)</Label>
+							<Input
+								id="cfg-good-threshold"
+								type="number"
+								bind:value={goodThreshold}
+								placeholder="The metric's own limit, e.g. 2500 for LCP"
+							/>
+							<p class="text-xs text-muted-foreground">
+								The threshold above is a percentage: 75 means three quarters of the observations
+								were good.
+							</p>
+						</div>
+					{/if}
 					<div class="space-y-2">
 						<Label for="cfg-lookback-m">Lookback (minutes)</Label>
 						<Input id="cfg-lookback-m" type="number" bind:value={lookbackMinutes} min="1" />
+					</div>
+					<div class="space-y-2">
+						<Label for="cfg-min-count">Minimum Observations (optional)</Label>
+						<Input
+							id="cfg-min-count"
+							type="number"
+							bind:value={metricMinCount}
+							min="1"
+							placeholder="10"
+						/>
+						<p class="text-xs text-muted-foreground">
+							For distribution metrics: a series with fewer observations in the window is not
+							judged.
+						</p>
 					</div>
 					<div class="space-y-2">
 						<Label for="cfg-metric-tags">Tag Filters (optional, comma-separated)</Label>
@@ -685,7 +919,8 @@
 						<Label for="cfg-metric-group-by">Group By Tags (optional, comma-separated)</Label>
 						<Input id="cfg-metric-group-by" bind:value={metricGroupBy} placeholder="host.name" />
 						<p class="text-xs text-muted-foreground">
-							Evaluates every series separately and names the breaching one in the alert.
+							Evaluates every series separately, names the breaching one in the alert, and sends a
+							recovery notice (or resolves its page) once it is back within the threshold.
 						</p>
 					</div>
 				{:else if ruleType === 'no_data'}

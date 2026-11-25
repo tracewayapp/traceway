@@ -2,11 +2,7 @@
 
 Integrate Traceway into your Svelte or SvelteKit application with the `@tracewayapp/svelte` package.
 
-import { Callout } from "nextra/components";
-
-<Callout type="info">
-  This guide installs the stable 1.x SDK. The 2.x SDK, which adds [remote SDK config](/learn/remote-config) and on-device buffering, is in beta: install `@tracewayapp/svelte@beta` and follow the [JS SDK reference](/client/js-sdk), where the 1.x pages are under **SDK 1.x (stable)**.
-</Callout>
+Upgrading from 1.x? See the [migration guide](/client/js-sdk/migration).
 
 ## Installation
 
@@ -16,7 +12,9 @@ npm install @tracewayapp/svelte
 
 ## Setup
 
-Call `setupTraceway` in your root layout. Do not wrap it in an `if (browser)` guard. `setupTraceway` is what puts the capture functions into Svelte's context, so if it is skipped during SSR, every child component that calls `getTraceway()` throws and the page returns a 500. The call is safe on the server: the rrweb recorder and the fetch/XHR instrumentation only start when `window` exists. Session recording is on by default, so the last ~30s of DOM events ship with every captured exception.
+Call `setupTraceway` in your root layout. Do not wrap it in an `if (browser)` guard. `setupTraceway` is what puts the capture functions into Svelte's context, so if it is skipped during SSR, every child component that calls `getTraceway()` throws and the page returns a 500. The call is safe on the server: without `window` the SDK never starts, so it installs no instrumentation, opens no session and sends nothing, and the capture functions do nothing there. Errors thrown on the server are not reported by this package.
+
+In the browser, session replay is on by default and buffered on the device: a captured error uploads a 30-second replay clip and up to 10 minutes of breadcrumbs (console, network, navigation, clicks). Set `recordAllSessions: true` to stream every session instead.
 
 ```svelte
 <!-- src/routes/+layout.svelte -->
@@ -73,6 +71,8 @@ Use `getTraceway` in child components:
 <slot />
 ```
 
+`options` takes every option of the browser SDK. The most used ones are listed under [SDK Options](/client/svelte/context#sdk-options), the full list under [Initialization](/client/js-sdk/initialization#options-reference).
+
 ## Test Your Integration
 
 ```svelte
@@ -93,9 +93,11 @@ Click the button and check your Traceway dashboard to verify the error appears.
 
 ## Distributed Tracing
 
-The 1.x SDK adds a `traceway-trace-id` header to same-origin `fetch` and `XMLHttpRequest` calls, but Traceway no longer uses it, so 1.x does not link browser errors to backend requests. Exceptions still carry their replay clip. To see a browser request and the backend work it caused in one trace, use the [2.x SDK (beta)](/client/js-sdk/distributed-tracing): it sends the W3C `traceparent` header, which a backend instrumented with OpenTelemetry picks up with no extra middleware. See [Distributed Tracing (SDK 1.x)](/client/js-sdk/v1/distributed-tracing) for what 1.x sends and which old setup code can go.
+The SDK records `fetch` and `XMLHttpRequest` calls as CLIENT spans and adds the W3C `traceparent` header to same-origin requests. A backend instrumented with OpenTelemetry picks it up with no extra middleware, so a browser request and the backend work it caused show up as one trace. For an API on another origin, list it in `propagateTraceHeaderCorsUrls`. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
 ## Next Steps
 
-- [Context Setup](/client/svelte/context) - Configuration and advanced usage
-- [Distributed Tracing](/client/js-sdk/v1/distributed-tracing) - Frontend ↔ backend correlation
+- [Context Setup](/client/svelte/context) - Configuration, route names, custom attributes, SvelteKit error handling
+- [Initialization](/client/js-sdk/initialization) - Every SDK option
+- [Session Replay](/client/js-sdk/session-replay) - What is recorded and when it is uploaded
+- [Distributed Tracing](/client/js-sdk/distributed-tracing) - Frontend ↔ backend correlation

@@ -32,6 +32,8 @@ func sanitizeForDB(s string) string {
 // recorded here at enqueue time (the durable promise) so a rule cannot
 // re-fire while the outbox is still retrying.
 func dispatch(ctx context.Context, rule *models.NotificationRuleWithChannel, msg Message) bool {
+	msg = prepareRuleMessage(rule, msg)
+
 	channel, dbErr := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (*models.NotificationChannel, error) {
 		return transactional.NotificationChannelRepository.FindById(tx, rule.ChannelId)
 	})
@@ -39,14 +41,6 @@ func dispatch(ctx context.Context, rule *models.NotificationRuleWithChannel, msg
 		recordFiredNotification(rule, msg, "failed", "failed to load channel")
 		return false
 	}
-
-	msg.RuleType = rule.RuleType
-	msg.RuleName = rule.Name
-	// The rule's severity grades the alert, not the notice that closes it.
-	if rule.Severity != "" && !msg.Recovered {
-		msg.Severity = Severity(rule.Severity)
-	}
-	msg.URL = dashboardURL(msg.URL)
 
 	// Escalation channels do not send anything themselves: they open (or
 	// dedup into) an on-call page, and the escalator + outbox do all
@@ -71,19 +65,8 @@ func dispatch(ctx context.Context, rule *models.NotificationRuleWithChannel, msg
 		return true
 	}
 
-	ruleId := rule.Id
-	projectId := rule.ProjectId
 	_, err := db.ExecuteTransactionContext(ctx, func(tx *sql.Tx) (int, error) {
-		return outbox.Enqueue(tx, outbox.Delivery{
-			Kind:        models.OutboxKindRule,
-			AdapterType: channel.ChannelType,
-			// Snapshot: later channel edits do not affect queued sends.
-			AdapterConfig: json.RawMessage(channel.Config),
-			Message:       msg,
-			RuleId:        &ruleId,
-			ProjectId:     &projectId,
-			ChannelName:   channel.Name,
-		})
+		return enqueueRuleMessage(tx, rule, channel, msg)
 	})
 	if err != nil {
 		// No outbox row exists, so the terminal hook can never record this
@@ -101,28 +84,53 @@ func dispatch(ctx context.Context, rule *models.NotificationRuleWithChannel, msg
 	return true
 }
 
-func recordFiredNotification(rule *models.NotificationRuleWithChannel, msg Message, status string, errorMsg string) {
-	go func() {
-		defer traceway.Recover()
+func prepareRuleMessage(rule *models.NotificationRuleWithChannel, msg Message) Message {
+	msg.RuleType = rule.RuleType
+	msg.RuleName = rule.Name
+	// The rule's severity grades the alert, not the notice that closes it.
+	if rule.Severity != "" && !msg.Recovered {
+		msg.Severity = Severity(rule.Severity)
+	}
+	msg.URL = dashboardURL(msg.URL)
+	return msg
+}
 
-		err := telemetry.FiredNotificationRepository.Insert(context.Background(), telemetry.FiredNotification{
-			ProjectId:   rule.ProjectId,
-			RuleId:      rule.Id,
-			RuleType:    rule.RuleType,
-			RuleName:    rule.Name,
-			ChannelType: rule.ChannelType,
-			ChannelName: rule.ChannelName,
-			Severity:    string(msg.Severity),
-			Subject:     sanitizeForDB(msg.Subject),
-			Body:        sanitizeForDB(msg.Body),
-			Status:      status,
-			ErrorMsg:    sanitizeForDB(errorMsg),
-			Endpoint:    msg.Endpoint,
-			URL:         msg.URL,
-			FiredAt:     time.Now().UTC(),
-		})
-		if err != nil {
-			traceway.CaptureException(fmt.Errorf("failed to record fired notification to ClickHouse: %w", err))
-		}
-	}()
+func enqueueRuleMessage(tx *sql.Tx, rule *models.NotificationRuleWithChannel, channel *models.NotificationChannel, msg Message) (int, error) {
+	return outbox.Enqueue(tx, outbox.Delivery{
+		Kind:        models.OutboxKindRule,
+		AdapterType: channel.ChannelType,
+		// Snapshot: later channel edits do not affect queued sends.
+		AdapterConfig: json.RawMessage(channel.Config),
+		Message:       msg,
+		RuleId:        &rule.Id,
+		ProjectId:     &rule.ProjectId,
+		ChannelName:   channel.Name,
+	})
+}
+
+func recordFiredNotification(rule *models.NotificationRuleWithChannel, msg Message, status string, errorMsg string) {
+	go writeFiredNotification(rule, msg, status, errorMsg)
+}
+
+func writeFiredNotification(rule *models.NotificationRuleWithChannel, msg Message, status, errorMsg string) {
+	defer traceway.Recover()
+	err := telemetry.FiredNotificationRepository.Insert(context.Background(), telemetry.FiredNotification{
+		ProjectId:   rule.ProjectId,
+		RuleId:      rule.Id,
+		RuleType:    rule.RuleType,
+		RuleName:    rule.Name,
+		ChannelType: rule.ChannelType,
+		ChannelName: rule.ChannelName,
+		Severity:    string(msg.Severity),
+		Subject:     sanitizeForDB(msg.Subject),
+		Body:        sanitizeForDB(msg.Body),
+		Status:      status,
+		ErrorMsg:    sanitizeForDB(errorMsg),
+		Endpoint:    msg.Endpoint,
+		URL:         msg.URL,
+		FiredAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		traceway.CaptureException(fmt.Errorf("failed to record fired notification to ClickHouse: %w", err))
+	}
 }

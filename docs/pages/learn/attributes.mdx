@@ -26,27 +26,9 @@ This means you can attach structured data to any trace or issue by serializing i
 
 ## Scope Levels
 
-### Global Attributes
+OTel resource attributes describe the emitting service or device. Span attributes describe one operation. Set a request-specific value such as `user.id` on the span that needs it. Child spans carry a reference to their parent and have their own attribute maps.
 
-Set once at application startup. Applied to every trace and issue your application produces.
-
-### Per-Request Attributes
-
-Set during request handling via the SDK. Applied only to the current trace and any issues captured during that request.
-
-### Inheritance
-
-Per-request attributes start as a clone of the global attributes. Request-level values override global values if they share the same key.
-
-```
-Global Attributes          Request Attributes         Final Tags
-─────────────────          ──────────────────         ──────────
-environment: prod     +    user_id: 123         =    environment: prod
-region: us-east-1          tenant: acme               region: us-east-1
-service: user-api                                     service: user-api
-                                                      user_id: 123
-                                                      tenant: acme
-```
+The [browser SDK](/client/js-sdk/initialization) also supports application-wide attributes through `setAttribute` and `setAttributes`. To add context to one captured error, pass it as the attributes argument to `captureExceptionWithAttributes`.
 
 ## Where Attributes Appear
 

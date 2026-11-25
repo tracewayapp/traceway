@@ -45,9 +45,9 @@ If you send a `severityText`, it wins and is uppercased exactly as given, so `"w
 
 OTel Logs SDKs read the active span from the context you pass into `Emit` / `logger.log` / equivalent. When a log is emitted inside a request handler, background job, or child span, its `trace_id` and `span_id` are populated automatically. There is no plumbing on your side.
 
-In the Traceway dashboard, the Endpoint / Task / AI Trace detail page carries a **Logs** card. It has a **This Trace** tab listing the logs whose `trace_id` matches this run, and, when the run is part of a distributed trace, an **All Distributed Traces** tab that pulls in logs from the linked runs in other services. Both tabs search a ±1 hour window around the run and show up to 100 rows.
+The trace detail page shows logs with the same OTLP trace ID, including logs from non-root spans. The Logs panel searches one hour on either side of the trace timestamp and displays up to 100 records per page.
 
-The match is on the OTel `trace_id`, and only a **root** span's run is keyed by it. A run promoted from a non-root span, which is what a cross-service inbound hop produces, is keyed by its span id instead. Its Logs card comes up empty even though the logs were recorded correctly. Find those logs on the **Logs** page: set the search dropdown to **Trace ID** first, then paste the trace id in. The dropdown defaults to **Message**, which searches the log body and returns nothing for a trace id.
+To find those records directly on **Logs**, select **Trace ID** in the search dropdown and enter the trace ID.
 
 ## Example: Node.js
 

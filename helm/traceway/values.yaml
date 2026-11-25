@@ -94,7 +94,7 @@ app:
   apiOnly: ""
   # Optional. Cap on the decompressed /api/report body in megabytes. Default 64.
   reportMaxBodyMB: ""
-  # Optional. Telemetry ingest requests processed at once. Default is 2x CPU
+  # Optional. Telemetry ingest requests processed at once. Default is 4x CPU
   # count with a floor of 4. Each admitted request can hold a decoded body, so
   # on a memory-capped container size this from the memory limit instead.
   ingestMaxConcurrent: ""

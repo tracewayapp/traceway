@@ -114,7 +114,7 @@ use Keepsuit\LaravelOpenTelemetry\Facades\Tracer;
 use OpenTelemetry\API\Trace\SpanKind;
 
 $span = Tracer::newSpan('cron.cleanup')
-    ->setSpanKind(SpanKind::KIND_CONSUMER)   // required when this is the root span
+    ->setSpanKind(SpanKind::KIND_CONSUMER)   // list the job under Tasks
     ->start();
 $scope = $span->activate();
 
@@ -130,7 +130,7 @@ try {
 
 The context field name is configurable via `opentelemetry.logs.trace_id_field` (default: `trace_id`).
 
-> **Set the span kind when the span is a trace root.** `Tracer::newSpan()` produces an `INTERNAL` span, and Traceway discards a root `INTERNAL` span that has no HTTP attributes and no `console.command`. The span, its children, and the trace linkage for every log emitted inside it are all lost, silently. `setSpanKind(SpanKind::KIND_CONSUMER)` makes it a Task instead. Spans started inside an existing request, job or command are children, so they need nothing extra. See [Tasks](/client/otel/laravel/tasks#scheduled-closures-and-other-background-work).
+> A log emitted within an active span keeps that span’s trace ID, including for INTERNAL root spans. Set `SpanKind::KIND_CONSUMER` when the run should also appear in **Tasks**.
 
 ## Logger Facade (Alternative)
 

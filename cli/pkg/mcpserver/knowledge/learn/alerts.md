@@ -8,7 +8,7 @@ Alerts are how Traceway tells people that something happened. They live under **
 | **Rules** | When to notify. Each rule watches one condition and sends to exactly one channel. A channel can serve many rules. |
 | **History** | Every notification that was sent, with its status |
 
-Rules and channels belong to a project and only see that project's data. Channels have their own On/Off switch, and a rule only runs while its channel is on. Changing them needs write access on the project. Browser and mobile projects only offer the New Issue rule type and the two SLO rule types.
+Rules and channels belong to a project and only see that project's data. Channels have their own On/Off switch, and a rule only runs while its channel is on. Changing them needs write access on the project. Browser and mobile projects offer New Issue, Metric Threshold, Metric Release Regression and the two SLO rule types. See [rum.md](rum.md) for release/device-mix comparisons, effective sample-size gates, delayed client uploads and frontend objectives.
 
 ## Channels
 
@@ -55,7 +55,7 @@ The numbers in brackets are what the evaluator uses when a setting is missing. T
 | **Impact Score Critical / High / Medium** | An endpoint newly enters the level (0.75, 0.50, 0.25) over the trailing 24 hours. Fires once on entry, again only after it leaves and comes back. The first run after a restart or edit only records the baseline. | Min requests 50 | Critical / Warning / Info |
 | **Task Duration** | A task's P95 duration exceeds a threshold | Task or `*`, threshold 30000 ms, lookback 30 min | Warning |
 | **Task Failure Rate** | The share of task runs with an exception on their own span exceeds a percentage | Task or `*`, threshold 10%, lookback 60 min, min executions 5 | Warning, Critical at 2x |
-| **Metric Threshold** | An aggregated metric violates a comparison. No data in the window, no alert. | Metric, aggregation (avg, max, min, sum, p95, p99, last), operator (gt, gte, lt, lte, eq), value 90, lookback 5 min | Warning, Critical when 20% past the value |
+| **Metric Threshold** | An aggregated metric violates a comparison. No data in the window, no alert. | Metric, aggregation (avg, max, min, sum, p95, p99, last), operator (gt, gte, lt, lte, eq), value 90, lookback 5 min | Warning, Critical when 20% past the value, recovery Info for a grouped series |
 | **No Data** | No telemetry of a kind for N minutes. `any` fires only when all four kinds are silent. | Data type (any, endpoints, exceptions, metrics, tasks), 10 min | Critical |
 | **AI Trace Cost** | One AI call costs at least the threshold | Trace name or `*`, $0.50 | Warning, Critical at 3x |
 | **AI Conversation Cost** | One conversation's cost over 24 hours reaches the threshold | $5 | Warning, Critical at 3x |
@@ -65,6 +65,8 @@ The numbers in brackets are what the evaluator uses when a setting is missing. T
 | **SLO Budget Consumed** | An SLO has used at least a share of its window's error budget, plus a recovery notice when the budget recovers. Fires on the transition only. | SLO, consumed 80% | Warning, Critical at 100%, recovery Info |
 
 Metric Threshold supports a `tags` filter and `groupBy` dimensions. Without grouping, aggregation spans the matching series; prefer `max` (or `min` for lower-is-bad metrics) where one bad host could hide in an average.
+
+With Group By Tags (`groupBy`) each combination of those tag values is evaluated as its own series. Each breaching series alerts on its own, with its own cooldown and escalation page (up to 50 per evaluation, the rest in one "N more series" notice). Once a series it alerted on is back within the threshold, the rule sends an Info recovery notice, or on an escalation channel resolves that series' page. A series that stops reporting stays firing until it has had no data for an hour while other series of the metric still report; then the rule closes its alert with a "stopped reporting" notice. Incomplete scans keep missing series open. A distribution series below its minimum observation count stays open until it can be judged. The summary clears when a complete scan finds data and every reported series is within the threshold.
 
 Apdex uses fixed bands: satisfied up to 750 ms, tolerating up to 1500 ms, anything slower or a 5xx is frustrated. Apdex = (satisfied + tolerating / 2) / total.
 
@@ -79,6 +81,7 @@ Cooldowns differ by kind:
 
 - **Polled rules** have one cooldown per rule. After it fires, it is not evaluated again until the cooldown ends. This cooldown survives restarts.
 - **Ingest and monitor rules** cool down per item: per exception hash, trace name, conversation or monitor. Two different new errors a minute apart both alert. The same error does not alert again within its cooldown. This memory is in process only, so a restart can let the same item alert once more.
+- **Monitor Down** clears the affected monitor's cooldown when it recovers, including during snooze. Each new outage can alert immediately; use the monitor's consecutive-failure threshold to reduce flapping alerts.
 - The cooldown cannot be 0. Empty or 0 becomes 15 minutes.
 - **Changing** a rule's type, channel or condition resets its cooldown and its per-item memory, so the new settings apply at once. Renaming it, changing its cooldown or severity, or toggling it does not.
 
@@ -88,7 +91,7 @@ Delivery goes through a durable queue. Failed sends are retried after 1, 5, 15 a
 
 - **Disable** turns a rule off until someone turns it back on. The dashboard asks for confirmation.
 - **Snooze** mutes a rule for a set time and it comes back on its own. The dashboard offers 30 minutes and 1, 4, 8 or 24 hours. Clearing the snooze turns it back on early.
-- A snoozed or disabled rule is **not evaluated at all**, so nothing is queued while it is muted and it does not catch up afterwards.
+- A disabled rule is not evaluated. Snooze mutes new notifications, but a Monitor Down rule still resolves its existing on-call page when the monitor recovers. Neither queues new alerts while muted or catches up afterwards.
 
 During a known incident or a deploy, snooze the noisy rule rather than disabling it: a snooze cannot be forgotten in the off position.
 

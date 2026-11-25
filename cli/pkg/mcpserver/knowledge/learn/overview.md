@@ -27,7 +27,8 @@ This guide explains every part of the product: what each page shows, the terms i
 | Issues | [issues.md](issues.md) | `traceway://knowledge/learn/issues` | Exceptions, fingerprinting, the issue and occurrence pages, archiving, regressions |
 | Endpoints and tasks | [endpoints-and-tasks.md](endpoints-and-tasks.md) | `traceway://knowledge/learn/endpoints-and-tasks` | P50, P95, P99, impact score, Apdex, expected-performance marks, requests, background tasks |
 | Spans, traces and logs | [traces-and-logs.md](traces-and-logs.md) | `traceway://knowledge/learn/traces-and-logs` | The span explorer, whole-trace waterfalls, distributed traces, log search, live tail |
-| Metrics and dashboards | [metrics-and-dashboards.md](metrics-and-dashboards.md) | `traceway://knowledge/learn/metrics-and-dashboards` | Metric names and tags, aggregations and rate, dashboards, widgets, templates, starring |
+| Browser RUM | [rum.md](rum.md) | `traceway://knowledge/learn/rum` | Web Vitals, client histograms, releases, affected users, SLOs, exemplars, sampling and SDK compatibility |
+| Metrics and dashboards | [metrics-and-dashboards.md](metrics-and-dashboards.md) | `traceway://knowledge/learn/metrics-and-dashboards` | Metric names and tags, aggregations and rate, dashboards, widgets, templates, starring, share links and JWT-backed iframe embeds |
 | Sessions, AI traces, profiles | [sessions-and-ai.md](sessions-and-ai.md) | `traceway://knowledge/learn/sessions-and-ai` | Session replay, LLM calls, conversations, flagged content, flame graphs |
 | Monitors and status pages | [monitors.md](monitors.md) | `traceway://knowledge/learn/monitors` | HTTP, TCP and browser checks, runs, incidents, public status pages, post-mortems |
 | Alerts | [alerts.md](alerts.md) | `traceway://knowledge/learn/alerts` | Every rule type and its settings, channels, cooldown, snooze, history |
@@ -49,6 +50,8 @@ This guide explains every part of the product: what each page shows, the terms i
 | Sessions | `/sessions` (browser and mobile projects) | sessions-and-ai.md |
 | AI Traces | `/ai-traces` | sessions-and-ai.md |
 | Dashboards | `/dashboards` | metrics-and-dashboards.md |
+| Shared dashboard | `/embed/dashboard` | metrics-and-dashboards.md |
+| SLOs | `/slos` | rum.md |
 | Monitors | `/monitors` (tabs Monitors, Status Pages, Post-Mortems) | monitors.md |
 | Public status page | `/status/<slug>` | monitors.md |
 | Alerts | `/notifications` (tabs Channels, Rules, History) | alerts.md |
@@ -56,11 +59,11 @@ This guide explains every part of the product: what each page shows, the terms i
 | Connection | `/connection` | organization.md |
 | Account | `/account` | organization.md, on-call.md |
 | Settings | `/settings` (owners and admins) | organization.md |
-| Data Collection | project switcher, **Edit Project**, **Data Collection** (browser projects) | data-collection.md |
+| Data Collection | **Data Collection** in the sidebar (browser projects) | data-collection.md |
 | Organization | `/organization` (Servers, Issues, Monitors, On-Call, Projects) | organization.md |
 | Project setup | `/setup` | organization.md |
 
-Browser and mobile projects only show Issues, Sessions, Alerts, On-Call and Connection.
+Browser and mobile projects also have Dashboards and SLOs. Browser projects have Logs, Spans and Data Collection; native mobile SDKs do not supply those diagnostic OTLP signals or poll OpAMP.
 
 ## Common questions
 
@@ -75,6 +78,7 @@ Browser and mobile projects only show Issues, Sessions, Alerts, On-Call and Conn
 | How do I publish uptime to customers? | monitors.md, Status pages |
 | Where do I write up the incident? | monitors.md, Post-mortems |
 | Why is a span missing from the waterfall? | traces-and-logs.md |
+| How do I share a dashboard or embed account-specific KPIs in my admin panel? | metrics-and-dashboards.md, Sharing and embedding a dashboard |
 | Why does my counter metric only go up? | metrics-and-dashboards.md, Aggregations |
 | Why did a browser send (or not send) console lines, requests or a replay? | data-collection.md |
 | How do I capture everything one user's browser does for an hour? | data-collection.md, Captures |

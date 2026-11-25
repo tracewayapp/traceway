@@ -214,21 +214,23 @@ func scanClickhouseTopology(rows driver.Rows, withStatement bool) ([]models.Otel
 const otelSearchSettings = ` SETTINGS max_execution_time=15, timeout_overflow_mode='throw', max_memory_usage=1073741824`
 
 var clickhouseSearchDialect = shared.OtelSearchDialect{
-	WinnerOrder: shared.OtelClickHouseWinnerOrder,
-	Project:     func(id uuid.UUID) any { return id },
-	Time:        clickhouseOtelCodec.Time,
-	Trace:       func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },
-	NameLike:    "positionCaseInsensitive(name, ?) > 0",
-	Attribute:   "span_attributes[?] = ?",
-	StartOrder:  "start_time_unix_nano",
-	Bucket:      epochBucket,
-	Count:       "toInt64(count())",
-	CountIf:     countIf,
-	ReadSetting: otelSearchSettings,
+	WinnerOrder:    shared.OtelClickHouseWinnerOrder,
+	Project:        func(id uuid.UUID) any { return id },
+	Time:           clickhouseOtelCodec.Time,
+	Trace:          func(_ uuid.UUID, traceId string) (string, any) { return "trace_id = ?", traceId },
+	NameLike:       "positionCaseInsensitive(name, ?) > 0",
+	AttributeValue: "span_attributes[?]",
+	AttributeHas:   "mapContains(span_attributes, ?)",
+	Contains:       func(text string) string { return "positionCaseInsensitive(" + text + ", ?) > 0" },
+	StartOrder:     "start_time_unix_nano",
+	Bucket:         epochBucket,
+	Count:          "toInt64(count())",
+	CountIf:        countIf,
+	ReadSetting:    otelSearchSettings,
 }
 
 func (r *otelSpanRepository) Search(ctx context.Context, search shared.OtelSpanSearch) ([]models.OtelSpan, uint64, error) {
-	page, pageArgs, count, countArgs := shared.OtelSearchQueries(search, clickhouseSearchDialect)
+	page, pageArgs, count, countArgs := shared.OtelClickHouseSearchQueries(search, clickhouseSearchDialect)
 	var total uint64
 	if err := chdb.Conn.QueryRow(ctx, count, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err

@@ -68,15 +68,12 @@ The same logical error keeps the same hash across servers, environments, app ver
 
 ### Messages
 
-Captured messages (strings sent through `CaptureMessage`, without an exception) skip stack trace normalization and group by their exact text. Keep message text stable and put variable data in [attributes](/learn/traces), otherwise every occurrence becomes its own issue:
+Captured messages (strings sent through the SDK’s message API, without an exception) skip stack trace normalization and group by their exact text. Keep message text stable and put variable data in [attributes](/learn/attributes), otherwise every occurrence becomes its own issue:
 
-```go
-// One issue, one alert, with the order in scope
-scope.SetTag("order_id", orderID)
-traceway.CaptureMessage("payment provider unreachable")
+```javascript
+import { captureMessage } from "@tracewayapp/frontend";
 
-// A new issue and a new alert for every order
-traceway.CaptureMessage(fmt.Sprintf("payment provider unreachable for order %d", orderID))
+captureMessage("payment provider unreachable", { order_id: String(orderId) });
 ```
 
 ## Issue Lifecycle
@@ -87,11 +84,4 @@ traceway.CaptureMessage(fmt.Sprintf("payment provider unreachable for order %d",
 
 ## Attributes on Issues
 
-Issues carry their own attributes: the key-value metadata that was in scope when the exception occurred. If the issue is linked to a trace, it inherits the trace's attributes.
-
-When error recording flags are enabled in middleware, additional context can be attached (configurable per client library):
-
-- Request URL
-- Query parameters
-- Request body (JSON only, max 64KB)
-- Request headers
+Each occurrence carries the attributes recorded by its instrumentation. For an exception recorded on an OTLP span, Traceway includes the span’s attributes. Client-side exceptions can also carry browser, device, session and user metadata from the resource. Request headers, URLs or bodies appear only if the instrumentation captured them.

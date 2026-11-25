@@ -63,7 +63,16 @@ export default defineConfig(({ mode }) => {
 			sourcemap: 'hidden'
 		},
 		resolve: {
-			dedupe: ['d3-scale', 'd3-array', '@lucide/svelte', 'svelte', 'svelte-sonner']
+			// Billing extension files live outside this tree and resolve their packages from here. The browser SDK
+			// keeps its client in module state, so a second copy would have no session.
+			dedupe: [
+				'd3-scale',
+				'd3-array',
+				'@lucide/svelte',
+				'svelte',
+				'svelte-sonner',
+				'@tracewayapp/frontend'
+			]
 		},
 		optimizeDeps: {
 			// @milkdown/crepe is dynamically imported; pre-bundle it so the first

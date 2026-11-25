@@ -1,3 +1,5 @@
+import { embedPage } from './dashboard-embed';
+
 /**
  * Keeps an element out of the dashboard's own session replay. The browser SDK hands rrweb nothing but
  * `maskAllInputs`, which remote config can switch off, so rrweb's default block class is the one mechanism
@@ -9,6 +11,7 @@ export const REPLAY_BLOCK_CLASS = 'rr-block';
 const UNMONITORED_PREFIXES = ['/status/', '/ack/'];
 const UNMONITORED_PATHS = new Set([
 	'/status',
+	embedPage,
 	'/reset-password',
 	'/accept-invitation',
 	'/auth/callback'

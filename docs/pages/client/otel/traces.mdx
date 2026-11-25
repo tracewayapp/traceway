@@ -4,24 +4,23 @@ Traceway ingests OpenTelemetry spans via the OTLP/HTTP protocol and maps them to
 
 ## Span Mapping
 
-Spans are classified by **kind and attributes**, not by whether they're a root span. Both root and child spans can be promoted to a top-level concept when the signal is there. A queued job processed as a child of the dispatcher's trace still becomes a Task, and an LLM call made inside a request handler still becomes an AI Trace.
+Spans are classified by **kind and attributes**, not by whether they're a root span. Both root and child spans can be promoted to a top-level concept when the signal is there. A queued job processed as a child of the dispatcher's trace still becomes a Task, and an LLM call made inside a request handler still becomes an AI Trace. Every accepted span is stored, promoted or not.
 
 **The rules below are checked in order, and the first match wins.**
 
 | # | Condition | Traceway Concept |
 |---|-----------|-----------------|
-| 1 | `SpanKind = INTERNAL` carrying `exception.*` attributes | **Issue.** Never promoted to an Endpoint, Task or AI Trace. A child span still gets its ordinary Span row, a root span gets nothing else |
-| 2 | `SpanKind = SERVER` / `INTERNAL` with HTTP attributes, and the span is a root, or its parent span is not present in the same `ResourceSpans` block (a cross-service inbound hop) | **Endpoint** |
+| 1 | `INTERNAL` with an `exception.type`, `exception.message` or `exception.stacktrace` attribute | **Issue** and **Span** |
+| 2 | HTTP SERVER span at a service entry point, or a root HTTP INTERNAL span | **Endpoint** |
 | 3 | `SpanKind = CONSUMER` (queue / messenger workers) | **Task** |
 | 4 | Root `INTERNAL` span with a `console.command` attribute (artisan commands, console runners) | **Task** |
 | 5 | Any remaining span with `gen_ai.*` attributes | **AI Trace** |
-| 6 | Any other span with a parent | **Span** (waterfall row under its nearest enclosing entity) |
-| 7 | A root span matching none of the above | **Dropped.** No row is stored |
+| 6 | Any remaining span, root or child | **Span** |
 | - | Event named `"exception"` on any span | **Issue** (attributed to the owning entity) |
 
 Order matters most for `gen_ai.*`, which is checked last. A `CONSUMER` span carrying `gen_ai.*` becomes a Task, and a request span carrying `gen_ai.*` becomes an Endpoint. Neither shows up on AI Traces. Put every model call on its own child span so rule 5 is the one that matches it.
 
-> **The default span kind is `INTERNAL`, and a root `INTERNAL` span with no HTTP attributes is discarded.** If you wrap a cron job or a worker in `tracer.startActiveSpan("my-job")` without setting a kind, nothing appears on Tasks and nothing appears on Spans. Traceway still answers `200 OK`. Set `{ kind: SpanKind.CONSUMER }` for queue and job work, or add a `console.command` attribute for CLI commands. The same applies to root `CLIENT` and `PRODUCER` spans, and to root `SERVER` spans that carry no HTTP attributes.
+> A job started with the default `INTERNAL` kind appears in **Spans**. Use `SpanKind.CONSUMER` for a queue worker or set `console.command` on a root INTERNAL command span to also list it under **Tasks**.
 
 "HTTP attributes" means at least one of `http.request.method`, `http.method`, `http.route` or `url.path`. Nothing else counts, so a span carrying only `url.full`, `http.target` or `server.address` is not treated as an HTTP entry point.
 
@@ -31,7 +30,7 @@ Child spans that carry `db.query.text` (or the legacy `db.statement`) are displa
 
 Each Endpoint / Task / AI Trace row carries an `is_root` flag derived from whether its span has a parent. The detail page groups the entities sharing the span's actual `traceId`, including cross-service requests. Standard W3C context propagation connects browser, server and downstream spans. OTel span links are retained on spans and can reference other traces; they do not merge those traces.
 
-> **Sub-handler spans are not duplicated, as long as parent and child ship together.** An in-process child SERVER/INTERNAL+HTTP span (a framework's "handler /path" sub-span) stays in the Spans waterfall when its parent arrives in the same `ResourceSpans` block. Parents are matched inside one block, not across the whole export, though spans from one service normally share a Resource and land in the same block. Traceway cannot see process boundaries, so it treats "parent missing from this block" as a cross-service hop and promotes the child to its own Endpoint. If you see the same route listed twice with a **Mixed** chip, a batch processor split the parent and the child across two exports. Raise the exporter's `maxExportBatchSize` and `scheduledDelayMillis` so a whole trace ships together, or stop emitting the redundant sub-handler span.
+An HTTP SERVER span is a separate Endpoint unless a local HTTP SERVER ancestor already represents the request. Traceway walks the parents in the same ResourceSpans block and stops at a remote-parent flag, a CLIENT or PRODUCER parent, or a missing parent. If an exporter splits a request and its nested SERVER span across batches, both can become Endpoints. An INTERNAL HTTP span qualifies only at the root.
 
 ## Resource Attributes
 
@@ -96,7 +95,7 @@ Traceway reads exception data from two places: an event named `exception` on the
 
 The Issue is attributed to the nearest enclosing Endpoint, Task or AI Trace, walking up the parent chain from the span that raised it. An error thrown in a database span therefore shows up on the request that ran the query.
 
-**An exception on a dropped span still becomes an Issue, but an unlinked one.** If you record an error on a root `SpanKind.INTERNAL` span, the span itself is discarded (see Span Mapping) while the Issue is still created. There is then no Endpoint or Task for it to point at, so the occurrence carries only the raw trace id and you lose the request or job context that would tell you what was running. Record exceptions on spans that sit inside a promoted entity, or fix the span kind.
+An exception occurrence retains the emitting span’s trace ID and span ID, including when the trace has no Endpoint or Task. Open the trace to see the span that recorded the exception.
 
 ## Example: Node.js with OTel SDK
 
@@ -202,19 +201,14 @@ def do_work():
 with tracer.start_as_current_span(
     "cleanup-expired-sessions", kind=SpanKind.CONSUMER
 ) as span:
-    try:
-        with tracer.start_as_current_span("delete-batch"):
-            do_work()
-        span.set_status(Status(StatusCode.OK))
-    except Exception as error:
-        span.record_exception(error)
-        span.set_status(Status(StatusCode.ERROR, str(error)))
-        raise
+    with tracer.start_as_current_span("delete-batch"):
+        do_work()
+    span.set_status(Status(StatusCode.OK))
 
 provider.shutdown()
 ```
 
-That run appears under **Tasks** as `cleanup-expired-sessions`, with `delete-batch` as a child span. In Python the span kind is a keyword argument, `kind=SpanKind.CONSUMER`. Drop it and the root span defaults to `INTERNAL`, which is discarded on ingest.
+That run appears under **Tasks** as `cleanup-expired-sessions`, with `delete-batch` as a child span. Omitting `kind=SpanKind.CONSUMER` leaves this example as an ordinary INTERNAL span.
 
 Python's `Resource.create(...)` is unaffected by the JavaScript `Resource` removal. Only the JS SDK changed.
 

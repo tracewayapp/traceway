@@ -318,7 +318,7 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
         with:
-          cosign-release: 'v2.2.0'
+          cosign-release: 'v2.6.5'
 
       - name: Sign full image
         env:

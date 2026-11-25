@@ -95,7 +95,7 @@ try {
 
 Always end spans in a `finally` block so they are closed even if an exception is thrown.
 
-> **If the span is the root of its trace, set the span kind.** The snippet above is safe inside an HTTP request, a queue job or an instrumented Artisan command, where the span is a child of something Traceway already records. Started on its own (a cron closure, a hand-rolled background loop, a non-instrumented command) it is a root `INTERNAL` span, and Traceway discards root `INTERNAL` spans that carry no HTTP attributes and no `console.command`. The span, every child under it, and the trace linkage for any logs emitted inside are dropped with no error.
+> In a cron closure or standalone background loop, `Tracer::newSpan()` creates an INTERNAL root span. Set its kind to CONSUMER to also list this work under **Tasks**.
 >
 > ```php
 > use Keepsuit\LaravelOpenTelemetry\Facades\Tracer;

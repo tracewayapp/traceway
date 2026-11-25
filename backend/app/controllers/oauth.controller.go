@@ -73,6 +73,14 @@ func (a oauthController) Callback(c *gin.Context) {
 		return
 	}
 
+	// A callback without a code is the provider reporting a refusal (the user
+	// cancelled consent: ?error=access_denied) or someone opening the URL
+	// directly. Exchanging the empty code would only produce a provider error.
+	if c.Query("code") == "" {
+		a.redirectError(c, "oauth_failed")
+		return
+	}
+
 	req := c.Request.WithContext(context.WithValue(c.Request.Context(), gothic.ProviderParamKey, externalToGothProvider(provider)))
 	gothUser, err := gothic.CompleteUserAuth(c.Writer, req)
 	if err != nil {
@@ -293,13 +301,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 			return
 		}
 
-		cache.ProjectCache.AddProject(&models.Project{
-			Id:             project.Id,
-			Name:           project.Name,
-			Token:          project.Token,
-			Framework:      project.Framework,
-			OrganizationId: project.OrganizationId,
-		})
+		middleware.OnCommit(c, func() { cache.ProjectCache.AddProject(project) })
 		projectWithUrl = project.ToProjectWithBackendUrl()
 	}
 

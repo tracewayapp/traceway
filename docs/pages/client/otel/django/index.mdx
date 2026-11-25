@@ -203,7 +203,7 @@ OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=redis,requests
 
 ## How Traceway Reads Your Spans
 
-Traceway turns each incoming span into an endpoint, a task, an AI trace, a child in the waterfall, or nothing. Knowing the rules saves you from writing a span that is silently discarded.
+Each accepted span appears in **Spans**. Traceway also identifies endpoints, tasks and AI traces from span attributes, kind and parentage.
 
 | Your span | Shows up as |
 |---|---|
@@ -212,9 +212,9 @@ Traceway turns each incoming span into an endpoint, a task, an AI trace, a child
 | Root INTERNAL span with a `console.command` attribute | **Task**, named after the span |
 | Any non-root span | A child in the trace waterfall |
 | Any span with `gen_ai.*` attributes | **AI trace** |
-| **A root INTERNAL span with none of the above** | **Nothing. It is dropped, with no error** |
+| Root INTERNAL span with none of the above | Root in the trace waterfall |
 
-That last row is the one to remember. A bare `tracer.start_as_current_span("my.job")` at the top of a script, a cron entry, or a management command creates a root INTERNAL span, and Traceway discards it. Pass `kind=SpanKind.CONSUMER` to make it a Task. See [Tasks](/client/otel/django/tasks#cron-jobs-scripts-and-management-commands).
+For a script, cron entry or management command, pass `kind=SpanKind.CONSUMER` to list the run as a Task. See [Tasks](/client/otel/django/tasks#cron-jobs-scripts-and-management-commands).
 
 ## Tuning the Django Instrumentation
 

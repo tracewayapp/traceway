@@ -111,3 +111,16 @@ func TestCompressResponses(t *testing.T) {
 		}
 	}
 }
+
+func TestEmbedPageRequiresDedicatedBundle(t *testing.T) {
+	fsys := fstest.MapFS{"index.html": {Data: []byte("dashboard shell")}}
+	r := gin.New()
+	r.NoRoute(createSPAHandler(fsys))
+	if w := serve(r, http.MethodGet, "http://localhost/embed/dashboard", false); w.Code != http.StatusNotFound {
+		t.Fatalf("missing embed: %d %s", w.Code, w.Body)
+	}
+	fsys["embed/dashboard.html"] = &fstest.MapFile{Data: []byte("embed page")}
+	if w := serve(r, http.MethodGet, "http://localhost/embed/dashboard", false); w.Code != http.StatusOK || w.Body.String() != "embed page" {
+		t.Fatalf("embed: %d %s", w.Code, w.Body)
+	}
+}

@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -16,6 +18,12 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
+
+// ClickHouse's quantile() over zero rows is NaN, and NaN compares false with
+// everything, so an empty window must be ruled out before the threshold.
+func latencyBreached(valueMs, thresholdMs float64) bool {
+	return !math.IsNaN(valueMs) && valueMs >= thresholdMs
+}
 
 type newErrorConfig struct {
 	IgnorePatterns []string `json:"ignorePatterns"`
@@ -246,6 +254,57 @@ func extractErrorType(stackTrace string) string {
 		return line
 	}
 	return "Unknown Error"
+}
+
+// exceptionDetails describes the newest occurrence of hash in the event, and reads it from storage only when the
+// event does not carry the rows.
+func exceptionDetails(ctx context.Context, event hooks.ReportEvent, hash string) ExceptionDetails {
+	var latest *models.ExceptionStackTrace
+	for i := range event.Exceptions {
+		exception := &event.Exceptions[i]
+		if exception.ExceptionHash == hash && (latest == nil || exception.RecordedAt.After(latest.RecordedAt)) {
+			latest = exception
+		}
+	}
+	if latest == nil {
+		return getExceptionDetails(ctx, event.ProjectId, hash)
+	}
+	return describeException(ctx, *latest)
+}
+
+func describeException(ctx context.Context, exception models.ExceptionStackTrace) ExceptionDetails {
+	details := ExceptionDetails{
+		Id:         exception.Id.String(),
+		Hash:       exception.ExceptionHash,
+		ErrorType:  extractErrorType(exception.StackTrace),
+		StackTrace: exception.StackTrace,
+		AppVersion: exception.AppVersion,
+		ServerName: exception.ServerName,
+		RecordedAt: exception.RecordedAt,
+	}
+	if len(exception.Attributes) > 0 {
+		details.Attributes = exception.Attributes
+	}
+	details.TraceType, details.TraceName = resolveExceptionOwner(ctx, exception)
+	return details
+}
+
+func parseStoredAttributes(attributesJSON string) map[string]string {
+	if attributesJSON == "" || attributesJSON == "{}" {
+		return nil
+	}
+	attrs := make(map[string]string)
+	if err := json.Unmarshal([]byte(attributesJSON), &attrs); err != nil {
+		return nil
+	}
+	return attrs
+}
+
+func unknownException(hash string, err error) ExceptionDetails {
+	if !errors.Is(err, sql.ErrNoRows) {
+		traceway.CaptureException(fmt.Errorf("failed to load exception %s for a notification: %w", hash, err))
+	}
+	return ExceptionDetails{Hash: hash, ErrorType: "Unknown Error"}
 }
 
 // resolveExceptionOwner names the endpoint, task or AI trace an exception happened in, for the notification's text.

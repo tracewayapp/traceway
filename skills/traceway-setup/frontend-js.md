@@ -1,6 +1,6 @@
 # JS Frontend SDKs Reference (v1)
 
-Use this reference when the version rules in SKILL.md select v1: npm's `latest` dist-tag is still 1.x (2.x is only under `beta`) and the user did not ask for v2 or remote SDK config, or the app already runs v1. Otherwise follow [frontend-js-v2.md](frontend-js-v2.md). Check the registry with `npm view @tracewayapp/frontend dist-tags --json` as described in SKILL.md; do not mix the APIs from the two versions.
+Use this reference when the version rules in SKILL.md select v1: the app already runs `@tracewayapp/*` 1.x and the user did not ask to upgrade, or the registry in use has no stable 2.x. Otherwise follow [frontend-js-v2.md](frontend-js-v2.md): npm's `latest` dist-tag is 2.x, and new integrations use it. Check the registry with `npm view @tracewayapp/frontend dist-tags --json` as described in SKILL.md; do not mix the APIs from the two versions. Moving a v1 app to v2 is a migration (https://docs.tracewayapp.com/client/js-sdk/migration), not a version bump.
 
 Browser-side setup for every supported framework, plus the bundler plugin and source map upload that complete each integration. The connection string everywhere is `<project-token>@https://<instance>/api/report`.
 
@@ -13,6 +13,8 @@ Browser-side setup for every supported framework, plus the bundler plugin and so
 | `@tracewayapp/vue` | Vue 3: plugin and composables |
 | `@tracewayapp/svelte` | Svelte and SvelteKit: context-based setup |
 | `@tracewayapp/jquery` | jQuery: automatic AJAX error capture |
+
+Install or update with the major pinned, `npm install @tracewayapp/react@1` (or `frontend@1`, `vue@1`, `svelte@1`, `jquery@1`): the plain package name installs 2.x.
 
 All framework packages wrap the core SDK and accept the same options object (see Options below). Every SDK captures uncaught errors and unhandled promise rejections, batches uploads with retry, and ships session replay: the last ~30s of DOM events (rrweb) accompany every captured exception by default.
 
@@ -218,8 +220,10 @@ When an existing integration has that wiring, leave it unless the user asks for 
 `@tracewayapp/bundler-plugin` embeds a deterministic 128-bit debug ID into each emitted chunk and its `.map` (ECMA-426 debug ID format, interoperable with Sentry tooling). The backend then matches stack frames to the exact map from the same build, immune to filename collisions and concurrent deploys. Without it, matching falls back to filename (fine with content-hashed bundle names, broken with stable names like `app.js`).
 
 ```bash
-npm install -D @tracewayapp/bundler-plugin
+npm install -D @tracewayapp/bundler-plugin@1
 ```
+
+The `@1` pin keeps the build tools on the SDK's major. Their 2.x releases are functionally the same and also work with a v1 app.
 
 Vite:
 
@@ -254,7 +258,7 @@ Uploads authenticate with a dedicated upload token (Connection page > Source Map
 First make the build actually emit maps, or there is nothing to upload. Vite needs `build: { sourcemap: true }`, Rollup needs `output: { sourcemap: true }`, webpack needs `devtool: "source-map"`. Vite's default is `false`, so a stock `vite build` produces no `.map` files at all, and `traceway-sourcemaps` then prints `No .map files found` and exits 0. A `postbuild` hook reports success while uploading nothing.
 
 ```bash
-npm install -D @tracewayapp/sourcemap-upload
+npm install -D @tracewayapp/sourcemap-upload@1
 
 traceway-sourcemaps --url https://<instance> --token <upload-token> --directory ./dist
 ```

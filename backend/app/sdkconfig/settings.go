@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Mode says what the SDK does with a signal: drop it, keep it on the device until a trigger or capture flushes
@@ -109,14 +110,29 @@ type BufferSettings struct {
 }
 
 // Matcher is a condition (Key, Op and Value or Values) or exactly one of All, Any and Not.
+// An unquoted attribute value must be a CSS identifier, like a class or id: element.matches throws on
+// [data-step=2], and the SDK then never matches the step.
+var selectorIdent = `(?:-?[A-Za-z_]|--)[A-Za-z0-9_-]*`
+var selectorAtom = `(?:[.#]` + selectorIdent + `|\[` + selectorIdent + `(?:[~|^$*]?=(?:"[^"\r\n]*"|'[^'\r\n]*'|` + selectorIdent + `))?\])`
+var selectorCompound = `(?:(?:[A-Za-z][A-Za-z0-9_-]*|\*)` + selectorAtom + `*|` + selectorAtom + `+)`
+var sequenceSelector = regexp.MustCompile(`^\s*` + selectorCompound + `(?:(?:\s*[>+~]\s*|\s+)` + selectorCompound + `)*\s*$`)
+var sequenceRouteParameter = regexp.MustCompile(`^\{[A-Za-z_][A-Za-z0-9_]*\}$`)
+
+type BrowserEventMatcher struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	Mode  string `json:"mode,omitempty"`
+}
+
 type Matcher struct {
-	Key    string     `json:"key,omitempty"`
-	Op     string     `json:"op,omitempty"`
-	Value  any        `json:"value,omitempty"`
-	Values []any      `json:"values,omitempty"`
-	All    []*Matcher `json:"all,omitempty"`
-	Any    []*Matcher `json:"any,omitempty"`
-	Not    *Matcher   `json:"not,omitempty"`
+	Event  *BrowserEventMatcher `json:"event,omitempty"`
+	Key    string               `json:"key,omitempty"`
+	Op     string               `json:"op,omitempty"`
+	Value  any                  `json:"value,omitempty"`
+	Values []any                `json:"values,omitempty"`
+	All    []*Matcher           `json:"all,omitempty"`
+	Any    []*Matcher           `json:"any,omitempty"`
+	Not    *Matcher             `json:"not,omitempty"`
 }
 
 type TriggerStep struct {
@@ -129,13 +145,15 @@ type TriggerStep struct {
 }
 
 type TriggerAction struct {
-	Type            string            `json:"type"`
-	LookbackSeconds *float64          `json:"lookbackSeconds,omitempty"`
-	DurationSeconds *float64          `json:"durationSeconds,omitempty"`
-	Signals         []string          `json:"signals,omitempty"`
-	Replay          *bool             `json:"replay,omitempty"`
-	EventName       string            `json:"eventName,omitempty"`
-	Attributes      map[string]string `json:"attributes,omitempty"`
+	Type            string   `json:"type"`
+	LookbackSeconds *float64 `json:"lookbackSeconds,omitempty"`
+	DurationSeconds *float64 `json:"durationSeconds,omitempty"`
+	// omitzero, not omitempty: an empty list means no signals (a replay-only clip), and the SDK reads a missing
+	// list as every signal.
+	Signals    []string          `json:"signals,omitzero"`
+	Replay     *bool             `json:"replay,omitempty"`
+	EventName  string            `json:"eventName,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // Trigger runs on the device. In a rule it may be a patch of a trigger an earlier rule or the SDK defines: a
@@ -157,7 +175,7 @@ type Capture struct {
 	Id              string   `json:"id"`
 	Until           string   `json:"until"`
 	LookbackSeconds *float64 `json:"lookbackSeconds,omitempty"`
-	Signals         []string `json:"signals,omitempty"`
+	Signals         []string `json:"signals,omitzero"`
 	Replay          *bool    `json:"replay,omitempty"`
 }
 
@@ -167,7 +185,27 @@ type Capture struct {
 type Limits struct {
 	Signals map[string]Mode `json:"signals,omitempty"`
 	Replay  *Mode           `json:"replay,omitempty"`
+	Metrics *Mode           `json:"metrics,omitempty"`
 }
+
+// MetricsSettings govern the aggregates: the histograms and counters an SDK builds on the device and uploads as
+// one small payload per flush. The per-signal settings govern the detailed events of the same measurements, so
+// a signal can be off (no events) while its numbers are still charted.
+type MetricsSettings struct {
+	Enabled *bool `json:"enabled,omitempty"`
+	// SampleRate is the share of sessions that record metrics. The SDK reports it and ingest weights counts by
+	// 1/rate, so counts and ratios stay unbiased.
+	SampleRate   *float64 `json:"sampleRate,omitempty"`
+	FlushSeconds *int     `json:"flushSeconds,omitempty"`
+}
+
+const (
+	MinMetricsFlushSeconds = 30
+	// Ingest weights a sampled client's counts by 1/rate and caps the weight at 1000 (clientmetrics
+	// maxSampleWeight), so a lower rate would be undercounted.
+	MinMetricsSampleRate   = 0.001
+	MaxMetricsFlushSeconds = 3600
+)
 
 // Settings is a partial settings document: nil fields inherit from earlier rules and finally from the SDK's
 // built-in defaults. Field order is fixed, so marshalling the same settings always yields the same bytes and hash.
@@ -177,6 +215,7 @@ type Settings struct {
 	Signals       *Signals         `json:"signals,omitempty"`
 	Sessions      *SessionSettings `json:"sessions,omitempty"`
 	Replay        *ReplaySettings  `json:"replay,omitempty"`
+	Metrics       *MetricsSettings `json:"metrics,omitempty"`
 	Buffer        *BufferSettings  `json:"buffer,omitempty"`
 	Triggers      []Trigger        `json:"triggers,omitempty"`
 	Captures      []Capture        `json:"captures,omitempty"`
@@ -254,6 +293,14 @@ func (s Settings) Validate() error {
 		}
 		if !validRate(s.Replay.SessionSampleRate) {
 			return invalid("replay.sessionSampleRate must be between 0 and 1")
+		}
+	}
+	if m := s.Metrics; m != nil {
+		if !validRate(m.SampleRate) || (m.SampleRate != nil && *m.SampleRate > 0 && *m.SampleRate < MinMetricsSampleRate) {
+			return invalid("metrics.sampleRate must be 0 or between %g and 1", MinMetricsSampleRate)
+		}
+		if m.FlushSeconds != nil && (*m.FlushSeconds < MinMetricsFlushSeconds || *m.FlushSeconds > MaxMetricsFlushSeconds) {
+			return invalid("metrics.flushSeconds must be between %d and %d", MinMetricsFlushSeconds, MaxMetricsFlushSeconds)
 		}
 	}
 	if b := s.Buffer; b != nil {
@@ -375,11 +422,18 @@ func (m *Matcher) validate(depth int, nodes *int) error {
 		return invalid("matcher is nested too deeply or has too many conditions")
 	}
 	forms := 0
+	if m.Event != nil {
+		forms++
+	}
 	if m.Key != "" || m.Op != "" {
 		forms++
 	}
 	for _, set := range [][]*Matcher{m.All, m.Any} {
 		if set != nil {
+			// An empty list is dropped when the rule is stored, leaving a matcher of no form at all.
+			if len(set) == 0 {
+				return invalid("all and any need at least one matcher")
+			}
 			forms++
 		}
 	}
@@ -399,11 +453,42 @@ func (m *Matcher) validate(depth int, nodes *int) error {
 			}
 		}
 	}
+	if m.Event != nil {
+		e := m.Event
+		if len(e.Value) == 0 || len(e.Value) > 256 || strings.TrimSpace(e.Value) == "" {
+			return invalid("event value must be 1-256 characters")
+		}
+		if e.Mode != "" && e.Mode != "exact" && e.Mode != "contains" {
+			return invalid("event mode must be exact or contains")
+		}
+		switch e.Type {
+		case "click", "hover":
+			if strings.ContainsAny(e.Value, ":,\\") || !sequenceSelector.MatchString(e.Value) {
+				return invalid("selectors support tags, ids, classes, attributes and combinators, without pseudo-classes or selector lists; quote an attribute value that is not a name, e.g. [data-step=\"2\"]")
+			}
+		case "navigation":
+			if !strings.HasPrefix(e.Value, "/") || strings.ContainsAny(e.Value, "?#*") {
+				return invalid("navigation uses a pathname with optional {parameter} segments")
+			}
+			for _, segment := range strings.Split(e.Value, "/") {
+				if strings.ContainsAny(segment, "{}") && !sequenceRouteParameter.MatchString(segment) {
+					return invalid("invalid route parameter")
+				}
+			}
+		case "log":
+		default:
+			return invalid("event type must be click, hover, navigation or log")
+		}
+		return nil
+	}
 	if m.Not != nil {
 		return m.Not.validate(depth+1, nodes)
 	}
-	if m.Key == "" {
+	if m.All != nil || m.Any != nil {
 		return nil
+	}
+	if m.Key == "" {
+		return invalid("a condition needs a key")
 	}
 	return validateCondition(m.Key, m.Op, m.Value, m.Values)
 }
@@ -417,6 +502,11 @@ func validateCondition(key, op string, value any, values []any) error {
 	}
 	if len(values) > maxConditionValues {
 		return invalid("at most %d values", maxConditionValues)
+	}
+	for _, v := range values {
+		if v == nil {
+			return invalid("values cannot contain null")
+		}
 	}
 	for _, v := range append([]any{value}, values...) {
 		switch val := v.(type) {

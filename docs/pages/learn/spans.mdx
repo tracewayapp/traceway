@@ -29,6 +29,77 @@ Canonical span storage preserves IDs across export batches. Entity classificatio
 
 Span reads look 24 hours either side of the endpoint, task or AI trace you opened. A span recorded further away than that is not shown on its page.
 
+## Spans stored more than once
+
+OpenTelemetry does not promise that a span arrives exactly once. An exporter resends a batch when the answer comes late, and the first attempt may already have been stored. Two Collector pipelines that export the same data store a copy of every span.
+
+Traceway keeps every copy it receives, and every page reads one copy of each span, identified by its trace ID and span ID:
+
+- The copy kept is the one with the longest duration. When two copies took the same time, their content decides, so the same copy is kept every time.
+- Filters apply to the kept copy. An attribute value that only the other copy carries does not match, and **Not equals** or **Key does not exist** also look at the kept copy.
+- Counts, pages and charts count the span once, so the chart's count equals the table's.
+
+### What a search costs
+
+The figures in this section are for ClickHouse. Retried spans are rare, so a search first looks for the spans stored more than once and compares copies only for those. Every other span is filtered as it is read. A search or chart uses about 35 MB per million spans of the project in its time range, whatever the filters: about 140 MB for a day of 4 million spans.
+
+Each search may use up to 1 GB, which is reached at around 30 million spans in the range. A search that reaches it, or that runs too long, asks you to narrow the range or add a filter.
+
+When every span is stored twice, a search uses about ten times as much memory and filters that match few spans get slower. That pattern points at a doubled exporter or Collector pipeline. Fix it where the data is sent, since both copies also take up storage.
+
+## Span explorer
+
+The **Spans** page searches every span of the project in a time range, the last hour by default and up to 31 days: by name, service, kind, status, minimum and maximum duration, trace ID and span attributes. Click a result to open its whole trace with that span selected.
+
+<img src="/spans/spans-explorer.png" alt="The span explorer filtered to SELECT orders on PostgreSQL, with a saved filter applied and P50, P95 and P99 duration lines that step up after a deploy, above the matching spans" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Attribute filters
+
+**Add attribute filter** takes an OpenTelemetry attribute key, such as `http.request.method` or `db.system.name`, and an operator:
+
+| Operator | Matches |
+| --- | --- |
+| **Equals** | Spans whose attribute has exactly this value |
+| **Not equals** | Spans whose attribute has another value, and spans without the attribute |
+| **Contains** | Spans whose attribute contains the text, ignoring case |
+| **Not contains** | Spans whose attribute does not contain the text, and spans without the attribute |
+| **Key exists** | Spans that carry the attribute, whatever its value |
+| **Key does not exist** | Spans without the attribute |
+
+Each filter is a pill under the search bar, with exclusions in red. Click a pill's operator to switch it in place, its key or value to edit it, or its X to remove it. A search takes up to 10 attribute filters.
+
+<img src="/spans/spans-operators.png" alt="The operator menu of a filter pill: equals, not equals, contains, not contains, key exists and key does not exist" style={{ maxWidth: '340px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Charting durations
+
+A chart above the results shows the duration of every span the filters match. **Over time** draws P50, P95 and P99 for each slice of the range; the buttons above it add the average, minimum, maximum, sum and count. Hover to read every line for one slice, and drag across the chart to zoom the page to that stretch of time. A deploy that made an operation slower shows up as a step, as in the picture above.
+
+**Distribution** counts the durations in bins and marks P50, P95 and P99. When the slowest span took at least 20 times as long as the fastest, every bin covers the same ratio instead of the same width, so the axis is logarithmic and two kinds of request that share a name, such as cache hits and cache misses, show up as separate humps.
+
+<img src="/spans/spans-duration-distribution.png" alt="The durations of GET product spans on a log scale: cache hits near 1.5 milliseconds and cache misses near 40 milliseconds, with P50, P95 and P99 marked" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+- The chart reads the same spans as the table, one copy of each: a span that an exporter retried, and Traceway stored twice, counts once.
+- The X closes the chart and **Chart** brings it back. Whether it is open, what it charts, its view and its lines are kept in the URL, so a link or a saved filter opens the same chart.
+- A chart over a long range of busy services takes as long as the search itself; when either takes too long, the page asks you to narrow the range or add a filter.
+
+### Charting an attribute
+
+The picker in the chart's corner, **Duration** by default, switches the chart to a numeric attribute of the matching spans, such as `db.response.returned_rows` or `http.response.body.size`. It offers the same views and lines. Only spans carrying the attribute are charted, and only values written as numbers (`12`, `-3.5`, `1e3`); a note under the chart says how many were not.
+
+<img src="/spans/spans-attribute-chart.png" alt="db.response.returned_rows of SELECT orders spans over three hours, with average, P95 and maximum lines and a tooltip: rows returned jumped with the same deploy" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Filtering from a trace
+
+In any span waterfall, on the trace page, an endpoint request or a task run, click a span to see its attributes. The filter icon beside each attribute opens the span explorer filtered on it, with the same six operators. An attribute holding a number also offers **Chart values**, which opens its chart across the same operation: the same service and span name. The explorer keeps the time range of the page you came from, or else looks at the hour around the span, and searches the span's own project.
+
+<img src="/spans/spans-popover-filter.png" alt="A SELECT orders span opened in a waterfall, with the filter menu of its db.response.returned_rows attribute and Chart values" style={{ maxWidth: '480px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Saved filters
+
+**Saved filters**, at the right of the filter pills, store the search, its filters and the chart under a name, with or without the time range, exactly as on the [Logs page](/learn/logs#saved-filters). They belong to the project and are shared with everyone who can open it, and each page keeps its own list.
+
+<img src="/spans/spans-saved-filters.png" alt="The saved filters menu of the Spans page, with two filters and what each one selects" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
 ## What spans are good for
 
 Spans tell you **where the time went**. If an endpoint takes 500ms and 450ms of that is in a `db.users.find` span, you know what to optimize. The dashboard's drill-down (Endpoints / Tasks / AI Traces → instance → waterfall) bottoms out in spans.

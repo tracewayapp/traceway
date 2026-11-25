@@ -45,7 +45,7 @@ Embedded mode does not actually require this image. The image is packaging; the 
 
 ```bash
 # One-time harness setup (Node 18+ required)
-sudo mkdir -p /opt/traceway-playwright && cd /opt/traceway-playwright
+sudo install -d -o "$(id -un)" /opt/traceway-playwright && cd /opt/traceway-playwright
 npm init -y && npm i @playwright/test
 npx playwright install --with-deps chromium
 ```

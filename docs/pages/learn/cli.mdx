@@ -79,6 +79,7 @@ The default `traceway login` runs a browser device flow with an auto-refreshing 
 | `traceway dashboards validate --file F` | Offline dashboard validation without login |
 | `traceway pages {list,show}` | On-call pages (`--status active\|open\|acknowledged\|resolved`) |
 | `traceway alerts list` | Alert rules with their enabled and snoozed state |
+| `traceway slos list` / `slos show <id>` / `slos series <id> --file F` / `slos preview --file F` | [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp): definition, status, current SLI and error budget, history, and a dry run of a definition |
 | `traceway monitors {list,show}` | Uptime monitors and their incidents |
 | `traceway post-mortems {list,show}` | Post-mortem documents (`--search`, `--tag`) |
 | `traceway opamp rules list` | A browser project's [remote SDK config](/learn/remote-config) rules, in order, with their `updatedAt` |
@@ -163,7 +164,11 @@ Calling a mutating command from a non-TTY context (script, LLM tool call) withou
 
 Use `traceway-write dashboards import --file dashboard.json --yes` to create and apply dashboards to the selected project. Add `--mode upsert` to replace definitions by organization-wide name; edits affect every assigned project. Both CLI editions can validate files offline with `dashboards validate --file dashboard.json`. See [Dashboards](/learn/dashboards#build-dashboards-with-the-cli-or-an-ai-agent) for discovery, chart selection, JSON examples and verification.
 
+`traceway-write dashboards embed <id> --yes` issues an expiring read-only link to a dashboard of the selected project and prints it as `url`. Add `--timeframe 7d` or `--from`/`--to` for the range, `--tag account_id=acme` (repeatable) to limit every widget to a tag value, `--expires-in-days N` (1 to 90) or `--expires-at` for the lifetime (five minutes by default) and `--theme light|dark`. The output holds the signed token, so treat it like a credential. See [Share and embed a dashboard](/learn/dashboards#share-and-embed-a-dashboard).
+
+
+`traceway-write tokens create --name "Acme embed" --yes` creates a read-only personal access token (`twp_`) for your account and prints it once; it never expires unless you add `--expires-in-days N`. Write tokens can only be created in the dashboard. `traceway-write tokens list` shows your tokens' names, prefixes, scopes and expiry, never the tokens.
 
 ## Alerting and on-call configuration
 
-`traceway-write` provides `channels`, `alerts`, `teams`, `schedules`, `escalation-policies`, `contact-methods` and `notification-chains` commands for configuration, plus `notification-history` and `oncall` for verification. Reads are available in the read-only edition too. Use `--file` JSON for request bodies, `--organization <id>` for organization resources, and a selected project for all writes. `<resource> validate <action> --file F` validates the request envelope offline; the server validates nested settings and permissions. See [alerting examples](/learn/alerts#configure-alerting-with-the-cli-or-mcp), [on-call examples](/learn/on-call#configure-on-call-with-the-cli-or-mcp) and [Agent Write Access](/learn/agent-write-access).
+`traceway-write` provides `channels`, `alerts`, `slos`, `teams`, `schedules`, `escalation-policies`, `contact-methods` and `notification-chains` commands for configuration, plus `notification-history` and `oncall` for verification. Reads are available in the read-only edition too. Use `--file` JSON for request bodies, `--organization <id>` for organization resources, and a selected project for all writes. `<resource> validate <action> --file F` validates the request envelope offline; the server validates nested settings and permissions. See [alerting examples](/learn/alerts#configure-alerting-with-the-cli-or-mcp), [on-call examples](/learn/on-call#configure-on-call-with-the-cli-or-mcp) and [Agent Write Access](/learn/agent-write-access).

@@ -234,6 +234,47 @@ func (r *logRecordRepository) Histogram(ctx context.Context, params shared.LogSe
 	return out, rows.Err()
 }
 
+// attributeValues is the subquery every attribute chart reads: one row per
+// matching log that carries the attribute, with its bucket and its number
+// (NULL when the value is not one), rendered to positional placeholders. step 0
+// puts every row in bucket 0.
+func (r *logRecordRepository) attributeValues(params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) (string, []any, bool, error) {
+	col := attrColumn(target.Scope)
+	if col == "" {
+		return "", nil, false, nil
+	}
+	where, args := r.buildWhere(params)
+	args["chart_key"] = target.Key
+	bucket := "0"
+	if step > 0 {
+		bucket = fmt.Sprintf("(CAST(strftime('%%s', timestamp) AS INTEGER) / %d) * %d", step, step)
+	}
+	query, positional, err := lit.ParseNamedQuery(db.Driver, fmt.Sprintf(`SELECT bucket, %s AS v
+		FROM (SELECT %s AS bucket, json_extract(%s, '$."' || :chart_key || '"') AS raw
+			FROM log_records WHERE %s)
+		WHERE raw IS NOT NULL`, chartNumber, bucket, col, where), args)
+	return query, positional, err == nil, err
+}
+
+// AttributeStats summarises the numeric values of one attribute per step-second
+// bucket of the logs Search would match (step 0: one row for the whole range).
+func (r *logRecordRepository) AttributeStats(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, step int64) ([]shared.ChartStatsRow, error) {
+	values, args, ok, err := r.attributeValues(params, target, step)
+	if !ok {
+		return nil, err
+	}
+	return queryChartStats(ctx, values, args)
+}
+
+// AttributeBins counts the numeric values of one attribute per bin.
+func (r *logRecordRepository) AttributeBins(ctx context.Context, params shared.LogSearchParams, target shared.LogAttributeTarget, binning shared.ChartBinning) ([]shared.ChartBinRow, error) {
+	values, args, ok, err := r.attributeValues(params, target, 0)
+	if !ok {
+		return nil, err
+	}
+	return queryChartBins(ctx, values, args, binning)
+}
+
 func (r *logRecordRepository) FindByTraceId(ctx context.Context, projectId uuid.UUID, traceId string) ([]models.LogRecord, error) {
 	rows, err := lit.SelectNamed[logRecord](shared.Traced(ctx, db.TelemetryDB),
 		`SELECT `+logRecordColumns+` FROM log_records
@@ -324,6 +365,15 @@ func (r *logRecordRepository) buildWhere(params shared.LogSearchParams) (string,
 		}
 		keyPH := fmt.Sprintf("attr_k%d", i)
 		valPH := fmt.Sprintf("attr_v%d", i)
+		if f.Exists {
+			check := "IS NOT NULL"
+			if f.Exclude {
+				check = "IS NULL"
+			}
+			clauses = append(clauses, fmt.Sprintf("json_extract(%s, '$.\"' || :%s || '\"') %s", col, keyPH, check))
+			args[keyPH] = f.Key
+			continue
+		}
 		if f.Contains {
 			// Case-insensitive substring match. COALESCE keeps the negated
 			// form true for rows that don't carry the attribute at all

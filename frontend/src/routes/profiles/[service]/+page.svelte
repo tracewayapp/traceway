@@ -27,7 +27,18 @@
 	import TopFunctionsTable, {
 		type FunctionStat
 	} from '$lib/components/profiles/top-functions-table.svelte';
-	import TagFilter from '$lib/components/dashboard/tag-filter.svelte';
+	import {
+		FilterBar,
+		attributeConfig,
+		describeTimeRange,
+		type AttributeRules,
+		type FilterApply
+	} from '$lib/components/traceway/filter-bar';
+	import {
+		operatorFlags,
+		operatorOption,
+		type AttributeFilter
+	} from '$lib/utils/attribute-filters';
 	import { mergeFlameTrees } from '$lib/utils/flame-diff';
 	import { collapseRecursion, buildSandwich } from '$lib/utils/flame-ops';
 	import { CalendarDate } from '@internationalized/date';
@@ -247,8 +258,32 @@
 		loadData(true);
 	}
 
-	function handleFilterChange(filters: Record<string, string>) {
-		selectedLabels = filters;
+	// Profile labels are a key → value map, so each label takes one exact value. The backend
+	// refuses a key outside the project's label allowlist, so only reported labels are taken.
+	const labelKeys = $derived(Object.keys(availableLabels));
+	const labelRules = $derived<AttributeRules>({
+		operators: [operatorOption('=')],
+		keyPlaceholder: 'label',
+		valuePlaceholder: 'value',
+		requireValue: true,
+		uniqueKeys: true,
+		keys: labelKeys,
+		loadValues: (key) => Promise.resolve(availableLabels[key] ?? []),
+		key: (key) =>
+			labelKeys.includes(key)
+				? key
+				: {
+						error: labelKeys.length
+							? 'Pick one of the labels this profile reports.'
+							: 'This profile type reports no labels.'
+					}
+	});
+	const labelFilters = $derived<AttributeFilter[]>(
+		Object.entries(selectedLabels).map(([key, value]) => ({ key, value, ...operatorFlags('=') }))
+	);
+
+	function handleLabelApply(next: FilterApply) {
+		selectedLabels = Object.fromEntries(next.attributes.map((f) => [f.key, f.value]));
 		loadData(true);
 	}
 
@@ -517,53 +552,55 @@
 		/>
 	{/if}
 
-	<div class="flex flex-wrap items-center gap-2">
-		<TagFilter
-			tagKeys={Object.keys(availableLabels)}
-			activeFilters={selectedLabels}
-			onFilterChange={handleFilterChange}
-			onLoadTagValues={(key) => Promise.resolve(availableLabels[key] ?? [])}
-		/>
-
-		<div class="flex-1"></div>
-
-		<Select.Root
-			type="single"
-			value={groupBy}
-			onValueChange={(v) => {
-				groupBy = v ?? '';
-				loadData(false);
-			}}
-		>
-			<Select.Trigger size="sm" class="w-44" data-testid="group-by-select">
-				Group by: {groupByLabel}
-			</Select.Trigger>
-			<Select.Content>
-				{#each groupByOptions as opt (opt.value)}
-					<Select.Item value={opt.value}>{opt.label}</Select.Item>
-				{/each}
-			</Select.Content>
-		</Select.Root>
-
-		{#if !activeIsGauge}
-			<Button
-				variant={normalize ? 'secondary' : 'outline'}
-				size="sm"
-				aria-pressed={normalize}
-				onclick={() => {
-					normalize = !normalize;
+	<FilterBar
+		showSearch={false}
+		attributes={attributeConfig(labelFilters, labelRules)}
+		onApply={handleLabelApply}
+		disabled={loading}
+		noun="profiles"
+		rangeLabel={describeTimeRange(selectedPreset)}
+	>
+		{#snippet actions()}
+			<Select.Root
+				type="single"
+				value={groupBy}
+				disabled={loading}
+				onValueChange={(v) => {
+					groupBy = v ?? '';
 					loadData(false);
 				}}
-				data-testid="normalize-toggle"
-				title={rateUnitIsTime
-					? 'Show CPU as cores in use (CPU time per wall-second)'
-					: 'Show as a per-second rate'}
 			>
-				<Gauge class="h-4 w-4" />
-				{rateToggleLabel}
-			</Button>
-		{/if}
-	</div>
+				<Select.Trigger size="sm" class="w-44" data-testid="group-by-select">
+					Group by: {groupByLabel}
+				</Select.Trigger>
+				<Select.Content>
+					{#each groupByOptions as opt (opt.value)}
+						<Select.Item value={opt.value}>{opt.label}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+
+			{#if !activeIsGauge}
+				<Button
+					variant={normalize ? 'secondary' : 'outline'}
+					size="sm"
+					disabled={loading}
+					aria-pressed={normalize}
+					onclick={() => {
+						normalize = !normalize;
+						loadData(false);
+					}}
+					data-testid="normalize-toggle"
+					title={rateUnitIsTime
+						? 'Show CPU as cores in use (CPU time per wall-second)'
+						: 'Show as a per-second rate'}
+				>
+					<Gauge class="h-4 w-4" />
+					{rateToggleLabel}
+				</Button>
+			{/if}
+		{/snippet}
+	</FilterBar>
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20">

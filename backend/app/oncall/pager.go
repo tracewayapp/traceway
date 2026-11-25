@@ -2,9 +2,7 @@ package oncall
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,13 +32,40 @@ func EscalationChannelPolicyId(configJSON json.RawMessage) int {
 // rules targeting an escalation channel: instead of sending anything, it opens
 // (or dedups into) a page; the escalator worker does all notifying.
 func OpenPageFromDispatch(ctx context.Context, configJSON json.RawMessage, rule *models.NotificationRuleWithChannel, msg notifications.Message) (bool, error) {
+	params, err := dispatchPageParams(configJSON, rule, msg)
+	if err != nil {
+		return false, err
+	}
+	opened, err := openPage(ctx, params)
+	if err != nil {
+		return false, err
+	}
+	if opened {
+		Wake()
+	}
+	return opened, nil
+}
+
+// ApplyMetricSeriesPage opens or resolves a series page in the firing-state transaction.
+func ApplyMetricSeriesPage(tx *sql.Tx, configJSON json.RawMessage, rule *models.NotificationRuleWithChannel, msg notifications.Message) (bool, error) {
+	if msg.Recovered {
+		return AutoResolveByDedupKeyTx(tx, rule.Id, msg.DedupToken, time.Now().UTC())
+	}
+	params, err := dispatchPageParams(configJSON, rule, msg)
+	if err != nil {
+		return false, err
+	}
+	return openPageInTx(tx, params)
+}
+
+func dispatchPageParams(configJSON json.RawMessage, rule *models.NotificationRuleWithChannel, msg notifications.Message) (openPageParams, error) {
 	policyId := EscalationChannelPolicyId(configJSON)
 	if policyId == 0 {
-		return false, errors.New("escalation channel config has no policyId")
+		return openPageParams{}, errors.New("escalation channel config has no policyId")
 	}
 
 	ruleId := rule.Id
-	opened, err := openPage(ctx, openPageParams{
+	return openPageParams{
 		PolicyId:  policyId,
 		ProjectId: rule.ProjectId,
 		RuleId:    &ruleId,
@@ -50,15 +75,8 @@ func OpenPageFromDispatch(ctx context.Context, configJSON json.RawMessage, rule 
 		Body:      msg.Body,
 		URL:       msg.URL,
 		Severity:  string(msg.Severity),
-		DedupKey:  pageDedupKey(fmt.Sprintf("%d", rule.Id), msg.DedupToken),
-	})
-	if err != nil {
-		return false, err
-	}
-	if opened {
-		Wake()
-	}
-	return opened, nil
+		DedupKey:  models.RulePageDedupKey(rule.Id, msg.DedupToken),
+	}, nil
 }
 
 // OpenTestPage opens a real page for the channel test endpoint, exercising the
@@ -82,22 +100,6 @@ func OpenTestPage(ctx context.Context, policyId int, projectId uuid.UUID, channe
 		Wake()
 	}
 	return opened, nil
-}
-
-const maxDedupKeyLength = 300
-
-// pageDedupKey builds "prefix|token". pages.dedup_key is VARCHAR(300) on
-// Postgres while the token can be unbounded client input (endpoint names,
-// metric names), so an oversized token is replaced with a deterministic
-// digest: the same long token still dedups into the same page instead of
-// failing the insert.
-func pageDedupKey(prefix string, token string) string {
-	key := prefix + "|" + token
-	if len(key) <= maxDedupKeyLength {
-		return key
-	}
-	sum := sha256.Sum256([]byte(token))
-	return prefix + "|" + hex.EncodeToString(sum[:])[:32]
 }
 
 type openPageParams struct {

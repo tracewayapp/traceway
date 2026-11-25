@@ -19,7 +19,7 @@ func jsonContext(path string, body string) *gin.Context {
 }
 
 func TestOTLPJSONSignalsIgnoreUnknownFields(t *testing.T) {
-	metrics, _, err := decodeMetricsRequest(jsonContext("/api/otel/v1/metrics", `{"futureTopLevel":{"a":1},"resourceMetrics":[{"futureResourceField":true,"scopeMetrics":[{"metrics":[{"name":"requests","futureMetricField":[1,2],"gauge":{"dataPoints":[{"asInt":"7","futurePointField":"x"}]}}]}]}]}`))
+	metrics, _, err := decodeMetricsRequest(jsonContext("/api/otel/v1/metrics", `{"futureTopLevel":{"a":1},"resourceMetrics":[{"futureResourceField":true,"scopeMetrics":[{"metrics":[{"name":"requests","futureMetricField":[1,2],"gauge":{"dataPoints":[{"asInt":"7","futurePointField":"x"}]}}]}]}]}`), maxBodySize)
 	if err != nil {
 		t.Fatalf("metrics: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestOTLPJSONSignalsIgnoreUnknownFields(t *testing.T) {
 }
 
 func TestOTLPJSONSignalsStillRejectMalformedKnownFields(t *testing.T) {
-	if _, _, err := decodeMetricsRequest(jsonContext("/api/otel/v1/metrics", `{"resourceMetrics":"not an array"}`)); err == nil {
+	if _, _, err := decodeMetricsRequest(jsonContext("/api/otel/v1/metrics", `{"resourceMetrics":"not an array"}`), maxBodySize); err == nil {
 		t.Fatal("metrics accepted a malformed known field")
 	}
 	if _, _, err := decodeLogsRequest(jsonContext("/api/otel/v1/logs", `{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"timeUnixNano":{"not":"a number"}}]}]}]}`)); err == nil {

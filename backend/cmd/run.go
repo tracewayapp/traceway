@@ -17,6 +17,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/backfill"
 	"github.com/tracewayapp/traceway/backend/v2/app/cache"
 	"github.com/tracewayapp/traceway/backend/v2/app/chdb"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
 	"github.com/tracewayapp/traceway/backend/v2/app/config"
 	"github.com/tracewayapp/traceway/backend/v2/app/controllers"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
@@ -47,6 +48,15 @@ import (
 var PostStartupHooks []func(ctx context.Context)
 
 func Run(opts ...Option) {
+	run(false, opts...)
+}
+
+// RunStandalone lets the server binary extend its own systemd startup deadline.
+func RunStandalone() {
+	run(true)
+}
+
+func run(standalone bool, opts ...Option) {
 	var cfg *config.Cfg
 	var o *options
 
@@ -116,17 +126,7 @@ func Run(opts ...Option) {
 		panic(fmt.Errorf("failed to initialize storage: %w", err))
 	}
 
-	err = migrations.Run(cfg.DBType)
-	if err != nil {
-		panic(fmt.Errorf("migrations run failed: %w", err))
-	}
-
-	if err := backfill.RunDashboards(); err != nil {
-		panic(fmt.Errorf("dashboards backfill failed: %w", err))
-	}
-	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
-		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
-	}
+	runStartupMigrations(cfg.DBType, standalone)
 
 	if o != nil {
 		if err := seed(o); err != nil {
@@ -185,6 +185,7 @@ func Run(opts ...Option) {
 	outbox.RegisterSender(notifications.AdapterSend)
 	outbox.RegisterTerminalHook(notifications.OnOutboxTerminal)
 	notifications.RegisterPageOpener(oncall.OpenPageFromDispatch)
+	notifications.RegisterMetricSeriesPager(oncall.ApplyMetricSeriesPage, oncall.Wake)
 	notifications.RegisterPageResolver(oncall.AutoResolveByDedupKey)
 	synthetics.RegisterNotifier(notifications.OnCheckStateChange)
 	outbox.StartDrain(ctx)
@@ -194,6 +195,8 @@ func Run(opts ...Option) {
 	slo.Start(ctx)
 	retention.Start(ctx)
 	recordings.Start(ctx)
+	services.SetClientMetricsInstances(slo.Instances)
+	services.StartClientMetrics(ctx)
 	sourcemapbackfill.Start(ctx)
 
 	var router *gin.Engine
@@ -223,6 +226,7 @@ func Run(opts ...Option) {
 		monitoring.StartOutboxReporter(ctx)
 		monitoring.StartSyntheticsReporter(ctx)
 		monitoring.StartSLOReporter(ctx)
+		monitoring.StartClientMetricsReporter(ctx, func() clientmetrics.HealthStats { return services.ClientMetrics().Snapshot() })
 	}
 
 	router.GET("/health", func(c *gin.Context) {
@@ -314,6 +318,32 @@ func Run(opts ...Option) {
 	notifySystemd(ctx)
 	config.Logln("Starting server on " + listeners[0].Addr().String())
 	serveHTTP(router, listeners[0])
+}
+
+func runStartupMigrations(dbType string, standalone bool) {
+	if socket := os.Getenv("NOTIFY_SOCKET"); standalone && socket != "" {
+		stop := startMigrationHeartbeat(func(window time.Duration) error {
+			return extendSystemdStartup(socket, window)
+		})
+		defer stop()
+	}
+
+	if err := migrations.Run(dbType); err != nil {
+		panic(fmt.Errorf("migrations run failed: %w", err))
+	}
+
+	if err := backfill.RunDashboards(); err != nil {
+		panic(fmt.Errorf("dashboards backfill failed: %w", err))
+	}
+	if err := backfill.RunOtelAgentDashboardSources(); err != nil {
+		panic(fmt.Errorf("OTel agent dashboard backfill failed: %w", err))
+	}
+	if err := backfill.RunBrowserDefaults(); err != nil {
+		panic(fmt.Errorf("browser defaults migration failed: %w", err))
+	}
+	if err := backfill.RunBrowserPerformanceDashboards(); err != nil {
+		panic(fmt.Errorf("Web Performance dashboard backfill failed: %w", err))
+	}
 }
 
 // A bad connection string must not take the server down.
@@ -608,6 +638,18 @@ func createSPAHandler(staticFS fs.FS) gin.HandlerFunc {
 
 		if statusPage != nil && path != "/" {
 			c.Redirect(http.StatusFound, "/")
+			return
+		}
+
+		// An older bundled frontend has no embed route. Never fall back to the
+		// authenticated app shell on a path that permits cross-origin framing.
+		if path == "/embed/dashboard" {
+			data, err := fs.ReadFile(staticFS, "embed/dashboard.html")
+			if err != nil {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 			return
 		}
 

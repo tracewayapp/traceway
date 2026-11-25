@@ -6,9 +6,9 @@ This page covers Celery (the typical setup), plus cron jobs, scripts and Django 
 
 ## The One Rule to Know First
 
-Traceway turns a span into a **Task** when the span is `CONSUMER` kind, or when it is a root span carrying a `console.command` attribute. A root span with the default `INTERNAL` kind and neither of those is **dropped silently**: no task, no row, no error anywhere.
+Traceway lists CONSUMER spans as **Tasks**. A root INTERNAL span for a command also qualifies when it carries `console.command`. Other ordinary root spans remain visible under **Spans**.
 
-Celery gets this right for free, because the instrumentation already opens a `CONSUMER` span. Everything you write by hand needs `kind=SpanKind.CONSUMER` at the root, or it produces nothing.
+Celery gets this right for free, because the instrumentation already opens a `CONSUMER` span. Everything you write by hand needs `kind=SpanKind.CONSUMER` at the root, or it is not listed under Tasks.
 
 ## Celery Setup
 
@@ -115,13 +115,13 @@ def nightly_cleanup(self) -> None:
 
 ## Cron Jobs, Scripts and Management Commands
 
-Django management commands run outside the HTTP request cycle, so the Django middleware never opens a root span for them. Unlike Celery tasks, they are **not traced automatically**. You open the root span yourself, and it must be `CONSUMER` kind or Traceway drops it.
+Django’s HTTP middleware covers requests. Open a span around a management command yourself to record its execution.
 
 ```python
 # myapp/management/commands/cleanup_orphans.py
 from django.core.management.base import BaseCommand
 from opentelemetry import trace
-from opentelemetry.trace import SpanKind, Status, StatusCode
+from opentelemetry.trace import SpanKind
 
 tracer = trace.get_tracer(__name__)
 
@@ -135,19 +135,14 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         with tracer.start_as_current_span(
             "cleanup_orphans",                                # this is the Task name in Traceway
-            kind=SpanKind.CONSUMER,                           # required, or the span is dropped
+            kind=SpanKind.CONSUMER,
             attributes={"console.command": "cleanup_orphans"},
         ) as span:
             span.set_attribute("cleanup.dry_run", bool(options["dry_run"]))
 
-            try:
-                with tracer.start_as_current_span("cleanup.scan") as child:
-                    deleted = self._scan_and_delete(options["dry_run"])
-                    child.set_attribute("rows.deleted", deleted)
-            except Exception as exc:
-                span.record_exception(exc)
-                span.set_status(Status(StatusCode.ERROR, str(exc)))
-                raise
+            with tracer.start_as_current_span("cleanup.scan") as child:
+                deleted = self._scan_and_delete(options["dry_run"])
+                child.set_attribute("rows.deleted", deleted)
 ```
 
 Run the command via the OTel agent so the SDK and exporters are configured exactly like the web process, and so the span is flushed when the process exits:
@@ -161,8 +156,8 @@ The command now appears under **Tasks** as `cleanup_orphans`, with `cleanup.scan
 
 Two things are doing work in that snippet:
 
-- `kind=SpanKind.CONSUMER` is what makes it a Task. Leave it out and you get a root `INTERNAL` span, which Traceway discards without an error. The span really is exported by the SDK, it just never becomes a row, so this failure is invisible unless you know to look for it.
-- `console.command` is the second rule that promotes a root span to a Task. Setting both means the span survives either way.
+- `kind=SpanKind.CONSUMER` identifies the run as a Task, including when it has a parent.
+- A root INTERNAL span can also identify the command with `console.command`.
 
 The same pattern covers plain scripts and cron entries that never touch `manage.py`:
 

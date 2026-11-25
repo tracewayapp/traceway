@@ -136,6 +136,8 @@ func (r *otelSpanRepository) FindSpanAttributes(ctx context.Context, lookup shar
 
 func (r *otelSpanRepository) IsReadLimitError(error) bool { return false }
 
+const duckdbSpanAttribute = `json_extract_string(span_attributes, '$."' || ? || '"')`
+
 var duckdbSearchDialect = shared.OtelSearchDialect{
 	WinnerOrder: shared.OtelTextWinnerOrder,
 	Project:     func(id uuid.UUID) any { return id.String() },
@@ -143,12 +145,14 @@ var duckdbSearchDialect = shared.OtelSearchDialect{
 	Trace: func(project uuid.UUID, traceHex string) (string, any) {
 		return "trace_key = ?", shared.OtelKey(project, traceHex)
 	},
-	NameLike:   "contains(lower(name), lower(?))",
-	Attribute:  `json_extract_string(span_attributes, '$."' || ? || '"') = ?`,
-	StartOrder: "start_time_unix_nano",
-	Bucket:     epochBucket,
-	Count:      "CAST(COUNT(*) AS BIGINT)",
-	CountIf:    sumIf,
+	NameLike:       "contains(lower(name), lower(?))",
+	AttributeValue: duckdbSpanAttribute,
+	AttributeHas:   duckdbSpanAttribute + " IS NOT NULL",
+	Contains:       func(text string) string { return "contains(lower(" + text + "), lower(?))" },
+	StartOrder:     "start_time_unix_nano",
+	Bucket:         epochBucket,
+	Count:          "CAST(COUNT(*) AS BIGINT)",
+	CountIf:        sumIf,
 }
 
 func (r *otelSpanRepository) Search(ctx context.Context, search shared.OtelSpanSearch) ([]models.OtelSpan, uint64, error) {

@@ -38,7 +38,7 @@ export function MobileNav({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="md:hidden">
+    <div className="md:hidden phone-landscape:block">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <button
@@ -55,7 +55,7 @@ export function MobileNav({
           <SheetTitle className="sr-only">Menu</SheetTitle>
           <SheetDescription className="sr-only">Traceway product navigation</SheetDescription>
 
-          <div className="px-6 pt-16 pb-6 overflow-y-auto flex-1">
+          <div className="px-6 pt-16 pb-6 phone-landscape:pt-12 overflow-y-auto overscroll-contain flex-1">
             <NavSection
               eyebrow="Platform"
               items={pillars}
@@ -85,20 +85,20 @@ export function MobileNav({
           </div>
 
           <div
-            className="p-6 flex flex-col gap-3"
+            className="p-6 phone-landscape:py-3 flex flex-col phone-landscape:flex-row gap-3"
             style={{ borderTop: "1px solid var(--hair)" }}
           >
             <Link
               href="https://cloud.tracewayapp.com/register"
               onClick={() => setOpen(false)}
-              className="btn btn-accent w-full justify-center"
+              className="btn btn-accent w-full phone-landscape:flex-1 justify-center"
             >
               Start for free
             </Link>
             <Link
               href="https://cloud.tracewayapp.com/login"
               onClick={() => setOpen(false)}
-              className="btn btn-ghost w-full justify-center"
+              className="btn btn-ghost w-full phone-landscape:flex-1 justify-center"
             >
               Sign in
             </Link>

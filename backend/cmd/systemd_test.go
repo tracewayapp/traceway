@@ -3,7 +3,9 @@ package cmd
 import (
 	"context"
 	"errors"
+	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -74,6 +76,79 @@ func TestSystemdWatchdogRetriesAndStopsOnCancellation(t *testing.T) {
 		synctest.Wait()
 		if got := calls.Load(); got != 4 {
 			t.Fatalf("heartbeats continued after cancellation: %d calls", got)
+		}
+	})
+}
+
+func TestSystemdMigrationExtensionDatagram(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("systemd uses Linux datagram sockets")
+	}
+	t.Chdir(t.TempDir())
+	socket := "notify.sock"
+	listener, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Net: "unixgram", Name: socket})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if err := extendSystemdStartup(socket, 3*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var buf [64]byte
+	n, err := listener.Read(buf[:])
+	if err != nil || string(buf[:n]) != "EXTEND_TIMEOUT_USEC=3000000" {
+		t.Fatalf("received %q, %v", buf[:n], err)
+	}
+}
+
+func TestMigrationHeartbeatStopsAtBudget(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		var windows []time.Duration
+		stop := startMigrationHeartbeat(func(window time.Duration) error {
+			if time.Since(start)+window > migrationExtensionBudget {
+				t.Errorf("extension at %s grants %s past the budget", time.Since(start), window)
+			}
+			windows = append(windows, window)
+			if len(windows) == 1 {
+				if !time.Now().Equal(start) || window != migrationExtensionWindow {
+					t.Errorf("first extension at %s grants %s", time.Since(start), window)
+				}
+				return errors.New("temporary send failure")
+			}
+			return nil
+		})
+		time.Sleep(migrationExtensionBudget + migrationExtensionWindow)
+		stop()
+		if want := int(migrationExtensionBudget / migrationHeartbeatInterval); len(windows) != want {
+			t.Fatalf("sent %d extensions, want %d", len(windows), want)
+		}
+		if got := windows[len(windows)-1]; got != migrationHeartbeatInterval {
+			t.Fatalf("last extension = %s, want %s", got, migrationHeartbeatInterval)
+		}
+	})
+}
+
+func TestMigrationHeartbeatJoinsBeforeReturning(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var calls int
+		stop := startMigrationHeartbeat(func(window time.Duration) error {
+			time.Sleep(time.Second)
+			calls++
+			return nil
+		})
+		synctest.Wait()
+		stop()
+		if calls != 1 {
+			t.Fatalf("stop returned before the in-flight send completed")
+		}
+		time.Sleep(2 * migrationHeartbeatInterval)
+		synctest.Wait()
+		if calls != 1 {
+			t.Fatalf("sent %d extensions after stopping", calls-1)
 		}
 	})
 }

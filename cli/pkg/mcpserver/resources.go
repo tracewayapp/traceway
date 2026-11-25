@@ -83,12 +83,20 @@ var knowledgeResources = []struct {
 		description: "Teams, schedules (layers, rotations, restrictions, overrides), escalation policies, pages and their lifecycle, contact methods and personal notification rules.",
 	},
 	{
+		uri: "traceway://knowledge/learn/rum", file: "learn/rum.md", name: "Learn: Real User Monitoring",
+		description: "Browser metrics, Web Vitals, release comparisons, frontend SLOs, sessions, sampling and agent capability limits.",
+	},
+	{
 		uri: "traceway://knowledge/learn/data-collection", file: "learn/data-collection.md", name: "Learn: remote SDK config (Data Collection)",
 		description: "Remote SDK config for browser projects on the 2.x SDK: stream, buffer and off per signal, the defaults, ordered rules with targeting and rollout, init() and plan ceilings, triggers, captures and their status, preview, and how to verify on a device.",
 	},
 	{
 		uri: "traceway://knowledge/learn/organization", file: "learn/organization.md", name: "Learn: organization, access and settings",
 		description: "Organization views, projects and connection, roles and per-project overrides, account, personal access tokens, settings and agent access.",
+	},
+	{
+		uri: "traceway://knowledge/dashboard-embedding", file: "dashboard-embedding.md", name: "Embed dashboards in another application",
+		description: "How a host application shows a Traceway dashboard to its own users: the embed-token request, the backend endpoint and iframe to add to the user's code, per-customer tag filters, renewal, limits and verification. Read when the user wants to embed or share a dashboard. Issuing a link needs a personal access token (read is enough) whose owner can write to the project.",
 	},
 	{
 		uri: "traceway://knowledge/tool-map", file: "tool-map.md", name: "CLI to MCP tool map",
@@ -101,6 +109,7 @@ var writeResources = []struct {
 }{
 	{uri: "traceway://knowledge/write-setup", file: "write-setup.md", name: "Write setup", description: "CLI/MCP authentication, project context, permissions and confirmation."},
 	{uri: "traceway://knowledge/alert-configuration", file: "alert-configuration.md", name: "Configure alerting", description: "Channels, alert rule types, notification history and routing to escalation policies."},
+	{uri: "traceway://knowledge/slo-configuration", file: "slo-configuration.md", name: "Configure SLOs", description: "SLO documents per indicator kind, preview, update and delete semantics, and the burn-rate rules that read an SLO."},
 	{uri: "traceway://knowledge/oncall-configuration", file: "oncall-configuration.md", name: "Configure on-call", description: "Teams, membership, schedules, rotations, overrides and escalation policy definitions."},
 	{uri: "traceway://knowledge/personal-notifications", file: "personal-notifications.md", name: "Personal notification delivery", description: "Own contact methods, SMS verification and high/low urgency notification chains."},
 	{uri: "traceway://knowledge/incident-actions", file: "incident-actions.md", name: "Incident actions", description: "Issue archiving, page acknowledgment/resolution, monitor runs, post-mortems and slow endpoints."},

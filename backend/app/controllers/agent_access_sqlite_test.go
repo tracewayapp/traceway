@@ -206,7 +206,6 @@ func TestAgentGate_routesOutsideAllowlistAreDenied(t *testing.T) {
 	write := f.pat(t, models.ScopeWrite)
 
 	for _, tc := range []struct{ method, path string }{
-		{http.MethodPost, "/api/personal-access-tokens"},
 		{http.MethodPost, "/api/device/approve"},
 		{http.MethodPost, "/api/oauth/approve"},
 		{http.MethodDelete, "/api/projects?projectId=" + f.project.Id.String()},
@@ -217,6 +216,48 @@ func TestAgentGate_routesOutsideAllowlistAreDenied(t *testing.T) {
 		if rec.Code != http.StatusForbidden || !strings.Contains(errorMessage(rec), "not available") {
 			t.Errorf("%s %s with a write token = %d %q, want 403 not available", tc.method, tc.path, rec.Code, errorMessage(rec))
 		}
+	}
+}
+
+func TestAgentGate_agentsCreateReadTokensOnly(t *testing.T) {
+	f := setupAgentFixture(t)
+	read, write := f.pat(t, models.ScopeRead), f.pat(t, models.ScopeWrite)
+	path := "/api/personal-access-tokens?projectId=" + f.project.Id.String()
+	body := map[string]any{"name": "embed"}
+
+	if rec := f.do(t, write, http.MethodPost, path, body); rec.Code != http.StatusForbidden || !strings.Contains(errorMessage(rec), "turned off") {
+		t.Fatalf("before opt-in = %d %q", rec.Code, errorMessage(rec))
+	}
+	f.setAgentWrites(t, true)
+	if rec := f.do(t, read, http.MethodPost, path, body); rec.Code != http.StatusForbidden || !strings.Contains(errorMessage(rec), "read-only") {
+		t.Fatalf("read token minting = %d %q", rec.Code, errorMessage(rec))
+	}
+	if rec := f.do(t, write, http.MethodPost, "/api/personal-access-tokens", body); rec.Code != http.StatusBadRequest {
+		t.Fatalf("minting without projectId = %d", rec.Code)
+	}
+	days := 30
+	for _, b := range []map[string]any{{"name": "w", "scope": "write", "expiresInDays": days}, {"name": "w", "scope": models.ScopeWrite, "expiresInDays": days}} {
+		if rec := f.do(t, write, http.MethodPost, path, b); rec.Code != http.StatusForbidden || !strings.Contains(errorMessage(rec), "read tokens only") {
+			t.Fatalf("agent write token %v = %d %q", b, rec.Code, errorMessage(rec))
+		}
+	}
+
+	rec := f.do(t, write, http.MethodPost, path, body)
+	var created models.CreatePATResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil || rec.Code != http.StatusCreated || !strings.HasPrefix(created.Token, "twp_") || created.Scope != models.ScopeRead || created.ExpiresAt != nil {
+		t.Fatalf("agent read token = %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := f.do(t, created.Token, http.MethodGet, "/api/personal-access-tokens", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), created.Id) || strings.Contains(rec.Body.String(), created.Token) {
+		t.Fatalf("list with the new token = %d %s", rec.Code, rec.Body.String())
+	}
+	accepted := 0
+	for _, event := range f.auditEvents(t) {
+		if event.Route == "/api/personal-access-tokens" && event.StatusCode == http.StatusCreated {
+			accepted++
+		}
+	}
+	if accepted != 1 {
+		t.Errorf("accepted token creations in the audit log = %d, want 1", accepted)
 	}
 }
 

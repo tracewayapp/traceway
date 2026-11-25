@@ -165,18 +165,18 @@
 {/snippet}
 
 <Card.Root class="gap-0 overflow-hidden pb-0">
-	<Card.Header class="pb-4">
+	<Card.Header class="px-6 pb-4">
 		<Card.Title>Logs</Card.Title>
 	</Card.Header>
 	<Card.Content class="p-0">
 		{#if loading}
-			<div class="flex items-center justify-center py-6">
+			<div class="flex items-center justify-center px-6 py-6">
 				<LoadingCircle size="lg" />
 			</div>
 		{:else if error}
-			<div class="py-6 text-center text-sm text-red-500">{error}</div>
+			<div class="px-6 pt-2 pb-6 text-sm text-red-500">{error}</div>
 		{:else if logs.length === 0}
-			<div class="py-6 text-center text-sm text-muted-foreground">
+			<div class="px-6 pt-2 pb-6 text-sm text-muted-foreground">
 				No logs for this trace in the surrounding time window
 			</div>
 		{:else}

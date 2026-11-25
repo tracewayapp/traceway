@@ -97,3 +97,84 @@ func TestOriginalSource(t *testing.T) {
 		}
 	}
 }
+
+func TestFixOtelAgentFilesystemSource(t *testing.T) {
+	current := templateDefinition(t, "0096_update_template_traceway_otel_agent_filesystem.up.sql")
+	currentRaw, err := dashboardsvc.MarshalDefinition(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	templateSources, err := templateSourcesByMetric(models.JSONText(currentRaw))
+	if err != nil {
+		t.Fatalf("templateSourcesByMetric: %v", err)
+	}
+	if strings.Contains(string(templateSources["system.filesystem.utilization"]), `"state"`) {
+		t.Fatalf("the current template still filters filesystem utilization on state: %s", templateSources["system.filesystem.utilization"])
+	}
+
+	dashboard := installed(t, templateDefinition(t, "0076_update_template_traceway_otel_agent_sources.up.sql"))
+	before := widgetsByTitle(t, dashboard)
+
+	changed, err := fixOtelAgentFilesystemSource(dashboard, templateSources)
+	if err != nil {
+		t.Fatalf("fixOtelAgentFilesystemSource: %v", err)
+	}
+	if !changed {
+		t.Fatal("an unedited copy of the previous template should change")
+	}
+	after := widgetsByTitle(t, dashboard)
+	for title, widget := range before {
+		got := after[title]
+		if got.Id != widget.Id {
+			t.Errorf("%s lost its widget id: %s -> %s", title, widget.Id, got.Id)
+		}
+		if title == "Filesystem Utilization" {
+			if !strings.Contains(string(got.Config), `"tagFilters":{"mode":"rw"}`) || strings.Contains(string(got.Config), `"state"`) {
+				t.Errorf("filesystem utilization should take the template's source, got %s", got.Config)
+			}
+			continue
+		}
+		if string(got.Config) != string(widget.Config) {
+			t.Errorf("%s should be untouched:\n got %s\nwant %s", title, got.Config, widget.Config)
+		}
+	}
+
+	again, err := fixOtelAgentFilesystemSource(dashboard, templateSources)
+	if err != nil || again {
+		t.Errorf("second run should be a no-op, got changed=%v err=%v", again, err)
+	}
+}
+
+func TestFixOtelAgentFilesystemSourceMatchesJSONBAndSkipsEdits(t *testing.T) {
+	templateSources := map[string]json.RawMessage{
+		"system.filesystem.utilization": json.RawMessage(`[{"type":"metric","name":"system.filesystem.utilization","aggregation":"max","tagFilters":{"mode":"rw"},"groupBy":"server_name","label":"Used"}]`),
+	}
+	installed := `{"schemaVersion":1,"widgets":[
+	 {"id":"w_jsonb","title":"Filesystem Utilization","widgetType":"line_chart","config":{"sources": [{"name": "system.filesystem.utilization", "type": "metric", "label": "Used", "groupBy": "server_name", "tagFilters": {"state": "used"}, "aggregation": "max"}]}},
+	 {"id":"w_edited","title":"Root disk","widgetType":"line_chart","config":{"sources":[{"type":"metric","name":"system.filesystem.utilization","aggregation":"max","tagFilters":{"state":"used"},"groupBy":"mountpoint","label":"Used"}]}},
+	 {"id":"w_usage","title":"Filesystem Usage","widgetType":"area_chart","config":{"sources":[{"type":"metric","name":"system.filesystem.usage","aggregation":"max","tagFilters":{"state":"used"},"groupBy":"server_name","label":"Used"}]}}
+	]}`
+	dashboard := &models.Dashboard{Id: 1, Definition: models.JSONText(installed)}
+
+	changed, err := fixOtelAgentFilesystemSource(dashboard, templateSources)
+	if err != nil || !changed {
+		t.Fatalf("expected the JSONB-ordered copy to change, got changed=%v err=%v", changed, err)
+	}
+	def, err := dashboardsvc.ParseDefinition([]byte(dashboard.Definition))
+	if err != nil {
+		t.Fatal(err)
+	}
+	configs := map[string]string{}
+	for _, widget := range def.Widgets {
+		configs[widget.Id] = string(widget.Config)
+	}
+	if !strings.Contains(configs["w_jsonb"], `"mode":"rw"`) {
+		t.Errorf("JSONB-ordered widget should be fixed, got %s", configs["w_jsonb"])
+	}
+	if !strings.Contains(configs["w_edited"], `"groupBy":"mountpoint"`) || !strings.Contains(configs["w_edited"], `"state":"used"`) {
+		t.Errorf("edited widget should be untouched, got %s", configs["w_edited"])
+	}
+	if !strings.Contains(configs["w_usage"], `"state":"used"`) {
+		t.Errorf("filesystem usage keeps its state filter, got %s", configs["w_usage"])
+	}
+}

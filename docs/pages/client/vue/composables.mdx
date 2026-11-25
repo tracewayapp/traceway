@@ -16,10 +16,12 @@ const { captureException, captureExceptionWithAttributes, captureMessage, record
 
 | Function | Description |
 |----------|-------------|
-| `captureException(error)` | Capture an error with stack trace |
-| `captureExceptionWithAttributes(error, attributes)` | Capture an error with metadata |
-| `captureMessage(message)` | Send a custom message |
-| `recordAction(category, name, data?)` | Add a custom entry to the session action timeline |
+| `captureException(error, attributes?)` | Capture an error with stack trace |
+| `captureExceptionWithAttributes(error, attributes)` | Capture an error with metadata. Attribute values are strings |
+| `captureMessage(message, attributes?)` | Send a custom message, listed on the Issues page |
+| `recordAction(category, name, data?)` | Add a custom entry to the session timeline |
+
+These four are the whole return value. Everything else is imported from `@tracewayapp/vue` directly, see [Direct Imports](#direct-imports).
 
 ## captureException
 
@@ -63,7 +65,7 @@ async function loadData() {
     // ...
   } catch (error) {
     captureExceptionWithAttributes(error, {
-      userId: props.userId,
+      userId: String(props.userId),
       action: "loadUserData",
     });
   }
@@ -73,12 +75,14 @@ async function loadData() {
 
 ## captureMessage
 
-Track non-error events:
+Report an event that is not an error. A message is listed on the Issues page; for an event that should only show on the session timeline, use `recordAction` or `track`:
 
 ```vue
 <script setup>
+import { useRouter } from "vue-router";
 import { useTraceway } from "@tracewayapp/vue";
 
+const router = useRouter();
 const { captureMessage } = useTraceway();
 
 function handleCheckout() {
@@ -94,7 +98,7 @@ function handleCheckout() {
 
 ## recordAction
 
-Drop a breadcrumb into the session action timeline. It does not create an issue on its own. It rides along with the next exception captured in the same session, next to the automatic network and navigation entries:
+Drop a breadcrumb into the session timeline. It does not create an issue on its own. Like the automatic console, network, navigation and click entries it stays on the device by default and is uploaded with the next error of the session (up to the last 10 minutes), or continuously with `recordAllSessions: true`:
 
 ```vue
 <script setup>
@@ -111,6 +115,48 @@ function startCheckout() {
   <button @click="startCheckout">Start Checkout</button>
 </template>
 ```
+
+## useTracewayAttributes
+
+`useTracewayAttributes(mapOrGetter)` binds reactive state to the global attribute scope, so every session and exception carries it, and removes its keys when the component unmounts. `<TracewayAttributes :attributes="..." />` is the same thing as a component:
+
+```vue
+<script setup>
+import { useTracewayAttributes } from "@tracewayapp/vue";
+
+const props = defineProps(['userId']);
+useTracewayAttributes(() => ({ "user.id": String(props.userId) }));
+</script>
+```
+
+See [Custom Attributes](/client/vue/plugin#custom-attributes) for the details.
+
+## Direct Imports
+
+`@tracewayapp/vue` re-exports the browser SDK's functions, so they can be imported anywhere, outside components too:
+
+```javascript
+import { track, metric, count, flush } from "@tracewayapp/vue";
+
+track("checkout_failed", { step: "payment" }); // a named event on the session timeline
+metric("checkout.duration", 840, { plan: "pro" }); // one observation of a custom distribution
+count("cart.item_added"); // a custom counter
+
+await flush(); // send everything that is queued for sending
+```
+
+| Function | Description |
+|----------|-------------|
+| `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` | The same functions `useTraceway()` returns |
+| `track(eventName, attributes?)` | Record a named app event. [Triggers](/learn/remote-config) can match it |
+| `metric(name, value, dims?)`, `count(name, n?, dims?)` | Custom [performance metrics](/learn/client-metrics), aggregated on the device |
+| `setMetricDimension(key, value)` | Put a dimension of your own on every performance metric; `null` removes it |
+| `setRoute(template)` | Name the current page by its route template. [`trackRouter`](/client/vue/plugin#route-names) calls it for you |
+| `startInteraction(name)` | Trace a multi-step interaction, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
+| `setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes` | The global attribute scope, see [Custom Attributes](/client/vue/plugin#custom-attributes) |
+| `refreshConfig()` | Fetch the remote collection settings now instead of at the next poll |
+| `flush(timeoutMs?)`, `shutdown()` | See [Flush & Lifecycle](/client/js-sdk/flush) |
+| `getInstanceId()` | The id this browser profile reports as `service.instance.id` |
 
 ## Composable Pattern
 
@@ -152,6 +198,7 @@ Usage:
 
 ```vue
 <script setup>
+import { onMounted } from "vue";
 import { useTrackedFetch } from "@/composables/useTrackedFetch";
 
 const { data, error, loading, execute } = useTrackedFetch(

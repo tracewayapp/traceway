@@ -180,21 +180,16 @@ Self-hosted instances must have blob storage (S3 or a persistent volume) configu
 
 ## Flutter web
 
-The Flutter SDK does not support web (no error tracking, no screen recording there). For Flutter web apps, use the JS SDK in `web/index.html` instead:
+The Flutter SDK does not support web (no error tracking, no screen recording there). For Flutter web apps, use the JS SDK in `web/index.html` instead, with the connection string of a separate browser project (a Flutter project is a mobile project):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@1/dist/traceway.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2/dist/traceway.iife.global.js"></script>
 <script>
   Traceway.init("your-token@https://traceway.example.com/api/report");
 </script>
 ```
 
-For network capture in Dart code on web (where `HttpOverrides.global` does not run), `TracewayHttpClient` is a drop-in `http.Client`, usable directly or passed to libraries that accept a custom client (Dio, Chopper):
-
-```dart
-final client = TracewayHttpClient();
-final res = await client.get(Uri.parse('https://api.example.com/users'));
-```
+The Dart SDK, `TracewayHttpClient` included, does not run on web. The JS SDK records the page's `fetch` and `XMLHttpRequest` calls, which is what Dart's HTTP clients use in a web build, so no Dart-side network setup is needed there.
 
 ## Verify
 

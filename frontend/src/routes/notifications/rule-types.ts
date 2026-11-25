@@ -11,6 +11,7 @@ export const ruleTypeOptions = [
 	{ value: 'endpoint_error_rate', label: 'Endpoint Error Rate' },
 	{ value: 'apdex_drop', label: 'Apdex Drop' },
 	{ value: 'metric_threshold', label: 'Metric Threshold' },
+	{ value: 'metric_release_regression', label: 'Release Regression' },
 	{ value: 'no_data', label: 'No Data' },
 	{ value: 'task_duration_threshold', label: 'Task Duration' },
 	{ value: 'task_failure_rate', label: 'Task Failure Rate' },

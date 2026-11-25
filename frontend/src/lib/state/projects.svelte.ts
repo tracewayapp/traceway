@@ -1,3 +1,4 @@
+import { dashboardStorage } from '$lib/utils/dashboard-embed';
 import { api } from '$lib/api';
 import { authState } from './auth.svelte';
 
@@ -38,10 +39,10 @@ export const FRONTEND_FRAMEWORKS: Framework[] = [
 	'ios'
 ];
 // Browser frameworks, instrumented by the OpenTelemetry SDK (@tracewayapp/frontend 2.x): it sends logs and
-// spans (no metrics), unlike the mobile SDKs.
+// spans, and the backend turns its page performance events (web vitals, long tasks, route timing) into metrics.
 export const BROWSER_FRAMEWORKS: Framework[] = ['react', 'svelte', 'vuejs', 'jquery'];
-// The OpenTelemetry SDKs take remote collection settings over OpAMP: the browser 2.x SDK and the Flutter 2.x SDK.
-export const SDK_CONFIG_FRAMEWORKS: Framework[] = [...BROWSER_FRAMEWORKS, 'flutter'];
+// Remote collection controls are exposed only for browser projects.
+export const SDK_CONFIG_FRAMEWORKS: Framework[] = [...BROWSER_FRAMEWORKS];
 
 export const JS_FRAMEWORKS: Framework[] = [
 	'react',
@@ -82,7 +83,7 @@ export const FRAMEWORK_LABELS: Record<Framework, string> = {
 	ios: 'iOS'
 };
 
-export const MOBILE_FRAMEWORKS: Framework[] = ['flutter', 'android', 'ios'];
+export const MOBILE_FRAMEWORKS: Framework[] = ['react-native', 'flutter', 'android', 'ios'];
 
 export function getFrameworkLabel(fw: Framework): string {
 	return FRAMEWORK_LABELS[fw] ?? fw;
@@ -98,6 +99,13 @@ export function isFrontendFramework(fw: Framework): boolean {
 
 export function isBrowserFramework(fw: Framework): boolean {
 	return BROWSER_FRAMEWORKS.includes(fw);
+}
+
+export function isProjectViewAvailable(fw: Framework, pathname: string): boolean {
+	const view = pathname.split('/')[1];
+	if (view === 'data-collection' || view === 'sessions') return isBrowserFramework(fw);
+	if (view === 'slos' || view === 'dashboards') return !isMobileFramework(fw);
+	return true;
 }
 
 export function isBackendFramework(fw: Framework): boolean {
@@ -172,8 +180,10 @@ export interface ProjectWithToken extends Project {
 const PROJECTS_CACHE_KEY = 'PROJECTS_CACHE_V2';
 
 class ProjectsState {
-	projects = $state<Project[]>(JSON.parse(localStorage.getItem(PROJECTS_CACHE_KEY) || '[]'));
-	currentProjectId = $state<string | null>(localStorage.getItem('CURRENT_PROJECT_ID'));
+	projects = $state<Project[]>(JSON.parse(dashboardStorage()?.getItem(PROJECTS_CACHE_KEY) || '[]'));
+	currentProjectId = $state<string | null>(
+		dashboardStorage()?.getItem('CURRENT_PROJECT_ID') ?? null
+	);
 	loading = $state(false);
 	error = $state<string | null>(null);
 	loaded = $state(false);
@@ -194,9 +204,9 @@ class ProjectsState {
 		$effect.root(() => {
 			$effect(() => {
 				if (this.currentProjectId) {
-					localStorage.setItem('CURRENT_PROJECT_ID', this.currentProjectId);
+					dashboardStorage()?.setItem('CURRENT_PROJECT_ID', this.currentProjectId);
 				} else {
-					localStorage.removeItem('CURRENT_PROJECT_ID');
+					dashboardStorage()?.removeItem('CURRENT_PROJECT_ID');
 				}
 			});
 		});
@@ -212,7 +222,7 @@ class ProjectsState {
 		}
 
 		// Cache in localStorage
-		localStorage.setItem(PROJECTS_CACHE_KEY, JSON.stringify(this.projects));
+		dashboardStorage()?.setItem(PROJECTS_CACHE_KEY, JSON.stringify(this.projects));
 	}
 
 	async loadProjects() {
@@ -227,7 +237,7 @@ class ProjectsState {
 			this.error = errorMessage;
 
 			// Try to load from cache
-			const cached = localStorage.getItem(PROJECTS_CACHE_KEY);
+			const cached = dashboardStorage()?.getItem(PROJECTS_CACHE_KEY);
 			if (cached) {
 				this.projects = JSON.parse(cached);
 			}
@@ -313,11 +323,11 @@ class ProjectsState {
 		this.projects = [];
 		this.currentProjectId = null;
 		this.loaded = false;
-		localStorage.removeItem(PROJECTS_CACHE_KEY);
+		dashboardStorage()?.removeItem(PROJECTS_CACHE_KEY);
 	}
 
 	initFromCache() {
-		const cached = localStorage.getItem(PROJECTS_CACHE_KEY);
+		const cached = dashboardStorage()?.getItem(PROJECTS_CACHE_KEY);
 		if (cached) {
 			this.projects = JSON.parse(cached);
 		}

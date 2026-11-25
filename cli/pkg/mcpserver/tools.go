@@ -48,7 +48,7 @@ func (s *server) addTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "list_endpoints",
 		OutputSchema: outSchema[client.ListEndpointsResponse](),
-		Description:  "Per-endpoint latency stats in a window: request count, p50/p95/p99/avg durations (nanoseconds), impact score with reason. This is the ONLY source of true latency percentiles (computed from raw request durations; query_metrics cannot do quantiles). Read the shape first: high p50 means every request pays the cost (systemic), p99 much greater than p50 means a tail (contention, pool exhaustion, GC, retries). Raw percentiles are not adjusted for operator-accepted slowness; check get_slow_endpoint_config before calling an endpoint slow.",
+		Description:  "Per-endpoint latency stats in a window: request count, p50/p95/p99/avg durations (nanoseconds), impact score with reason. These endpoint percentiles are computed from raw request durations. Distribution metrics also support percentiles on the server, but query_metrics tool validation does not expose them. Read the shape first: high p50 means every request pays the cost (systemic), p99 much greater than p50 means a tail (contention, pool exhaustion, GC, retries). Raw percentiles are not adjusted for operator-accepted slowness; check get_slow_endpoint_config before calling an endpoint slow.",
 		Annotations:  readOnly(),
 	}, s.listEndpoints)
 
@@ -145,5 +145,6 @@ func (s *server) addWriteTools(srv *mcp.Server) {
 	s.addOperationWriteTools(srv)
 	s.addOpampWriteTools(srv)
 	s.addDashboardWriteTools(srv)
+	s.addTokenWriteTools(srv)
 	s.addAlertingConfigurationTools(srv, true)
 }

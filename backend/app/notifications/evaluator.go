@@ -14,6 +14,16 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
 
+type EvalResult struct {
+	Fired      bool
+	Recovered  bool
+	Message    Message
+	Messages   []Message
+	Recoveries []Message
+	// Grouped metric deliveries commit with their firing state.
+	seriesCommitted bool
+}
+
 func StartEvaluator(ctx context.Context) {
 	config.Logln("Starting notification evaluator")
 	seedCooldowns(ctx)
@@ -110,11 +120,14 @@ func evaluatePolledRules(ctx context.Context) {
 			continue
 		}
 
-		if result != nil && result.Recovered {
+		if result == nil || result.seriesCommitted {
+			continue
+		}
+		if result.Recovered {
 			dispatchRecovery(ctx, rule, result.Message)
 			continue
 		}
-		if result != nil && result.Fired {
+		if result.Fired {
 			if len(result.Messages) > 0 {
 				for _, msg := range result.Messages {
 					dispatch(ctx, rule, msg)

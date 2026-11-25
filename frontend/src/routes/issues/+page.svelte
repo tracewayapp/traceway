@@ -6,7 +6,6 @@
 	import { createRowClickHandler } from '$lib/utils/navigation';
 	import { api } from '$lib/api';
 	import * as Table from '$lib/components/ui/table';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -17,11 +16,19 @@
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import { harvestSeason } from '$lib/utils/harvest';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import BulkActionsBar from '$lib/components/traceway/bulk-actions-bar.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		describeTimeRange,
+		issueTypeField
+	} from '$lib/components/traceway/filter-bar';
 	import { CalendarDate } from '@internationalized/date';
 	import {
 		parseTimeRangeFromUrl,
@@ -105,16 +112,12 @@
 	let fromTime = $state(dateToTimeString(initialRange.from, initialTimezone));
 	let toTime = $state(dateToTimeString(initialRange.to, initialTimezone));
 
-	// Search state (manual trigger only)
 	let searchQuery = $state(initialUrlParams.search);
 	let searchType = $state(initialUrlParams.searchType);
 
-	// Search type options
-	const searchTypeOptions = [
-		{ value: 'all', label: 'All' },
-		{ value: 'issues', label: 'Issues' },
-		{ value: 'messages', label: 'Messages' }
-	];
+	const filterFields: FilterField[] = [issueTypeField()];
+	const filterValues = $derived({ searchType });
+	const timeRangeLabel = $derived(describeTimeRange(selectedPreset));
 
 	// Helper functions for date/time conversion
 	function getFromDateTimeUTC(): string {
@@ -224,7 +227,9 @@
 		loadData(true);
 	}
 
-	function handleSearch() {
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
+		searchType = next.values.searchType || 'all';
 		page = 1;
 		loadData(true);
 	}
@@ -328,184 +333,195 @@
 		{/snippet}
 	</PageHeader>
 
-	<SearchBar
-		placeholder="Search exceptions..."
-		bind:value={searchQuery}
-		bind:typeValue={searchType}
-		typeOptions={searchTypeOptions}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search exceptions..."
+		fields={filterFields}
+		values={filterValues}
+		onApply={handleFilterApply}
 		disabled={loading}
-	/>
-
-	{#if selectedCount > 0}
-		<BulkActionsBar
-			count={selectedCount}
-			itemLabel="issue"
-			onClear={() => (selectedHashes = new Set())}
-		>
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={() => (showArchiveDialog = true)}
-				disabled={archiving}
+		noun="issues"
+		rangeLabel={timeRangeLabel}
+	>
+		{#if selectedCount > 0}
+			<BulkActionsBar
+				count={selectedCount}
+				itemLabel="issue"
+				onClear={() => (selectedHashes = new Set())}
 			>
-				<Archive class="mr-2 h-4 w-4" />
-				Archive
-			</Button>
-		</BulkActionsBar>
-	{/if}
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={() => (showArchiveDialog = true)}
+					disabled={archiving}
+				>
+					<Archive class="mr-2 h-4 w-4" />
+					Archive
+				</Button>
+			</BulkActionsBar>
+		{/if}
 
-	<TableContainer>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={5} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={5} class="h-24 text-center text-red-500">
-							{error}
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if exceptions.length === 0}
-				<Table.Body>
-					<TableEmptyState colspan={5} message="No issues found." />
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<Table.Head class="w-[40px] pl-4">
-							<Checkbox
-								checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-								onCheckedChange={toggleSelectAll}
-								aria-label="Select all"
-							/>
-						</Table.Head>
-						<TracewayTableHeader
-							label="Issue"
-							tooltip="The error message or exception that occurred"
-						/>
-						<TracewayTableHeader
-							label="Trend"
-							tooltip="Hourly occurrence pattern over the last 24h"
-							class="w-[190px]"
-						/>
-						<TracewayTableHeader
-							label="Events"
-							tooltip="Total number of times this issue occurred in the selected range"
-							align="right"
-							class="w-[80px]"
-							sortField="count"
-							currentSortField={sortField}
-							{sortDirection}
-							onSort={handleSort}
-						/>
-						<TracewayTableHeader
-							label="Last Seen"
-							tooltip="When this issue last occurred"
-							class="w-[180px]"
-							sortField="last_seen"
-							currentSortField={sortField}
-							{sortDirection}
-							onSort={handleSort}
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each exceptions as exception (exception.exceptionHash)}
-						<Table.Row
-							class="group cursor-pointer"
-							data-state={isSelected(exception.exceptionHash) ? 'selected' : undefined}
-						>
-							<Table.Cell class="pl-4" onclick={(e) => e.stopPropagation()}>
-								<Checkbox
-									checked={isSelected(exception.exceptionHash)}
-									onCheckedChange={() => toggleSelect(exception.exceptionHash)}
-									aria-label="Select row"
-								/>
-							</Table.Cell>
-							{@const firstLine = exception.stackTrace.split('\n')[0]}
-							{@const colonIndex = firstLine.indexOf(':')}
-							{@const errorType = colonIndex > 0 ? firstLine.slice(0, colonIndex) : firstLine}
-							{@const errorMessage = colonIndex > 0 ? firstLine.slice(colonIndex + 1).trim() : ''}
-							<Table.Cell
-								class="max-w-[520px] py-3"
-								onclick={createRowClickHandler(
-									`/issues/${exception.exceptionHash}`,
-									'preset',
-									'from',
-									'to'
-								)}
-							>
-								<div class="min-w-0">
-									<div
-										class="truncate text-[15px]/6 font-semibold text-foreground group-hover:text-primary dark:group-hover:text-blue-300"
-									>
-										{errorType}
-									</div>
-									{#if errorMessage}
-										<div class="truncate text-sm text-muted-foreground">{errorMessage}</div>
-									{/if}
+		<TableContainer>
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={5} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
 								</div>
 							</Table.Cell>
-							<Table.Cell
-								onclick={createRowClickHandler(
-									`/issues/${exception.exceptionHash}`,
-									'preset',
-									'from',
-									'to'
-								)}
-							>
-								<IssueTrendChart trend={exception.hourlyTrend || []} />
-							</Table.Cell>
-							<Table.Cell
-								class="text-right text-[15px] font-semibold tabular-nums"
-								onclick={createRowClickHandler(
-									`/issues/${exception.exceptionHash}`,
-									'preset',
-									'from',
-									'to'
-								)}
-							>
-								{exception.count.toLocaleString()}
-							</Table.Cell>
-							<Table.Cell
-								class="text-muted-foreground tabular-nums"
-								onclick={createRowClickHandler(
-									`/issues/${exception.exceptionHash}`,
-									'preset',
-									'from',
-									'to'
-								)}
-							>
-								{formatDateTime(exception.lastSeen, { timezone })}
+						</Table.Row>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={5} class="h-24 text-center text-red-500">
+								{error}
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if exceptions.length === 0}
+					<Table.Body>
+						<TableEmptyState colspan={5} message="No issues found.">
+							{#if harvestSeason}
+								<img
+									src="/harvest/under-one-leaf.svg"
+									alt=""
+									aria-hidden="true"
+									class="mx-auto mb-2 size-20 select-none"
+								/>
+							{/if}
+						</TableEmptyState>
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<Table.Head class="w-[40px] pl-4">
+								<Checkbox
+									checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+									onCheckedChange={toggleSelectAll}
+									aria-label="Select all"
+								/>
+							</Table.Head>
+							<TracewayTableHeader
+								label="Issue"
+								tooltip="The error message or exception that occurred"
+							/>
+							<TracewayTableHeader
+								label="Trend"
+								tooltip="Hourly occurrence pattern over the last 24h"
+								class="w-[190px]"
+							/>
+							<TracewayTableHeader
+								label="Events"
+								tooltip="Total number of times this issue occurred in the selected range"
+								align="right"
+								class="w-[80px]"
+								sortField="count"
+								currentSortField={sortField}
+								{sortDirection}
+								onSort={handleSort}
+							/>
+							<TracewayTableHeader
+								label="Last Seen"
+								tooltip="When this issue last occurred"
+								class="w-[180px]"
+								sortField="last_seen"
+								currentSortField={sortField}
+								{sortDirection}
+								onSort={handleSort}
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each exceptions as exception (exception.exceptionHash)}
+							<Table.Row
+								class="group cursor-pointer"
+								data-state={isSelected(exception.exceptionHash) ? 'selected' : undefined}
+							>
+								<Table.Cell class="pl-4" onclick={(e) => e.stopPropagation()}>
+									<Checkbox
+										checked={isSelected(exception.exceptionHash)}
+										onCheckedChange={() => toggleSelect(exception.exceptionHash)}
+										aria-label="Select row"
+									/>
+								</Table.Cell>
+								{@const firstLine = exception.stackTrace.split('\n')[0]}
+								{@const colonIndex = firstLine.indexOf(':')}
+								{@const errorType = colonIndex > 0 ? firstLine.slice(0, colonIndex) : firstLine}
+								{@const errorMessage = colonIndex > 0 ? firstLine.slice(colonIndex + 1).trim() : ''}
+								<Table.Cell
+									class="max-w-[520px] py-3"
+									onclick={createRowClickHandler(
+										`/issues/${exception.exceptionHash}`,
+										'preset',
+										'from',
+										'to'
+									)}
+								>
+									<div class="min-w-0">
+										<div
+											class="truncate text-[15px]/6 font-semibold text-foreground group-hover:text-primary dark:group-hover:text-blue-300"
+										>
+											{errorType}
+										</div>
+										{#if errorMessage}
+											<div class="truncate text-sm text-muted-foreground">{errorMessage}</div>
+										{/if}
+									</div>
+								</Table.Cell>
+								<Table.Cell
+									onclick={createRowClickHandler(
+										`/issues/${exception.exceptionHash}`,
+										'preset',
+										'from',
+										'to'
+									)}
+								>
+									<IssueTrendChart trend={exception.hourlyTrend || []} />
+								</Table.Cell>
+								<Table.Cell
+									class="text-right text-[15px] font-semibold tabular-nums"
+									onclick={createRowClickHandler(
+										`/issues/${exception.exceptionHash}`,
+										'preset',
+										'from',
+										'to'
+									)}
+								>
+									{exception.count.toLocaleString()}
+								</Table.Cell>
+								<Table.Cell
+									class="text-muted-foreground tabular-nums"
+									onclick={createRowClickHandler(
+										`/issues/${exception.exceptionHash}`,
+										'preset',
+										'from',
+										'to'
+									)}
+								>
+									{formatDateTime(exception.lastSeen, { timezone })}
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<!-- Pagination Footer -->
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="issue"
-	/>
+		<!-- Pagination Footer -->
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="issue"
+		/>
+	</FilterBar>
 </div>
 
 <ArchiveConfirmationDialog

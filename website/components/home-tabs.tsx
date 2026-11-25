@@ -39,16 +39,16 @@ const tabs: Tab[] = [
     label: "Frontend",
     icon: Monitor,
     color: "var(--a1)",
-    heading: "Replay the moment before every error.",
+    heading: "Find the slow release. See who it affects.",
     description:
-      "See exactly what users did before an exception. Session replays are attached to errors automatically. Source map resolution turns minified errors into readable, actionable traces.",
+      "Measure real page loads and interactions, compare releases, and give frontend performance an error budget. Follow a slow observation into its session, then inspect replay, errors and network activity when captured.",
     bullets: [
-      "Session replay with pre-error capture",
-      "Automatic source map stack trace resolution",
-      "Click, scroll, and navigation tracking",
-      "Linked directly to backend traces",
+      "Web Performance dashboard on project creation",
+      "LCP, INP and CLS by release, route and device",
+      "Frontend SLOs and release regression alerts",
+      "Session replay and readable source-mapped errors",
     ],
-    href: "/product/session-replay",
+    href: "/product/rum",
   },
   {
     id: "microservice",

@@ -45,18 +45,28 @@ type CheckResult struct {
 	TlsDaysRemaining int
 }
 
+// LogAttributeTarget names one attribute of the logs a search matches. Scope is
+// "resource", "scope" or "log", like LogAttributeFilter.
+type LogAttributeTarget struct {
+	Scope string
+	Key   string
+}
+
 // LogAttributeFilter selects logs by attribute value. Scope is one of
 // "resource", "scope", or "log"; picks which of the three attribute maps to
 // query (Map columns with bloom-filter indexes on ClickHouse, JSON on
 // SQLite/DuckDB). Contains switches from exact match to case-insensitive
 // substring match; Exclude negates either mode. Negated filters keep rows
-// that don't carry the attribute at all.
+// that don't carry the attribute at all. Exists matches on the key alone
+// (Value and Contains are ignored): rows that carry the attribute, or with
+// Exclude the rows that don't.
 type LogAttributeFilter struct {
 	Scope    string
 	Key      string
 	Value    string
 	Exclude  bool
 	Contains bool
+	Exists   bool
 }
 
 type LogSearchParams struct {

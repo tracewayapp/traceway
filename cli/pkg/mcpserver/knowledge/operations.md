@@ -10,10 +10,12 @@ Read the relevant resource before configuring an area:
 
 - `traceway://knowledge/write-setup`: installation, login and permission layers.
 - `traceway://knowledge/alert-configuration`: channels and project alert rules.
+- `traceway://knowledge/slo-configuration`: service level objectives and their burn-rate alerts.
 - `traceway://knowledge/oncall-configuration`: teams, schedules, overrides and escalation policies.
 - `traceway://knowledge/personal-notifications`: own contacts and high/low urgency notification chains.
 - `traceway://knowledge/incident-actions`: pages, issues, monitor runs, post-mortems and expected latency.
 - `traceway://knowledge/dashboard-building`: dashboard charts and instrumentation discovery.
+- `traceway://knowledge/dashboard-embedding`: shared dashboard links and embedding a dashboard in the user's own application.
 - `traceway://knowledge/sdk-configuration`: browser collection, replay and OpAMP rules.
 
 For product behavior and tradeoffs use `traceway://knowledge/learn/alerts`, `traceway://knowledge/learn/on-call` and the other learn resources.

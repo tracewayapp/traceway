@@ -72,7 +72,7 @@ def process_order(order):
     duration_histogram.record(duration_ms, {"plan": order.plan})
 ```
 
-Traceway converts histograms into average and count metrics (see [OTel metrics](/client/otel/metrics#histogram-handling)).
+Traceway stores bucketed histograms under the instrument name for percentile queries. Explicit-bucket histograms also produce average and count series. See [OTel metrics](/client/otel/metrics#histogram-handling).
 
 ## Gauge
 

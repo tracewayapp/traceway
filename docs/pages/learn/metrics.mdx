@@ -1,6 +1,6 @@
 # Metrics
 
-Metrics are time-series measurements that track your application's health and behavior over time. The Traceway SDKs automatically collect system metrics (CPU, memory, goroutines), and you can capture custom metrics for anything specific to your application. For OpenTelemetry, the automatic metrics depend on which SDK and instrumentation libraries you use.
+Metrics are time-series measurements that track your application's health and behavior over time. Your instrumentation determines which runtime metrics arrive. The host agent collects system metrics, and your application can record custom metrics.
 
 ## Metric Structure
 
@@ -46,16 +46,16 @@ Metrics are visualized on [Dashboards](/learn/dashboards): organization-owned, J
 
 ## Time Range
 
-The dashboard supports preset time ranges (5m, 15m, 30m, 1h, 3h, 6h, 12h, 24h, 3d, 7d, 1M, 3M) and custom date/time ranges.
+The dashboard supports preset time ranges (5m, 30m, 60m, 3h, 6h, 12h, 24h, 3d, 7d, 1M, 3M) and custom date/time ranges.
 
 The backend automatically selects the optimal storage resolution based on the selected range:
 
 | Range         | Resolution      |
 | ------------- | --------------- |
-| Up to 3 hours | Raw data points |
-| 3h to 24h     | 1-minute aggregates |
-| 24h to 7 days | 1-hour aggregates  |
-| Over 7 days   | 1-day aggregates   |
+| Up to 6 hours | Raw data points |
+| Over 6 hours to 3 days     | 1-minute aggregates |
+| Over 3 days to 30 days | 1-hour aggregates  |
+| Over 30 days   | 1-day aggregates   |
 
 This keeps queries fast regardless of the time window.
 

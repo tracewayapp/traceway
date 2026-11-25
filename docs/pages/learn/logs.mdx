@@ -47,9 +47,9 @@ Traceway supports six severity levels, matching the OpenTelemetry specification:
 | ERROR    | 17-20             | Errors that don't stop the service                |
 | FATAL    | 21+               | Errors that cause termination or severe impact    |
 
-If your SDK sends only a severity number (no text), Traceway assigns the text level based on the number's range. If it sends only a text level, the number is computed from the text.
+If your SDK sends only a severity number (no text), Traceway assigns the text level based on the number's range. If the exporter supplies only severity text, the stored number remains 0. The dashboard recognizes standard text levels when assigning badges and volume-chart buckets.
 
-The severity dropdown on the Logs page filters by threshold. Picking `WARN+` keeps warnings and everything more severe.
+The severity dropdown on the Logs page filters by threshold. Picking `WARN+` keeps records with severity number 13 or higher. A text-only warning therefore appears with a warning badge but falls outside that numeric filter.
 
 <img src="/logs/logs-severity-filter.png" alt="Severity threshold dropdown" style={{ maxWidth: '560px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
@@ -89,7 +89,7 @@ The **Logs** page supports filtering and search across all three attribute layer
 - **Service**: exact match on `service.name`.
 - **Trace**: exact match on the hex trace ID.
 - **Body search**: full-text search over the log message. Single-token queries use a token-bloom index for speed; multi-word or punctuation-heavy queries fall back to substring matching.
-- **Attribute filters**: match on any `resource.*`, `scope.*`, or log attribute key, either as equals or not equals.
+- **Attribute filters**: match on any `resource.*`, `scope.*`, or log attribute key, with equals, not equals, contains or not contains, or on whether the key is there at all.
 - **Time range**: pick from presets (24h, 7d, 30d) or a custom window, or drag across the [volume chart](#log-volume).
 
 All filters combine. Results load newest first, and a "Load more" button at the end of the list fetches older records in the same query.
@@ -98,11 +98,52 @@ All filters combine. Results load newest first, and a "Load more" button at the 
 
 Click **Add filter** to open the filter dialog. Enter a key with its layer prefix, pick the operator, and set the value. The **Not equals** operator excludes matching logs, which is useful for muting a noisy logger or a known-chatty endpoint.
 
+**Key exists** and **Key does not exist** match on the key alone and take no value: `log.retries` exists keeps the logs that carry a `retries` attribute, whatever its value, and does not exist keeps the others. Value filters that exclude (not equals, not contains) also keep logs without the key.
+
 <img src="/logs/logs-filter-dialog-negative.png" alt="Attribute filter dialog with the Not equals operator selected" style={{ maxWidth: '520px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-Active filters show as pills under the search bar. Exclusion pills render the operator in red. Click a pill to edit it, or its X to remove it.
+Active filters show as pills under the search bar. Exclusion pills render the operator in red. Click a pill's key or value to edit it, its operator to switch to another one in place, or its X to remove it.
 
-<img src="/logs/logs-filter-pills-zoom.png" alt="Filter pills, one equals and one not equals" style={{ maxWidth: '700px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/logs/logs-filter-pills-zoom.png" alt="Filter pills: log.Label not equals Labeler, log.NodeId equals 7, and log.retries? exists" style={{ maxWidth: '700px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+### Filtering from a Log Row
+
+Click a row to expand it. The body, trace ID, span ID, scope and every attribute show as tiles, and a row with many attributes shows the first six followed by a **Show N more attributes** tile.
+
+The filter icon on an attribute tile opens a menu with the value operators, applied to that tile's value, and the two key operators, applied to its key. Once a filter is active the icon turns blue for an including filter and red for an excluding one, with the operator beside it. Choose the active operator again, or **Clear filter**, to remove it. The body, trace ID, span ID and scope tiles filter on an exact match with a single click.
+
+<img src="/logs/logs-attribute-menu.png" alt="The filter menu of an attribute tile, with the six operators and Chart values" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Resource and scope attributes are shown with a `resource.` or `scope.` prefix and log attributes without one. A log attribute whose own key starts with `resource.` or `scope.` is shown as `log.<key>`, so a filter made from it matches the log attribute, not a resource attribute of a similar name.
+
+## Charting Attribute Values
+
+When an attribute holds a number, its menu also offers **Chart values**. A chart opens above the list, for the logs the current filters and search select, so you can follow process data such as timings or counters without exporting the logs.
+
+**Over time** draws one line per statistic for each time slice: the average, the median (P50), P95 and P99, the minimum, the maximum, the sum and the count of values. Average and maximum are shown by default, and the buttons above the chart switch the others on and off. Hover the chart to read every line for one slice, and drag across it to zoom the page to that stretch of time, as on the [volume chart](#log-volume). A slice without any value leaves a gap.
+
+<img src="/logs/logs-attribute-chart.png" alt="The TimerSend attribute charted over time, with average, P95 and maximum lines and a tooltip" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+**Distribution** counts the values in bins with round edges, and marks P50, P95 and P99. An attribute that only ever holds whole numbers, such as a count, gets one bin per number when the range is small enough.
+
+<img src="/logs/logs-attribute-distribution.png" alt="The distribution of TimerSend values, with P50, P95 and P99 marked" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+- A value is charted when it is a number written the way JSON writes one: `12`, `-3.5` or `1e3`. Text such as `timeout`, forms such as `007` or ` 12`, and values too large to be a number (an id such as `4e98213` reads as 4 followed by 98,213 zeros) are left out, and a note under the chart says how many values were.
+- The header shows how many values were charted, with their minimum, average and maximum (and P50 and P95 for a distribution).
+- The chart, its view and its lines are kept in the URL, so a link or a [saved filter](#saved-filters) opens the same chart.
+- Every filter applies, including attribute filters on other keys: filter on one node, one host or one service to compare it with the rest.
+
+## Saved Filters
+
+**Saved filters**, at the right of the filter pills, keeps the filters you use often. **Save current filters** stores the search, the severity, the service and attribute filters and an open chart under a name. Tick **Include the time range** to store the range too; without it, a saved filter applies to whatever range is selected when you open it.
+
+<img src="/logs/logs-saved-filters.png" alt="The saved filters menu, with two filters and what each one selects" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+- Saved filters belong to the project and are shared with everyone who can open it. Members with read-only access can apply them but not save, change or delete them.
+- Click a saved filter to apply it. While the page shows exactly what a saved filter selects, the button carries its name.
+- The pencil renames a saved filter or replaces what it selects with the current filters. The bin deletes it for everyone.
+- Names are unique within a project, ignoring case, and a project holds at most 100 saved filters.
+- The [span explorer](/learn/spans#span-explorer) has the same attribute operators, charts and saved filters for spans.
 
 ## Live Tail
 
@@ -140,4 +181,6 @@ See the SDK-specific guides for setup instructions:
 - [Symfony](/client/otel/symfony/logs): Monolog handler and the OTel PHP Logs API
 - [Cloudflare Workers](/client/otel/cloudflare): Worker-side OTel logs exporter
 
-For API callers, `POST /api/logs` accepts `traceId` and optional `spanId`, scoped to the selected project and time window. The retired `distributedTraceId` and `excludeTraceId` selectors return 400, so stale clients cannot silently widen a query. Invalid trace IDs also return 400. `POST /api/logs/histogram` takes the same filters plus `maxBuckets` (10 to 200, default 80) and returns the counts behind the volume chart: `intervalSeconds`, `total`, and one bucket per interval with a count for each level.
+For API callers, `POST /api/logs` accepts `traceId` and optional `spanId`, scoped to the selected project and time window. The retired `distributedTraceId` and `excludeTraceId` selectors return 400, so stale clients cannot silently widen a query. Invalid trace IDs also return 400. Each entry of `attributeFilters` takes `scope`, `key`, `value`, `exclude`, `contains` and `exists` (match on the key alone). `POST /api/logs/histogram` takes the same filters plus `maxBuckets` (10 to 200, default 80) and returns the counts behind the volume chart: `intervalSeconds`, `total`, and one bucket per interval with a count for each level.
+
+The attribute charts take the same filters plus `attribute` (`{"scope": "log", "key": "TimerSend"}`). `POST /api/logs/attribute-series` also takes `maxBuckets` and returns `intervalSeconds`, `present` (logs carrying the attribute), `numeric` (of those, the numbers) and one bucket per slice holding a number, with `count`, `sum`, `avg`, `min`, `max`, `p50`, `p95` and `p99`. `POST /api/logs/attribute-distribution` takes `bins` (5 to 200, default 40) and returns the same counts, the overall statistics, `binWidth` and every bin with its `start`, `end` and `count`. Both answer 504 when the read takes longer than 30 seconds.

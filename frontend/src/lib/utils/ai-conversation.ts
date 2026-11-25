@@ -69,15 +69,15 @@ function normalizeOpenAiToolCalls(rawCalls: unknown): ToolCall[] | undefined {
 	return calls.length > 0 ? calls : undefined;
 }
 
-function normalizeInputMessage(value: unknown): ChatMessage | null {
+function normalizeMessage(value: unknown): ChatMessage | null {
 	if (!isRecord(value)) return null;
 	const role = asString(value.role);
 	if (!role) return null;
 
-	// Anthropic-style content blocks may carry tool_use / tool_result parts.
+	// Anthropic assistant messages carry tool calls alongside text blocks.
 	if (Array.isArray(value.content)) {
 		const toolCalls: ToolCall[] = [];
-		let toolCallId: string | undefined;
+		const toolCallId = asString(value.tool_call_id);
 		const parts: ContentPart[] = [];
 		for (const item of value.content) {
 			if (!isRecord(item)) continue;
@@ -88,22 +88,10 @@ function normalizeInputMessage(value: unknown): ChatMessage | null {
 					name: asString(item.name)!,
 					arguments: JSON.stringify(item.input ?? {})
 				});
-			} else if (type === 'tool_result') {
-				toolCallId = asString(item.tool_use_id);
-				const inner = item.content;
-				if (typeof inner === 'string') {
-					parts.push({ type: 'text', text: inner });
-				} else if (Array.isArray(inner)) {
-					for (const innerValue of inner) {
-						if (isRecord(innerValue) && innerValue.type === 'text') {
-							const text = asString(innerValue.text);
-							if (text) parts.push({ type: 'text', text });
-						}
-					}
-				}
 			} else if (type) {
 				const image = isRecord(item.image_url) ? asString(item.image_url.url) : undefined;
 				parts.push({
+					...item,
 					type,
 					text: asString(item.text),
 					image_url: image ? { url: image } : undefined
@@ -111,8 +99,8 @@ function normalizeInputMessage(value: unknown): ChatMessage | null {
 			}
 		}
 		const message: ChatMessage = {
-			role: toolCallId ? 'tool' : role,
-			content: parts
+			role,
+			content: parts.length === 1 && parts[0].type === 'text' ? (parts[0].text ?? '') : parts
 		};
 		if (toolCalls.length > 0) message.toolCalls = toolCalls;
 		if (toolCallId) message.toolCallId = toolCallId;
@@ -154,24 +142,11 @@ function extractOutputMessage(output: string): ChatMessage | null {
 
 	// Anthropic-style: {content: [{type: "text"|"tool_use", ...}]}
 	if (Array.isArray(outputParsed.content)) {
-		const blocks = outputParsed.content.filter(isRecord);
-		const text = blocks
-			.filter((block) => block.type === 'text')
-			.map((block) => asString(block.text) ?? '')
-			.join('');
-		const toolCalls: ToolCall[] = blocks
-			.filter((block) => block.type === 'tool_use' && asString(block.name))
-			.map((block) => ({
-				id: asString(block.id),
-				name: asString(block.name)!,
-				arguments: JSON.stringify(block.input ?? {})
-			}));
-		if (!text && toolCalls.length === 0) return null;
-		return {
+		const message = normalizeMessage({
 			role: asString(outputParsed.role) || 'assistant',
-			content: text,
-			toolCalls: toolCalls.length > 0 ? toolCalls : undefined
-		};
+			content: outputParsed.content
+		});
+		if (message && (getMessageText(message.content) || message.toolCalls?.length)) return message;
 	}
 
 	return null;
@@ -189,9 +164,26 @@ export function parseInputMessages(input: string): ChatMessage[] | null {
 	if (!Array.isArray(inputMessages)) return null;
 
 	const messages: ChatMessage[] = [];
+	const append = (raw: unknown) => {
+		const message = normalizeMessage(raw);
+		if (message) messages.push(message);
+	};
 	for (const msg of inputMessages) {
-		const normalized = normalizeInputMessage(msg);
-		if (normalized) messages.push(normalized);
+		if (!isRecord(msg) || msg.role !== 'user' || !Array.isArray(msg.content)) {
+			append(msg);
+			continue;
+		}
+
+		// Anthropic may return several tool results and a follow-up prompt in one user message.
+		let start = 0;
+		for (const [index, part] of msg.content.entries()) {
+			if (!isRecord(part) || part.type !== 'tool_result') continue;
+			if (index > start) append({ ...msg, content: msg.content.slice(start, index) });
+			append({ role: 'tool', tool_call_id: part.tool_use_id, content: part.content ?? '' });
+			start = index + 1;
+		}
+		if (start === 0) append(msg);
+		else if (start < msg.content.length) append({ ...msg, content: msg.content.slice(start) });
 	}
 	return messages;
 }
@@ -209,21 +201,24 @@ export function extractMessages(input: string, output: string): ChatMessage[] | 
 	return messages.length > 0 ? messages : null;
 }
 
-// pairToolResults maps a tool call id to the tool message that carries its
-// result, so ToolCallBlock can render call and result together. Paired tool
-// messages should be hidden from the main message list.
-export function pairToolResults(messages: ChatMessage[]): Map<string, ChatMessage> {
-	const paired = new Map<string, ChatMessage>();
-	for (const msg of messages) {
-		if (
-			(msg.role === 'tool' || msg.role === 'function') &&
-			msg.toolCallId &&
-			!paired.has(msg.toolCallId)
-		) {
-			paired.set(msg.toolCallId, msg);
+export function pairToolResults(messages: ChatMessage[]) {
+	const pending = new Map<string, ToolCall>();
+	const byCall = new Map<ToolCall, ChatMessage>();
+	const pairedMessages = new Set<ChatMessage>();
+	for (const message of messages) {
+		for (const call of message.toolCalls ?? []) {
+			if (call.id) pending.set(call.id, call);
+		}
+		if ((message.role === 'tool' || message.role === 'function') && message.toolCallId) {
+			const call = pending.get(message.toolCallId);
+			if (call) {
+				byCall.set(call, message);
+				pairedMessages.add(message);
+				pending.delete(message.toolCallId);
+			}
 		}
 	}
-	return paired;
+	return { byCall, pairedMessages };
 }
 
 function historyPrefixMatches(previous: ChatMessage[], current: ChatMessage[]): boolean {

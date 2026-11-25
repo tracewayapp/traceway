@@ -64,6 +64,13 @@ func AlertingOperations() []AlertingOperation {
 	add("notification-history", "list", "project", http.MethodPost, "/api/notification-history", true, true)
 	add("oncall", "now", "organization", http.MethodGet, "/api/organizations/{organizationId}/oncall/now", false, true)
 	add("oncall", "current", "project", http.MethodGet, "/api/oncall/current", false, true)
+	add("slos", "list", "project", http.MethodGet, "/api/slos", false, true)
+	add("slos", "show", "project", http.MethodGet, "/api/slos/{id}", false, true)
+	add("slos", "series", "project", http.MethodPost, "/api/slos/{id}/series", true, true)
+	add("slos", "preview", "project", http.MethodPost, "/api/slos/preview", true, true)
+	add("slos", "create", "project", http.MethodPost, "/api/slos", true, false)
+	add("slos", "update", "project", http.MethodPut, "/api/slos/{id}", true, false)
+	add("slos", "delete", "project", http.MethodDelete, "/api/slos/{id}", false, false)
 	return ops
 }
 
@@ -168,6 +175,17 @@ func validateAlertingBody(resource, action string, body json.RawMessage) error {
 	case "notification-history":
 		fields = "pagination search fromDate toDate"
 		required = "pagination"
+	case "slos":
+		fields = "name description sliKind sliConfig targetPercent windowDays bucketMinutes enabled"
+		required = "name sliKind sliConfig targetPercent windowDays"
+		if action == "preview" {
+			fields = "sliKind sliConfig bucketMinutes"
+			required = "sliKind sliConfig"
+		}
+		if action == "series" {
+			fields = "fromDate toDate intervalMinutes"
+			required = "fromDate toDate"
+		}
 	}
 	for k := range obj {
 		if !strings.Contains(" "+fields+" ", " "+k+" ") {
@@ -182,7 +200,7 @@ func validateAlertingBody(resource, action string, body json.RawMessage) error {
 
 	for k, raw := range obj {
 		switch k {
-		case "name", "channelType", "ruleType", "methodType", "timezone", "code", "description", "severity", "startAt", "endAt", "search", "fromDate", "toDate":
+		case "name", "channelType", "ruleType", "methodType", "timezone", "code", "description", "severity", "startAt", "endAt", "search", "fromDate", "toDate", "sliKind":
 			var value string
 			if string(raw) == "null" || json.Unmarshal(raw, &value) != nil {
 				return fmt.Errorf("%s must be a string", k)
@@ -195,7 +213,7 @@ func validateAlertingBody(resource, action string, body json.RawMessage) error {
 			if k != "description" && k != "search" && k != "severity" && k != "fromDate" && k != "toDate" && strings.TrimSpace(value) == "" {
 				return fmt.Errorf("%s must not be empty", k)
 			}
-		case "config", "definition":
+		case "config", "definition", "sliConfig":
 			var value map[string]json.RawMessage
 			if json.Unmarshal(raw, &value) != nil || value == nil {
 				return fmt.Errorf("%s must be a JSON object", k)
@@ -204,6 +222,26 @@ func validateAlertingBody(resource, action string, body json.RawMessage) error {
 			var value int
 			if string(raw) == "null" || json.Unmarshal(raw, &value) != nil || value < 0 || (k != "cooldownMinutes" && value == 0) {
 				return fmt.Errorf("%s must be a %s integer", k, map[bool]string{true: "non-negative", false: "positive"}[k == "cooldownMinutes"])
+			}
+		case "targetPercent":
+			var value float64
+			if string(raw) == "null" || json.Unmarshal(raw, &value) != nil || value <= 0 || value >= 100 {
+				return fmt.Errorf("targetPercent must be a number above 0 and below 100")
+			}
+		case "windowDays":
+			var value int
+			if string(raw) == "null" || json.Unmarshal(raw, &value) != nil || (value != 7 && value != 30 && value != 90) {
+				return fmt.Errorf("windowDays must be 7, 30 or 90")
+			}
+		case "bucketMinutes":
+			var value int
+			if string(raw) == "null" || json.Unmarshal(raw, &value) != nil || (value != 1 && value != 5 && value != 15 && value != 60) {
+				return fmt.Errorf("bucketMinutes must be 1, 5, 15 or 60")
+			}
+		case "intervalMinutes":
+			var value int
+			if string(raw) == "null" || json.Unmarshal(raw, &value) != nil || value < 1 {
+				return fmt.Errorf("intervalMinutes must be a positive integer")
 			}
 		case "enabled":
 			var value bool
@@ -230,6 +268,42 @@ func validateAlertingBody(resource, action string, body json.RawMessage) error {
 					return fmt.Errorf("projectIds must not contain empty IDs")
 				}
 			}
+		}
+	}
+	if raw, ok := obj["sliKind"]; ok {
+		var kind string
+		_ = json.Unmarshal(raw, &kind)
+		if !strings.Contains(" endpoint span task monitor metric session ", " "+kind+" ") {
+			return fmt.Errorf("sliKind must be one of: endpoint, span, task, monitor, metric, session")
+		}
+		if kind == "metric" && len(obj["bucketMinutes"]) == 0 {
+			return fmt.Errorf("bucketMinutes is required for a metric SLO (1, 5, 15 or 60)")
+		}
+		// The server drops sliConfig fields it does not know, so a misspelled filter would save an SLO over everything.
+		allowed := map[string]string{
+			"endpoint": "endpoint good latencyThresholdMs",
+			"span":     "serviceName name kind attributes good latencyThresholdMs",
+			"task":     "taskName",
+			"monitor":  "checkIds",
+			"metric":   "metricName aggregation operator threshold tags missingIsBad",
+			"session":  "appVersion includeMessages",
+		}[kind]
+		var config map[string]json.RawMessage
+		_ = json.Unmarshal(obj["sliConfig"], &config)
+		for k := range config {
+			if !strings.Contains(" "+allowed+" ", " "+k+" ") {
+				return fmt.Errorf("unknown %s sliConfig field %q (allowed: %s)", kind, k, strings.ReplaceAll(allowed, " ", ", "))
+			}
+		}
+	}
+	if resource == "slos" && action == "series" {
+		var from, to string
+		_ = json.Unmarshal(obj["fromDate"], &from)
+		_ = json.Unmarshal(obj["toDate"], &to)
+		a, e1 := time.Parse(time.RFC3339, from)
+		b, e2 := time.Parse(time.RFC3339, to)
+		if e1 != nil || e2 != nil || !a.Before(b) {
+			return fmt.Errorf("fromDate/toDate must be ordered RFC3339 timestamps")
 		}
 	}
 	if resource == "notification-chains" {

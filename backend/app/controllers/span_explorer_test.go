@@ -173,3 +173,92 @@ func TestSpanTraceReadsTheWholeOrganizationAndNothingBeyond(t *testing.T) {
 		t.Fatalf("projects that hold spans are named: %+v", whole.Projects)
 	}
 }
+
+func TestSpanChartEndpoints(t *testing.T) {
+	setupSetupControllerDB(t)
+	tx, err := db.DB.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	user, org := createSetupTestAccount(t, tx, "charts@example.com", "owner")
+	project, err := transactional.ProjectRepository.CreateWithOrganization(tx, "Charts", "opentelemetry", org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC().Truncate(time.Hour).Add(-2 * time.Hour)
+	var spans []models.OtelSpan
+	for i := 0; i < 11; i++ {
+		trace, id := uuid.New(), uuid.New()
+		duration := time.Duration(i+1) * time.Millisecond
+		rows := fmt.Sprint(i + 1)
+		if i == 10 {
+			duration, rows = 500*time.Millisecond, "n/a"
+		}
+		start := base.Add(time.Duration(i) * 10 * time.Minute)
+		span := models.OtelSpan{Span: models.Span{ProjectId: project.Id, TraceId: hex.EncodeToString(trace[:]), SpanId: hex.EncodeToString(id[8:]),
+			Name: "SELECT orders", ServiceName: "checkout-api", SpanKind: 3, StartTime: start, RecordedAt: start, Duration: duration,
+			Attributes: map[string]string{"db.rows": rows}}}
+		if i%2 == 0 {
+			span.Attributes["cache.hit"] = "false"
+		}
+		spans = append(spans, span)
+	}
+	if _, err := telemetry.OtelSpanRepository.InsertAsync(context.Background(), spans); err != nil {
+		t.Fatal(err)
+	}
+	call := func(body string, handler gin.HandlerFunc) (int, map[string]any) {
+		c, response := newControllerTestContext(t, nil, user, http.MethodPost, "/spans/chart", body)
+		c.Set(middleware.ProjectIdContextKey, project.Id)
+		handler(c)
+		var out map[string]any
+		_ = json.Unmarshal(response.Body.Bytes(), &out)
+		return response.Code, out
+	}
+	window := fmt.Sprintf(`"fromDate":%q,"toDate":%q`, base.Format(time.RFC3339Nano), base.Add(2*time.Hour).Format(time.RFC3339Nano))
+
+	for name, body := range map[string]string{
+		"no time range":        `{}`,
+		"quoted chart key":     `{` + window + `,"attribute":"a\"b"}`,
+		"empty contains value": `{` + window + `,"attributeFilters":[{"key":"db.rows","contains":true}]}`,
+	} {
+		for _, handler := range []gin.HandlerFunc{SpanExplorerController.Series, SpanExplorerController.Distribution} {
+			if code, out := call(body, handler); code != http.StatusUnprocessableEntity {
+				t.Errorf("%s: got %d %v, want 422", name, code, out)
+			}
+		}
+	}
+
+	code, search := call(`{`+window+`,"attributeFilters":[{"key":"cache.hit","exists":true,"exclude":true}],"pagination":{"page":1,"pageSize":50}}`, SpanExplorerController.Search)
+	if code != http.StatusOK || search["pagination"].(map[string]any)["total"].(float64) != 5 {
+		t.Fatalf("spans without cache.hit = %d %v, want 5", code, search)
+	}
+
+	code, series := call(`{`+window+`,"maxBuckets":13}`, SpanExplorerController.Series)
+	if code != http.StatusOK || series["intervalSeconds"].(float64) != 600 || series["numeric"].(float64) != 11 || len(series["buckets"].([]any)) != 11 {
+		t.Fatalf("duration series = %d %v, want 11 ten-minute buckets", code, series)
+	}
+	if first := series["buckets"].([]any)[0].(map[string]any); first["avg"].(float64) != 1 {
+		t.Errorf("the first bucket holds the 1 ms span in milliseconds, got %v", first)
+	}
+
+	code, dist := call(`{`+window+`}`, SpanExplorerController.Distribution)
+	if code != http.StatusOK || dist["scale"] != "log" || dist["binWidth"].(float64) != 0 || dist["max"].(float64) != 500 {
+		t.Fatalf("durations from 1 to 500 ms = %d %v, want log-scale bins", code, dist)
+	}
+	var total float64
+	for _, bin := range dist["bins"].([]any) {
+		total += bin.(map[string]any)["count"].(float64)
+	}
+	if total != 11 {
+		t.Errorf("log-scale bins hold %v spans, want 11", total)
+	}
+
+	code, rows := call(`{`+window+`,"attribute":"db.rows","attributeFilters":[{"key":"cache.hit","value":"false"}]}`, SpanExplorerController.Distribution)
+	if code != http.StatusOK || rows["scale"] != "linear" || rows["present"].(float64) != 6 || rows["numeric"].(float64) != 5 || rows["integral"] != true {
+		t.Fatalf("db.rows of the cache misses = %d %v, want 6 carrying it, 5 whole numbers, linear bins", code, rows)
+	}
+}

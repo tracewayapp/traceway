@@ -351,6 +351,6 @@ For a complete working example with error recording and child spans, see the [em
 
 The Quick Start above only sends request traces. Everything else works the same against the embedded server as against a hosted one, so point these guides at `http://localhost:8082` and use your `WithDefaultProject` token:
 
-- [Traces](/client/otel/traces): child spans, recording errors so they land in Issues with a stack trace, and background jobs. A background job span needs `SpanKind.CONSUMER`, a plain root span is silently dropped.
+- [Traces](/client/otel/traces): child spans, recording errors so they land in Issues with a stack trace, and background jobs. A background job span needs `SpanKind.CONSUMER` to become a Task; a plain root span only shows up in the span explorer.
 - [Logs](/client/otel/logs): emitting logs that attach to the request's trace.
 - [Metrics](/client/otel/metrics): counters, histograms, and how Traceway stores them.

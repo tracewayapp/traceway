@@ -3,7 +3,7 @@
 import { Callout } from "nextra/components";
 
 <Callout type="info">
-  This page covers the stable 1.x browser SDK, which `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs today. The 2.x SDK, with [remote SDK config](/learn/remote-config), is in beta: see [JS SDK Overview](/client/js-sdk) for its version of this page.
+  This page covers the legacy 1.x browser SDK. Since 2.0.0, `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs 2.x, so pin `@1` to stay on this version. See [JS SDK Overview](/client/js-sdk) for the current version of this page, and [Migrating from 1.x to 2.x](/client/js-sdk/migration) to upgrade.
 </Callout>
 
 The Traceway JavaScript SDK provides error tracking for browser-based applications. It captures exceptions, messages, and sends them to your Traceway backend.
@@ -21,16 +21,16 @@ The Traceway JavaScript SDK provides error tracking for browser-based applicatio
 ## Installation
 
 ```bash
-npm install @tracewayapp/frontend
+npm install @tracewayapp/frontend@1
 ```
 
 Or use a framework-specific package:
 
 ```bash
-npm install @tracewayapp/react
-npm install @tracewayapp/vue
-npm install @tracewayapp/svelte
-npm install @tracewayapp/jquery
+npm install @tracewayapp/react@1
+npm install @tracewayapp/vue@1
+npm install @tracewayapp/svelte@1
+npm install @tracewayapp/jquery@1
 ```
 
 ### Via CDN
@@ -67,7 +67,7 @@ Example:
 abc123def456@https://traceway.example.com/api/report
 ```
 
-You can find your connection string in the Traceway dashboard under **Project Settings**.
+You can find your connection string on the project’s **Connection** page.
 
 ## When to Use
 

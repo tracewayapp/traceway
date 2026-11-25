@@ -65,13 +65,19 @@ var agentRoutes = map[string]agentAccess{
 	"GET /api/metrics/discover/instances": agentRead,
 	"GET /api/metrics/discover/org":       agentRead,
 
-	"POST /api/dashboards/import":    agentWrite,
-	"GET /api/dashboards":            agentRead,
-	"GET /api/dashboards/library":    agentRead,
-	"GET /api/dashboards/starred":    agentRead,
-	"GET /api/dashboards/:id":        agentRead,
-	"GET /api/dashboards/:id/export": agentRead,
-	"GET /api/dashboard-templates":   agentRead,
+	"POST /api/dashboards/:id/embed-token": agentRead,
+	"POST /api/dashboards/import":          agentWrite,
+	"GET /api/dashboards":                  agentRead,
+	"GET /api/dashboards/library":          agentRead,
+	"GET /api/dashboards/starred":          agentRead,
+	"GET /api/dashboards/:id":              agentRead,
+	"GET /api/dashboards/:id/export":       agentRead,
+	"GET /api/dashboard-templates":         agentRead,
+
+	// Agents mint read tokens only (patController.Create), so a write credential
+	// can never outlive its own 90 days through a fresh write token.
+	"POST /api/personal-access-tokens": agentWrite,
+	"GET /api/personal-access-tokens":  agentRead,
 
 	"POST /api/endpoints":             agentRead,
 	"POST /api/endpoints/grouped":     agentRead,
@@ -134,6 +140,10 @@ var agentRoutes = map[string]agentAccess{
 	"GET /api/slos/:id":                       agentRead,
 	"POST /api/slos/:id/series":               agentRead,
 	"GET /api/slos/breached-count":            agentRead,
+	"POST /api/slos/preview":                  agentRead,
+	"POST /api/slos":                          agentWrite,
+	"PUT /api/slos/:id":                       agentWrite,
+	"DELETE /api/slos/:id":                    agentWrite,
 	"POST /api/synthetics/checks/:id/run":     agentWrite,
 
 	"GET /api/organizations/:organizationId/overview/servers":    agentRead,

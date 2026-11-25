@@ -100,6 +100,7 @@ func TestListTools_surfaceAndAnnotations(t *testing.T) {
 		"get_oncall_schedule": true, "get_oncall_timeline": true, "list_escalation_policies": true,
 		"list_contact_methods": true, "get_user_notification_rules": true, "list_notification_history": true,
 		"get_oncall_now": true, "get_current_oncall": true, "list_organization_members": true,
+		"list_slos": true, "get_slo": true, "get_slo_series": true, "preview_slo": true,
 	}
 	assertToolSurface(t, res.Tools, wantReadOnly)
 }
@@ -124,8 +125,11 @@ func TestListTools_writeServerAddsMutatingTools(t *testing.T) {
 		"get_oncall_schedule": true, "get_oncall_timeline": true, "list_escalation_policies": true,
 		"list_contact_methods": true, "get_user_notification_rules": true, "list_notification_history": true,
 		"get_oncall_now": true, "get_current_oncall": true, "list_organization_members": true,
+		"list_slos": true, "get_slo": true, "get_slo_series": true, "preview_slo": true,
 
-		"import_dashboards":           false,
+		"import_dashboards":      false,
+		"create_dashboard_embed": false,
+		"create_read_token":      false, "list_personal_access_tokens": true,
 		"create_notification_channel": false, "update_notification_channel": false, "delete_notification_channel": false, "test_notification_channel": false,
 		"create_notification_rule": false, "update_notification_rule": false, "delete_notification_rule": false,
 		"create_team": false, "update_team": false, "delete_team": false, "set_team_members": false, "set_team_projects": false,
@@ -133,7 +137,8 @@ func TestListTools_writeServerAddsMutatingTools(t *testing.T) {
 		"create_escalation_policy": false, "update_escalation_policy": false, "delete_escalation_policy": false,
 		"create_contact_method": false, "update_contact_method": false, "delete_contact_method": false, "test_contact_method": false, "verify_contact_method": false, "resend_contact_method_code": false,
 		"set_user_notification_rules": false,
-		"archive_exceptions":          false, "unarchive_exceptions": false,
+		"create_slo":                  false, "update_slo": false, "delete_slo": false,
+		"archive_exceptions": false, "unarchive_exceptions": false,
 		"acknowledge_page": false, "resolve_page": false,
 		"set_notification_rule_enabled": false, "snooze_notification_rule": false,
 		"run_check": false, "create_post_mortem": false, "update_post_mortem": false,

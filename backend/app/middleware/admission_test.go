@@ -64,8 +64,8 @@ func TestAdmissionGateBoundsWaiters(t *testing.T) {
 	defer close(release)
 	r := admissionRouter(newAdmissionGate("test", 1, time.Second, "busy", nil, "2"), release)
 
-	codes := make(chan int, 32)
-	for i := 0; i < 1+16+3; i++ {
+	codes := make(chan int, 1+admissionMinWaiters+3)
+	for i := 0; i < 1+admissionMinWaiters+3; i++ {
 		go func() { codes <- post(r) }()
 	}
 

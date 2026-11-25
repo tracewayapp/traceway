@@ -3,7 +3,7 @@
 import { Callout } from "nextra/components";
 
 <Callout type="info">
-  This page covers the stable 1.x browser SDK, which `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs today. The 2.x SDK, with [remote SDK config](/learn/remote-config), is in beta: see [Initialization](/client/js-sdk/initialization) for its version of this page.
+  This page covers the legacy 1.x browser SDK. Since 2.0.0, `npm install @tracewayapp/frontend` (and the React, Vue, Svelte and jQuery packages) installs 2.x, so pin `@1` to stay on this version. See [Initialization](/client/js-sdk/initialization) for the current version of this page, and [Migrating from 1.x to 2.x](/client/js-sdk/migration) to upgrade.
 </Callout>
 
 Initialize the Traceway SDK once at application startup, before capturing any events.
@@ -144,7 +144,7 @@ init("your-token@https://traceway.example.com/api/report", {
 
 When `debug: true` is set, the SDK logs what it throws away: errors suppressed by `ignoreErrors`, a `beforeCapture` callback that threw, and failed uploads. Captured events produce no console output at all, so an empty console does not mean the SDK is broken.
 
-To confirm an event was captured, watch for the `POST` to `/api/report` in the Network tab, or call `await flush()` and open the Issues page.
+To confirm an event was captured, watch for the `POST` to `/api/report` in the Network tab and open the Issues page.
 
 ```javascript
 init("your-token@https://traceway.example.com/api/report", {

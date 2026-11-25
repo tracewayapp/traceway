@@ -1,10 +1,13 @@
 <script lang="ts">
+	import '$lib/polyfills';
+	import { dashboardStorage, embedPage } from '$lib/utils/dashboard-embed';
 	import { browser } from '$app/environment';
 	import { resolve } from '$app/paths';
 	import './layout.css';
 	import { goto, afterNavigate } from '$app/navigation';
 	import { authState } from '$lib/state/auth.svelte';
-	import { projectsState } from '$lib/state/projects.svelte';
+	import { projectsState, isProjectViewAvailable } from '$lib/state/projects.svelte';
+	import EmptyState from '$lib/components/traceway/empty-state.svelte';
 	import { themeState, initTheme, toggleTheme } from '$lib/state/theme.svelte';
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { DateTime } from 'luxon';
@@ -23,7 +26,7 @@
 	import { Toaster, toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import { defaultAuthenticatedPath, gotoHref } from '$lib/utils/navigation';
-	import { DEFAULT_IGNORE_PATTERNS, captureException, init } from '@tracewayapp/frontend';
+	import { DEFAULT_IGNORE_PATTERNS, captureException, init, setRoute } from '@tracewayapp/frontend';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Component } from 'svelte';
 	import StatusPageView from '$lib/components/traceway/status-page-view.svelte';
@@ -38,6 +41,8 @@
 		if (monitoring || !__TRACEWAY_URL__ || !shouldMonitorUrl(url, statusDomainSlug)) return;
 		monitoring = true;
 		init(__TRACEWAY_URL__, {
+			version: __APP_VERSION__,
+			environment: import.meta.env.MODE,
 			recordAllSessions: true,
 			// Browser and extension noise with no stack frame in our code.
 			ignoreErrors: [
@@ -56,6 +61,22 @@
 		startMonitoring(page.url);
 	});
 
+	$effect(() => {
+		// Every navigation is a view to name, also between two pages of one route, hence the URL.
+		void page.url;
+		setRoute(page.route.id);
+	});
+
+	const projectViewAvailable = $derived(
+		!projectsState.currentProject ||
+			isProjectViewAvailable(projectsState.currentProject.framework, page.url.pathname)
+	);
+
+	const dashboardsAvailable = $derived(
+		!!projectsState.currentProject &&
+			isProjectViewAvailable(projectsState.currentProject.framework, '/dashboards')
+	);
+
 	let { children } = $props();
 	let showAddProjectModal = $state(false);
 	let showEditProjectModal = $state(false);
@@ -66,7 +87,8 @@
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-			if (!authState.isAuthenticated || isPublicPath(page.url.pathname)) return;
+			if (!authState.isAuthenticated || isPublicPath(page.url.pathname) || !dashboardsAvailable)
+				return;
 			if (isMacPlatform && !e.metaKey) return;
 			if (page.url.pathname === '/dashboards' || isOrganizationPath(page.url.pathname)) return;
 			e.preventDefault();
@@ -75,8 +97,9 @@
 	}
 
 	const SIDEBAR_OPEN_KEY = 'traceway_sidebar_open';
-	let sidebarOpen = $state(localStorage.getItem(SIDEBAR_OPEN_KEY) !== 'false');
+	let sidebarOpen = $state(dashboardStorage()?.getItem(SIDEBAR_OPEN_KEY) !== 'false');
 	let CrossSiteNotificationBanner = $state<Component<{ organizationId: number }> | null>(null);
+	let OverlaySlot = $state<Component | null>(null);
 
 	const contextOrganizationId = $derived(
 		organizationContext.active
@@ -109,6 +132,7 @@
 	}
 
 	const PUBLIC_PATHS = new Set([
+		embedPage,
 		'/login',
 		'/register',
 		'/auth/callback',
@@ -222,6 +246,7 @@
 
 	onMount(() => {
 		document.getElementById('splash')?.remove();
+		if (page.url.pathname === embedPage) return;
 		initTheme();
 		window.captureException = captureException;
 
@@ -232,6 +257,14 @@
 		import('$billing/cross-site-notification-baner.svelte')
 			.then((module) => {
 				CrossSiteNotificationBanner = module.default;
+			})
+			.catch(() => {
+				// Billing extension not available - expected for open source builds
+			});
+
+		import('$billing/overlay-slot.svelte')
+			.then((module) => {
+				OverlaySlot = module.default;
 			})
 			.catch(() => {
 				// Billing extension not available - expected for open source builds
@@ -312,7 +345,12 @@
 		project={projectsState.currentProject}
 	/>
 
-	<DashboardCommand bind:open={showCommandPalette} />
+	{#if dashboardsAvailable}
+		<DashboardCommand bind:open={showCommandPalette} />
+	{/if}
+	{#if OverlaySlot}
+		<OverlaySlot />
+	{/if}
 	<Toaster position="top-center" />
 {/snippet}
 
@@ -337,11 +375,14 @@
 				{@render children()}
 			</main>
 		</div>
+		{#if OverlaySlot}
+			<OverlaySlot />
+		{/if}
 		<Toaster position="top-center" />
 	{:else if authState.isAuthenticated && !isPublicPath(page.url.pathname)}
 		<Sidebar.SidebarProvider
 			bind:open={sidebarOpen}
-			onOpenChange={(open) => localStorage.setItem(SIDEBAR_OPEN_KEY, String(open))}
+			onOpenChange={(open) => dashboardStorage()?.setItem(SIDEBAR_OPEN_KEY, String(open))}
 		>
 			<AppSidebar />
 			<Sidebar.SidebarInset>
@@ -358,7 +399,11 @@
 				</header>
 				<main class="min-w-0 flex-1 p-4">
 					{@render contextNotices()}
-					{@render children()}
+					{#if projectViewAvailable}
+						{@render children()}
+					{:else}
+						<EmptyState message="This view is not available for this project type." />
+					{/if}
 				</main>
 			</Sidebar.SidebarInset>
 		</Sidebar.SidebarProvider>

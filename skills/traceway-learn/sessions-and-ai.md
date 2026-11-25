@@ -3,14 +3,14 @@
 
 ## Sessions (`/sessions`)
 
-Only in the sidebar of browser and mobile projects. A session is the recording of one user's visit, usually the life of one open tab: what they clicked, typed, scrolled and saw, with the console logs and network calls alongside.
+Only in the sidebar of browser and mobile projects. A session represents one visit; it can exist without a replay recording. Available breadcrumbs, requests, errors and replay explain individual experiences, while RUM metrics describe the population (see [rum.md](rum.md)).
 
-- With the 1.x browser SDK, sessions are recorded only when `recordAllSessions: true` is set. Without it, only a short clip from just before each exception is kept, shown on the issue page. The 2.x SDK (beta) reports every session unless `sessions: false` is set, but keeps its replay and breadcrumbs on the device by default and uploads them around errors and captures, or for the whole session with `recordAllSessions: true` or a remote SDK config rule (`data-collection.md`).
+- With the 1.x browser SDK, sessions are recorded only when `recordAllSessions: true` is set. Without it, only a short clip from just before each exception is kept, shown on the issue page. The 2.x SDK reports every session unless `sessions: false` is set, but keeps its replay and breadcrumbs on the device by default and uploads them around errors and captures, or for the whole session with `recordAllSessions: true` or a remote SDK config rule (`data-collection.md`).
 - A session ends after 15 minutes of inactivity, at 60 minutes in total, or when the page unloads. The server does not rely on the closing message arriving: it ends the session at the last activity it saw.
 - **Attributes**: the SDK stamps `url`, `path`, `referrer`, `userAgent`, `language`, `platform`, `viewport`, `screen` and `timezone`. The server adds `client.ip`. The app adds its own with `setAttributes` (for example `userId`, `email`, `tenant`).
 - **The list**: search a session id, IP or attribute value. Attribute filters use equals (case sensitive), not equals, contains or not contains (case insensitive), and all filters must match. Columns: session, attributes (click one to filter), started, duration, version. Filters are kept in the URL.
 - **A session**: started, duration, app version, attributes, the replay player (rrweb for web, video for Flutter) with speed and fullscreen, **Logs** and **Actions** tabs synced to the replay, and **Exceptions in this session**, each linking to its issue.
-- From an issue, **View full session** opens the session the exception happened in.
+- From an issue, **View full session** opens the session the exception happened in. Distribution widgets can also open **Slow sessions** from retained exemplars. Recording-reason filters find trigger-selected journeys, with historical trigger names/sequences retained after rules change. Captures target a device, user or session and show delivery/application/data status; a saved capture does not prove data arrived.
 
 Replay itself is dashboard only. Read: `traceway sessions show <id> --started-at <t>`, MCP `get_session`, which return the session and its exceptions.
 

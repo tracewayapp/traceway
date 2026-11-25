@@ -251,7 +251,7 @@ setInterval(nightlyReport, 60 * 60 * 1000);
 
 The task name in Traceway is the span name, `nightly-report`. To see the row without waiting an hour, call `nightlyReport()` once at startup as well.
 
-> **Always set the kind.** A root span left at the default `SpanKind.INTERNAL` with no HTTP attributes matches nothing Traceway stores, so it is dropped on arrival: no endpoint, no task, no span row. Logs you emitted inside it still arrive, pointing at a trace that does not exist, which is a confusing thing to debug. `kind: SpanKind.CONSUMER` is the whole fix.
+> Set `kind: SpanKind.CONSUMER` to list this job under **Tasks**. With the default `INTERNAL` kind, the example remains visible in **Spans** and its logs keep their trace ID.
 
 ## Custom Metrics
 
@@ -280,7 +280,7 @@ app.post("/api/checkout", async (c) => {
 });
 ```
 
-Tag keys become filterable dimensions in Traceway. Counters and gauges are stored as they are. A histogram arrives as two metrics, `checkout.latency.avg` and `checkout.latency.count`. `ExponentialHistogram` and `Summary` instruments are dropped, so prefer a plain histogram.
+Tag keys become filterable dimensions in Traceway. Counters and gauges are stored as they are. Traceway stores bucketed histograms under the instrument name for percentile queries. Explicit-bucket histograms also produce average and count series. See [OTel metrics](/client/otel/metrics#histogram-handling).
 
 `@hono/otel` also emits `http.server.request.duration` (tagged with `http.route` and `http.response.status_code`) and `http.server.active_requests` for free.
 
@@ -308,7 +308,7 @@ With `@hono/otel` and the auto-instrumentations enabled, the following is captur
 | Any span with `kind: CONSUMER` | **Tasks**, named after the span |
 | Any non-root span | **Spans**, in the trace waterfall |
 | An `exception` event on any span, from `span.recordException()` or a throw caught by `@hono/otel` | **Issues**, with the stack trace |
-| A root span with no HTTP attributes and a kind other than CONSUMER | Dropped. Nothing is stored |
+| Any other root span | **Spans** |
 
 A request that matched no Hono route has no `http.route`, so all such 404s group into a single endpoint named `UNMATCHED` instead of one row per bad URL. That is deliberate. It keeps scanners and typo traffic out of your endpoint list.
 
@@ -405,7 +405,7 @@ With those set you can drop `serviceName`, `traceExporter`, and `metricReaders` 
 | Runtime | Instrumentation |
 |---------|----------------|
 | **Node.js** | OTel Node SDK (this guide) |
-| **Cloudflare Workers** | Platform OTLP export, no SDK (Workers Paid, beta). Cloudflare does not emit `http.route`, so endpoints are named by raw URL path instead of your Hono route pattern. Read the [Cloudflare guide](/client/otel/cloudflare) before you switch |
+| **Cloudflare Workers** | Platform OTLP export, no SDK. Cloudflare does not set `http.route` by default, so endpoints are named by raw URL path unless you set the route yourself. Read the [Cloudflare guide](/client/otel/cloudflare) before you switch |
 | **Deno** | Use [Deno OTel](https://docs.deno.com/runtime/fundamentals/open_telemetry/) with OTLP/HTTP export to Traceway |
 | **Bun** | Use `@opentelemetry/sdk-node` (Bun supports most Node.js OTel packages) |
 

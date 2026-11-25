@@ -26,17 +26,30 @@ Two rules worth knowing when something seems missing:
 
 A search over every span of the project. Hidden in the sidebar for browser and mobile projects.
 
-- **Filters**: span name (contains, case insensitive), service, kind, status (unset, ok, error), minimum and maximum duration, trace id, and up to 10 exact attribute matches (`key = value`).
+- **Filters**: span name (contains, case insensitive), service, kind, status (unset, ok, error), minimum and maximum duration, trace id, and up to 10 attribute filters with the operators of the logs page: equals, not equals, contains, not contains, **key exists** and **key does not exist**. Each is a pill whose operator switches in place; the negated ones keep spans without the attribute.
 - **Sort**: start time or duration, either direction.
 - **Time range**: defaults to the last 60 minutes, and can be up to 31 days. A search that takes too long answers with a warning to narrow the range or add filters.
 - The service filter lists the busiest 100 services in the range.
+- **Chart**: above the results, open by default, the duration of every matching span. **Over time** draws P50, P95 and P99 per time slice (average, minimum, maximum, sum and count on request; drag to zoom). **Distribution** counts durations in bins and marks P50, P95 and P99; when the durations span a wide range (the slowest at least 20 times the fastest) the bins cover equal ratios, so the axis is logarithmic and fast and slow paths show as separate humps. The picker in the chart's corner charts a numeric attribute instead (`db.response.returned_rows`), and **Close** hides the chart. Each span is counted once even when a retried export stored it twice, so the chart's count equals the table's. Dashboard only.
+- **Saved filters** work as on the logs page and keep the spans page's own search, filters and chart.
+- From a trace: in any waterfall, the filter icon on a span attribute opens the span explorer filtered on it, and **Chart values** on a numeric attribute opens its chart for the same operation (service and span name).
+
+### Spans stored more than once
+
+OTLP does not promise that a span arrives exactly once. An exporter resends a batch when the answer is late, and the first attempt may already be stored; two Collector pipelines exporting the same data store a copy of every span. Traceway keeps every copy (same trace id and span id) and every read uses one of them:
+
+- The copy kept is the one with the **longest duration**, with ties broken by content, so it is the same copy every time.
+- **Filters apply to the kept copy.** A value only the other copy carries does not match, and a negated filter also follows the kept copy. This explains a span that a filter does not find although some stored copy has the value.
+- Counts, pages and charts count the span once, so the chart's count equals the table's.
+
+Cost, on ClickHouse: a search first finds the spans stored more than once and compares copies only for those, so a search or chart uses about 35 MB per million spans of the project in its range (a day of 4 million spans, about 140 MB), whatever the filters. Each query may use up to 1 GB, reached around 30 million spans in the range, and a query that reaches it answers with the same "narrow the range or add a filter" warning as a slow one. When every span is stored twice, a search uses about ten times as much memory and selective filters get slower: that pattern points at a doubled exporter or Collector pipeline, which is worth fixing at the source.
 
 ## The trace page (`/spans/<traceId>`)
 
 The whole trace as one waterfall, across every service and **every project of the organization**, because the services of one trace usually report to different projects. Other organizations stay out.
 
 - Each row names its service. Bars are coloured per service once a trace crosses services, and error spans are marked.
-- Clicking a span opens its attributes, service, kind, status and scope. Attributes load when the popover opens.
+- Clicking a span opens its attributes, service, kind, status and scope. Attributes load when the popover opens, and each one links to the span explorer (see above).
 - Large traces: over 500 spans, any node with more than 50 children starts folded, with a pill counting the hidden spans and an error marker when one of them failed. **Expand all** and **Collapse all** sit in the header. Over the row cap, the page keeps errors first, then entry points, then the slowest spans, and says the trace is partial.
 - The trace's logs are listed alongside, from every project of the organization, with a service column.
 - The URL needs `?at=` (any time near the trace) and can carry `?span=` to highlight one span.
@@ -61,10 +74,14 @@ Filters, which all combine:
 
 - **Search**, by **Message** (the body), **Service** or **Trace ID**. On ClickHouse a single-word body search is a fast whole-word match that is case sensitive (`timeout` does not find `Timeout` or `timeouts`). Anything longer, and every search on SQLite and DuckDB, is a case-insensitive substring match.
 - **Severity**: All levels, or a threshold from TRACE+ to FATAL.
-- **Attribute filters** (**Add filter**): any `resource.*`, `scope.*` or log attribute key, with equals, not equals, contains or not contains. Not equals is how teams mute a noisy logger. Each filter is a pill, red for exclusions. Expanding a log row lets you click its body, trace id, span id or scope to filter on them.
+- **Attribute filters** (**Add filter**): any `resource.*`, `scope.*` or log attribute key, with equals, not equals, contains or not contains, or **key exists** / **key does not exist**, which match on the key alone. Not equals is how teams mute a noisy logger. Each filter is a pill, red for exclusions; clicking a pill's operator switches it in place. In an expanded log row, the filter icon on an attribute offers the same operators for that value and key, and the body, trace id, span id and scope tiles filter on an exact match in one click. A log attribute whose own key starts with `resource.` or `scope.` is shown as `log.<key>`.
 - **Time range**: presets or custom, 24 hours by default. Results are newest first by default (timestamp, level and service are sortable), and **Load 50 more** fetches more.
 
 Filters are kept in the URL, so a filtered view can be shared.
+
+**Charting attribute values**: on an attribute whose value is a number, the tile menu offers **Chart values**. The chart covers the logs the current filters select. **Over time** draws, per time slice, the average, P50, P95, P99, minimum, maximum, sum and count (average and maximum by default; hover for one slice, drag to zoom). **Distribution** counts the values in round bins and marks P50, P95 and P99. Only JSON-style numbers (`12`, `-3.5`, `1e3`) are charted; the chart says how many values were not numbers. Dashboard only.
+
+**Saved filters** (button at the right of the filter pills) store the search, severity, service and attribute filters and an open chart under a name, optionally with the time range. They belong to the project and every member sees them; read-only members can apply but not change them. Names are unique per project, ignoring case, at most 100 per project. Dashboard only.
 
 **Live** turns the page into a live tail. It polls every 5 seconds, prepends new records and keeps up to 2000 rows. It works with preset ranges only, honours every filter, holds the scroll position while reading, and changing the sort stops it.
 

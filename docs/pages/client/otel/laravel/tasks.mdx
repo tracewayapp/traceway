@@ -196,7 +196,7 @@ Unlisted commands run without a span, so `Span::getCurrent()` inside them return
 
 `ConsoleInstrumentation` only wraps Artisan *commands* you list. A scheduled closure (`Schedule::call(...)`) is not a command, and neither is a hand-rolled background loop, so nothing traces them for you.
 
-Starting a span yourself is not enough on its own. `Tracer::newSpan()` creates an `INTERNAL` span, and Traceway records a root span only when it is an HTTP request, a `CONSUMER` span, or carries a `console.command` attribute. A root `INTERNAL` span is discarded on ingest along with every child span under it, with no error anywhere. Any logs emitted inside it still arrive, but they point at a trace that does not exist.
+`Tracer::newSpan()` defaults to INTERNAL. Traceway retains that span and its children with their original trace ID. Give the job a CONSUMER span to make it visible in **Tasks**.
 
 Mark the root span as `CONSUMER` and the work lands in **Tasks**:
 

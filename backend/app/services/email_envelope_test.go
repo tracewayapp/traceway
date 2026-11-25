@@ -140,3 +140,43 @@ func TestSendEmailEncodesDisplayNamesInHeaders(t *testing.T) {
 		}
 	}
 }
+
+func sendReplyTo(t *testing.T, replyTo string) string {
+	t.Helper()
+	host, port, _, body := fakeSMTP(t)
+
+	prev := config.Config
+	config.Init(&config.Cfg{SMTPEnabled: "true", SMTPHost: host, SMTPPort: port, SMTPFrom: "alerts@example.com"})
+	t.Cleanup(func() { config.Init(prev) })
+
+	err := SendEmail(context.Background(), Email{
+		To:       []string{"support@example.com"},
+		ReplyTo:  replyTo,
+		Subject:  "Test",
+		Template: "invitation",
+		Title:    "Test",
+		Text:     "test",
+		Data:     invitationData{InviterName: "Dana", OrgName: "Acme"},
+	})
+	if err != nil {
+		t.Fatalf("SendEmail: %v", err)
+	}
+	return strings.Join(*body, "\n")
+}
+
+func TestSendEmailEncodesReplyTo(t *testing.T) {
+	headers := sendReplyTo(t, "Zoë Customer <zoe@example.com>")
+	if !strings.Contains(headers, "Reply-To: =?utf-8?q?Zo=C3=AB_Customer?= <zoe@example.com>") {
+		t.Errorf("missing encoded Reply-To header in:\n%s", headers)
+	}
+}
+
+func TestSendEmailReplyToCannotInjectHeaders(t *testing.T) {
+	headers := sendReplyTo(t, "customer@example.com\r\nBcc: victim@example.com")
+	if strings.Contains(headers, "\nBcc:") {
+		t.Fatalf("a Reply-To value injected a header:\n%s", headers)
+	}
+	if !strings.Contains(headers, "Reply-To: customer@example.com") {
+		t.Errorf("missing Reply-To header in:\n%s", headers)
+	}
+}

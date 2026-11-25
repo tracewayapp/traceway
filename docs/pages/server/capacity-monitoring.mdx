@@ -69,7 +69,7 @@ The backend reports these gauges every 30 seconds. Each `_30s` value covers the 
 | `traceway.ingest.failures_30s` | Ingest requests ending in HTTP 4xx or 5xx, including requests without a sampled trace |
 | `traceway.ingest.admission_rejected.delta` | Requests rejected by the ingest concurrency gate since the previous reporting tick (503, clients may retry) |
 | `traceway.ingest.oversized_discarded` | `/api/report` bodies over `REPORT_MAX_BODY_MB` that were answered `200` and discarded, so the SDK drops the batch instead of resending it. The request carries `ingest.oversized_discarded=true` and the project id |
-| `traceway.ingest.body_rejected` | Ingest bodies turned away while they were being read, tagged `reason`: `body_too_slow` (the client stalled; 503), `invalid_body` (malformed or cut off; 400) or `body_too_large` (413) |
+| `traceway.ingest.body_rejected` | Ingest bodies turned away while they were being read, tagged `reason`: `body_too_slow` (the client stalled; 503), `client_aborted` (the client hung up or lost its connection mid-upload; 400), `invalid_body` (malformed; 400) or `body_too_large` (413) |
 | `traceway.ingest.body.network_ms` | Longest time one ingest request spent blocked on its client's upload in the interval. High values with normal `traceway.ingest.batch.*` timings mean slow clients, not a slow server |
 | `traceway.admission.in_use_pcnt` | Largest share of an admission gate's slots in use in the interval, tagged `gate` (`ingest`, `upload`, `opamp`). It reaches 100 before the first request has to wait |
 | `traceway.admission.wait_ms` | Longest a request waited for a slot of that gate in the interval. Above zero the gate is saturated; at `INGEST_ADMISSION_WAIT_SECONDS` requests are being rejected |
@@ -148,16 +148,16 @@ Not emitted in SQLite mode.
 
 | Metric | Meaning |
 |--------|---------|
-| `traceway.sourcemap.entries` / `traceway.sourcemap.bytes` | Built source map resolvers held in memory and their estimated total size |
+| `traceway.sourcemap.entries` / `traceway.sourcemap.bytes` | Entries and bytes in the active memory or disk symbolication cache |
 | `traceway.sourcemap.negative_entries` | Filenames currently under a miss/failure cooldown (no map uploaded, or recent load failures) |
 | `traceway.sourcemap.hits.delta` / `misses.delta` / `evictions.delta` | Cache traffic since the last tick |
 | `traceway.sourcemap.load_failures.delta` | Failed resolver builds (storage error, 5s timeout, unparseable map) since the last tick; affected traces are stored unsymbolicated |
 | `traceway.sourcemap.not_found.delta` | Lookups since the last tick where no map was uploaded for the frame's filename; sustained nonzero for a project that should symbolicate usually means a missing CI upload step |
 | `traceway.sourcemap.negative_hits.delta` | Frame lookups skipped by an active cooldown since the last tick; high values are normal for JS projects that do not upload maps |
-| `traceway.sourcemap.parse_ms` | Duration of the most recent resolver build |
-| `traceway.sourcemap.store_hits.delta` / `builds.delta` | Memory misses served by a precompiled `.tw` from object storage vs. full rebuilds from `.map` + bundle; reported in both cache modes, since the `.tw` store tier is always active |
+| `traceway.sourcemap.parse_ms` | Duration of the most recent successful cache load |
+| `traceway.sourcemap.store_hits.delta` / `builds.delta` | Cache misses served by a precompiled `.tw` from object storage vs. full rebuilds from `.map` + bundle; reported in both cache modes, since the `.tw` store tier is always active |
 | `traceway.sourcemap.disk.entries` / `disk.bytes` | Local `.tw` files cached on disk and their total size (only reported when `SOURCEMAP_CACHE_TYPE=disk`) |
-| `traceway.sourcemap.disk.hits.delta` / `disk.evictions.delta` | Memory misses served by a local `.tw` file, and local files evicted by the byte cap, since the last tick |
+| `traceway.sourcemap.disk.hits.delta` / `disk.evictions.delta` | Disk cache hits, and local files evicted by the byte cap, since the last tick |
 | `traceway.sourcemap.warmup_dropped.delta` | Source-map warm-ups dropped because the 2048-job warm-up queue was full; the artifact is built on its first lookup instead. Sustained drops also raise a rate-limited (1/min) exception |
 | `traceway.sourcemap.warmup_backlog` | Source-map warm-ups not finished yet (uploads being enqueued, queued and running jobs). It rises after an upload and drains at the pace of the 2 warm-up workers |
 
@@ -181,19 +181,19 @@ The [SLO](/learn/slos) worker recomputes every enabled SLO each `SLO_POLL_SECOND
 
 ## Source map cache sizing
 
-Symbolication resolves stack frames against object storage at `sourcemaps/{projectId}/{filename}`, with one in-memory LRU of built resolvers in front of it. A resolver keeps only a flat token table plus interned file and function names; the raw `.map` and bundle bytes are held only while building. Concurrent requests for the same map share one storage read and one build, so a given map exists in memory at most once. The cache cap is on the estimated in-memory size, not the raw file size.
+Source maps and bundles live in blob storage at `sourcemaps/{projectId}/{filename}`. The default memory cache holds compiled artifacts with flat token tables and interned names. A cache entry’s size is the compiled size. Concurrent lookups for the same key share a load within the process.
 
 Lookups that find no map (or fail to load one) are negative-cached per filename with an escalating cooldown: a missing map starts at 1 minute, a transient failure at 15 seconds, and each consecutive failure doubles the cooldown up to a 15 minute cap. Uploading a file clears its cooldown and evicts any cached resolver on the instance that handled the upload; in multi-instance deployments the other instances retry within their remaining cooldown. This keeps JS projects that never upload maps from generating a steady stream of storage reads, and keeps a storage outage from adding read-timeout latency to every exception report.
 
 Upgrading from 1.7? The flat storage layout is new in 1.8 and existing maps are migrated automatically at startup; see [Upgrading to 1.8](/server/upgrade-1-8).
 
-In both modes, a memory miss first tries a precompiled `.tw` resolver from object storage before re-parsing the map and bundle, and rebuilds happen once cluster-wide because the resulting `.tw` is written back to storage. Optionally, `SOURCEMAP_CACHE_TYPE=disk` adds a local disk tier of those `.tw` files between the memory cache and object storage, so a miss becomes a local mmap open instead of a storage download. See [the `.tw` format](/symbolicator#the-tw-resolver-format) and [cache tiers](/symbolicator#cache-tiers) for the mechanics.
+On a local cache miss, the backend tries the compiled `.tw` in blob storage before rebuilding it from the raw map and bundle. It writes rebuilt artifacts back so other instances can reuse them. With `SOURCEMAP_CACHE_TYPE=disk`, the local cache stores files and maps them for lookup. See [cache tiers](/symbolicator#cache-tiers).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SOURCEMAP_CACHE_MAX_ENTRIES` | `200` | Max built resolvers kept in memory |
-| `SOURCEMAP_CACHE_MAX_BYTES_MB` | `500` | Max estimated in-memory size of all resolvers |
-| `SOURCEMAP_CACHE_TYPE` | `memory` | `disk` adds the local `.tw` tier |
+| `SOURCEMAP_CACHE_MAX_ENTRIES` | `200` | Max built resolvers kept in memory (memory mode only) |
+| `SOURCEMAP_CACHE_MAX_BYTES_MB` | `500` | Max estimated in-memory size of all resolvers (memory mode only) |
+| `SOURCEMAP_CACHE_TYPE` | `memory` | `disk` uses a local directory of `.tw` files |
 | `SOURCEMAP_DISK_CACHE_PATH` | `./twcache` | Directory for local `.tw` files (disk mode only) |
 | `SOURCEMAP_DISK_CACHE_MAX_MB` | `2048` | Byte cap for the local `.tw` directory, LRU-evicted (disk mode only) |
 | `SYMBOLICATOR_PARSER` | `goja` | Bundle parser for function name resolution; `oxc` is faster on large bundles but requires a `-tags oxc` build (see [Bundle parsers](/symbolicator/javascript#bundle-parsers)) |
@@ -201,7 +201,7 @@ In both modes, a memory miss first tries a precompiled `.tw` resolver from objec
 Sizing guidance:
 
 - **Small box (1-2 GB RAM):** `SOURCEMAP_CACHE_MAX_BYTES_MB=100`.
-- **Plenty of RAM, many active source maps:** raise `SOURCEMAP_CACHE_MAX_BYTES_MB` until `traceway.sourcemap.misses.delta` stays near zero in steady state; every miss is a storage read plus a rebuild, which burns CPU and briefly doubles that map's memory footprint.
+- **Plenty of RAM, many active source maps:** raise `SOURCEMAP_CACHE_MAX_BYTES_MB` until `traceway.sourcemap.misses.delta` stays near zero in steady state; check `store_hits.delta` and `builds.delta` to distinguish downloads from rebuilds.
 - **More active maps than the memory cap can hold, or multiple backend instances:** enable the disk tier. Watch `traceway.sourcemap.builds.delta` (full rebuilds) shrink toward zero while `disk.hits.delta` and `store_hits.delta` absorb the misses; give `SOURCEMAP_DISK_CACHE_MAX_MB` enough room that `disk.evictions.delta` stays near zero.
 - Watch `traceway.proc.rss_mb` against your host RAM; if it climbs during exception ingest with stack traces, the source map cache is the usual suspect. With the disk tier, `.tw` token tables are memory-mapped and show up as page cache rather than process heap.
 

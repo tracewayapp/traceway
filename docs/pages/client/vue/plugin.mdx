@@ -22,25 +22,38 @@ app.mount("#app");
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `connectionString` | `string` | Yes | Your Traceway connection string |
-| `options` | `object` | No | SDK configuration options |
+| `connectionString` | `string \| StandaloneOptions` | Yes | Your Traceway connection string. An options object with a `telemetry` destination runs the SDK [without a Traceway server](/client/js-sdk/initialization#standalone-without-a-traceway-server) |
+| `options` | `TracewayFrontendOptions` | No | SDK configuration options, passed to `init()` |
+
+The plugin calls `init()` when it is installed. The SDK starts once per page: another `init()` is a no-op until `await shutdown()`. When `connectionString` is an options object, it carries the SDK options itself and `options` is ignored.
 
 ## SDK Options
 
+`options` takes every option of the browser SDK. The ones used most:
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log events to console |
-| `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
-| `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
-| `version` | `string` | `undefined` | Your application version |
-| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/v1/initialization#error-filtering) |
-| `beforeCapture` | `(exception) => boolean` | `undefined` | Return `false` to suppress an error. See [Error Filtering](/client/js-sdk/v1/initialization#error-filtering) |
-| `sessionRecording` | `boolean` | `true` | Enable the rrweb session recorder |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | rrweb segment length in ms |
-| `recordAllSessions` | `boolean` | `false` | Always-on session recording. See [Sessions](/learn/sessions) |
-| `captureLogs` | `boolean` | `true` | Mirror `console.*` calls into the rolling log buffer |
-| `captureNetwork` | `boolean` | `true` | Record `fetch` / `XHR` calls as network actions |
-| `captureNavigation` | `boolean` | `true` | Record History API push / replace / pop transitions |
+| `debug` | `boolean` | `false` | Log the problems the SDK would otherwise swallow (a `beforeCapture` that throws, a rejected project token). The plugin also prints every error its `errorHandler` catches, see [Automatic Error Handling](#automatic-error-handling) |
+| `version` | `string` | none | Your application version, reported as `service.version` |
+| `environment` | `string` | `undefined` | `deployment.environment.name`, e.g. `"production"` |
+| `serviceName` | `string` | the page's host name | `service.name` of this app |
+| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
+| `beforeCapture` | `({ type, message, stack, attributes }) => boolean` | `undefined` | Return `false` to suppress an error. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
+| `sessionRecording` | `boolean` | `true` | Allow rrweb session replay at all |
+| `sessionRecordingSegmentDuration` | `number` | `30000` | Replay segment length in ms |
+| `recordAllSessions` | `boolean` | `false` | Stream every replay segment and breadcrumb instead of keeping them on the device for error clips. See [Session Replay](/client/js-sdk/session-replay) |
+| `captureLogs` | `boolean` | `true` | Allow `console.*` calls as breadcrumbs |
+| `captureNetwork` | `boolean` | `true` | Allow `fetch` / `XHR` calls as CLIENT spans |
+| `captureNavigation` | `boolean` | `true` | Allow navigation breadcrumbs (page loads and History API transitions) |
+| `captureUserActions` | `boolean` | `true` | Allow click breadcrumbs |
+| `captureMetrics` | `boolean` | `true` | Allow the [performance metrics](/learn/client-metrics) aggregated on the device |
+| `propagateTraceHeaderCorsUrls` | `Array<string \| RegExp>` | `undefined` | Cross-origin URLs that receive the W3C `traceparent` header (same-origin requests always do) |
+| `remoteConfig` | `boolean` | `true` | Fetch collection settings from Traceway, so the **Data Collection** page can change what the app sends without a release. See [Remote SDK Config](/learn/remote-config) |
+| `exportDelayMs` | `number` | `1000` | Delay between uploads of streamed telemetry, in ms |
+
+The `capture*` and `sessionRecording` options are ceilings: remote settings can restrict a signal further, but never turn on what the app turned off. See [Initialization](/client/js-sdk/initialization#options-reference) for the full list.
+
+By default errors and messages are sent as they happen, while console, network, navigation and click breadcrumbs and the replay stay on the device. A captured error uploads up to 10 minutes of those breadcrumbs and a 30-second replay clip.
 
 ## Full Example
 
@@ -56,7 +69,7 @@ app.use(createTracewayPlugin({
   options: {
     debug: import.meta.env.DEV,
     version: import.meta.env.VITE_APP_VERSION,
-    debounceMs: 1000,
+    environment: import.meta.env.MODE,
   },
 }));
 
@@ -91,6 +104,10 @@ app.config.errorHandler = (err, instance, info) => {
 };
 ```
 
+A thrown value that is not an `Error` is reported as a message, with `captureMessage(String(err))`. With `debug: true` the handler also prints the error, the component instance and Vue's info string with `console.error`.
+
+Uncaught errors and unhandled promise rejections outside Vue are captured by the SDK's own global handlers, see [Auto-Capture Behavior](/client/js-sdk/initialization#auto-capture-behavior).
+
 Vue has a single `app.config.errorHandler` slot, and the plugin assigns it. If your app assigns its own handler after `app.use(createTracewayPlugin(...))`, it replaces Traceway's and component errors stop reaching the dashboard. To keep both, capture the error yourself inside your handler:
 
 ```javascript
@@ -110,6 +127,34 @@ app.config.errorHandler = (err, instance, info) => {
 };
 ```
 
+## Route Names
+
+Performance metrics are grouped by page, and a page is named by its matched route pattern (`/orders/:id`), not by its URL. With a browser SDK version 2.0.1 or later there is nothing to set up: the plugin takes Vue Router from the app it is installed in, whichever of the two is installed first, and Nuxt works the same way. Nuxt writes the patterns of its file routes with a trailing `()` (`pages/orders/[id].vue` is `/orders/:id()`, a catch-all is `/docs/:slug(.*)*`), and that is the name the page gets.
+
+On 2.0.0, or for a router that is not installed in the app, pass your `vue-router` instance to `trackRouter` once, after creating it:
+
+```javascript
+import { createApp } from "vue";
+import { createRouter, createWebHistory } from "vue-router";
+import { createTracewayPlugin, trackRouter } from "@tracewayapp/vue";
+import App from "./App.vue";
+import { routes } from "./routes";
+
+const router = createRouter({ history: createWebHistory(), routes });
+trackRouter(router);
+
+const app = createApp(App);
+
+app.use(createTracewayPlugin({
+  connectionString: "your-token@https://traceway.example.com/api/report",
+}));
+app.use(router);
+
+app.mount("#app");
+```
+
+Without it the SDK replaces id-like path segments itself (`/orders/8841` becomes `/orders/:id`). See [Client Metrics](/learn/client-metrics).
+
 ## Environment-Specific Configuration
 
 ```javascript
@@ -127,7 +172,7 @@ app.use(createTracewayPlugin({
 
 ## Custom Attributes
 
-Attach app-level identifiers (`userId`, `tenant`, feature flags, etc.) to every session and exception. The `useTracewayAttributes` composable is the Vue way to do it. Pass a getter and it tracks reactive state, pushes only the keys that changed, and removes the keys it owns when the component unmounts:
+Attach app-level identifiers (`user.id`, `tenant`, feature flags, etc.) to every session and exception. The `useTracewayAttributes` composable is the Vue way to do it. Pass a getter and it tracks reactive state, pushes only the keys that changed, and removes the keys it owns when the component unmounts:
 
 ```vue
 <script setup>
@@ -137,13 +182,13 @@ import { useUser } from "./auth";
 const { user, org } = useUser();
 useTracewayAttributes(() =>
   user.value && org.value
-    ? { userId: user.value.id, tenant: org.value.id }
+    ? { "user.id": String(user.value.id), tenant: String(org.value.id) }
     : null
 );
 </script>
 ```
 
-Return `null` when there is nothing to attach. The composable then removes the keys it had set.
+Attribute values are strings. The argument can also be a ref or a plain map. Return `null` when there is nothing to attach. The composable then removes the keys it had set.
 
 There is a declarative wrapper for the same thing. It renders nothing and removes its keys on unmount:
 
@@ -158,7 +203,7 @@ const { user, org } = useUser();
 <template>
   <TracewayAttributes
     v-if="user && org"
-    :attributes="{ userId: user.id, tenant: org.id }"
+    :attributes="{ 'user.id': String(user.id), tenant: String(org.id) }"
   />
 </template>
 ```
@@ -176,9 +221,9 @@ import { useUser } from "./auth";
 const { user, org } = useUser();
 watchEffect(() => {
   if (user.value && org.value) {
-    setAttributes({ userId: user.value.id, tenant: org.value.id });
+    setAttributes({ "user.id": String(user.value.id), tenant: String(org.value.id) });
   } else {
-    removeAttribute("userId");
+    removeAttribute("user.id");
     removeAttribute("tenant");
   }
 });

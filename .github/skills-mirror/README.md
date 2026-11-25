@@ -4,7 +4,7 @@ Agent skills and Claude Code plugins for [Traceway](https://tracewayapp.com), th
 
 | Skill | What it does |
 |---|---|
-| `traceway-setup` | Instruments a project to report to Traceway |
+| `traceway-setup` | Instruments a project to report to Traceway. Name a part to run it on that part only, e.g. `/traceway-setup track ai use` for the LLM calls |
 | `traceway` | Queries production telemetry through the `traceway` CLI and debugs issues to root cause |
 | `traceway-learn` | Explains every part of Traceway and how it is meant to be used |
 | `traceway-write` | Makes routine on-call changes through the `traceway-write` CLI, once an admin allows agent writes |

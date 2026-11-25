@@ -166,6 +166,37 @@ export default function DashboardsPage() {
             }}
           />
         </section>
+
+        <section className="wrap" id="embedded-dashboards">
+          <FeatureRow
+            reverse
+            eyebrow="Embedded dashboards"
+            title={<>Show customers <em>their own metrics</em></>}
+            description={
+              <>
+                Put a read-only Traceway dashboard in your customer portal. When
+                a customer signs in, your backend requests a link scoped to
+                their account. Choose how many days the link works and how much
+                history each viewer sees when they open it. For example, <code>timeframe=7d</code>{" "}
+                shows the past week. The default is the last 42 hours.
+              </>
+            }
+            image={{
+              src: "/images/dashboards-customer-embed.webp",
+              alt: "Northstar’s admin panel showing its shipment volume and on-time dispatch rate in an embedded Traceway dashboard",
+              width: 1450,
+              height: 1050,
+            }}
+            cta={
+              <Link
+                href="https://docs.tracewayapp.com/learn/dashboards#share-and-embed-a-dashboard"
+                className="btn btn-ghost"
+              >
+                Read the embedding guide
+              </Link>
+            }
+          />
+        </section>
       </div>
 
       <FinalCTA

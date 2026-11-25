@@ -22,6 +22,8 @@ The knowledge resources show `traceway` CLI commands in their examples. Every co
 | `traceway pages list` / `pages show <id>` | `list_pages` / `get_page` |
 | `traceway alerts list` | `list_notification_rules` |
 | `traceway monitors list` / `monitors show <id>` | `list_checks` / `get_check` |
+| `traceway slos list` / `slos show <id>` | `list_slos` / `get_slo` |
+| `traceway slos preview --file F` / `slos series <id> --file F` | `preview_slo` / `get_slo_series` (the file's JSON object is the `data` param) |
 | `traceway post-mortems list` / `post-mortems show <id>` | `list_post_mortems` / `get_post_mortem` |
 
 Write server only (`traceway-write mcp`, or `/mcp/write` on the instance):
@@ -35,13 +37,14 @@ Write server only (`traceway-write mcp`, or `/mcp/write` on the instance):
 | `traceway-write monitors run <id>` | `run_check` |
 | `traceway-write post-mortems create` / `update <id>` | `create_post_mortem` / `update_post_mortem` |
 | `traceway-write endpoints mark-slow <endpoint>` | `set_slow_endpoint` |
+| `traceway-write slos create --file F` / `update <id> --file F` / `delete <id>` | `create_slo` / `update_slo` / `delete_slo` |
 
 Flag translation: `--since/--from/--to` are `since`/`from`/`to`; `--page/--page-size` are `page`/`page_size`; `--recorded-at` is `recorded_at`; `--started-at` is `started_at`; `--min-severity` is `min_severity`; `--search-type` is `search_type`; `--order-by` is `order_by`; `--interval-minutes` is `interval_minutes`; `--metric-type` is `metric_type`.
 
 Differences from the CLI:
 
 - Project selection: tools take an optional `project_id` param and fall back to the CLI's current project. There is no `projects use` tool; the default is whatever `traceway projects use` set on the host machine.
-- `query_metrics` rejects `p50/p95/p99` aggregations outright (the CLI accepts them but the server silently computes avg). Latency percentiles come from `list_endpoints`.
+- Current `query_metrics` rejects percentile aggregations. The CLI accepts p50/p95/p99, which current servers compute for distributions. Use `list_endpoints` for endpoint request percentiles; read `traceway://knowledge/learn/rum` for RUM query and dashboard capability limits.
 - No confirmation gate: write tools execute immediately, so only call them on an explicit user request. The MCP client's own tool-approval flow is the confirmation. `--content-file` on the post-mortem commands becomes the `content_md` string param.
 - Login, logout, and profile management are CLI-only (`traceway login` in a terminal); the MCP server uses the credentials stored by the CLI.
 - Shell-piping recipes (`jq` filters) in the knowledge files describe CLI usage; with MCP tools, read the same fields from the structured tool result instead.
@@ -57,5 +60,8 @@ OpAMP browser collection: `opamp rules list` maps to `list_sdk_config_rules`; `o
 | `dashboards library` | `dashboard_library` |
 | `dashboards export <id>` | `export_dashboard` |
 | `traceway-write dashboards import --file F [--mode create\|upsert]` | `import_dashboards` (write only) |
+| `traceway-write dashboards embed <id> [--timeframe T \| --from A --to B] [--tag k=v] [--expires-in-days N \| --expires-at T] [--theme light\|dark]` | `create_dashboard_embed` (write only) |
+| `traceway-write tokens create --name N [--expires-in-days D]` | `create_read_token` (write only) |
+| `traceway-write tokens list` | `list_personal_access_tokens` (write only) |
 
-`dashboards validate --file F` is an offline CLI check; both import surfaces run the same validation before writing. For the chart-building workflow, read `traceway://knowledge/dashboard-building` on the write server.
+`dashboards validate --file F` is an offline CLI check; both import surfaces run the same validation before writing. For the chart-building workflow, read `traceway://knowledge/dashboard-building` on the write server. To share a dashboard or embed it in the user's own application, read `traceway://knowledge/dashboard-embedding`.

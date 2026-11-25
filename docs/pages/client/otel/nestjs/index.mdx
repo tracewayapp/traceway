@@ -401,7 +401,7 @@ export class ReportsService {
 
 The span name becomes the task name in Traceway. Any `span.recordException(...)` inside the job also shows up under Issues, attributed to that task.
 
-> **Always set the kind.** A root span left at the default `SpanKind.INTERNAL` with no HTTP attributes matches nothing Traceway stores, so it is dropped on arrival: no endpoint, no task, no span row. Logs you emitted inside it still arrive, pointing at a trace that does not exist. `kind: SpanKind.CONSUMER` is the whole fix.
+> Set `kind: SpanKind.CONSUMER` to list this job under **Tasks**. With the default `INTERNAL` kind, the example remains visible in **Spans** and its logs keep their trace ID.
 
 ## Custom Metrics
 
@@ -446,8 +446,9 @@ Tag keys become filterable dimensions in Traceway.
 |-----------------|-------------|
 | Counter, UpDownCounter | Stored as is, for example `orders.created` |
 | Gauge | Stored as is |
-| Histogram | Split into two metrics, `checkout.latency.avg` and `checkout.latency.count` |
-| ExponentialHistogram, Summary | Dropped. Use a plain histogram instead |
+| Explicit histogram | Distribution under the base name, plus `.avg` and `.count` series |
+| Exponential histogram | Distribution under the base name |
+| Summary | Unsupported |
 
 With `exportIntervalMillis: 30_000`, a brand new metric can take up to a minute to appear.
 
@@ -476,7 +477,7 @@ With `exportIntervalMillis: 30_000`, a brand new metric can take up to a minute 
 | Any span with `kind: CONSUMER` | **Tasks**, named after the span |
 | Any non-root span | **Spans**, in the trace waterfall |
 | An `exception` event on any span | **Issues**, with the stack trace |
-| A root span with no HTTP attributes and a kind other than CONSUMER | Dropped. Nothing is stored |
+| Any other root span | **Spans** |
 
 A single `GET /api/users/:id` gives you a trace like this:
 

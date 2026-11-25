@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/tracewayapp/traceway/backend/v2/app/clientmetrics"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +35,8 @@ type convertedLogs struct {
 	Records    []models.LogRecord
 	Exceptions []models.ExceptionStackTrace
 	Sessions   []models.Session
+	// Observations are the values of client metrics read from a browser SDK's performance events.
+	Observations []clientObservation
 }
 
 // convertLogs stores every record and additionally turns the events browser SDKs emit into the rows the dashboard
@@ -51,6 +54,8 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 		serviceName := getStringAttribute(resource, "service.name")
 		appVersion := getStringAttribute(resource, "service.version")
 		language := getStringAttribute(resource, "telemetry.sdk.language")
+		// An SDK that aggregates on the device sends these numbers as metrics already.
+		countEvents := clientSide && resAttrs[clientmetrics.AttrAggregated] != clientmetrics.AggregatedValue
 		resourceSchemaUrl := rl.GetSchemaUrl()
 		clientResource := resource
 		if !clientSide {
@@ -100,6 +105,9 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 						session.ProjectId = projectId
 						result.Sessions = mergeSession(result.Sessions, sessions, session)
 					}
+				}
+				if countEvents {
+					result.Observations = append(result.Observations, browserObservations(eventName, record)...)
 				}
 				result.Records = append(result.Records, record)
 			}

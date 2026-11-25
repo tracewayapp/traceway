@@ -5,9 +5,15 @@ import {
 	conditionValue,
 	fitsForm,
 	logLineTrigger,
+	newTriggerId,
+	triggerIdsOfRules,
+	withTrigger,
+	BUILT_IN_ERROR_TRIGGER,
+	type SdkConfigRule,
 	optionalNumber,
 	summarizeConditions,
 	summarizeSettings,
+	TRIGGER_TEMPLATES,
 	uniqueTriggerId,
 	type Condition,
 	type ConditionRow
@@ -45,7 +51,7 @@ describe('sdk-config helpers', () => {
 			fitsForm({ schemaVersion: 1, signals: { console: { mode: 'stream' } }, enabled: false })
 		).toBe(true);
 		expect(fitsForm({ signals: { console: { mode: 'stream', minSeverity: 'warn' } } })).toBe(false);
-		expect(fitsForm({ triggers: [] })).toBe(false);
+		expect(fitsForm({ triggers: [] })).toBe(true);
 		expect(fitsForm({ sessions: { enabled: true, baselineSampleRate: 0.01 } })).toBe(true);
 		expect(fitsForm({ sessions: { futureSetting: true } } as never)).toBe(false);
 		expect(fitsForm({ replay: { mode: 'buffer', sessionSampleRate: 0.5 } })).toBe(false);
@@ -71,7 +77,7 @@ describe('log-line triggers', () => {
 				{
 					match: {
 						all: [
-							{ key: 'signal', op: 'eq', value: 'console' },
+							{ key: 'signal', op: 'in', values: ['console', 'messages'] },
 							{ key: 'body', op: 'icontains', value: 'Payment failed!' },
 							{ key: 'severity', op: 'gte', value: 17 }
 						]
@@ -90,6 +96,56 @@ describe('log-line triggers', () => {
 				}
 			]
 		});
+	});
+
+	it('names the performance signals in the captures they start, since `*` leaves out what is off by default', () => {
+		const frozen = TRIGGER_TEMPLATES.find((t) => t.trigger.id === 'frozen-page')!.trigger;
+		expect(frozen.steps).toEqual([
+			{
+				match: {
+					all: [
+						{ key: 'signal', op: 'eq', value: 'longTasks' },
+						{ key: 'attributes.browser.long_task.duration', op: 'gte', value: 1000 }
+					]
+				}
+			}
+		]);
+		for (const id of ['frozen-page', 'slow-route-change']) {
+			const actions = TRIGGER_TEMPLATES.find((t) => t.trigger.id === id)!.trigger.actions as Array<{
+				signals: string[];
+			}>;
+			expect(actions[0].signals).toEqual(['*', 'longTasks', 'routeTiming']);
+		}
+	});
+
+	it('gives a template an id no other rule of the project uses', () => {
+		const rules = [
+			{ id: 1, settings: { triggers: [{ id: 'frozen-page' }, { id: BUILT_IN_ERROR_TRIGGER }] } },
+			{ id: 2, settings: { triggers: [{ id: 'frozen-page-2' }] } },
+			{ id: 3, settings: {} }
+		] as unknown as SdkConfigRule[];
+		expect(triggerIdsOfRules(rules, 2)).toEqual(['frozen-page']);
+		const others = triggerIdsOfRules(rules, 3);
+		expect(others.sort()).toEqual(['frozen-page', 'frozen-page-2']);
+		expect(withTrigger([], { id: 'frozen-page', steps: [] }, others).map((t) => t.id)).toEqual([
+			'frozen-page-3'
+		]);
+	});
+
+	it('replaces the built-in error trigger instead of adding a second one', () => {
+		const template = TRIGGER_TEMPLATES.find((t) => t.trigger.id === BUILT_IN_ERROR_TRIGGER)!;
+		const once = withTrigger([{ id: 'other' }], template.trigger, [BUILT_IN_ERROR_TRIGGER]);
+		expect(once.map((t) => t.id)).toEqual(['other', BUILT_IN_ERROR_TRIGGER]);
+		const twice = withTrigger(once, { ...template.trigger, cooldownSeconds: 60 });
+		expect(twice.map((t) => t.id)).toEqual(['other', BUILT_IN_ERROR_TRIGGER]);
+		expect((twice[1] as { cooldownSeconds: number }).cooldownSeconds).toBe(60);
+		expect(TRIGGER_TEMPLATES.some((t) => t.trigger.id === 'error-clip')).toBe(false);
+	});
+
+	it('makes trigger ids the server accepts, without needing a secure context', () => {
+		const id = newTriggerId();
+		expect(id).toMatch(/^[A-Za-z0-9_.-]{1,64}$/);
+		expect(newTriggerId()).not.toBe(id);
 	});
 
 	it('keeps trigger ids unique', () => {
@@ -197,5 +253,15 @@ describe('optionalNumber', () => {
 		expect(optionalNumber(0)).toBe(0);
 		expect(optionalNumber(1.5)).toBe(1.5);
 		expect(optionalNumber('25')).toBe(25);
+	});
+
+	it('edits the metrics block in the form and names it in the summary', () => {
+		expect(fitsForm({ metrics: { enabled: false } })).toBe(true);
+		expect(fitsForm({ metrics: { enabled: true, sampleRate: 0.1 } })).toBe(true);
+		expect(fitsForm({ metrics: { flushSeconds: 60 } })).toBe(false);
+		expect(summarizeSettings({ metrics: { enabled: false } })).toBe('metrics off');
+		expect(summarizeSettings({ metrics: { sampleRate: 0.25 } })).toBe(
+			'metrics from 25% of sessions'
+		);
 	});
 });

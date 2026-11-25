@@ -12,13 +12,18 @@
 	import * as Table from '$lib/components/ui/table';
 	import { Badge } from '$lib/components/ui/badge';
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import {
+		FilterBar,
+		type FilterApply,
+		type FilterField,
+		checkTypeField
+	} from '$lib/components/traceway/filter-bar';
 	import ErrorRetryBox from '$lib/components/traceway/error-retry-box.svelte';
 	import CheckStatusBadge from '$lib/components/synthetics/check-status-badge.svelte';
 	import MonitorTypeBadge from '$lib/components/synthetics/monitor-type-badge.svelte';
@@ -42,12 +47,7 @@
 
 	type SortField = 'name' | 'project' | 'status' | 'uptime' | 'latency' | 'last_run';
 
-	const typeOptions = [
-		{ value: '', label: 'All types' },
-		{ value: 'http', label: 'HTTP' },
-		{ value: 'tcp', label: 'TCP' },
-		{ value: 'browser', label: 'Browser' }
-	];
+	const checkFilterFields: FilterField[] = [checkTypeField()];
 
 	function readParams() {
 		if (!browser) return { search: '', incidentSearch: '' };
@@ -61,6 +61,7 @@
 	const initialParams = readParams();
 	let searchQuery = $state(initialParams.search);
 	let typeFilter = $state('');
+	const checkFilterValues = $derived({ type: typeFilter });
 	let incidentSearch = $state(initialParams.incidentSearch);
 
 	const range = new TimeRangeState('3M');
@@ -150,11 +151,16 @@
 		if (organizationId !== null) void loadChecks(organizationId);
 	}
 
-	function handleSearch() {
-		syncUrl(true);
+	function handleCheckFilterApply(next: FilterApply) {
+		// The type is not kept in the URL, so only a new search makes a history entry for Back.
+		const searchChanged = next.search !== searchQuery;
+		searchQuery = next.search;
+		typeFilter = next.values.type ?? '';
+		if (searchChanged) syncUrl(true);
 	}
 
-	function handleIncidentSearch() {
+	function handleIncidentFilterApply(next: FilterApply) {
+		incidentSearch = next.search;
 		incidentsPage = 1;
 		reloadIncidents(true);
 	}
@@ -292,152 +298,153 @@
 			{/snippet}
 		</PageHeader>
 
-		<SearchBar
-			placeholder="Search monitors..."
-			bind:value={searchQuery}
-			bind:typeValue={typeFilter}
-			{typeOptions}
-			onSearch={handleSearch}
+		<FilterBar
+			search={searchQuery}
+			searchPlaceholder="Search monitors..."
+			fields={checkFilterFields}
+			values={checkFilterValues}
+			onApply={handleCheckFilterApply}
 			disabled={checksLoading}
-		/>
-
-		{#if checksPartial}
-			<PartialNotice />
-		{/if}
-		{#if checksLoading}
-			<div class="flex h-48 items-center justify-center">
-				<LoadingCircle size="xlg" />
-			</div>
-		{:else if checksError}
-			<ErrorRetryBox message={checksError} onRetry={retryChecks} />
-		{:else if checks.length === 0}
-			<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
-				No monitors in this organization yet. Create monitors from a project's Monitors page.
-			</div>
-		{:else if visibleChecks.length === 0}
-			<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
-				No monitors match the search.
-			</div>
-		{:else}
-			<TableContainer minWidth="920px">
-				<Table.Root>
-					<Table.Header>
-						<Table.Row>
-							<TracewayTableHeader
-								label="Name"
-								sortField="name"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-							/>
-							<TracewayTableHeader label="Type" class="w-[100px]" />
-							<TracewayTableHeader
-								label="Project"
-								sortField="project"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[160px]"
-							/>
-							<TracewayTableHeader
-								label="Status"
-								tooltip="Current state from the most recent probes"
-								sortField="status"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[110px]"
-							/>
-							<TracewayTableHeader
-								label="Uptime"
-								tooltip="Share of successful probes over the last 30 days (missed probes excluded)"
-								sortField="uptime"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[160px]"
-							/>
-							<TracewayTableHeader
-								label="Avg latency"
-								tooltip="Average probe latency over the last 30 days"
-								sortField="latency"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[120px]"
-							/>
-							<TracewayTableHeader
-								label="Last run"
-								sortField="last_run"
-								currentSortField={orderBy}
-								{sortDirection}
-								onSort={(field) => handleSort(field as SortField)}
-								class="w-[130px]"
-								align="right"
-							/>
-						</Table.Row>
-					</Table.Header>
-					<Table.Body>
-						{#each visibleChecks as check (check.id)}
-							{@const uptime = uptimePct(check)}
-							<Table.Row
-								class="cursor-pointer"
-								onclick={createRowClickHandler(
-									`/monitors/${check.id}?projectId=${check.projectId}`
-								)}
-							>
-								<Table.Cell class="font-medium whitespace-normal">
-									{check.name}
-									<div
-										class="mt-0.5 max-w-[420px] truncate font-mono text-xs font-normal text-muted-foreground"
-									>
-										{target(check)}
-									</div>
-								</Table.Cell>
-								<Table.Cell>
-									<MonitorTypeBadge type={check.checkType} />
-								</Table.Cell>
-								<Table.Cell class="text-sm text-muted-foreground">{check.projectName}</Table.Cell>
-								<Table.Cell>
-									<CheckStatusBadge status={check.currentStatus} enabled={check.enabled} />
-								</Table.Cell>
-								<Table.Cell>
-									{#if uptime === null}
-										<span class="text-muted-foreground">—</span>
-									{:else}
-										<div class="flex items-center gap-2">
-											<span
-												class="w-16 shrink-0 font-mono text-sm tabular-nums {uptimeClass(uptime)}"
-											>
-												{uptime.toFixed(uptime === 100 ? 0 : 2)}%
-											</span>
-											<div class="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-muted">
-												<div
-													class="h-full rounded-full {uptime >= 99.9
-														? 'bg-green-500'
-														: uptime >= 99
-															? 'bg-amber-500'
-															: 'bg-red-500'}"
-													style="width: {Math.max(uptime, 4)}%"
-												></div>
-											</div>
-										</div>
-									{/if}
-								</Table.Cell>
-								<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
-									{check.aggregates && check.aggregates.total - check.aggregates.missed > 0
-										? formatDurationMs(check.aggregates.avgLatencyMs)
-										: '—'}
-								</Table.Cell>
-								<Table.Cell class="text-right text-sm text-muted-foreground">
-									{check.lastRunAt ? formatRelativeTimeAgo(check.lastRunAt) : 'never'}
-								</Table.Cell>
+			noun="monitors"
+		>
+			{#if checksPartial}
+				<PartialNotice />
+			{/if}
+			{#if checksLoading}
+				<div class="flex h-48 items-center justify-center">
+					<LoadingCircle size="xlg" />
+				</div>
+			{:else if checksError}
+				<ErrorRetryBox message={checksError} onRetry={retryChecks} />
+			{:else if checks.length === 0}
+				<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
+					No monitors in this organization yet. Create monitors from a project's Monitors page.
+				</div>
+			{:else if visibleChecks.length === 0}
+				<div class="rounded-md border py-16 text-center text-sm text-muted-foreground">
+					No monitors match the search.
+				</div>
+			{:else}
+				<TableContainer minWidth="920px">
+					<Table.Root>
+						<Table.Header>
+							<Table.Row>
+								<TracewayTableHeader
+									label="Name"
+									sortField="name"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+								/>
+								<TracewayTableHeader label="Type" class="w-[100px]" />
+								<TracewayTableHeader
+									label="Project"
+									sortField="project"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[160px]"
+								/>
+								<TracewayTableHeader
+									label="Status"
+									tooltip="Current state from the most recent probes"
+									sortField="status"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[110px]"
+								/>
+								<TracewayTableHeader
+									label="Uptime"
+									tooltip="Share of successful probes over the last 30 days (missed probes excluded)"
+									sortField="uptime"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[160px]"
+								/>
+								<TracewayTableHeader
+									label="Avg latency"
+									tooltip="Average probe latency over the last 30 days"
+									sortField="latency"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[120px]"
+								/>
+								<TracewayTableHeader
+									label="Last run"
+									sortField="last_run"
+									currentSortField={orderBy}
+									{sortDirection}
+									onSort={(field) => handleSort(field as SortField)}
+									class="w-[130px]"
+									align="right"
+								/>
 							</Table.Row>
-						{/each}
-					</Table.Body>
-				</Table.Root>
-			</TableContainer>
-		{/if}
+						</Table.Header>
+						<Table.Body>
+							{#each visibleChecks as check (check.id)}
+								{@const uptime = uptimePct(check)}
+								<Table.Row
+									class="cursor-pointer"
+									onclick={createRowClickHandler(
+										`/monitors/${check.id}?projectId=${check.projectId}`
+									)}
+								>
+									<Table.Cell class="font-medium whitespace-normal">
+										{check.name}
+										<div
+											class="mt-0.5 max-w-[420px] truncate font-mono text-xs font-normal text-muted-foreground"
+										>
+											{target(check)}
+										</div>
+									</Table.Cell>
+									<Table.Cell>
+										<MonitorTypeBadge type={check.checkType} />
+									</Table.Cell>
+									<Table.Cell class="text-sm text-muted-foreground">{check.projectName}</Table.Cell>
+									<Table.Cell>
+										<CheckStatusBadge status={check.currentStatus} enabled={check.enabled} />
+									</Table.Cell>
+									<Table.Cell>
+										{#if uptime === null}
+											<span class="text-muted-foreground">—</span>
+										{:else}
+											<div class="flex items-center gap-2">
+												<span
+													class="w-16 shrink-0 font-mono text-sm tabular-nums {uptimeClass(uptime)}"
+												>
+													{uptime.toFixed(uptime === 100 ? 0 : 2)}%
+												</span>
+												<div class="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-muted">
+													<div
+														class="h-full rounded-full {uptime >= 99.9
+															? 'bg-green-500'
+															: uptime >= 99
+																? 'bg-amber-500'
+																: 'bg-red-500'}"
+														style="width: {Math.max(uptime, 4)}%"
+													></div>
+												</div>
+											</div>
+										{/if}
+									</Table.Cell>
+									<Table.Cell class="font-mono text-sm text-muted-foreground tabular-nums">
+										{check.aggregates && check.aggregates.total - check.aggregates.missed > 0
+											? formatDurationMs(check.aggregates.avgLatencyMs)
+											: '—'}
+									</Table.Cell>
+									<Table.Cell class="text-right text-sm text-muted-foreground">
+										{check.lastRunAt ? formatRelativeTimeAgo(check.lastRunAt) : 'never'}
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						</Table.Body>
+					</Table.Root>
+				</TableContainer>
+			{/if}
+		</FilterBar>
 	</section>
 
 	<section class="space-y-4">
@@ -463,105 +470,105 @@
 			/>
 		</div>
 
-		<SearchBar
-			placeholder="Search incidents by title, monitor, or status page..."
-			bind:value={incidentSearch}
-			onSearch={handleIncidentSearch}
+		<FilterBar
+			search={incidentSearch}
+			searchPlaceholder="Search incidents by title, monitor, or status page..."
+			onApply={handleIncidentFilterApply}
 			disabled={incidentsLoading}
-		/>
-
-		<TableContainer minWidth="720px">
-			<Table.Root>
-				{#if incidentsLoading}
-					<Table.Body>
-						<Table.Row>
-							<Table.Cell colspan={4} class="h-32">
-								<div class="flex h-full items-center justify-center">
-									<LoadingCircle size="lg" />
-								</div>
-							</Table.Cell>
-						</Table.Row>
-					</Table.Body>
-				{:else if incidentsError}
-					<Table.Body>
-						<Table.Row>
-							<Table.Cell colspan={4} class="h-32">
-								<div class="flex h-full flex-col items-center justify-center gap-3">
-									<p class="text-sm text-destructive">{incidentsError}</p>
-									<button
-										class="text-sm font-medium text-primary hover:underline"
-										onclick={() => reloadIncidents(false)}>Retry</button
-									>
-								</div>
-							</Table.Cell>
-						</Table.Row>
-					</Table.Body>
-				{:else if incidents.length === 0}
-					<Table.Body>
-						<TableEmptyState colspan={4} message="No incidents in the selected range." />
-					</Table.Body>
-				{:else}
-					<Table.Header>
-						<Table.Row>
-							<TracewayTableHeader label="Incident" />
-							<TracewayTableHeader label="Monitor" class="w-[200px]" />
-							<TracewayTableHeader label="Started" class="w-[150px]" align="right" />
-							<TracewayTableHeader label="Resolved" class="w-[150px]" align="right" />
-						</Table.Row>
-					</Table.Header>
-					<Table.Body>
-						{#each incidents as incident (incident.id)}
-							<Table.Row
-								class={incident.checkId !== null && incident.projectId !== null
-									? 'cursor-pointer'
-									: ''}
-								onclick={incident.checkId !== null && incident.projectId !== null
-									? createRowClickHandler(
-											`/monitors/${incident.checkId}?projectId=${incident.projectId}`
-										)
-									: undefined}
-							>
-								<Table.Cell class="max-w-[420px] py-3">
-									<div class="min-w-0">
-										<div class="truncate font-medium">{incidentDisplayTitle(incident)}</div>
-										{#if incident.errorMessage}
-											<div class="truncate text-xs text-muted-foreground">
-												{incident.errorMessage}
-											</div>
-										{/if}
+		>
+			<TableContainer minWidth="720px">
+				<Table.Root>
+					{#if incidentsLoading}
+						<Table.Body>
+							<Table.Row>
+								<Table.Cell colspan={4} class="h-32">
+									<div class="flex h-full items-center justify-center">
+										<LoadingCircle size="lg" />
 									</div>
 								</Table.Cell>
-								<Table.Cell class="text-sm text-muted-foreground">
-									{incident.checkName || incident.statusPageName || '—'}
-								</Table.Cell>
-								<Table.Cell class="text-right text-sm text-muted-foreground">
-									{formatRelativeTimeAgo(incident.startedAt)}
-								</Table.Cell>
-								<Table.Cell class="text-right text-sm">
-									{#if incident.resolvedAt === null}
-										<Badge variant="destructive">ongoing</Badge>
-									{:else}
-										<span class="text-muted-foreground">
-											{formatRelativeTimeAgo(incident.resolvedAt)}
-										</span>
-									{/if}
+							</Table.Row>
+						</Table.Body>
+					{:else if incidentsError}
+						<Table.Body>
+							<Table.Row>
+								<Table.Cell colspan={4} class="h-32">
+									<div class="flex h-full flex-col items-center justify-center gap-3">
+										<p class="text-sm text-destructive">{incidentsError}</p>
+										<button
+											class="text-sm font-medium text-primary hover:underline"
+											onclick={() => reloadIncidents(false)}>Retry</button
+										>
+									</div>
 								</Table.Cell>
 							</Table.Row>
-						{/each}
-					</Table.Body>
-				{/if}
-			</Table.Root>
-		</TableContainer>
+						</Table.Body>
+					{:else if incidents.length === 0}
+						<Table.Body>
+							<TableEmptyState colspan={4} message="No incidents in the selected range." />
+						</Table.Body>
+					{:else}
+						<Table.Header>
+							<Table.Row>
+								<TracewayTableHeader label="Incident" />
+								<TracewayTableHeader label="Monitor" class="w-[200px]" />
+								<TracewayTableHeader label="Started" class="w-[150px]" align="right" />
+								<TracewayTableHeader label="Resolved" class="w-[150px]" align="right" />
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
+							{#each incidents as incident (incident.id)}
+								<Table.Row
+									class={incident.checkId !== null && incident.projectId !== null
+										? 'cursor-pointer'
+										: ''}
+									onclick={incident.checkId !== null && incident.projectId !== null
+										? createRowClickHandler(
+												`/monitors/${incident.checkId}?projectId=${incident.projectId}`
+											)
+										: undefined}
+								>
+									<Table.Cell class="max-w-[420px] py-3">
+										<div class="min-w-0">
+											<div class="truncate font-medium">{incidentDisplayTitle(incident)}</div>
+											{#if incident.errorMessage}
+												<div class="truncate text-xs text-muted-foreground">
+													{incident.errorMessage}
+												</div>
+											{/if}
+										</div>
+									</Table.Cell>
+									<Table.Cell class="text-sm text-muted-foreground">
+										{incident.checkName || incident.statusPageName || '—'}
+									</Table.Cell>
+									<Table.Cell class="text-right text-sm text-muted-foreground">
+										{formatRelativeTimeAgo(incident.startedAt)}
+									</Table.Cell>
+									<Table.Cell class="text-right text-sm">
+										{#if incident.resolvedAt === null}
+											<Badge variant="destructive">ongoing</Badge>
+										{:else}
+											<span class="text-muted-foreground">
+												{formatRelativeTimeAgo(incident.resolvedAt)}
+											</span>
+										{/if}
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						</Table.Body>
+					{/if}
+				</Table.Root>
+			</TableContainer>
 
-		<PaginationFooter
-			currentPage={incidentsPage}
-			totalPages={incidentsTotalPages}
-			pageSize={incidentsPageSize}
-			totalItems={incidentsTotal}
-			onPageChange={handleIncidentsPageChange}
-			onPageSizeChange={handleIncidentsPageSizeChange}
-			loading={incidentsLoading}
-			itemLabel="incident"
-		/>
+			<PaginationFooter
+				currentPage={incidentsPage}
+				totalPages={incidentsTotalPages}
+				pageSize={incidentsPageSize}
+				totalItems={incidentsTotal}
+				onPageChange={handleIncidentsPageChange}
+				onPageSizeChange={handleIncidentsPageSizeChange}
+				loading={incidentsLoading}
+				itemLabel="incident"
+			/>
+		</FilterBar>
 	</section>
 </div>

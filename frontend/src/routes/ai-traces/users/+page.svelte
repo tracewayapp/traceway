@@ -11,7 +11,6 @@
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
-	import { SearchBar } from '$lib/components/ui/search-bar';
 	import { browser } from '$app/environment';
 	import { CalendarDate } from '@internationalized/date';
 	import { projectsState } from '$lib/state/projects.svelte';
@@ -19,6 +18,7 @@
 	import { resolve } from '$app/paths';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
+	import { FilterBar, type FilterApply } from '$lib/components/traceway/filter-bar';
 	import { formatCost, formatCount } from '$lib/utils/ai-format';
 	import AiNavTabs from '$lib/components/ai/ai-nav-tabs.svelte';
 	import { TriangleAlert } from '@lucide/svelte';
@@ -226,7 +226,8 @@
 		loadData(false);
 	}
 
-	function handleSearch() {
+	function handleFilterApply(next: FilterApply) {
+		searchQuery = next.search;
 		page = 1;
 		loadData(true);
 	}
@@ -263,182 +264,181 @@
 
 	<AiNavTabs active="users" />
 
-	<!-- Search -->
-	<SearchBar
-		placeholder="Search users..."
-		bind:value={searchQuery}
-		onSearch={handleSearch}
+	<FilterBar
+		search={searchQuery}
+		searchPlaceholder="Search users..."
+		onApply={handleFilterApply}
 		disabled={loading}
-	/>
-
-	<!-- Users Table -->
-	<TableContainer>
-		<Table.Root>
-			{#if loading}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={8} class="h-48">
-							<div class="flex h-full items-center justify-center">
-								<LoadingCircle size="xlg" />
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if error}
-				<Table.Body>
-					<Table.Row>
-						<Table.Cell colspan={8} class="h-24 text-center text-red-500">
-							{error}
-						</Table.Cell>
-					</Table.Row>
-				</Table.Body>
-			{:else if users.length === 0}
-				<Table.Body>
-					<TableEmptyState
-						colspan={8}
-						message={searchQuery.trim()
-							? 'No users match the current search.'
-							: 'No users found. Per-user analytics appear once your AI calls carry both a user.id and a conversation id.'}
-					/>
-				</Table.Body>
-			{:else}
-				<Table.Header>
-					<Table.Row>
-						<TracewayTableHeader label="User" tooltip="The user.id attribute on the calls" />
-						<TracewayTableHeader
-							label="Conversations"
-							tooltip="Number of distinct conversations"
-							sortField="conversation_count"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[130px]"
-						/>
-						<TracewayTableHeader
-							label="Calls"
-							tooltip="Total LLM calls across all conversations"
-							sortField="total_calls"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[90px]"
-						/>
-						<TracewayTableHeader
-							label="Median Turns"
-							tooltip="Median conversation length in LLM calls"
-							sortField="median_turns"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[130px]"
-						/>
-						<TracewayTableHeader
-							label="Avg Cost/Conv"
-							tooltip="Average cost per conversation"
-							sortField="avg_conversation_cost"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[130px]"
-						/>
-						<TracewayTableHeader
-							label="Total Cost"
-							tooltip="Total cost across all conversations"
-							sortField="total_cost"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[110px]"
-						/>
-						<TracewayTableHeader
-							label="Flagged"
-							tooltip="Conversations containing flagged terms"
-							sortField="flagged_conversation_count"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[100px]"
-						/>
-						<TracewayTableHeader
-							label="Last Seen"
-							tooltip="When this user last had a call"
-							sortField="last_seen"
-							currentSortField={orderBy}
-							{sortDirection}
-							onSort={(field) => handleSort(field as SortField)}
-							class="w-[130px]"
-						/>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#each users as user, __index (__index)}
-						<Table.Row
-							class="cursor-pointer"
-							onclick={createRowClickHandler(
-								userConversationsHref(user.userId),
-								'preset',
-								'from',
-								'to'
-							)}
-						>
-							<Table.Cell class="max-w-[240px] truncate font-mono text-sm" title={user.userId}>
-								{user.userId}
-							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								{formatCount(user.conversationCount)}
-							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								{formatCount(user.totalCalls)}
-							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								<Tooltip.Provider>
-									<Tooltip.Root>
-										<Tooltip.Trigger>
-											<span>{user.medianTurns.toFixed(1)}</span>
-										</Tooltip.Trigger>
-										<Tooltip.Content>
-											<p class="text-xs">avg {user.avgTurns.toFixed(1)} · min {user.minTurns}</p>
-										</Tooltip.Content>
-									</Tooltip.Root>
-								</Tooltip.Provider>
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatCost(user.avgCostPerConversation)}
-							</Table.Cell>
-							<Table.Cell class="font-mono text-sm tabular-nums">
-								{formatCost(user.totalCost)}
-							</Table.Cell>
-							<Table.Cell class="tabular-nums">
-								{#if user.flaggedConversationCount > 0}
-									<span
-										class="inline-flex items-center gap-1 font-medium text-red-600 dark:text-red-400"
-									>
-										<TriangleAlert class="h-3 w-3" />
-										{formatCount(user.flaggedConversationCount)}
-									</span>
-								{:else}
-									<span class="text-muted-foreground">0</span>
-								{/if}
-							</Table.Cell>
-							<Table.Cell class="text-sm text-muted-foreground">
-								{formatDateTime(user.lastSeen, { timezone })}
+	>
+		<!-- Users Table -->
+		<TableContainer>
+			<Table.Root>
+				{#if loading}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={8} class="h-48">
+								<div class="flex h-full items-center justify-center">
+									<LoadingCircle size="xlg" />
+								</div>
 							</Table.Cell>
 						</Table.Row>
-					{/each}
-				</Table.Body>
-			{/if}
-		</Table.Root>
-	</TableContainer>
+					</Table.Body>
+				{:else if error}
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell colspan={8} class="h-24 text-center text-red-500">
+								{error}
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				{:else if users.length === 0}
+					<Table.Body>
+						<TableEmptyState
+							colspan={8}
+							message={searchQuery.trim()
+								? 'No users match the current search.'
+								: 'No users found. Per-user analytics appear once your AI calls carry both a user.id and a conversation id.'}
+						/>
+					</Table.Body>
+				{:else}
+					<Table.Header>
+						<Table.Row>
+							<TracewayTableHeader label="User" tooltip="The user.id attribute on the calls" />
+							<TracewayTableHeader
+								label="Conversations"
+								tooltip="Number of distinct conversations"
+								sortField="conversation_count"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[130px]"
+							/>
+							<TracewayTableHeader
+								label="Calls"
+								tooltip="Total LLM calls across all conversations"
+								sortField="total_calls"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[90px]"
+							/>
+							<TracewayTableHeader
+								label="Median Turns"
+								tooltip="Median conversation length in LLM calls"
+								sortField="median_turns"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[130px]"
+							/>
+							<TracewayTableHeader
+								label="Avg Cost/Conv"
+								tooltip="Average cost per conversation"
+								sortField="avg_conversation_cost"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[130px]"
+							/>
+							<TracewayTableHeader
+								label="Total Cost"
+								tooltip="Total cost across all conversations"
+								sortField="total_cost"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[110px]"
+							/>
+							<TracewayTableHeader
+								label="Flagged"
+								tooltip="Conversations containing flagged terms"
+								sortField="flagged_conversation_count"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[100px]"
+							/>
+							<TracewayTableHeader
+								label="Last Seen"
+								tooltip="When this user last had a call"
+								sortField="last_seen"
+								currentSortField={orderBy}
+								{sortDirection}
+								onSort={(field) => handleSort(field as SortField)}
+								class="w-[130px]"
+							/>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						{#each users as user, __index (__index)}
+							<Table.Row
+								class="cursor-pointer"
+								onclick={createRowClickHandler(
+									userConversationsHref(user.userId),
+									'preset',
+									'from',
+									'to'
+								)}
+							>
+								<Table.Cell class="max-w-[240px] truncate font-mono text-sm" title={user.userId}>
+									{user.userId}
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									{formatCount(user.conversationCount)}
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									{formatCount(user.totalCalls)}
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									<Tooltip.Provider>
+										<Tooltip.Root>
+											<Tooltip.Trigger>
+												<span>{user.medianTurns.toFixed(1)}</span>
+											</Tooltip.Trigger>
+											<Tooltip.Content>
+												<p class="text-xs">avg {user.avgTurns.toFixed(1)} · min {user.minTurns}</p>
+											</Tooltip.Content>
+										</Tooltip.Root>
+									</Tooltip.Provider>
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatCost(user.avgCostPerConversation)}
+								</Table.Cell>
+								<Table.Cell class="font-mono text-sm tabular-nums">
+									{formatCost(user.totalCost)}
+								</Table.Cell>
+								<Table.Cell class="tabular-nums">
+									{#if user.flaggedConversationCount > 0}
+										<span
+											class="inline-flex items-center gap-1 font-medium text-red-600 dark:text-red-400"
+										>
+											<TriangleAlert class="h-3 w-3" />
+											{formatCount(user.flaggedConversationCount)}
+										</span>
+									{:else}
+										<span class="text-muted-foreground">0</span>
+									{/if}
+								</Table.Cell>
+								<Table.Cell class="text-sm text-muted-foreground">
+									{formatDateTime(user.lastSeen, { timezone })}
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					</Table.Body>
+				{/if}
+			</Table.Root>
+		</TableContainer>
 
-	<!-- Pagination Footer -->
-	<PaginationFooter
-		currentPage={page}
-		{totalPages}
-		{pageSize}
-		totalItems={total}
-		onPageChange={handlePageChange}
-		onPageSizeChange={handlePageSizeChange}
-		{loading}
-		itemLabel="user"
-	/>
+		<!-- Pagination Footer -->
+		<PaginationFooter
+			currentPage={page}
+			{totalPages}
+			{pageSize}
+			totalItems={total}
+			onPageChange={handlePageChange}
+			onPageSizeChange={handlePageSizeChange}
+			{loading}
+			itemLabel="user"
+		/>
+	</FilterBar>
 </div>

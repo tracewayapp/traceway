@@ -318,6 +318,10 @@ storage/
 
 Seeding is idempotent: if the user from `WithDefaultUser` already exists, it's skipped.
 
+### Stopping your app
+
+Browser and mobile performance metrics are aggregated in memory and written every 10 seconds. To keep the last of them when your app exits, call `tracewaybackend.Shutdown(ctx)` from your own shutdown code before the process ends. If your app has no shutdown code, start `go tracewaybackend.ShutdownOnSignal()` next to `Run` instead: on SIGTERM or Ctrl+C it runs `Shutdown` with a five second budget and then exits the process.
+
 ## Builds without the tag
 
 A plain `go build` still works. It stores telemetry in SQLite instead of DuckDB, in `traceway_telemetry.db` with `-wal` and `-shm` sidecar files. SQLite telemetry is being phased out, so use it only where you cannot enable CGO.

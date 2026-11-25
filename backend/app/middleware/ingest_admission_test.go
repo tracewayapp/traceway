@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -90,4 +91,19 @@ func TestIngestAdmissionWaiterGetsSlotWhenFreed(t *testing.T) {
 		t.Fatalf("expected waiting request to get the freed slot, got %d", w.Code)
 	}
 	wg.Wait()
+}
+
+func TestIngestCapacityFollowsSlotsPerCPUUnlessSetExplicitly(t *testing.T) {
+	previous := IngestSlotsPerCPU
+	t.Cleanup(func() { IngestSlotsPerCPU = previous })
+
+	IngestSlotsPerCPU = 12
+	t.Setenv("INGEST_MAX_CONCURRENT", "")
+	if got, want := ingestCapacityFromEnv(), runtime.NumCPU()*12; got != want {
+		t.Fatalf("capacity = %d, want %d", got, want)
+	}
+	t.Setenv("INGEST_MAX_CONCURRENT", "7")
+	if got := ingestCapacityFromEnv(); got != 7 {
+		t.Fatalf("INGEST_MAX_CONCURRENT must win over the per-CPU default, got %d", got)
+	}
 }

@@ -67,7 +67,7 @@ func validateDashboard(raw json.RawMessage) error {
 		if strings.TrimSpace(w.Title) == "" {
 			return fmt.Errorf("widget %d needs a title", i+1)
 		}
-		if !slices.Contains([]string{"line_chart", "area_chart", "stacked_area", "bar_chart", "single_value", "gauge", "table"}, w.WidgetType) {
+		if !slices.Contains(DashboardWidgetTypes, w.WidgetType) {
 			return fmt.Errorf("widget %d has unsupported widgetType %q", i+1, w.WidgetType)
 		}
 		if len(w.Config) > 32*1024 {
@@ -90,8 +90,8 @@ func validateDashboard(raw json.RawMessage) error {
 			if s.Type != "metric" || strings.TrimSpace(s.Name) == "" {
 				return fmt.Errorf("widget %d source %d needs type metric and a name", i+1, j+1)
 			}
-			if s.Aggregation != "" && !slices.Contains(MetricAggregationsExact, s.Aggregation) {
-				return fmt.Errorf("widget %d source %d: unsupported aggregation %q; use avg, sum, count, min, max, rate or last (metric percentiles are unavailable)", i+1, j+1, s.Aggregation)
+			if s.Aggregation != "" && !slices.Contains(MetricAggregations, s.Aggregation) {
+				return fmt.Errorf("widget %d source %d: unsupported aggregation %q; use one of %s", i+1, j+1, s.Aggregation, strings.Join(MetricAggregations, ", "))
 			}
 		}
 	}

@@ -3,6 +3,7 @@ package slo
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +20,11 @@ var (
 	workerId       = uuid.NewString()
 	ownedShards    atomic.Int64
 	knownInstances atomic.Int64
+
+	// leaseMu orders a claim against Stop, so a tick that is claiming while the
+	// process stops cannot put leases back after Stop removed them.
+	leaseMu  sync.Mutex
+	stopping atomic.Bool
 )
 
 // Instances is the number of live backend instances, as the shard leases see them.
@@ -54,6 +60,11 @@ func leaseDuration() time.Duration {
 }
 
 func claimShards(ctx context.Context) (shardSet, error) {
+	leaseMu.Lock()
+	defer leaseMu.Unlock()
+	if stopping.Load() {
+		return shardSet{}, nil
+	}
 	if db.IsSQLite() {
 		ownedShards.Store(shardCount)
 		knownInstances.Store(1)
@@ -116,11 +127,22 @@ func renewShards(ctx context.Context) error {
 	return err
 }
 
-func releaseShards() {
+// Stop hands this instance's shards over before the process exits. Without it
+// a stopped instance's leases and worker row stay until they age out (at least
+// five minutes), and during a deploy the new instance computes none of those
+// SLOs and counts the dead one as live. Every later tick claims nothing.
+func Stop(ctx context.Context) {
+	stopping.Store(true)
+	leaseMu.Lock()
+	defer leaseMu.Unlock()
+	releaseShards(ctx)
+}
+
+func releaseShards(ctx context.Context) {
 	if db.IsSQLite() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	_, _ = db.DB.ExecContext(ctx, "DELETE FROM slo_shard_leases WHERE owner = $1", workerId)
 	_, _ = db.DB.ExecContext(ctx, "DELETE FROM slo_workers WHERE owner = $1", workerId)

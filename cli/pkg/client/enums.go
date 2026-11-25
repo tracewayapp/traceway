@@ -13,16 +13,15 @@ var (
 	EndpointRequestsOrderByValues = []string{"duration", "recordedAt", "statusCode"}
 	EndpointChartMetricTypes      = []string{"total_time", "p50", "p95", "p99"}
 
-	// MetricAggregations are the values the server accepts on metrics/query.
-	// The server has no quantile aggregation for metric points: p50/p95/p99
-	// are silently computed as avg. The CLI accepts them for parity with the
-	// dashboard; the MCP server rejects them (see MetricAggregationsExact).
-	MetricAggregations = []string{"avg", "sum", "count", "min", "max", "rate", "last", "p50", "p95", "p99"}
+	// MetricAggregations are the values the server accepts on metrics/query and
+	// in dashboard sources. The percentiles and good_ratio read a distribution
+	// (histogram) metric, such as browser.web_vital.inp or an OTLP histogram; for
+	// a point metric the server answers 422 instead of a number, and a
+	// distribution answers 422 to last.
+	MetricAggregations = []string{"avg", "sum", "count", "min", "max", "rate", "last", "p50", "p75", "p90", "p95", "p99", "good_ratio"}
 
-	// MetricAggregationsExact are the aggregations the server actually
-	// computes as named. Latency percentiles come from the endpoints
-	// endpoints, never from metrics/query.
-	MetricAggregationsExact = []string{"avg", "sum", "count", "min", "max", "rate", "last"}
+	// DashboardWidgetTypes mirror the server's dashboards.AllowedWidgetTypes.
+	DashboardWidgetTypes = []string{"line_chart", "area_chart", "stacked_area", "bar_chart", "single_value", "gauge", "table", "rating_bar", "breakdown_table"}
 )
 
 // orderByColumns maps the camelCase order-by values above to the column names

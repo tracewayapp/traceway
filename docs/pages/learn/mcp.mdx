@@ -80,7 +80,7 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `get_endpoint_request` | One request: span waterfall + linked errors |
 | `endpoints_chart` | Latency over time (find when it changed) |
 | `get_slow_endpoint_config` | Operator-accepted latency baseline |
-| `query_metrics` | Time-bucketed metric series, including `rate` and `last` |
+| `query_metrics` | Time-bucketed metric series, including `rate`, `last`, and percentiles or `good_ratio` of a distribution metric; `whole_range` returns one value for the window |
 | `discover_metrics` | Recorded names, types, units, tag keys; optional `name` + `key` for tag values |
 | `list_dashboards` / `dashboard_library` / `export_dashboard` | Applied dashboards, organization-wide assignments and importable JSON |
 | `get_task` / `get_ai_trace` / `get_session` / `get_trace` | By-id detail lookups |

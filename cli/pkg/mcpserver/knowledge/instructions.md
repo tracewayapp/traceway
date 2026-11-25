@@ -8,7 +8,7 @@ Ground rules:
 - Always bound queries in time. Default to since "1h" for "now" questions and "24h" otherwise. since accepts s, m, h and lowercase Nd (no "1w", no "7d2h"); absolute windows use from/to as RFC3339.
 - The by-id detail tools (get_exception_occurrence, get_endpoint_request, get_task, get_ai_trace, get_session, get_trace) require the record's timestamp. It can be approximate (within a day); recover it from a dashboard URL's ?t= param, an occurrence list, or a notification before guessing. Never pass "now" for an old record.
 - Log severity is an OTel number, not a name: 1 TRACE, 5 DEBUG, 9 INFO, 13 WARN, 17 ERROR, 21 FATAL. Use min_severity 17 for errors and worse.
-- Use list_endpoints and endpoints_chart for endpoint latency percentiles. Current query_metrics tool validation rejects percentiles even though the server supports distributions. For browser RUM, releases, frontend SLOs and capability limits, read traceway://knowledge/learn/rum.
+- Use list_endpoints and endpoints_chart for endpoint latency percentiles. Use query_metrics for distribution percentiles, such as p75 of browser.web_vital.lcp. For browser RUM, releases, frontend SLOs and capability limits, read traceway://knowledge/learn/rum.
 - Keep page_size at 10 to 20 for triage; raise it only when you need the full set.
 - Empty results are not errors: widen the window, check the project (list_projects), and consider that the app may not be connected to Traceway yet.
 

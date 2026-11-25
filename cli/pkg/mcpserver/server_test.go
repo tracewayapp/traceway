@@ -384,16 +384,53 @@ func TestGetExceptionOccurrence_sendsRecordedAtBody(t *testing.T) {
 	}
 }
 
-func TestQueryMetrics_rejectsQuantiles(t *testing.T) {
-	cs := connect(t, emptyBackend(), "p-1")
-	res := callTool(t, cs, "query_metrics", map[string]any{
-		"queries": []map[string]any{{"name": "system.cpu.utilization", "aggregation": "p95"}},
+// A distribution metric answers percentiles and good_ratio, and an alert's
+// "p75 over 24 hours" is a whole-range read, so all of it must reach the server.
+func TestQueryMetrics_sendsDistributionReads(t *testing.T) {
+	var gotBody map[string]any
+	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":[]}`))
 	})
-	if !res.IsError {
-		t.Fatal("expected tool error")
+	cs := connect(t, backend, "p-1")
+	res := callTool(t, cs, "query_metrics", map[string]any{
+		"whole_range": true,
+		"queries": []map[string]any{
+			{"name": "browser.web_vital.inp", "aggregation": "p75"},
+			{"name": "browser.web_vital.inp", "aggregation": "good_ratio", "threshold": 200},
+		},
+	})
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %s", resultText(t, res))
 	}
-	if text := resultText(t, res); !strings.Contains(text, "list_endpoints") {
-		t.Errorf("quantile rejection should point at list_endpoints: %s", text)
+	if gotBody["wholeRange"] != true {
+		t.Errorf("wholeRange not sent: %v", gotBody)
+	}
+	queries, _ := gotBody["queries"].([]any)
+	if len(queries) != 2 {
+		t.Fatalf("queries = %v", gotBody["queries"])
+	}
+	first, _ := queries[0].(map[string]any)
+	second, _ := queries[1].(map[string]any)
+	if first["aggregation"] != "p75" || second["aggregation"] != "good_ratio" || second["threshold"] != float64(200) {
+		t.Errorf("queries sent as %v", queries)
+	}
+	if _, ok := first["threshold"]; ok {
+		t.Errorf("a query without a threshold must not send one: %v", first)
+	}
+}
+
+func TestQueryMetrics_rejectsUnknownAggregationAndStrayThreshold(t *testing.T) {
+	cs := connect(t, emptyBackend(), "p-1")
+	for _, query := range []map[string]any{
+		{"name": "browser.web_vital.inp", "aggregation": "median"},
+		{"name": "browser.web_vital.inp", "aggregation": "p75", "threshold": 200},
+	} {
+		res := callTool(t, cs, "query_metrics", map[string]any{"queries": []map[string]any{query}})
+		if !res.IsError {
+			t.Errorf("expected a tool error for %v", query)
+		}
 	}
 }
 

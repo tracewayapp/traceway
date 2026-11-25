@@ -19,7 +19,7 @@ Setting up an app? [RUM Best Practices](/learn/rum-best-practices) explains what
 | **Page and route timing** | Page load, DOM ready, transfer size, how long a route change takes to settle, long tasks and total blocking time |
 | **Requests** | Duration and failure rate of `fetch` and XHR by host, with the W3C `traceparent` header that joins a browser request to its backend trace |
 | **Who is affected** | Page views, sessions, browser profiles per day, and profiles affected by an error, a poor vital, a rage click or a failed request, counted on the device so no id is sent |
-| **What is behind a slow value** | The element behind a poor LCP, INP or CLS, the script behind main-thread time, and a link to a session that experienced it |
+| **What is behind a slow value** | The element behind a poor LCP, INP or CLS, which part of a slow interaction took the time, the script behind main-thread time, and a link to a session that experienced it |
 | **Segments** | Release, environment, route, browser, OS, form factor, device class, network type, country, and two dimensions of your own |
 | **Web Performance dashboard** | Assigned when the project is created: percentiles, rating shares and breakdowns, before you build a chart |
 | **Release regression alerts** | A new release compared with the earlier one, adjusted for device mix and gated on sample size |
@@ -126,6 +126,8 @@ A page with no interaction has no INP sample, not a zero-millisecond interaction
 Open **Slow sessions** on a distribution widget. When an exemplar was retained, it links a poor observation to its session and may name the responsible element. Inspect the session's timeline, errors and network activity, then watch replay if a recording was captured.
 
 ![A slow interaction opened in its session investigation](/rum/slow-session.png)
+
+Browser SDK releases after 2.0.2 also say why an interaction was slow. An interaction has three parts: the **input delay**, while the click waited for other work on the main thread; the **processing**, while your event handlers ran; and the **presentation**, while the browser drew the result. The largest of the three is the `phase` of `browser.web_vital.attribution`, so a breakdown of poor INP by `phase` and `target` tells you whether to look at other scripts, at a handler, or at rendering. The INP event in a session's history adds the three durations and the file and function of the longest script that ran. A very long interaction is reported as it was: a paused debugger and a frozen page look the same to the browser, and the phases show which part held it.
 
 Each request in the timeline links to its trace, where the browser's request sits above the backend work it caused: the browser SDK sends the W3C `traceparent` header, so both sides share one trace id. See [distributed tracing](/client/js-sdk/distributed-tracing).
 

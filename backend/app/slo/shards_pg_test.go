@@ -104,8 +104,43 @@ func TestShardsSplitBetweenInstancesAndMoveWhenOneStops(t *testing.T) {
 	}
 
 	workerId = "a"
-	releaseShards()
+	releaseShards(context.Background())
 	if got := claimAs(t, "c").size(); got != shardCount {
 		t.Fatalf("released shards are free at once, got %d", got)
+	}
+}
+
+// A deploy starts the new process while the old one is stopping. Unless the old
+// one hands its shards over, the new one counts it as live and finds every
+// shard leased until the leases expire, so no SLO is computed for minutes.
+func TestStopHandsTheShardsToTheNextInstanceAtOnce(t *testing.T) {
+	setupShardDB(t)
+	t.Cleanup(func() { stopping.Store(false) })
+	if got := claimAs(t, "old").size(); got != shardCount {
+		t.Fatalf("a single instance owns every shard, got %d", got)
+	}
+	if got := claimAs(t, "new").size(); got != 0 {
+		t.Fatalf("the new instance waits while the old one holds the leases, got %d", got)
+	}
+
+	workerId = "old"
+	Stop(context.Background())
+	if got := claimAs(t, "old").size(); got != 0 {
+		t.Fatalf("a stopped instance claims nothing, got %d", got)
+	}
+	var rows int
+	if err := db.DB.QueryRow("SELECT COUNT(*) FROM slo_shard_leases WHERE owner = 'old'").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("a stopped instance holds %d leases", rows)
+	}
+
+	stopping.Store(false)
+	if got := claimAs(t, "new").size(); got != shardCount {
+		t.Fatalf("the new instance takes every shard on its next tick, got %d", got)
+	}
+	if got := Instances(); got != 1 {
+		t.Fatalf("the stopped instance still counts as live: %d instances", got)
 	}
 }

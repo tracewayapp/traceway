@@ -6,6 +6,8 @@ type Option = cmd.Option
 
 var (
 	Run                = cmd.Run
+	Shutdown           = cmd.Shutdown
+	ShutdownOnSignal   = cmd.ShutdownOnSignal
 	WithPort           = cmd.WithPort
 	WithServerURL      = cmd.WithServerURL
 	WithSQLitePath     = cmd.WithSQLitePath

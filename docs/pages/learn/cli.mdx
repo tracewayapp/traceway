@@ -73,7 +73,7 @@ The default `traceway login` runs a browser device flow with an auto-refreshing 
 | `traceway ai-traces show <id> --recorded-at <t>` | A single AI trace by id + its conversation |
 | `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
 | `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
-| `traceway metrics query` | Time-series metric queries, including `rate` and `last` |
+| `traceway metrics query` | Time-series metric queries, including `rate`, `last`, and percentiles or `good_ratio` of a distribution metric; `--whole-range` returns one value for the window |
 | `traceway metrics discover` | Recorded metric names, types, units and tag keys; `--name M --key K` discovers tag values |
 | `traceway dashboards {list,library,export}` | Applied dashboards, shared project assignments and importable JSON |
 | `traceway dashboards validate --file F` | Offline dashboard validation without login |

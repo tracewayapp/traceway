@@ -144,6 +144,10 @@ Use them for data your app must not collect. For everything else, leave the defa
 
 Use a separate project for development and staging, so test traffic does not change your production numbers and alerts.
 
+### 10. Give the controls people use a stable name
+
+When an interaction or a layout shift is slow, the SDK names the element behind it with a short CSS selector, so a dashboard can show which button is slow. From browser SDK releases after 2.0.2 the selector leaves out ids that UI libraries generate on every render (`bits-…`, `radix-…`, React's `:r1:`) and utility classes with variants or arbitrary values. It uses a stable `id`, otherwise `data-testid`, `data-test`, `data-cy`, `data-slot`, `name` or `role`, otherwise plain class names, for the element and up to two of its parents. Give the controls that matter a `data-testid`, or keep the `data-slot` your component library already sets, and a slow click on them reads `button[data-testid="place-order"]` instead of an anonymous `button`. The SDK never uses `aria-label`, text or input values, because those can hold what the user typed or is looking at.
+
 ## Identify users and find their sessions
 
 Set the user id as an attribute after sign-in:

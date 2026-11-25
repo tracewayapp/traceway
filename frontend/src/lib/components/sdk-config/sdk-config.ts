@@ -147,7 +147,7 @@ export const BUILT_IN_ERROR_TRIGGER = 'default-exception';
 export const TRIGGER_TEMPLATES: Array<{
 	label: string;
 	trigger: Record<string, unknown>;
-	/** Matches a signal only the browser SDK reports. */
+	/** Matches what only the browser SDK reports: a signal, or log levels (Flutter logs every line at info). */
 	browserOnly?: boolean;
 }> = [
 	{
@@ -200,6 +200,7 @@ export const TRIGGER_TEMPLATES: Array<{
 	},
 	{
 		label: 'Error log burst → capture',
+		browserOnly: true,
 		trigger: {
 			...logLineTrigger({
 				text: '*',

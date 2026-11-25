@@ -43,7 +43,7 @@ Session start and end events are sent unless `sessions.enabled` is false. The bu
 
 ## Seeing it work
 
-The SDK reports what it did as log records of the browser or Flutter project that always stream unless the kill switch is on: `traceway.config.applied` (with the config hash), `traceway.trigger.fired` and `traceway.capture.started`. Breadcrumbs that were sent are stored once, as log records and spans tagged with `session.id`. The session page reads them for the whole session, and an issue's event card reads the 10 minutes before the exception. A session's overview shows the **JavaScript SDK** version that recorded it, which tells a 2.x client from a 1.x one.
+The SDK reports what it did as log records of the browser or Flutter project that always stream unless the kill switch is on: `traceway.config.applied` (with the config hash), `traceway.trigger.fired` and `traceway.capture.started`. Breadcrumbs that were sent are stored once, as log records and spans tagged with `session.id`. The session page reads them for the whole session, and an issue's event card reads the 10 minutes before the exception. A session's overview shows the version of the SDK that recorded it (**JavaScript SDK** or **Flutter SDK**), which tells a 2.x client from a 1.x one.
 
 ## Reading and changing it from an agent
 

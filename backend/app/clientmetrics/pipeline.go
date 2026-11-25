@@ -583,6 +583,9 @@ func (p *Pipeline) addCount(projectId uuid.UUID, name string, entry *Metric, rc 
 			value = 1
 		}
 		cost = value
+		if entry.EventsPerCost > 0 {
+			cost = value / entry.EventsPerCost
+		}
 	}
 	if !p.limiter.allow(projectId, rc.client.IP, cost, now) {
 		return ReasonRateLimit

@@ -140,6 +140,17 @@ With a connection string, ordinary logs (print, navigation, taps, `track`, `reco
   ```xml
   <uses-permission android:name="android.permission.INTERNET"/>
   ```
+- **Android build**: `flutter_quick_video_encoder` 1.7.2 (the screen recorder's encoder) declares `compileSdk` 33, and a current Flutter template (Flutter 3.50, AGP 9.3) fails the release build with "requires libraries and applications that depend on it to compile against version 34 or later ... :flutter_quick_video_encoder is currently compiled against android-33". Add to `android/build.gradle.kts`, above `subprojects { project.evaluationDependsOn(":app") }`:
+  ```kotlin
+  // The encoder 1.7.2 declares API 33; the AndroidX libraries it builds with need 34.
+  project(":flutter_quick_video_encoder") {
+      plugins.withId("com.android.library") {
+          extensions.getByType<com.android.build.api.variant.LibraryAndroidComponentsExtension>().finalizeDsl {
+              it.compileSdk = maxOf(it.compileSdk ?: 0, 34)
+          }
+      }
+  }
+  ```
 - **macOS**: sandboxed by default; add `com.apple.security.network.client` (value `<true/>`) to BOTH `macos/Runner/DebugProfile.entitlements` and `macos/Runner/Release.entitlements`.
 - **iOS**: nothing needed.
 

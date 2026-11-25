@@ -383,6 +383,27 @@ func TestOneAddressCannotMoveAPercentile(t *testing.T) {
 	}
 }
 
+// Frames are counted at the display's rate: five minutes of a screen that animates at 120 Hz, as one upload of the
+// Flutter SDK, must not trip the per-address limit, or the slow and frozen frame ratios lose their denominators.
+func TestFrameCountsFitTheAddressBudget(t *testing.T) {
+	p, sink := newTestPipeline(Config{})
+	projectId := uuid.New()
+	screen := map[string]string{"screen": "/feed"}
+	req := sdkPayload(t, browserResource,
+		dataPoint{metric: "app.frames.slow.total", attrs: screen, count: 36000},
+		dataPoint{metric: "app.frames.slow", attrs: screen, count: 120},
+		dataPoint{metric: "app.frames.frozen.total", attrs: screen, count: 36000},
+		dataPoint{metric: "app.frames.frozen", attrs: screen, count: 2},
+	)
+	if result := p.IngestOTLP(projectId, req, Client{IP: "10.0.0.1"}, time.Now()); result.Dropped != 0 {
+		t.Fatalf("frame counts were dropped: %+v %v", result, p.Snapshot().Dropped)
+	}
+	_ = p.Flush(context.Background())
+	if got := sink.sum("app.frames.slow.total"); got != 36000 {
+		t.Errorf("app.frames.slow.total = %v, want 36000", got)
+	}
+}
+
 func TestMemoryCapDropsNewCellsAndKeepsCounting(t *testing.T) {
 	p, sink := newTestPipeline(Config{MaxCells: 5})
 	now := time.Now()

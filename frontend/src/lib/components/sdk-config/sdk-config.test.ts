@@ -135,7 +135,7 @@ describe('log-line triggers', () => {
 		expect(flutter.find((signal) => signal.key === 'userActions')?.hint).toBe('Taps');
 		expect(SIGNALS.find((signal) => signal.key === 'userActions')?.hint).toBe('Clicks');
 		const browserOnly = TRIGGER_TEMPLATES.filter((t) => t.browserOnly).map((t) => t.trigger.id);
-		expect(browserOnly).toEqual(['frozen-page', 'slow-route-change']);
+		expect(browserOnly).toEqual(['error-log-burst', 'frozen-page', 'slow-route-change']);
 	});
 
 	it('gives a template an id no other rule of the project uses', () => {

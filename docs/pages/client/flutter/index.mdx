@@ -277,42 +277,88 @@ The dashboard's [recording trigger](/learn/remote-config/trigger-sequences) step
 
 Steps match in order, each within its `withinSeconds` of the previous one; progress survives an app restart within the session. When a trigger that asks for replay fires, the session lists it as a recording reason with its sequence.
 
-#### Naming widgets
+The step format is the browser SDK's, so the dashboard builds and validates both the same way. What a selector and a route pattern are compared with is different, because a Flutter app has no DOM and no URL. The two sections below are the whole of that difference.
 
-Flutter has no DOM, so click and hover selectors run over the element tree under the pointer. The syntax is the CSS subset the dashboard validates:
+#### Element selectors: naming widgets
 
-| Selector | Matches a widget that |
-|----------|-----------------------|
-| `ElevatedButton` | is of that type (generic arguments ignored) |
-| `#checkout` | has `Key('checkout')` (a `ValueKey<String>`), or is `Semantics(identifier: 'checkout')` |
-| `.button` | is a `Semantics` with that role: `button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected` |
-| `[key="42"]` | has a `ValueKey` whose value reads `42` |
-| `[identifier="..."]` | has that `Semantics.identifier` |
-| `[label="Delete"]` | has that semantics label or tooltip (an `IconButton`'s tooltip, an `Icon`'s semantic label) |
-| `[text="Pay"]` | shows that text: a `Text`'s own, or the text of the `Text` widgets under it; never the content of an input field |
-| `[type="_Private"]` | is of a type that cannot be written as a tag |
+A click or hover step takes a selector in CSS syntax. The SDK hit-tests the pointer position, takes the chain of widgets under it from the deepest one up to the root, and runs the selector over that chain. A tap matches when the widget under the finger or any widget above it matches, the way a browser click matches its target or an ancestor. Hover fires when a mouse pointer enters a matching widget, so it never fires on a touch screen.
 
-Attribute values take `=`, `^=`, `$=`, `*=`, `~=` and `|=`. Combinators are descendant (space), child (`>`), adjacent (`+`) and general (`~`) sibling, in the element tree, where a widget such as `ElevatedButton` sits several elements above the `Text` it shows, so prefer the descendant combinator. A tap matches when the widget under the finger or any widget around it does, the way a browser click matches its target or an ancestor.
+Each part of the syntax reads one property of a widget:
 
-You rarely write one by hand: every tap is recorded as `browser.user_action.click` with the selector of the control that handled it (`browser.css_selector`), shown on the session timeline. It prefers an ID (`ElevatedButton#pay`), then a key, the shown text, the label, and the type alone. Keys and `Semantics(identifier:)`, the ones integration tests and Appium or Maestro use, are the most stable choice. The shown text and the label of a widget inside `TracewayPrivacyMask` are never sent.
+| Selector | Browser equivalent | Matches a widget that |
+|----------|--------------------|-----------------------|
+| `ElevatedButton` | tag name | is of that type. Case and generic arguments are ignored; `*` is any widget |
+| `#checkout` | `id` attribute | has `Key('checkout')` (a `ValueKey<String>`), or is `Semantics(identifier: 'checkout')` |
+| `.button` | class | is a `Semantics` with that role: `button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected` |
+| `[key="42"]` | attribute | has a `ValueKey` whose value reads `42`, such as `ValueKey(42)` |
+| `[identifier="..."]` | attribute | has that `Semantics.identifier` |
+| `[label="Delete"]` | attribute | has that semantics label or tooltip: its own for a `Semantics`, else the first one directly below it (an `IconButton`'s tooltip, an `Icon`'s semantic label) |
+| `[text="Pay"]` | none | shows that text: a `Text`'s own string, else the strings of up to three `Text` widgets under it joined by a space. Never the content of an input field, never an icon |
+| `[type="_Private"]` | none | is of a type that cannot be written as a tag |
 
-Widget type names are minified in `--obfuscate` builds: there, match by key, identifier, role, label or text, and recorded selectors leave the type out.
+Only these five attribute names exist. There is nothing like `data-*`: a widget has no attributes of its own, so give it a key or a `Semantics` identifier instead.
 
-#### Naming routes
+```dart
+// #pay, or ElevatedButton#pay
+ElevatedButton(key: const Key('pay'), onPressed: pay, child: const Text('Pay now'));
 
-A navigation step matches the path the observer reports for the route on top:
+// #checkout-form, whatever widget it wraps
+Semantics(identifier: 'checkout-form', child: const CheckoutForm());
 
-- its name (`RouteSettings.name`): named routes, `onGenerateRoute`, and routers that name their pages,
-- else `/` and the page widget's type, for example `/CheckoutPage` for `MaterialPageRoute(builder: (_) => const CheckoutPage())`,
-- else `/` and the route's type, for example `/DialogRoute`.
+// IconButton[label="Delete"]
+IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete), onPressed: remove);
 
-A router that does not report to a `NavigatorObserver` can report its location itself:
+// ElevatedButton[text="Pay now"], when nothing better exists
+ElevatedButton(onPressed: pay, child: const Text('Pay now'));
+```
+
+The rules the dashboard and the SDK both apply:
+
+- Attribute values take `=`, `^=` (starts with), `$=` (ends with), `*=` (contains), `~=` (one of its words) and `|=`. Quote a value that is not a plain name: `[key="42"]`, not `[key=42]`.
+- A selector is at most 256 characters and cannot contain `:`, `,` or `\`, also inside a quoted value. Pseudo-classes and selector lists are therefore not available, and `[text="Total: 5"]` is refused: match the start instead, `[text^="Total"]`.
+- Combinators are descendant (space), child (`>`), adjacent (`+`) and general (`~`) sibling, over the element tree. A widget such as `ElevatedButton` sits several elements above the `Text` it shows, so use the descendant combinator (`#cart ElevatedButton`) and not `>`.
+- Only `ValueKey`s are readable. A `GlobalKey`, `ObjectKey` or `UniqueKey` gives the widget no name.
+- A selector that names text depends on the copy: it stops matching when the wording changes or the app runs in another language. Keys and `Semantics(identifier:)`, the handles integration tests and Appium or Maestro use, are the stable choice.
+- Widget type names are minified in `--obfuscate` builds. Match by key, identifier, role, label or text there; recorded selectors leave the type out in such a build.
+- `captureUserActions: false` turns taps off, and click and hover steps with them.
+
+You rarely write a selector by hand. Every tap is recorded as `browser.user_action.click` with the selector of the control that handled it (`browser.css_selector`), and the **Actions** list of a session shows it, for example `ElevatedButton#pay` or `ElevatedButton[text="Print Log Lines"]`. Copy it into a click step as it is: the SDK only records a selector it has checked against the tapped widget. It picks the most stable name the control has, in this order: a string key or semantics identifier, any other key, the shown text (up to 40 characters), the label, then the type alone, with the nearest named widget above it in front when there is one (`#cart ElevatedButton`). The shown text and the label of a widget inside `TracewayPrivacyMask` are never sent.
+
+#### Navigation: naming routes
+
+A navigation step is compared with the path of the route the user arrives at. The SDK learns about route changes from `Traceway.navigatorObserver`, so attach it to every `Navigator` whose routes should count: `MaterialApp(navigatorObservers: [Traceway.navigatorObserver])`, and the observers list of a nested navigator or a router too.
+
+The path of a route is the first of these that exists:
+
+1. its name (`RouteSettings.name`): named routes, `onGenerateRoute`, and routers that name their pages,
+2. `/` and the type of the page widget, for example `/CheckoutPage` for `MaterialPageRoute(builder: (_) => const CheckoutPage())`,
+3. `/` and the type of the route, for example `/DialogRoute`.
+
+| In the app | Reported path | A step that matches |
+|------------|---------------|---------------------|
+| `Navigator.pushNamed(context, '/users/42')` | `/users/42` | `/users/{id}` or `/users/42` |
+| `Navigator.pushNamed(context, 'checkout')` | `checkout`, read as `/checkout` | `/checkout` |
+| `Navigator.push(context, MaterialPageRoute(builder: (_) => const CheckoutPage()))` | `/CheckoutPage` | `/CheckoutPage` |
+| `Traceway.recordNavigation('/orders/8841?tab=items')` | `/orders/8841?tab=items` | `/orders/{id}` |
+
+How a pattern is compared:
+
+- Only the path counts. A query string and a fragment are dropped before matching, and a pattern cannot contain `?`, `#` or `*`.
+- A pattern starts with `/` and must have the same number of segments as the path. `/users/{id}` does not match `/users/42/edit`.
+- `{name}` stands for exactly one non-empty segment and must be the whole segment. Every other segment compares as written, case-sensitively.
+- A push or a replace arrives at the new route. A pop arrives at the route it returns to, so a step for `/` also matches coming back to the home screen. Removing a route below the top one is shown on the timeline and matches nothing.
+- The type-based paths (2 and 3) are minified in `--obfuscate` builds, like widget types. Give a route a name when a trigger should match it.
+- `captureNavigation: false` turns navigation off, and navigation steps with it.
+
+A router that does not report to a `NavigatorObserver`, or whose route names are templates instead of the location, can report the location itself:
 
 ```dart
 final router = GoRouter(routes: [...]);
 router.routerDelegate.addListener(() => Traceway.recordNavigation(
     router.routerDelegate.currentConfiguration.uri.path));
 ```
+
+The same path is the `screen` of the [performance metrics](#app-performance-metrics), with IDs folded (`/orders/8841` becomes `/orders/:id`), and the route shown on each navigation row of the session timeline.
 
 ## App Performance Metrics
 

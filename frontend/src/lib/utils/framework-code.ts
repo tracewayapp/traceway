@@ -335,35 +335,6 @@ struct MyApp: App {
 	}
 }
 
-// The Flutter 2.x SDK can send its ordinary logs, request spans and metrics to another OpenTelemetry
-// backend; issues, sessions, remote config and screen recordings stay on Traceway.
-export function getFlutterTelemetryCode(token: string, backendUrl: string): string {
-	const connectionString = token
-		? `${token}@${backendUrl}/api/report`
-		: `YOUR_TOKEN@${backendUrl}/api/report`;
-	return `Traceway.run(
-  connectionString: '${connectionString}',
-  options: TracewayOptions(
-    screenCapture: true,
-    version: '1.0.0',
-    telemetry: TracewayTelemetry(
-      // /v1/logs, /v1/traces and /v1/metrics are appended.
-      url: 'https://collector.example.com',
-      headers: {'x-api-key': 'YOUR_COLLECTOR_KEY'},
-    ),
-  ),
-  child: MyApp(),
-);
-
-// Standalone, without Traceway: leave out the connection string.
-Traceway.run(
-  options: TracewayOptions(
-    telemetry: TracewayTelemetry(url: 'https://collector.example.com'),
-  ),
-  child: MyApp(),
-);`;
-}
-
 export function getTestingRouteCode(framework?: Framework): string {
 	if (framework === 'symfony') {
 		return `<?php

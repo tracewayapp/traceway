@@ -19,7 +19,7 @@ Use the connected write MCP server when available, otherwise `traceway-write`. E
 | Dashboards | [dashboard-building.md](dashboard-building.md) | Discover recorded metrics and build useful charts from instrumentation |
 | Sharing and embedding | [dashboard-embedding.md](dashboard-embedding.md) | Issue an expiring read-only dashboard link, and add an embedded dashboard to the user's own application |
 | RUM | [rum.md](rum.md) | Browser metrics, release alerts, frontend SLO semantics and dashboard-only capabilities |
-| Browser collection | [sdk-configuration.md](sdk-configuration.md) | OpAMP rules, sampling, sessions and replay |
+| Browser and Flutter collection | [sdk-configuration.md](sdk-configuration.md) | OpAMP rules, sampling, sessions, replay, and recording triggers (widget selectors and route names in Flutter) |
 
 ## How the concepts interact
 

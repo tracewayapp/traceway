@@ -19,7 +19,7 @@ Use the connected write MCP server when available, otherwise `traceway-write`. E
 | Dashboards | [dashboard-building.md](dashboard-building.md) | Discover recorded metrics and build useful charts from instrumentation |
 | Sharing and embedding | [dashboard-embedding.md](dashboard-embedding.md) | Issue an expiring read-only dashboard link, and add an embedded dashboard to the user's own application |
 | RUM | [rum.md](rum.md) | Browser metrics, release alerts, frontend SLO semantics and dashboard-only capabilities |
-| Browser collection | [sdk-configuration.md](sdk-configuration.md) | OpAMP rules, sampling, sessions and replay |
+| Browser and Flutter collection | [sdk-configuration.md](sdk-configuration.md) | OpAMP rules, sampling, sessions, replay, and recording triggers (widget selectors and route names in Flutter) |
 
 ## How the concepts interact
 
@@ -43,6 +43,6 @@ Read the relevant resource before configuring an area:
 - `traceway://knowledge/incident-actions`: pages, issues, monitor runs, post-mortems and expected latency.
 - `traceway://knowledge/dashboard-building`: dashboard charts and instrumentation discovery.
 - `traceway://knowledge/dashboard-embedding`: shared dashboard links and embedding a dashboard in the user's own application.
-- `traceway://knowledge/sdk-configuration`: browser collection, replay and OpAMP rules.
+- `traceway://knowledge/sdk-configuration`: browser and Flutter collection, replay, OpAMP rules, and recording triggers (CSS selectors in a browser, widget selectors and route names in Flutter).
 
 For product behavior and tradeoffs use `traceway://knowledge/learn/alerts`, `traceway://knowledge/learn/on-call` and the other learn resources.

@@ -137,6 +137,8 @@ Replay does not need to record every session for metrics to work. Its availabili
 
 Build click, hover, navigation and log sequences through the [recording trigger editor](/learn/remote-config/trigger-sequences). A completed sequence requests replay and adds a filterable reason to the session. Multiple triggers can explain the same recording, and their historical names and sequences remain available after a rule changes.
 
+The same editor serves Flutter projects, where a step names a widget or a route instead of an element or a URL path: `#pay` is `Key('pay')` or `Semantics(identifier: 'pay')`, `ElevatedButton` is a widget type, `[text="Pay now"]` is the text a widget shows, and `/users/{id}` is compared with the name of the route on top. Every tap is recorded with a ready-made selector, shown in the session's **Actions** list. See [element selectors](/client/flutter#element-selectors-naming-widgets) and [navigation](/client/flutter#navigation-naming-routes) in the Flutter guide.
+
 When one customer reports a problem you cannot reproduce, start a **capture** instead: target their `user.id`, their device or their open session, and the browser uploads what its ring buffer holds on its next check-in, then streams everything until the capture ends. See [captures](/learn/remote-config#captures).
 
 ## Measure what only your app knows

@@ -47,6 +47,38 @@ MaterialApp(
 );
 ```
 
+## Names for widgets and routes (2.x)
+
+A Flutter app has no DOM and no URL, so the SDK names a tap by a widget selector and a screen by a route path. The session timeline shows both, the per-screen metrics are grouped by the route path, and the **Recording triggers** of the project's Data Collection page are matched against them. The names come from the app's code, so setup decides how good they are.
+
+**Routes.** Navigation is recorded only by `Traceway.navigatorObserver`. Attach it to every `Navigator` whose routes should count: `MaterialApp.navigatorObservers`, a nested `Navigator`, and the observers list of a router. A route is reported as the first of:
+
+1. its name (`RouteSettings.name`): named routes, `onGenerateRoute`, routers that name their pages, for example `/users/42`,
+2. `/` and the type of the page widget, for example `/CheckoutPage` for `MaterialPageRoute(builder: (_) => const CheckoutPage())`,
+3. `/` and the route's type, for example `/DialogRoute`.
+
+A trigger's navigation step such as `/users/{id}` is compared with that path by segment and case-sensitively; `{id}` is one non-empty segment, and a query string is ignored. Types 2 and 3 are minified in `--obfuscate` builds, so name the routes of an obfuscated app (`MaterialPageRoute(settings: const RouteSettings(name: '/checkout'), ...)`). A router that does not report to a `NavigatorObserver`, or whose route names are templates, reports its location itself:
+
+```dart
+router.routerDelegate.addListener(() => Traceway.recordNavigation(
+    router.routerDelegate.currentConfiguration.uri.path));
+```
+
+**Widgets.** A click or hover step takes a selector in CSS syntax, read against the widgets under the pointer:
+
+| Selector | Matches a widget that |
+|----------|-----------------------|
+| `ElevatedButton` | is of that type |
+| `#pay` | has `Key('pay')` (a string `ValueKey`), or is `Semantics(identifier: 'pay')` |
+| `.button` | is a `Semantics` with that role (`button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected`) |
+| `[key="42"]`, `[identifier="x"]` | has that `ValueKey` value or `Semantics.identifier` |
+| `[label="Delete"]` | has that semantics label or tooltip |
+| `[text="Pay now"]` | shows that text (never an input's content) |
+
+There are no element ids, classes or `data-*` attributes; these are the only names. Every tap is recorded with the best selector the tapped control has: a string key or semantics identifier first (`ElevatedButton#pay`), then any other key, the shown text (`ElevatedButton[text="Pay now"]`), the label, and the type alone. Text changes with the wording and the language, and type names are minified in `--obfuscate` builds, so a control a trigger should match needs a `Key` or a `Semantics(identifier:)`, the same handles integration tests, Appium and Maestro use. `GlobalKey`, `ObjectKey` and `UniqueKey` give no name.
+
+During setup, attach the observer and keep the route names the app already has. Add keys only to the controls the user wants to trigger on or asks about; do not key the whole app unasked. Reference: https://docs.tracewayapp.com/client/flutter#recording-triggers
+
 ## Manual capture
 
 ```dart

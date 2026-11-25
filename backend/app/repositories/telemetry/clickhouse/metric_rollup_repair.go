@@ -23,12 +23,19 @@ import (
 // forever in metric_points_1d. RepairMetricRollups merges them, a partition at a time.
 //
 // Nothing is rewritten in place. The merged copies of a partition's unsorted rows are
-// built in a scratch table, which is then renamed to <table>_tagrepair_<partition>:
-// that name existing is the record that the copies are complete. From there every step
-// can be repeated: MOVE PARTITION puts the copies into the table at once and leaves the
-// staging table empty, so a second move adds nothing; the delete names the unsorted rows
-// by what they are; and the staging table is dropped last. A run that dies anywhere is
-// picked up by the next one without a row lost or counted twice.
+// built in a scratch table, which is then renamed to <table>_tagrepair_<partition>_<day>:
+// that name existing is the record that the copies are complete, and <day> is the first
+// day they cover. From there every step can be repeated: MOVE PARTITION puts the copies
+// into the table at once and leaves the staging table empty, so a second move adds
+// nothing; the delete names the unsorted rows from that day on by what they are; and the
+// staging table is dropped last. A run that dies anywhere is picked up by the next one
+// without a row lost or counted twice.
+//
+// A pass reads the last year, today first and going back, and every read of a rollup is
+// one day of it: the connection ends a query after five minutes, which a scan of a whole
+// table does not finish in on a large installation. Unsorted rows older than a year are
+// left as they are, so the delete stops at the first staged day: an older row of the
+// same partition has no merged copy.
 //
 // This holds only while nothing writes unsorted rows, which is what the sorted rollup
 // views guarantee: the rows to merge can then only become fewer. The tables in front of
@@ -41,6 +48,12 @@ const (
 	rollupRepairStaged   = "_tagrepair_"
 	rollupRepairBuild    = "_tagbuild"
 	rollupRepairUnsorted = "tags != mapSort(tags)"
+	// One day of a rollup, as the server counts days. toDate keeps the primary key and
+	// the partition minmax index usable.
+	rollupRepairOnDay     = "toDate(recorded_at) = toDate(?)"
+	rollupRepairDayLayout = "2006-01-02"
+	// The first staged day, as the staging table's name ends.
+	rollupRepairSinceLayout = "20060102"
 	// A mutation reserves 1.1 times the part it rewrites, and several parts are rewritten at once.
 	rollupRepairSpaceFactor   = 2
 	rollupRepairDeleteRetries = 3
@@ -78,16 +91,28 @@ var rollupRepairTables = func() []rollupRepairTable {
 	}
 }()
 
+type rollupRepairDay struct {
+	day  string
+	rows uint64
+}
+
 type rollupRepairWork struct {
 	table     rollupRepairTable
 	partition string
-	// Unsorted rows found by the scan; 0 for a partition an interrupted run left staged.
+	// The days of the last year with unsorted rows, oldest first, and their total.
+	days []rollupRepairDay
 	rows uint64
+	// The staging table an interrupted run left and the first day it covers, "" when
+	// there is none.
+	staged string
+	since  string
 }
 
 type rollupRepairPass struct {
 	guard  func(step string) error
 	report shared.MetricRollupRepairReport
+	// Today as the server counts days: the newest day a pass reads.
+	today time.Time
 	// What is left, per table, for the pending gauges.
 	partitions map[string]int
 	rows       map[string]uint64
@@ -161,29 +186,139 @@ func (p *rollupRepairPass) settled(item rollupRepairWork) {
 }
 
 func (p *rollupRepairPass) plan(ctx context.Context) ([]rollupRepairWork, error) {
+	var today string
+	if err := chdb.Conn.QueryRow(ctx, "SELECT toString(today())").Scan(&today); err != nil {
+		return nil, fmt.Errorf("reading the server's date: %w", err)
+	}
+	var err error
+	if p.today, err = time.Parse(rollupRepairDayLayout, today); err != nil {
+		return nil, fmt.Errorf("reading the server's date: %w", err)
+	}
 	var work []rollupRepairWork
 	for _, table := range rollupRepairTables {
 		if err := table.requireSortedView(ctx); err != nil {
 			return nil, err
 		}
 		started := time.Now()
-		partitions, err := table.partitions(ctx)
+		items, err := p.scan(ctx, table)
 		if err != nil {
 			return nil, fmt.Errorf("%s: listing partitions: %w", table.name, err)
 		}
-		ids := make([]string, 0, len(partitions))
-		for id := range partitions {
-			ids = append(ids, id)
-		}
-		sort.Strings(ids)
 		var rows uint64
-		for _, id := range ids {
-			work = append(work, rollupRepairWork{table: table, partition: id, rows: partitions[id]})
-			rows += partitions[id]
+		for _, item := range items {
+			rows += item.rows
 		}
-		p.partitions[table.name], p.rows[table.name] = len(ids), rows
+		work = append(work, items...)
+		p.partitions[table.name], p.rows[table.name] = len(items), rows
 		p.pending(table.name)
-		rollupRepairLog(ctx, "", "table_scanned", "table", table.name, "partitions", len(ids), "rows", rows, "took_ms", time.Since(started).Milliseconds())
+		rollupRepairLog(ctx, "", "table_scanned", "table", table.name, "partitions", len(items), "rows", rows, "took_ms", time.Since(started).Milliseconds())
+	}
+	return work, nil
+}
+
+// rollupRepairDays returns the days from today back to first, today first.
+func rollupRepairDays(today, first time.Time) []string {
+	var days []string
+	for day := today; !day.Before(first); day = day.AddDate(0, 0, -1) {
+		days = append(days, day.Format(rollupRepairDayLayout))
+	}
+	return days
+}
+
+func rollupRepairStagedName(table, partition, since string) string {
+	return table + rollupRepairStaged + partition + "_" + strings.ReplaceAll(since, "-", "")
+}
+
+// rollupRepairStagedParts reads a staging table's name back into its partition and the
+// first day its copies cover.
+func rollupRepairStagedParts(table, name string) (partition, since string, err error) {
+	suffix := strings.TrimPrefix(name, table+rollupRepairStaged)
+	cut := strings.LastIndex(suffix, "_")
+	if cut > 0 {
+		var day time.Time
+		if day, err = time.Parse(rollupRepairSinceLayout, suffix[cut+1:]); err == nil {
+			return suffix[:cut], day.Format(rollupRepairDayLayout), nil
+		}
+	}
+	return "", "", fmt.Errorf("staging table %s is not named <partition>_<first day>", name)
+}
+
+// scan returns the partitions with work in them, the newest first: those an interrupted
+// run left staged, and those with unsorted rows in the last year, read a day per query.
+func (p *rollupRepairPass) scan(ctx context.Context, t rollupRepairTable) ([]rollupRepairWork, error) {
+	found := map[string]*rollupRepairWork{}
+	var order []string
+	item := func(partition string) *rollupRepairWork {
+		if found[partition] == nil {
+			found[partition] = &rollupRepairWork{table: t, partition: partition}
+			order = append(order, partition)
+		}
+		return found[partition]
+	}
+
+	names, err := chdb.Conn.Query(ctx, "SELECT name FROM system.tables WHERE database = currentDatabase() AND startsWith(name, ?) ORDER BY name", t.name+rollupRepairStaged)
+	if err != nil {
+		return nil, err
+	}
+	for names.Next() {
+		var name string
+		if err := names.Scan(&name); err != nil {
+			names.Close()
+			return nil, err
+		}
+		partition, since, err := rollupRepairStagedParts(t.name, name)
+		if err != nil {
+			names.Close()
+			return nil, err
+		}
+		staged := item(partition)
+		if staged.staged != "" {
+			names.Close()
+			return nil, fmt.Errorf("partition %s is staged twice, in %s and %s", partition, staged.staged, name)
+		}
+		staged.staged, staged.since = name, since
+	}
+	names.Close()
+	if err := names.Err(); err != nil {
+		return nil, err
+	}
+
+	days := rollupRepairDays(p.today, p.today.AddDate(-1, 0, 0))
+	query := "SELECT _partition_id, count() FROM " + t.name + " WHERE " + rollupRepairOnDay + " AND " + rollupRepairUnsorted + " GROUP BY _partition_id ORDER BY _partition_id DESC"
+	var total uint64
+	lastLog := time.Now()
+	for index, day := range days {
+		rows, err := chdb.Conn.Query(ctx, query, day)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", day, err)
+		}
+		for rows.Next() {
+			var partition string
+			var count uint64
+			if err := rows.Scan(&partition, &count); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("%s: %w", day, err)
+			}
+			work := item(partition)
+			work.days = append(work.days, rollupRepairDay{day: day, rows: count})
+			work.rows += count
+			total += count
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("%s: %w", day, err)
+		}
+		if time.Since(lastLog) >= rollupRepairProgressEvery {
+			lastLog = time.Now()
+			rollupRepairLog(ctx, "", "scan_running", "table", t.name, "day", day, "position", fmt.Sprintf("%d/%d", index+1, len(days)), "rows", total)
+		}
+	}
+
+	work := make([]rollupRepairWork, 0, len(order))
+	for _, partition := range order {
+		item := found[partition]
+		sort.Slice(item.days, func(a, b int) bool { return item.days[a].day < item.days[b].day })
+		work = append(work, *item)
 	}
 	return work, nil
 }
@@ -200,35 +335,6 @@ func (t rollupRepairTable) requireSortedView(ctx context.Context) error {
 	return nil
 }
 
-// partitions returns the partitions with work in them and their unsorted rows.
-func (t rollupRepairTable) partitions(ctx context.Context) (map[string]uint64, error) {
-	found := map[string]uint64{}
-	collect := func(query string, args ...any) error {
-		rows, err := chdb.Conn.Query(ctx, query, args...)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var partition string
-			var count uint64
-			if err := rows.Scan(&partition, &count); err != nil {
-				return err
-			}
-			found[partition] += count
-		}
-		return rows.Err()
-	}
-	staged := t.name + rollupRepairStaged
-	if err := collect("SELECT substring(name, ?), toUInt64(0) FROM system.tables WHERE database = currentDatabase() AND startsWith(name, ?)", len(staged)+1, staged); err != nil {
-		return nil, err
-	}
-	if err := collect("SELECT _partition_id, count() FROM " + t.name + " WHERE " + rollupRepairUnsorted + " GROUP BY _partition_id"); err != nil {
-		return nil, err
-	}
-	return found, nil
-}
-
 func (p *rollupRepairPass) repair(ctx context.Context, item rollupRepairWork, index, total int) error {
 	t, partition := item.table, item.partition
 	if !rollupRepairPartition.MatchString(partition) {
@@ -237,14 +343,17 @@ func (p *rollupRepairPass) repair(ctx context.Context, item rollupRepairWork, in
 	started := time.Now()
 	tags := map[string]string{"table": t.name}
 	position := fmt.Sprintf("%d/%d", index, total)
-	staged := t.name + rollupRepairStaged + partition
-	var exists uint64
-	if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database = currentDatabase() AND name = ?", staged).Scan(&exists); err != nil {
-		return err
-	}
+	staged, since := item.staged, item.since
+	// What the delete has to leave empty: the staged days when they are known, every day
+	// from the first one when an earlier run staged them.
+	var days []string
 
 	var before, after uint64
-	if exists == 0 {
+	if staged == "" {
+		if len(item.days) == 0 {
+			p.settled(item)
+			return nil
+		}
 		reason, err := t.lacksSpace(ctx, partition)
 		if err != nil {
 			return err
@@ -256,17 +365,24 @@ func (p *rollupRepairPass) repair(ctx context.Context, item rollupRepairWork, in
 			p.settled(item)
 			return nil
 		}
-		if before, after, err = p.stage(ctx, t, partition, staged); err != nil {
+		since = item.days[0].day
+		staged = rollupRepairStagedName(t.name, partition, since)
+		for _, day := range item.days {
+			days = append(days, day.day)
+		}
+		if after, err = p.stage(ctx, item, staged); err != nil {
 			return err
 		}
-		if before == 0 {
-			p.settled(item)
-			return nil
-		}
+		before = item.rows
 		p.report.RowsBefore += before
 		p.report.RowsAfter += after
 	} else {
-		rollupRepairLog(ctx, "", "partition_resumed", "table", t.name, "partition", partition, "position", position)
+		first, err := time.Parse(rollupRepairDayLayout, since)
+		if err != nil {
+			return err
+		}
+		days = rollupRepairDays(p.today, first)
+		rollupRepairLog(ctx, "", "partition_resumed", "table", t.name, "partition", partition, "position", position, "since", since)
 	}
 	stagedAt := time.Now()
 
@@ -280,7 +396,7 @@ func (p *rollupRepairPass) repair(ctx context.Context, item rollupRepairWork, in
 	if err := p.guard("delete"); err != nil {
 		return err
 	}
-	if err := t.deleteUnsorted(ctx, partition); err != nil {
+	if err := t.deleteUnsorted(ctx, partition, since, days); err != nil {
 		return fmt.Errorf("deleting the unsorted rows: %w", err)
 	}
 	deletedAt := time.Now()
@@ -327,82 +443,81 @@ func (t rollupRepairTable) lacksSpace(ctx context.Context, partition string) (st
 	return "", rows.Err()
 }
 
-func (p *rollupRepairPass) stage(ctx context.Context, t rollupRepairTable, partition, staged string) (before, after uint64, err error) {
+// stage builds the merged copies of the partition's unsorted rows, a day per INSERT,
+// and returns how many it wrote.
+func (p *rollupRepairPass) stage(ctx context.Context, item rollupRepairWork, staged string) (after uint64, err error) {
+	t, partition := item.table, item.partition
 	build := t.name + rollupRepairBuild
 	if err := chdb.Conn.Exec(ctx, "DROP TABLE IF EXISTS "+build+" SYNC"); err != nil {
-		return 0, 0, err
+		return 0, err
 	}
-	rows, err := chdb.Conn.Query(ctx, "SELECT toString(toDate(recorded_at)) AS day, count() FROM "+t.name+
-		" WHERE _partition_id = ? AND "+rollupRepairUnsorted+" GROUP BY day ORDER BY day", partition)
-	if err != nil {
-		return 0, 0, err
-	}
-	type batch struct {
-		day  string
-		rows uint64
-	}
-	var batches []batch
-	for rows.Next() {
-		var b batch
-		if err := rows.Scan(&b.day, &b.rows); err != nil {
-			rows.Close()
-			return 0, 0, err
-		}
-		batches = append(batches, b)
-		before += b.rows
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil || before == 0 {
-		return 0, 0, err
-	}
-
 	if err := chdb.Conn.Exec(ctx, "CREATE TABLE "+build+" AS "+t.name); err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	// A day at a time bounds the GROUP BY; a rollup bucket never spans two days.
 	insert := "INSERT INTO " + build + " (" + t.keys + ", tags, " + t.columns + ") SELECT " + t.keys + ", mapSort(tags) AS sorted_tags, " + t.merged +
-		" FROM " + t.name + " WHERE _partition_id = ? AND toString(toDate(recorded_at)) = ? AND " + rollupRepairUnsorted + " GROUP BY " + t.keys + ", sorted_tags"
+		" FROM " + t.name + " WHERE _partition_id = ? AND " + rollupRepairOnDay + " AND " + rollupRepairUnsorted + " GROUP BY " + t.keys + ", sorted_tags"
 	tags := map[string]string{"table": t.name}
-	for index, b := range batches {
+	for index, b := range item.days {
 		if err := p.guard("stage"); err != nil {
-			return 0, 0, err
+			return 0, err
 		}
 		started := time.Now()
 		if err := chdb.Conn.Exec(ctx, insert, partition, b.day); err != nil {
-			return 0, 0, fmt.Errorf("merging %s: %w", b.day, err)
+			return 0, fmt.Errorf("merging %s: %w", b.day, err)
 		}
 		var written uint64
 		if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+build).Scan(&written); err != nil {
-			return 0, 0, err
+			return 0, err
 		}
 		took := time.Since(started).Milliseconds()
 		traceway.CaptureCount("traceway.rollup_repair.batches", 1, tags)
 		traceway.CaptureMetricMax("traceway.rollup_repair.batch_ms", float64(took), tags)
 		p.pending(t.name)
-		rollupRepairLog(ctx, "", "batch_merged", "table", t.name, "partition", partition, "batch", b.day, "position", fmt.Sprintf("%d/%d", index+1, len(batches)),
+		rollupRepairLog(ctx, "", "batch_merged", "table", t.name, "partition", partition, "batch", b.day, "position", fmt.Sprintf("%d/%d", index+1, len(item.days)),
 			"rows_in", b.rows, "rows_out", written-after, "took_ms", took)
 		after = written
 	}
 	if err := p.guard("publish"); err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	if err := chdb.Conn.Exec(ctx, "RENAME TABLE "+build+" TO "+staged); err != nil {
-		return 0, 0, err
+		return 0, err
 	}
-	return before, after, nil
+	return after, nil
 }
 
-// deleteUnsorted returns once the partition holds no unsorted row. The delete runs as
-// a background mutation that is polled, not waited on in one query: a large partition
-// takes longer than the connection's read timeout. The count of rows left is what
+// deleteUnsorted returns once the partition holds no unsorted row from since on, which
+// are the rows the staging table held copies of. The delete runs as a background
+// mutation that is polled, not waited on in one query: a large partition takes longer
+// than the connection's read timeout. The count of rows left, a day per query, is what
 // decides, since a mutation can be invisible for a moment on a replicated table, and
 // dropping the staging table while unsorted rows remain would merge them a second time.
-func (t rollupRepairTable) deleteUnsorted(ctx context.Context, partition string) error {
-	command := "DELETE IN PARTITION ID '" + partition + "' WHERE " + rollupRepairUnsorted
+func (t rollupRepairTable) deleteUnsorted(ctx context.Context, partition, since string, days []string) error {
+	first, err := time.Parse(rollupRepairDayLayout, since)
+	if err != nil {
+		return err
+	}
+	command := "DELETE IN PARTITION ID '" + partition + "' WHERE " + rollupRepairUnsorted + " AND toDate(recorded_at) >= toDate('" + first.Format(rollupRepairDayLayout) + "')"
+	// system.mutations holds the command as the server formats it, which differs from
+	// one version to the next, so the repair's deletes are found by two pieces of it.
+	mine := "database = currentDatabase() AND table = ? AND position(command, ?) > 0 AND position(command, 'mapSort(tags)') > 0"
+	marker := "IN PARTITION ID '" + partition + "'"
 	tags := map[string]string{"table": t.name}
 	kill := func() {
 		// A mutation that cannot finish would hold up every later one on the table.
-		_ = chdb.Conn.Exec(ctx, "KILL MUTATION WHERE database = currentDatabase() AND table = ? AND position(command, ?) > 0", t.name, command)
+		_ = chdb.Conn.Exec(ctx, "KILL MUTATION WHERE "+mine, t.name, marker)
+	}
+	unsorted := func() (uint64, error) {
+		var left uint64
+		for _, day := range days {
+			var rows uint64
+			if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+t.name+" WHERE _partition_id = ? AND "+rollupRepairOnDay+" AND "+rollupRepairUnsorted, partition, day).Scan(&rows); err != nil {
+				return 0, err
+			}
+			left += rows
+		}
+		return left, nil
 	}
 	started := time.Now()
 	issued, failedPolls := 0, 0
@@ -412,7 +527,7 @@ func (t rollupRepairTable) deleteUnsorted(ctx context.Context, partition string)
 		var running, parts uint64
 		var reason string
 		err := chdb.Conn.QueryRow(ctx, "SELECT countIf(NOT is_done), toUInt64(sumIf(parts_to_do, NOT is_done)), anyIf(latest_fail_reason, NOT is_done AND latest_fail_reason != '') FROM system.mutations "+
-			"WHERE database = currentDatabase() AND table = ? AND position(command, ?) > 0", t.name, command).Scan(&running, &parts, &reason)
+			"WHERE "+mine, t.name, marker).Scan(&running, &parts, &reason)
 		if err != nil {
 			return err
 		}
@@ -426,8 +541,8 @@ func (t rollupRepairTable) deleteUnsorted(ctx context.Context, partition string)
 			failedPolls = 0
 		}
 		if running == 0 {
-			var left uint64
-			if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+t.name+" WHERE _partition_id = ? AND "+rollupRepairUnsorted, partition).Scan(&left); err != nil {
+			left, err := unsorted()
+			if err != nil {
 				return err
 			}
 			if left == 0 {

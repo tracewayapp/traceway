@@ -19,10 +19,10 @@ Growth stops with the upgrade. **Rows that were already split stay** until their
 | `metric_points` | 7 days | no, expires on its own |
 | `metric_points_1m` | 30 days | no, expires on its own |
 | `metric_points_1h` | 1 year | yes |
-| `metric_points_1d` | never | yes |
+| `metric_points_1d` | never | yes, the last year |
 | `metric_histograms` | 7 days | no, expires on its own |
 | `metric_histograms_1h` | 90 days | yes |
-| `metric_histograms_1d` | 2 years | yes |
+| `metric_histograms_1d` | 2 years | yes, the last year |
 
 ## Check whether you need it
 
@@ -46,17 +46,19 @@ Set one variable on the backend and restart it:
 METRIC_ROLLUP_REPAIR=true
 ```
 
-A pass starts at startup. It scans the four tables, then works through every partition that holds unsorted rows. When a pass leaves nothing behind, the worker logs `metric rollup repair: complete, METRIC_ROLLUP_REPAIR can be unset` and ends. When a pass fails or skips a partition, it runs again an hour later, and at every restart. Leaving the variable set costs one scan of the four tables per start.
+A pass starts at startup. It scans the last year of the four tables, today first and going back a day per query, then works through every partition that holds unsorted rows, the newest first. Rows older than a year are left as they are: they read correctly, and only keep the disk they use. When a pass leaves nothing behind, the worker logs `metric rollup repair: complete, METRIC_ROLLUP_REPAIR can be unset` and ends. When a pass fails or skips a partition, it runs again an hour later, and at every restart. Leaving the variable set costs one scan of the four tables per start.
 
 With several backend instances you can set the variable on all of them. The instance that runs a pass holds a PostgreSQL advisory lock, and the others log `another instance is running it` and look again in an hour.
 
 ### What a pass does to one partition
 
 1. It builds the merged rows of the partition's unsorted rows in a scratch table, one day of data per `INSERT`.
-2. It renames the scratch table to `<table>_tagrepair_<partition>`. That name is the record that the merged rows are complete.
+2. It renames the scratch table to `<table>_tagrepair_<partition>_<first day>`. That name is the record that the merged rows are complete, and of the first day they cover.
 3. `ALTER TABLE ... MOVE PARTITION` puts the merged rows into the rollup table in one step.
-4. `ALTER TABLE ... DELETE IN PARTITION` removes the unsorted rows, as a background mutation the worker polls.
+4. `ALTER TABLE ... DELETE IN PARTITION` removes the unsorted rows from that first day on, as a background mutation the worker polls.
 5. It drops the staging table.
+
+Every query the worker sends to a rollup table reads one day of it, so none of them runs into the five minutes after which the ClickHouse connection ends a query.
 
 Every step can be repeated, so a backend that is stopped or crashes at any point is picked up by the next pass without a row lost or counted twice. Do not drop a `_tagrepair_` table by hand while unsorted rows remain in its partition: the next pass would merge them a second time.
 
@@ -79,6 +81,7 @@ As a reference, 2.26 million split rows in six partitions were merged into 376,0
 Every step is one log line that starts with `metric rollup repair:` followed by the event and `key=value` pairs:
 
 ```text
+metric rollup repair: scan_running table=metric_points_1h day=2026-07-14 position=135/367 rows=5100000
 metric rollup repair: table_scanned table=metric_points_1h partitions=14 rows=8200000 took_ms=5210
 metric rollup repair: pass_started partitions=31 rows=14300000
 metric rollup repair: batch_merged table=metric_points_1h partition=202609 batch=2026-09-03 position=3/30 rows_in=288000 rows_out=4800 took_ms=358
@@ -89,10 +92,11 @@ metric rollup repair: pass_finished partitions_done=31 partitions_skipped=0 rows
 
 | Event | Written |
 |-------|---------|
+| `scan_running` | Every 30 seconds while a table is scanned: the day it has reached, going back from today, and the unsorted rows found so far |
 | `table_scanned` | Once per table at the start of a pass: partitions and unsorted rows found |
 | `pass_started` | Once per pass: the total work |
 | `batch_merged` | After each day of a partition is merged into the scratch table |
-| `partition_resumed` | When a partition an earlier run left staged is taken up again |
+| `partition_resumed` | When a partition an earlier run left staged is taken up again, with the first staged day as `since` |
 | `delete_running` | Every 30 seconds while a partition's delete runs, with the parts still to rewrite |
 | `partition_done` | When a partition is finished, with the time each step took |
 | `partition_skipped` | Warning: a partition was left for a later pass, with the reason |
@@ -112,9 +116,9 @@ SELECT _partition_id, count() FROM metric_points_1h
 WHERE tags != mapSort(tags) GROUP BY _partition_id ORDER BY _partition_id;
 
 -- 2. merged copies of one partition's unsorted rows
-CREATE TABLE metric_points_1h_tagrepair_202609 AS metric_points_1h;
+CREATE TABLE metric_points_1h_byhand_202609 AS metric_points_1h;
 
-INSERT INTO metric_points_1h_tagrepair_202609
+INSERT INTO metric_points_1h_byhand_202609
     (project_id, name, recorded_at, tags, min_val, max_val, sum_val, count_val)
 SELECT project_id, name, recorded_at, mapSort(tags) AS sorted_tags,
        minMergeState(min_val), maxMergeState(max_val), sumMergeState(sum_val), countMergeState(count_val)
@@ -123,9 +127,9 @@ WHERE _partition_id = '202609' AND tags != mapSort(tags)
 GROUP BY project_id, name, recorded_at, sorted_tags;
 
 -- 3. put them in, 4. remove the originals, 5. clean up
-ALTER TABLE metric_points_1h_tagrepair_202609 MOVE PARTITION ID '202609' TO TABLE metric_points_1h;
+ALTER TABLE metric_points_1h_byhand_202609 MOVE PARTITION ID '202609' TO TABLE metric_points_1h;
 ALTER TABLE metric_points_1h DELETE IN PARTITION ID '202609' WHERE tags != mapSort(tags) SETTINGS mutations_sync = 2;
-DROP TABLE metric_points_1h_tagrepair_202609;
+DROP TABLE metric_points_1h_byhand_202609;
 ```
 
 Run the `INSERT` exactly once per partition. `metric_points_1d` takes the same statements. The histogram tables group by their dimension columns as well (`release, env, os, os_major, client, client_major, form_factor, device_class, network, country, view`) and merge with `sum(cnt), sum(total), min(min_val), max(max_val), sum(zero_cnt), sumMap(buckets.1, buckets.2), sum(if(weight_squares > 0, weight_squares, cnt * 1000))`.

@@ -33,10 +33,7 @@ func repairLeftovers(t *testing.T) []string {
 	return names
 }
 
-// seedSplitRollups fills the four repaired tables with series split over six key
-// orders, next to rows that are already sorted, in this month's and last month's
-// partition, and returns how many (table, partition) pairs hold unsorted rows.
-func seedSplitRollups(t *testing.T, projectId uuid.UUID) int {
+func emptyRollups(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
 	for _, name := range repairLeftovers(t) {
@@ -49,6 +46,15 @@ func seedSplitRollups(t *testing.T, projectId uuid.UUID) int {
 			t.Fatal(err)
 		}
 	}
+}
+
+// seedSplitRollups fills the four repaired tables with series split over six key
+// orders, next to rows that are already sorted, in this month's and last month's
+// partition, and returns how many (table, partition) pairs hold unsorted rows.
+func seedSplitRollups(t *testing.T, projectId uuid.UUID) int {
+	t.Helper()
+	ctx := context.Background()
+	emptyRollups(t)
 
 	keys := []string{"server_name", "host.name", "device", "direction", "os.type", "Zone"}
 	thisMonth := time.Now().UTC().Truncate(24 * time.Hour)
@@ -224,5 +230,80 @@ func TestRepairMetricRollups_RefusesWhileAViewDoesNotSort(t *testing.T) {
 	}
 	if left := repairLeftovers(t); len(left) != 0 {
 		t.Errorf("staging tables left behind: %v", left)
+	}
+}
+
+// The repair reads the last year and nothing before it. A row a day older keeps its key
+// order even where a repaired day shares its partition: it has no merged copy, so the
+// delete must not take it.
+func TestRepairMetricRollups_ReadsExactlyTheLastYear(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	projectId := uuid.New()
+	emptyRollups(t)
+
+	// Days as the server counts them, which is how the repair bounds its window.
+	var today string
+	if err := chdb.Conn.QueryRow(ctx, "SELECT toString(today())").Scan(&today); err != nil {
+		t.Fatal(err)
+	}
+	end, err := time.Parse("2006-01-02", today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDay := end.AddDate(-1, 0, 0).Format("2006-01-02")
+	dayBefore := end.AddDate(-1, 0, -1).Format("2006-01-02")
+	// The hourly rollups expire within a year, so only the daily ones can hold such rows.
+	tables := []string{"metric_points_1d", "metric_histograms_1d"}
+	values := []string{"1", "2", "3"}
+	for _, day := range []string{firstDay, dayBefore} {
+		for order, keys := range [][]string{{"b", "a", "c"}, {"c", "b", "a"}} {
+			ordered := make([]string, len(keys))
+			for i, key := range keys {
+				ordered[i] = values[key[0]-'a']
+			}
+			if err := chdb.Conn.Exec(ctx, "INSERT INTO metric_points_1d SELECT toUUID(?), 'system.network.io', mapFromArrays(?, ?), toDateTime64(?, 3), minState(v), maxState(v), sumState(v), countState() FROM (SELECT toFloat64(?) AS v)",
+				projectId.String(), keys, ordered, day+" 00:00:00", float64(order+1)); err != nil {
+				t.Fatal(err)
+			}
+			if err := chdb.Conn.Exec(ctx, "INSERT INTO metric_histograms_1d (project_id, name, recorded_at, view, tags, cnt, total, min_val, max_val, zero_cnt, buckets, weight_squares) "+
+				"SELECT toUUID(?), 'http.server.request.duration', toDateTime(?), '/orders', mapFromArrays(?, ?), 2, 4, 1, 3, 1, ([toInt32(?), toInt32(60)], [1., 1.]), 1",
+				projectId.String(), day+" 00:00:00", keys, ordered, 50+order); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	before := rollupFingerprint(t, projectId)
+
+	report, err := RepairMetricRollups(ctx, func(string) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Partitions != len(tables) || report.RowsBefore != 4 || report.RowsAfter != 2 || len(report.Skipped) != 0 {
+		t.Errorf("report %+v, want %d partitions, 4 rows into 2", report, len(tables))
+	}
+	for table, print := range rollupFingerprint(t, projectId) {
+		if print != before[table] {
+			t.Errorf("%s reads differently after the repair", table)
+		}
+	}
+	for _, table := range tables {
+		for day, want := range map[string][2]uint64{firstDay: {1, 0}, dayBefore: {2, 2}} {
+			var rows, unsorted uint64
+			if err := chdb.Conn.QueryRow(ctx, "SELECT count(), countIf(tags != mapSort(tags)) FROM "+table+" FINAL WHERE project_id = ? AND toDate(recorded_at) = toDate(?)", projectId, day).Scan(&rows, &unsorted); err != nil {
+				t.Fatal(err)
+			}
+			if rows != want[0] || unsorted != want[1] {
+				t.Errorf("%s on %s holds %d rows, %d of them unsorted, want %d and %d", table, day, rows, unsorted, want[0], want[1])
+			}
+		}
+	}
+	if left := repairLeftovers(t); len(left) != 0 {
+		t.Errorf("staging tables left behind: %v", left)
+	}
+
+	again, err := RepairMetricRollups(ctx, func(string) error { return nil })
+	if err != nil || again.Partitions != 0 || again.RowsBefore != 0 {
+		t.Errorf("a second pass must find nothing in the last year, got %+v %v", again, err)
 	}
 }

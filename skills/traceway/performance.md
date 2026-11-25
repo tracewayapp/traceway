@@ -158,6 +158,6 @@ Each row: the suspect, and how to confirm it from Traceway telemetry.
 
 ## Notes on the signals
 
-- Host metrics live under `system.*` (OpenTelemetry hostmetrics, sent by the Traceway OTel Agent) and are split by tags such as `state`; runtime metrics use the OpenTelemetry names of the language (`jvm.*`, `go.*`, `v8js.*`, `process.runtime.*`). Point metrics cannot provide quantiles. Current servers compute p50/p95/p99 for distributions through the CLI, but MCP query validation still rejects them. Use `endpoints list` for request-population percentiles; see `rum.md` for browser distributions and unsupported query options.
+- Host metrics live under `system.*` (OpenTelemetry hostmetrics, sent by the Traceway OTel Agent) and are split by tags such as `state`; runtime metrics use the OpenTelemetry names of the language (`jvm.*`, `go.*`, `v8js.*`, `process.runtime.*`). Point metrics cannot provide quantiles. Current servers compute p50/p75/p90/p95/p99 for distributions through the CLI, but MCP query validation still rejects them. Use `endpoints list` for request-population percentiles; see `rum.md` for browser distributions and unsupported query options.
 - OTLP histograms are stored as distributions; explicit-bound backend histograms also retain `<name>.avg` and `<name>.count`. A bogus metric name returns an empty `series: {}` cleanly, so probing names is safe.
 - When the waterfall shows a gap with no span, that gap is the finding: it is time the request spent waiting (for a connection, a lock, the scheduler), not time spent doing work.

@@ -275,7 +275,7 @@ traceway metrics query --name system.cpu.utilization --tag state=idle --aggregat
 traceway metrics query --name <name> --aggregation avg|sum|count|min|max [--tag key=value] [--group-by <tag>]
 ```
 
-Current servers compute CLI p50/p95/p99 for distribution metrics; point metrics cannot yield percentiles. MCP query validation still rejects these aggregations. Use endpoint statistics for request-population percentiles and [rum.md](rum.md) for browser distributions and query limits. Discover names with `traceway metrics discover`; no `metrics list` exists. Host metrics use `system.*`; explicit-bound backend histograms retain `.avg`/`.count` alongside distributions. An empty series can mean missing data or an unsupported query; inspect errors before drawing conclusions.
+Current servers compute CLI p50/p75/p90/p95/p99 for distribution metrics; point metrics cannot yield percentiles. MCP query validation still rejects these aggregations. Use endpoint statistics for request-population percentiles and [rum.md](rum.md) for browser distributions and query limits. Discover names with `traceway metrics discover`; no `metrics list` exists. Host metrics use `system.*`; explicit-bound backend histograms retain `.avg`/`.count` alongside distributions. An empty series can mean missing data or an unsupported query; inspect errors before drawing conclusions.
 
 ### 4. Correlate with the code
 

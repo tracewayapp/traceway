@@ -106,5 +106,6 @@ captureMessage("User completed checkout");
 - **Stack trace capture**: Full stack traces are captured for exceptions
 - **Custom attributes**: Attach metadata to exceptions for better debugging
 - **Distributed tracing**: Records `fetch` and `XMLHttpRequest` calls as spans and sends the W3C `traceparent` header, so a browser request and the backend work it caused share one trace. This covers `$.ajax()` and browser Axios with no extra setup (see [Distributed Tracing](/client/js-sdk/distributed-tracing))
+- **Performance metrics**: web vitals, route changes and requests are aggregated on the device and sent as histograms. A poor LCP, INP or CLS names the element behind it, and from releases after 2.0.2 a slow interaction also reports which part took the time (see [Performance Metrics](/learn/client-metrics) and [stable element names](/learn/rum-best-practices#10-give-the-controls-people-use-a-stable-name))
 - **Session replay and breadcrumbs**: kept on the device and uploaded with an error, a trigger or a capture (see [Session Replay](/client/js-sdk/session-replay))
 - **Remote collection settings**: change what browsers send from the **Data Collection** page, without a release (see [Remote SDK Config](/learn/remote-config))

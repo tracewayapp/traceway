@@ -245,8 +245,10 @@ Anything that cannot be converted faithfully is reported instead of silently dro
 | Single Value | Current or aggregated value at a glance |
 | Gauge | A value against thresholds |
 | Table | Latest, minimum, maximum and average of the first series |
+| Rating Bar | Share of good, needs-improvement and poor experiences of a web vital over the range |
+| Breakdown Table | The slowest pages, hosts or releases over the range, busiest first, with their counts |
 
-Each widget has one or more **sources**: a metric name (auto-discovered from your project), an aggregation (`avg`, `min`, `max`, `sum`, `count`, `last`, `rate`), optional tag filters, and an optional group-by that splits the chart into one series per tag value. Multiple sources overlay on the same chart.
+Each widget has one or more **sources**: a metric name (auto-discovered from your project), an aggregation (`avg`, `min`, `max`, `sum`, `count`, `last`, `rate`, and for a distribution metric such as a web vital or an OpenTelemetry histogram also `p50`, `p75`, `p90`, `p95`, `p99` and `good_ratio`), optional tag filters, and an optional group-by that splits the chart into one series per tag value. Multiple sources overlay on the same chart.
 
 <img src="/dashboards/dashboards-new-widget.png" alt="Widget editor" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
@@ -257,7 +259,7 @@ The star on any widget pins it to that project's homepage, where you can resize 
 
 ## Build dashboards with the CLI or an AI agent
 
-Ask an agent with the `traceway-write` skill to inspect your instrumented codebase and build charts for its important operations. The skill's separate `dashboard-building.md` guide explains all seven chart types, counter/gauge/histogram semantics, JSON configuration and verification. The same guide is available from the write MCP server as `traceway://knowledge/dashboard-building`.
+Ask an agent with the `traceway-write` skill to inspect your instrumented codebase and build charts for its important operations. The skill's separate `dashboard-building.md` guide explains all nine chart types, counter/gauge/histogram semantics, JSON configuration and verification. The same guide is available from the write MCP server as `traceway://knowledge/dashboard-building`.
 
 Start by confirming which metrics actually arrived:
 

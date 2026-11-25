@@ -198,7 +198,9 @@ Custom metric queries. Traceway does not have a query DSL like PromQL — instea
 
 ```
 traceway metrics query --name <metric.name>
-                       [--aggregation avg|sum|count|min|max|p50|p95|p99]
+                       [--aggregation avg|sum|count|min|max|rate|last|p50|p75|p90|p95|p99|good_ratio]
+                       [--threshold <n>]   # good_ratio only
+                       [--whole-range]     # one value per series for the window
                        [--from RFC3339] [--to RFC3339] [--since 1h]
                        [--interval-minutes <n>]
                        [--tag key=value]   # repeatable, exact match filter
@@ -207,7 +209,7 @@ traceway metrics query --name <metric.name>
 
 `--name` is required; omitting it exits with code 2 and `usage_error`.
 
-**Percentile caveat:** the CLI accepts `p50`/`p95`/`p99` but the server has no quantile aggregation for metric points — it silently computes `avg` for them. Do not present percentile results from `metrics query` to a user; latency percentiles come from `traceway endpoints list` (computed from raw request durations).
+**Percentiles:** `p50`/`p75`/`p90`/`p95`/`p99` and `good_ratio` (with `--threshold`) read a distribution metric (browser web vitals, `app.*`, OTLP histograms); on a point metric the server answers 422 instead of a number. `--whole-range` returns one value for the window, which is how an alert's "p75 over 24 hours" is reproduced. Request latency percentiles of endpoints come from `traceway endpoints list`.
 
 **There is no `metrics list` / `metrics discover` subcommand.** The CLI cannot enumerate available metric names — the user has to provide one, or you have to guess from OpenTelemetry semantic conventions. Names observed live: `system.cpu.utilization`, `system.network.io`, `system.network.errors`, `system.network.dropped`. If the user is checking system telemetry, those four are the likeliest starting points; if they're checking app-level metrics, ask.
 

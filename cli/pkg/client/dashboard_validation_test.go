@@ -21,7 +21,7 @@ func TestValidateDashboardImport(t *testing.T) {
 		strings.Replace(valid, `"line_chart"`, `"pie"`, 1),
 		strings.Replace(valid, `"type":"metric"`, `"type":"sql"`, 1),
 		strings.Replace(valid, `"name":"queue.depth"`, `"name":""`, 1),
-		strings.Replace(valid, `"aggregation":"max"`, `"aggregation":"p95"`, 1),
+		strings.Replace(valid, `"aggregation":"max"`, `"aggregation":"median"`, 1),
 		strings.Replace(valid, `"sources":[{"type":"metric","name":"queue.depth","aggregation":"max"}]`, `"sources":[]`, 1),
 	} {
 		if err := ValidateDashboardImport(json.RawMessage(data), "create"); err == nil {
@@ -64,4 +64,17 @@ func TestValidateDashboardImportLimitsAndChartTypes(t *testing.T) {
 	doc["name"] = "Signals"
 	widget["config"].(map[string]any)["extra"] = strings.Repeat("x", 32*1024)
 	check(false)
+}
+
+// The built-in Web Performance template charts p75 and good-ratio shares in
+// rating_bar and breakdown_table widgets; an agent must be able to import it.
+func TestValidateDashboardImportAcceptsDistributionWidgets(t *testing.T) {
+	doc := `{"schemaVersion":1,"name":"Web Performance","widgets":[
+		{"title":"INP","widgetType":"rating_bar","config":{"sources":[{"type":"metric","name":"browser.web_vital.inp","aggregation":"count","groupBy":"rating"}]}},
+		{"title":"Slowest pages","widgetType":"breakdown_table","config":{"sources":[{"type":"metric","name":"browser.web_vital.lcp","aggregation":"p75","groupBy":"url.path"}]}},
+		{"title":"INP p90","widgetType":"line_chart","config":{"sources":[{"type":"metric","name":"browser.web_vital.inp","aggregation":"p90"},{"type":"metric","name":"browser.web_vital.inp","aggregation":"good_ratio"}]}}
+	]}`
+	if err := ValidateDashboardImport(json.RawMessage(doc), "create"); err != nil {
+		t.Fatal(err)
+	}
 }

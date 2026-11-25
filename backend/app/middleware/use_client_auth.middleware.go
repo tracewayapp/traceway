@@ -5,6 +5,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/cache"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,9 @@ func InitUseClientAuth() {
 		c.Set(ProjectContextKey, project)
 		c.Set(ProjectIdContextKey, project.Id)
 		traceway.SetAttribute(c, "project_id", project.Id.String())
+		if project.OrganizationId != nil {
+			traceway.SetAttribute(c, "organization_id", strconv.Itoa(*project.OrganizationId))
+		}
 
 		c.Next()
 	}

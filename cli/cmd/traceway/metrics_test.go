@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -122,5 +123,43 @@ func TestMetricsQuery_aggregationRejectsBogus(t *testing.T) {
 	var ce *cliError
 	if !errors.As(err, &ce) || ce.code != exitcode.Usage {
 		t.Errorf("expected cliError(Usage), got %v", err)
+	}
+}
+
+// "INP p75 over 24 hours" is one value for the whole window, so reading what an
+// alert saw takes --whole-range; good_ratio carries its threshold.
+func TestMetricsQuery_sendsWholeRangeAndThreshold(t *testing.T) {
+	var body map[string]any
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, _ = w.Write([]byte(`{"results":[]}`))
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+
+	if _, stderr, err := runCmd(t, "", "metrics", "query", "--name", "browser.web_vital.inp", "--aggregation", "good_ratio",
+		"--threshold", "200", "--whole-range", "--since", "24h", "--output", "json"); err != nil {
+		t.Fatalf("metrics query: %v\n%s", err, stderr.String())
+	}
+	if body["wholeRange"] != true {
+		t.Errorf("wholeRange not sent: %v", body)
+	}
+	queries, _ := body["queries"].([]any)
+	query, _ := queries[0].(map[string]any)
+	if query["aggregation"] != "good_ratio" || query["threshold"] != float64(200) {
+		t.Errorf("query sent as %v", query)
+	}
+}
+
+func TestMetricsQuery_thresholdNeedsGoodRatio(t *testing.T) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("server should not be called for a stray --threshold")
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+
+	_, stderr, err := runCmd(t, "", "metrics", "query", "--name", "browser.web_vital.inp", "--aggregation", "p75", "--threshold", "200", "--output", "json")
+	if err == nil || !strings.Contains(stderr.String(), "good_ratio") {
+		t.Fatalf("expected a usage error naming good_ratio, got err=%v stderr=%s", err, stderr.String())
 	}
 }

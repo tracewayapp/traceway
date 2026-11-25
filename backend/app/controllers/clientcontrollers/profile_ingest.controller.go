@@ -96,7 +96,7 @@ func (e profileIngestController) Ingest(c *gin.Context) {
 		}()
 	}
 
-	monitoring.RecordIngestBatch(monitoring.SignalNative, "profiles", convertMs, insertMs, len(samples), len(body))
+	monitoring.RecordIngestBatch(c, monitoring.SignalNative, "profiles", convertMs, insertMs, len(samples), len(body))
 
 	c.JSON(http.StatusOK, gin.H{})
 }

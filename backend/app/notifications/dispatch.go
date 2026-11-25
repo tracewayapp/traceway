@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"github.com/tracewayapp/traceway/backend/v2/app/outbox"
@@ -91,8 +92,28 @@ func prepareRuleMessage(rule *models.NotificationRuleWithChannel, msg Message) M
 	if rule.Severity != "" && !msg.Recovered {
 		msg.Severity = Severity(rule.Severity)
 	}
-	msg.URL = dashboardURL(msg.URL)
+	link := dashboardURL(msg.URL)
+	pinned := dashboardURL(withProjectId(msg.URL, rule.ProjectId))
+	// Slack and GitHub show only the body's link, so it is pinned too.
+	if pinned != link {
+		msg.Body = strings.ReplaceAll(msg.Body, "View details: "+link, "View details: "+pinned)
+	}
+	msg.URL = pinned
 	return msg
+}
+
+// withProjectId pins a dashboard path to the rule's project. Without it the
+// link opens whichever project the reader had selected last, which in an
+// organization with several projects is usually another one.
+func withProjectId(path string, projectId uuid.UUID) string {
+	if !strings.HasPrefix(path, "/") || projectId == uuid.Nil || strings.Contains(path, "projectId=") {
+		return path
+	}
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + "projectId=" + projectId.String()
 }
 
 func enqueueRuleMessage(tx *sql.Tx, rule *models.NotificationRuleWithChannel, channel *models.NotificationChannel, msg Message) (int, error) {

@@ -37,12 +37,12 @@ func buildErrorRateMessage(rate float64, threshold float64, window int, projectN
 	if rate >= threshold*2 {
 		severity = SeverityCritical
 	}
-	headline := fmt.Sprintf("The error rate has reached %.1f%% over the last %d minutes (threshold: %.1f%%).", rate, window, threshold)
+	headline := fmt.Sprintf("The error rate has reached %.1f%% over the last %s (threshold: %.1f%%).", rate, models.WindowPhrase(window), threshold)
 	return Message{
 		Subject:  fmt.Sprintf("[%s] Error rate %.1f%% exceeds %.1f%%", projectName, rate, threshold),
 		Body:     headline,
 		Severity: severity,
-		URL:      "/issues?preset=1h",
+		URL:      "/issues?preset=60m",
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
 			Headline:    headline,
@@ -53,19 +53,25 @@ func buildErrorRateMessage(rate float64, threshold float64, window int, projectN
 	}
 }
 
-func endpointTimeRangeURL(now time.Time) string {
-	from := now.Add(-1 * time.Minute).UTC().Format(time.RFC3339)
-	to := now.Add(2 * time.Minute).UTC().Format(time.RFC3339)
+// endpointTimeRangeURL opens the endpoints page on the window the rule
+// evaluated, plus a minute for rows still being written. Rules without a window
+// of their own get the last 15 minutes.
+func endpointTimeRangeURL(now time.Time, windowMinutes int) string {
+	if windowMinutes <= 0 {
+		windowMinutes = 15
+	}
+	from := now.Add(-time.Duration(windowMinutes) * time.Minute).UTC().Format(time.RFC3339)
+	to := now.Add(time.Minute).UTC().Format(time.RFC3339)
 	return fmt.Sprintf("/endpoints?from=%s&to=%s", from, to)
 }
 
 func buildEndpointLatencyMessage(percentile string, latencyMs float64, thresholdMs float64, endpoint string, window int, projectName string) Message {
-	headline := fmt.Sprintf("The %s latency for %s has reached %.0fms over the last %d minutes (threshold: %.0fms).", percentile, endpoint, latencyMs, window, thresholdMs)
+	headline := fmt.Sprintf("The %s latency for %s has reached %.0fms over the last %s (threshold: %.0fms).", percentile, endpoint, latencyMs, models.WindowPhrase(window), thresholdMs)
 	return Message{
 		Subject:    fmt.Sprintf("[%s] %s latency %.0fms on %s", projectName, percentile, latencyMs, endpoint),
 		Body:       headline,
 		Severity:   SeverityWarning,
-		URL:        endpointTimeRangeURL(time.Now()),
+		URL:        endpointTimeRangeURL(time.Now(), window),
 		DedupToken: endpoint,
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
@@ -84,12 +90,12 @@ func buildApdexDropMessage(apdex float64, threshold float64, total int64, window
 	if apdex < 0.5 {
 		severity = SeverityCritical
 	}
-	headline := fmt.Sprintf("The Apdex score has dropped to %.2f across %d requests over the last %d minutes (threshold: %.2f).", apdex, total, window, threshold)
+	headline := fmt.Sprintf("The Apdex score has dropped to %.2f across %d requests over the last %s (threshold: %.2f).", apdex, total, models.WindowPhrase(window), threshold)
 	return Message{
 		Subject:  fmt.Sprintf("[%s] Apdex dropped to %.2f (threshold: %.2f)", projectName, apdex, threshold),
 		Body:     headline,
 		Severity: severity,
-		URL:      endpointTimeRangeURL(time.Now()),
+		URL:      endpointTimeRangeURL(time.Now(), window),
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
 			Headline:    headline,
@@ -112,12 +118,12 @@ func buildMetricThresholdMessage(series string, value float64, operator string, 
 	if aggregation == "" {
 		aggregation = "avg"
 	}
-	headline := fmt.Sprintf("The metric %s has a %s of %.2f over the last %d minutes which violates the threshold %s %.2f.", series, aggregation, value, window, operator, threshold)
+	headline := fmt.Sprintf("The metric %s has a %s of %.2f over the last %s which violates the threshold %s %.2f.", series, aggregation, value, models.WindowPhrase(window), operator, threshold)
 	return Message{
 		Subject:    fmt.Sprintf("[%s] Metric %s is %.2f (threshold: %s %.2f)", projectName, series, value, operator, threshold),
 		Body:       headline,
 		Severity:   severity,
-		URL:        "/metrics?preset=1h",
+		URL:        "/dashboards?preset=60m",
 		DedupToken: series,
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
@@ -132,12 +138,12 @@ func buildMetricThresholdMessage(series string, value float64, operator string, 
 }
 
 func buildMetricThresholdOverflowMessage(metricName string, count int, operator string, threshold float64, window int, projectName string) Message {
-	headline := fmt.Sprintf("%d more series of the metric %s violate the threshold %s %.2f over the last %d minutes. Group the metric on the metrics page to see them.", count, metricName, operator, threshold, window)
+	headline := fmt.Sprintf("%d more series of the metric %s violate the threshold %s %.2f over the last %s. Group the metric on the metrics page to see them.", count, metricName, operator, threshold, models.WindowPhrase(window))
 	return Message{
 		Subject:    fmt.Sprintf("[%s] Metric %s: %d more series breach the threshold (%s %.2f)", projectName, metricName, count, operator, threshold),
 		Body:       headline,
 		Severity:   SeverityWarning,
-		URL:        "/metrics?preset=1h",
+		URL:        "/dashboards?preset=60m",
 		DedupToken: metricOverflowToken(metricName),
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
@@ -159,7 +165,7 @@ func buildMetricSeriesRecoveredMessage(series string, value float64, operator st
 		aggregation = "avg"
 	}
 	msg.Subject = fmt.Sprintf("[%s] Metric %s recovered: %.2f (threshold: %s %.2f)", projectName, series, value, operator, threshold)
-	msg.Body = fmt.Sprintf("The metric %s has a %s of %.2f over the last %d minutes which no longer violates the threshold %s %.2f.", series, aggregation, value, window, operator, threshold)
+	msg.Body = fmt.Sprintf("The metric %s has a %s of %.2f over the last %s which no longer violates the threshold %s %.2f.", series, aggregation, value, models.WindowPhrase(window), operator, threshold)
 	msg.Email.Alert.Headline = msg.Body
 	msg.Severity, msg.Recovered = SeverityInfo, true
 	return msg
@@ -172,7 +178,7 @@ func buildMetricSeriesSilencedMessage(series string, projectName string) Message
 		Body:       headline,
 		Severity:   SeverityInfo,
 		Recovered:  true,
-		URL:        "/metrics?preset=1h",
+		URL:        "/dashboards?preset=60m",
 		DedupToken: series,
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
@@ -184,13 +190,13 @@ func buildMetricSeriesSilencedMessage(series string, projectName string) Message
 }
 
 func buildMetricThresholdOverflowRecoveredMessage(metricName string, operator string, threshold float64, window int, projectName string) Message {
-	headline := fmt.Sprintf("No series of the metric %s violates the threshold %s %.2f over the last %d minutes.", metricName, operator, threshold, window)
+	headline := fmt.Sprintf("No series of the metric %s violates the threshold %s %.2f over the last %s.", metricName, operator, threshold, models.WindowPhrase(window))
 	return Message{
 		Subject:    fmt.Sprintf("[%s] Metric %s recovered: no series breaches the threshold (%s %.2f)", projectName, metricName, operator, threshold),
 		Body:       headline,
 		Severity:   SeverityInfo,
 		Recovered:  true,
-		URL:        "/metrics?preset=1h",
+		URL:        "/dashboards?preset=60m",
 		DedupToken: metricOverflowToken(metricName),
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
@@ -204,7 +210,7 @@ func buildMetricThresholdOverflowRecoveredMessage(metricName string, operator st
 }
 
 func buildNoDataMessage(dataType string, silenceMinutes int, projectName string) Message {
-	headline := fmt.Sprintf("No %s data has been received for the last %d minutes.", dataType, silenceMinutes)
+	headline := fmt.Sprintf("No %s data has been received for the last %s.", dataType, models.WindowPhrase(silenceMinutes))
 	return Message{
 		Subject:    fmt.Sprintf("[%s] No %s data for %d minutes", projectName, dataType, silenceMinutes),
 		Body:       headline,
@@ -226,12 +232,12 @@ func buildErrorCountMessage(count int64, threshold int64, window int, projectNam
 	if count >= threshold*5 {
 		severity = SeverityCritical
 	}
-	headline := fmt.Sprintf("There have been %d errors in the last %d minutes (threshold: %d).", count, window, threshold)
+	headline := fmt.Sprintf("There have been %d errors in the last %s (threshold: %d).", count, models.WindowPhrase(window), threshold)
 	return Message{
-		Subject:  fmt.Sprintf("[%s] %d errors in last %d minutes", projectName, count, window),
+		Subject:  fmt.Sprintf("[%s] %d errors in last %s", projectName, count, models.WindowPhrase(window)),
 		Body:     headline,
 		Severity: severity,
-		URL:      "/issues?preset=1h",
+		URL:      "/issues?preset=60m",
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
 			Headline:    headline,
@@ -243,12 +249,12 @@ func buildErrorCountMessage(count int64, threshold int64, window int, projectNam
 }
 
 func buildTaskDurationMessage(taskName string, p95Ms float64, thresholdMs float64, window int, projectName string) Message {
-	headline := fmt.Sprintf("The task %s P95 duration is %.0fms over the last %d minutes (threshold: %.0fms).", taskName, p95Ms, window, thresholdMs)
+	headline := fmt.Sprintf("The task %s P95 duration is %.0fms over the last %s (threshold: %.0fms).", taskName, p95Ms, models.WindowPhrase(window), thresholdMs)
 	return Message{
 		Subject:    fmt.Sprintf("[%s] Task %s P95 %.0fms exceeds %.0fms", projectName, taskName, p95Ms, thresholdMs),
 		Body:       headline,
 		Severity:   SeverityWarning,
-		URL:        "/tasks?preset=1h",
+		URL:        "/tasks?preset=60m",
 		DedupToken: taskName,
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
@@ -267,12 +273,12 @@ func buildTaskFailureRateMessage(taskName string, rate float64, threshold float6
 	if rate >= threshold*2 {
 		severity = SeverityCritical
 	}
-	headline := fmt.Sprintf("The task %s failed %d of %d executions (%.1f%%) over the last %d minutes (threshold: %.1f%%).", taskName, failed, total, rate, window, threshold)
+	headline := fmt.Sprintf("The task %s failed %d of %d executions (%.1f%%) over the last %s (threshold: %.1f%%).", taskName, failed, total, rate, models.WindowPhrase(window), threshold)
 	return Message{
 		Subject:    fmt.Sprintf("[%s] Task %s failure rate %.1f%% exceeds %.1f%%", projectName, taskName, rate, threshold),
 		Body:       headline,
 		Severity:   severity,
-		URL:        "/tasks?preset=1h",
+		URL:        "/tasks?preset=60m",
 		DedupToken: taskName,
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
@@ -291,12 +297,12 @@ func buildThroughputDropMessage(dropPercent float64, current int64, expected flo
 	if dropPercent >= 80 {
 		severity = SeverityCritical
 	}
-	headline := fmt.Sprintf("Request throughput has dropped by %.0f%%: %d requests in the last %d minutes vs an expected %.0f based on the baseline window.", dropPercent, current, window, expected)
+	headline := fmt.Sprintf("Request throughput has dropped by %.0f%%: %d requests in the last %s vs an expected %.0f based on the baseline window.", dropPercent, current, models.WindowPhrase(window), expected)
 	return Message{
 		Subject:  fmt.Sprintf("[%s] Throughput dropped %.0f%% vs baseline", projectName, dropPercent),
 		Body:     headline,
 		Severity: severity,
-		URL:      endpointTimeRangeURL(time.Now()),
+		URL:      endpointTimeRangeURL(time.Now(), window),
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
 			Headline:    headline,
@@ -317,7 +323,7 @@ func buildEndpointErrorRateMessage(endpoint string, rate float64, threshold floa
 		Subject:    fmt.Sprintf("[%s] %s error rate %.1f%%", projectName, endpoint, rate),
 		Body:       headline,
 		Severity:   severity,
-		URL:        endpointTimeRangeURL(time.Now()),
+		URL:        endpointTimeRangeURL(time.Now(), 0),
 		DedupToken: endpoint,
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,
@@ -339,7 +345,7 @@ func buildImpactScoreMessage(level string, severity Severity, endpoint string, s
 		Subject:    fmt.Sprintf("[%s] Endpoint %s impact became %s", projectName, endpoint, level),
 		Body:       headline,
 		Severity:   severity,
-		URL:        endpointTimeRangeURL(time.Now()),
+		URL:        endpointTimeRangeURL(time.Now(), 0),
 		Endpoint:   endpoint,
 		DedupToken: endpoint,
 		Email: alertEmail(models.EmailAlert{
@@ -382,7 +388,7 @@ func buildAiTraceCostMessage(traceName string, cost float64, threshold float64, 
 		Subject:    fmt.Sprintf("[%s] AI trace %s cost %s exceeds %s", projectName, traceName, formatCostForMessage(cost), formatCostForMessage(threshold)),
 		Body:       headline,
 		Severity:   severity,
-		URL:        "/ai-traces?preset=1h",
+		URL:        "/ai-traces?preset=60m",
 		DedupToken: traceName,
 		Email: alertEmail(models.EmailAlert{
 			ProjectName: projectName,

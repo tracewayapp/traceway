@@ -244,7 +244,7 @@ func (o otelController) ExportTraces(c *gin.Context) {
 
 	insertMs := msSince(insertStart)
 	totalSize := len(endpoints) + len(tasks) + len(canonicalSpans) + len(exceptions) + len(aiTraces)
-	monitoring.RecordIngestBatch(monitoring.SignalTraces, "traces", convertMs, insertMs, totalSize, bodyBytes)
+	monitoring.RecordIngestBatch(c, monitoring.SignalTraces, "traces", convertMs, insertMs, totalSize, bodyBytes)
 
 	var exceptionHashes []string
 	for _, ex := range exceptions {
@@ -363,7 +363,7 @@ func (o otelController) ExportMetrics(c *gin.Context) {
 		}
 	}
 
-	monitoring.RecordIngestBatch(monitoring.SignalMetrics, "metric_points", convertMs, insertMs, len(result.Points), bodyBytes)
+	monitoring.RecordIngestBatch(c, monitoring.SignalMetrics, "metric_points", convertMs, insertMs, len(result.Points), bodyBytes)
 
 	if hasOrg && perm.Data {
 		hooks.BroadcastReport(hooks.ReportEvent{
@@ -396,7 +396,7 @@ func (o otelController) exportClientMetrics(c *gin.Context, projectId uuid.UUID,
 
 	start := time.Now()
 	result := services.ClientMetrics().IngestOTLP(projectId, req, services.ClientOf(c.GetHeader, c.ClientIP()), start)
-	monitoring.RecordIngestBatch(monitoring.SignalMetrics, "metric_histograms", msSince(start), 0, result.Accepted, bodyBytes)
+	monitoring.RecordIngestBatch(c, monitoring.SignalMetrics, "metric_histograms", msSince(start), 0, result.Accepted, bodyBytes)
 
 	if hasOrg {
 		hooks.BroadcastReport(hooks.ReportEvent{
@@ -509,7 +509,7 @@ func (o otelController) ExportLogs(c *gin.Context) {
 		}
 	}
 
-	monitoring.RecordIngestBatch(monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
+	monitoring.RecordIngestBatch(c, monitoring.SignalLogs, "log_records", convertMs, insertMs, len(records), bodyBytes)
 
 	if hasOrg && (perm.Data || len(exceptions) > 0) {
 		ev := hooks.ReportEvent{
@@ -591,7 +591,7 @@ func (o otelController) ExportProfiles(c *gin.Context) {
 	}
 	insertMs := msSince(insertStart)
 
-	monitoring.RecordIngestBatch(monitoring.SignalProfiles, "profiling_samples", convertMs, insertMs, len(samples), bodyBytes)
+	monitoring.RecordIngestBatch(c, monitoring.SignalProfiles, "profiling_samples", convertMs, insertMs, len(samples), bodyBytes)
 
 	writeProfilesResponse(c)
 }

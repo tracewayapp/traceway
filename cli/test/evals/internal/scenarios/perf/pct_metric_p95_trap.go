@@ -41,10 +41,10 @@ func pctSlowdown(busy float64) float64 {
 
 // pctSeedMetricP95Trap: every afternoon traffic triples and the two query
 // hosts run at 97-100% CPU, stretching every endpoint (no single long pole).
-// The user relays ops' "p95 CPU around 45%", which is what metrics query
-// returns for --aggregation p95 over a day: the server has no quantiles for
-// metric points and silently averages. Expected: cpu_saturation, reported
-// with the max (or bucketed) CPU, not a fake percentile.
+// The user relays ops' "p95 CPU around 45%", which is the daily mean: CPU
+// utilization is a point metric, so metrics query refuses a percentile of it
+// (422). Expected: cpu_saturation, reported with the max (or bucketed) CPU,
+// not a fake percentile.
 func pctSeedMetricP95Trap(s *seed.Scenario) error {
 	p := s.Project("search", seed.OTel)
 	window := 3 * 24 * time.Hour

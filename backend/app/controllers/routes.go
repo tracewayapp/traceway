@@ -60,23 +60,23 @@ func buildPagination(page, pageSize, total int) Pagination {
 
 func RegisterControllers(router *gin.RouterGroup) {
 	router.OPTIONS("/report", middleware.CORSReport)
-	router.POST("/report", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.ClientController.Report)
+	router.POST("/report", middleware.CORSReport, middleware.UseClientAuth, middleware.PrefetchReportBody, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.ClientController.Report)
 
 	router.OPTIONS("/recordings", middleware.CORSReport)
-	router.POST("/recordings", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.RecordingsController.Ingest)
+	router.POST("/recordings", middleware.CORSReport, middleware.UseClientAuth, middleware.PrefetchReportBody, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.RecordingsController.Ingest)
 
 	router.OPTIONS("/profiles/ingest", middleware.CORSReport)
-	router.POST("/profiles/ingest", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.ProfileIngestController.Ingest)
+	router.POST("/profiles/ingest", middleware.CORSReport, middleware.UseClientAuth, middleware.PrefetchReportBody, middleware.IngestAdmission, middleware.UseGzip, clientcontrollers.ProfileIngestController.Ingest)
 
 	otelGroup := router.Group("/otel")
 	otelGroup.OPTIONS("/v1/traces", middleware.CORSReport)
 	otelGroup.OPTIONS("/v1/metrics", middleware.CORSReport)
 	otelGroup.OPTIONS("/v1/logs", middleware.CORSReport)
 	otelGroup.OPTIONS("/v1development/profiles", middleware.CORSReport)
-	otelGroup.POST("/v1/traces", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportTraces)
-	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, middleware.MetricsAdmission, otelcontrollers.OtelController.ExportMetrics)
-	otelGroup.POST("/v1/logs", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportLogs)
-	otelGroup.POST("/v1development/profiles", middleware.CORSReport, middleware.UseClientAuth, middleware.IngestAdmission, otelcontrollers.OtelController.ExportProfiles)
+	otelGroup.POST("/v1/traces", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.PrefetchBody, middleware.IngestAdmission, otelcontrollers.OtelController.ExportTraces)
+	otelGroup.POST("/v1/metrics", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.PrefetchMetricsBody, middleware.MetricsAdmission, otelcontrollers.OtelController.ExportMetrics)
+	otelGroup.POST("/v1/logs", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.PrefetchBody, middleware.IngestAdmission, otelcontrollers.OtelController.ExportLogs)
+	otelGroup.POST("/v1development/profiles", middleware.CORSReport, middleware.UseClientAuth, otelcontrollers.PrefetchBody, middleware.IngestAdmission, otelcontrollers.OtelController.ExportProfiles)
 	otelGroup.OPTIONS("/v1/opamp", middleware.OpampCors)
 	otelGroup.POST("/v1/opamp", middleware.OpampCors, middleware.UseClientAuth, middleware.OpampAdmission, opampcontrollers.OpampController.Poll)
 

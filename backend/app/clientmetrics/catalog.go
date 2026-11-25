@@ -38,6 +38,10 @@ type Metric struct {
 	// PerUser marks a metric the device counts once per day: it describes a person, not
 	// a page, so it takes no page dimension.
 	PerUser bool
+	// EventsPerCost is how many events of a counter cost one place of an address's
+	// per-minute budget; zero means one. Frames come at the display's rate, so a client
+	// pays for a second of them, not for each one.
+	EventsPerCost float64
 }
 
 var (
@@ -51,6 +55,8 @@ var (
 const (
 	minute = 60_000
 	hour   = 60 * minute
+	// framesPerSecond is what a second of frames costs a client's budget.
+	framesPerSecond = 60
 )
 
 var catalog = buildCatalog([]Metric{
@@ -88,10 +94,10 @@ var catalog = buildCatalog([]Metric{
 	{Name: "app.start.duration", Unit: "ms", Max: 2 * minute, Dims: map[string][]string{"start_type": {"cold", "warm", "hot"}}},
 	{Name: "app.screen.ttid", Unit: "ms", Max: 2 * minute},
 	{Name: "app.screen.ttfd", Unit: "ms", Max: 2 * minute},
-	{Name: "app.frames.slow", Shape: Counter},
-	{Name: "app.frames.slow.total", Shape: Counter},
-	{Name: "app.frames.frozen", Shape: Counter},
-	{Name: "app.frames.frozen.total", Shape: Counter},
+	{Name: "app.frames.slow", Shape: Counter, EventsPerCost: framesPerSecond},
+	{Name: "app.frames.slow.total", Shape: Counter, EventsPerCost: framesPerSecond},
+	{Name: "app.frames.frozen", Shape: Counter, EventsPerCost: framesPerSecond},
+	{Name: "app.frames.frozen.total", Shape: Counter, EventsPerCost: framesPerSecond},
 	{Name: "app.hang", Shape: Counter},
 	{Name: "app.hang.duration", Unit: "ms", Max: 10 * minute},
 	{Name: "app.anr", Shape: Counter},

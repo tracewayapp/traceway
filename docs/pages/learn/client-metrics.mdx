@@ -2,7 +2,7 @@
 
 Client metrics are the performance numbers of browsers and mobile apps: web vitals, route changes, main-thread blocking, app start, screen display times, requests. Nobody charts one phone. The question is always about a population, such as "p75 LCP of release 4.2 on Android", so Traceway stores them as **distributions**: one mergeable histogram per metric, set of dimensions and minute. Storage grows with the number of dimension combinations, not with the number of users.
 
-Browser metrics are the measurement layer of [Real User Monitoring (RUM)](/learn/rum). **Web Performance** is assigned in the same transaction that creates a React, Vue, Svelte or jQuery project, before the first telemetry arrives. An upgrade migration adds missing defaults to existing browser projects without changing custom dashboards. Removing a default after that migration remains your choice. Mobile projects have no Dashboards page yet.
+Browser metrics are the measurement layer of [Real User Monitoring (RUM)](/learn/rum). **Web Performance** is assigned in the same transaction that creates a React, Vue, Svelte or jQuery project, before the first telemetry arrives. An upgrade migration adds missing defaults to existing browser projects without changing custom dashboards. Removing a default after that migration remains your choice. A Flutter project is created with **Flutter Performance**, which charts the `app.*` metrics of the [Flutter SDK](/client/flutter#app-performance-metrics) 2.x. React Native, Android and iOS projects have no Dashboards page yet.
 
 ## How the numbers travel
 
@@ -41,7 +41,7 @@ Histogram buckets are about 9% wide, with roughly 4.5% midpoint resolution for o
 
 A ratio is two counters, `<name>` and `<name>.total`.
 
-The `app.*` metrics are accepted from any mobile project that sends them as OTLP. The released mobile SDKs do not send them yet, and the dashboard has no Dashboards page for mobile projects to chart them on.
+The `app.*` metrics are accepted from any mobile project that sends them as OTLP. The Flutter SDK 2.x sends app start, screen display times, slow and frozen frames, hangs, unhandled errors (`app.crash`), sessions, users, peak memory and requests; it measures no ANRs, out-of-memory kills, CPU time, energy, app size or disk use, so the Flutter Performance dashboard has no widgets for them. The Flutter SDK 1.x and the React Native, Android and iOS SDKs do not send them yet, and the dashboard has no Dashboards page for those projects.
 
 "Users affected" over a day is `browser.user.affected` divided by `browser.user`; error-free users is one minus the `js_error` share. Over a longer range the same division is weighted by user-days, since a person counts once each day. The counters need the browser's storage and are left out where it is unavailable.
 

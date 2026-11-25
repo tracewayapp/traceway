@@ -160,6 +160,16 @@ func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.Das
 	return dashboard
 }
 
+// populateDashboardsOnCreate installs a new project's default dashboards on the paths a person creates it from (the
+// project page, registration, OAuth signup). React Native, Android and iOS projects have no Dashboards page and their
+// SDKs send no app.* metrics yet, so they get nothing there; the batch path keeps installing theirs.
+func populateDashboardsOnCreate(tx *sql.Tx, project *models.Project, createdBy *int) error {
+	if mobileFrameworks[project.Framework] && project.Framework != "flutter" {
+		return nil
+	}
+	return populateDefaultDashboards(tx, project, createdBy)
+}
+
 func populateDefaultDashboards(tx *sql.Tx, project *models.Project, createdBy *int) error {
 	if project.OrganizationId == nil {
 		return nil
@@ -167,6 +177,13 @@ func populateDefaultDashboards(tx *sql.Tx, project *models.Project, createdBy *i
 	keys := defaultTemplateKeysForFramework(project.Framework)
 	if len(keys) == 0 {
 		return nil
+	}
+	// Dashboard names are unique per organization: the lock EnsureBrowserDefault takes keeps two projects created
+	// at the same moment from both picking the same free name and failing the second creation.
+	if !db.IsSQLite() {
+		if _, err := tx.Exec("SELECT pg_advisory_xact_lock(824738, $1)", *project.OrganizationId); err != nil {
+			return err
+		}
 	}
 
 	existing, err := transactional.DashboardRepository.FindAssignmentsByProject(tx, project.Id)
@@ -262,8 +279,9 @@ func (c *dashboardTemplateController) Install(ctx *gin.Context) {
 }
 
 // mobileFrameworks get the Mobile Performance template. React Native is a mobile app
-// although its SDK is JavaScript.
-var mobileFrameworks = map[string]bool{"react-native": true, "flutter": true, "ios": true, "android": true}
+// although its SDK is JavaScript. Flutter has its own template: its SDK measures no
+// ANRs or out-of-memory kills, and an unhandled Dart error is not a crash.
+var mobileFrameworks = map[string]bool{"react-native": true, "ios": true, "android": true}
 
 func defaultTemplateKeysForFramework(framework string) []string {
 	goFrameworks := map[string]bool{
@@ -277,6 +295,8 @@ func defaultTemplateKeysForFramework(framework string) []string {
 		return []string{"golang"}
 	case sdkconfig.IsBrowserFramework(framework):
 		return []string{"browser-performance"}
+	case framework == "flutter":
+		return []string{"flutter-performance"}
 	case mobileFrameworks[framework]:
 		return []string{"mobile-performance"}
 	default:

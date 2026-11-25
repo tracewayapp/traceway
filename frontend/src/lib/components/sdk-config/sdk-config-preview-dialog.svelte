@@ -24,7 +24,12 @@
 		heartbeatIntervalSeconds: number;
 	}
 
-	let attributesText = $state('service.version=2.4.0\nbrowser.name=Chrome\nuser.id=');
+	const flutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	let attributesText = $state(
+		projectsState.currentProject?.framework === 'flutter'
+			? 'service.version=2.4.0\nos.name=android\nuser.id='
+			: 'service.version=2.4.0\nbrowser.name=Chrome\nuser.id='
+	);
 	let instanceUid = $state('');
 	let result = $state<PreviewResult | null>(null);
 	let resultJson = $state('');
@@ -113,8 +118,9 @@
 						</div>
 					{/if}
 					<div class="text-muted-foreground">
-						Polls every {Math.round(result.heartbeatIntervalSeconds / 60)} min, and when the tab regains
-						focus.
+						Polls every {Math.round(result.heartbeatIntervalSeconds / 60)} min, and when {flutter
+							? 'the app comes back to the foreground'
+							: 'the tab regains focus'}.
 					</div>
 					<CodeEditor value={resultJson} readOnly minHeight="160px" />
 				</div>

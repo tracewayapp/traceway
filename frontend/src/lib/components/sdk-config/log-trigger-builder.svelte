@@ -9,10 +9,12 @@
 
 	interface Props {
 		disabled?: boolean;
+		/** A Flutter project: the capture goes on across screens, not pages. */
+		flutter?: boolean;
 		onAdd: (trigger: Record<string, unknown>) => void;
 	}
 
-	let { disabled = false, onAdd }: Props = $props();
+	let { disabled = false, flutter = false, onAdd }: Props = $props();
 
 	const opLabels: Record<LogMatchOp, string> = {
 		icontains: 'contains (any case)',
@@ -77,7 +79,7 @@
 	<p class="text-xs text-muted-foreground">
 		Matched on the device against every log record, including lines that are not collected. The
 		capture uploads what the device buffered and then streams everything, also on the following
-		pages, until it ends.
+		{flutter ? 'screens' : 'pages'}, until it ends.
 	</p>
 	<div class="grid gap-2 sm:grid-cols-[auto_1fr]">
 		<Select.Root type="single" bind:value={op} {disabled}>
@@ -95,14 +97,17 @@
 		/>
 	</div>
 	<div class="flex flex-wrap items-center gap-2 text-sm">
-		<Select.Root type="single" bind:value={level} {disabled}>
-			<Select.Trigger class="w-40">{levelLabels[level]}</Select.Trigger>
-			<Select.Content>
-				{#each Object.entries(levelLabels) as [value, label] (value)}
-					<Select.Item {value}>{label}</Select.Item>
-				{/each}
-			</Select.Content>
-		</Select.Root>
+		<!-- The Flutter SDK logs every line at info, so a level would never match. -->
+		{#if !flutter}
+			<Select.Root type="single" bind:value={level} {disabled}>
+				<Select.Trigger class="w-40">{levelLabels[level]}</Select.Trigger>
+				<Select.Content>
+					{#each Object.entries(levelLabels) as [value, label] (value)}
+						<Select.Item {value}>{label}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		{/if}
 		<Input class="w-20" type="number" min="1" max="1000" bind:value={count} {disabled} />
 		<span class="text-muted-foreground">time(s)</span>
 		{#if Number(count) > 1}

@@ -1,11 +1,21 @@
 # Flutter SDK Reference
 
-The Traceway Flutter SDK is the [`traceway`](https://pub.dev/packages/traceway) package on pub.dev. It supports iOS, Android, and macOS. It does NOT support Flutter web (see the bottom of this file).
+The Traceway Flutter SDK is the [`traceway`](https://pub.dev/packages/traceway) package on pub.dev. Error tracking works on iOS, Android, macOS, Linux and Windows; screen recording needs a hardware video encoder and works on iOS, Android and macOS only (the 1.x docs list only iOS, Android and macOS). It does NOT support Flutter web (see the bottom of this file).
+
+## Choose the version
+
+There are two generations with the same entry point (`Traceway.run`) and connection string:
+
+- **1.x** (newest stable, `1.0.9`): errors with the last ~10 seconds of logs, actions and screen recording, sent to `/api/report`. `flutter pub add traceway` installs it.
+- **2.x** (the 2.x prerelease, `2.0.0-beta.N`): rebuilt on the OpenTelemetry SDK for Dart. Logs and spans go as OTLP/HTTP to `/api/otel/v1/logs` and `/api/otel/v1/traces`, performance metrics to `/api/otel/v1/metrics`, screen recordings to `/api/recordings`, and the SDK polls `/api/otel/v1/opamp` for the Flutter project's **Data Collection** rules. It needs a Traceway server that accepts Flutter projects on those endpoints; there is no fallback to `/api/report`. Install it with `flutter pub add 'traceway:{"git":{"url":"https://github.com/tracewayapp/traceway-flutter.git","ref":"v2-session-capture"}}'`.
+
+Read the installed version from `pubspec.lock`. Keep an existing app on its major, and move a 1.x app to 2.x only when the user asks for it or for something only 2.x has (remote config, captures and recording triggers, performance metrics and the Flutter Performance dashboard, trace propagation, sending telemetry to another OpenTelemetry backend). A new integration installs the 2.x prerelease with `flutter pub add 'traceway:{"git":{"url":"https://github.com/tracewayapp/traceway-flutter.git","ref":"v2-session-capture"}}'`, the command the project's Connection page shows, when the Traceway server accepts Flutter projects on OTLP and OpAMP; on an older server it installs 1.x. `curl -s https://pub.dev/api/packages/traceway` shows the stable release as `latest`; the 2.x preview is installed from Git. Commit the resolved revision in the app’s pubspec.lock. Moving from 1.x to 2.x removes options (`debounceMs`, `retryDelayMs`, `maxPendingExceptions`, `maxLocalFiles`, `localFileMaxAgeHours`, `eventsWindow`, `eventsMaxCount`); delete them from the call. Docs (2.x): https://docs.tracewayapp.com/client/flutter
 
 ## Setup
 
 ```bash
-flutter pub add traceway
+flutter pub add 'traceway:{"git":{"url":"https://github.com/tracewayapp/traceway-flutter.git","ref":"v2-session-capture"}}'  # 2.x prerelease, new integrations
+flutter pub add traceway                  # 1.x, the stable release (older servers)
 ```
 
 Wrap the app in `Traceway.run()`:
@@ -37,6 +47,38 @@ MaterialApp(
 );
 ```
 
+## Names for widgets and routes (2.x)
+
+A Flutter app has no DOM and no URL, so the SDK names a tap by a widget selector and a screen by a route path. The session timeline shows both, the per-screen metrics are grouped by the route path, and the **Recording triggers** of the project's Data Collection page are matched against them. The names come from the app's code, so setup decides how good they are.
+
+**Routes.** Navigation is recorded only by `Traceway.navigatorObserver`. Attach it to every `Navigator` whose routes should count: `MaterialApp.navigatorObservers`, a nested `Navigator`, and the observers list of a router. A route is reported as the first of:
+
+1. its name (`RouteSettings.name`): named routes, `onGenerateRoute`, routers that name their pages, for example `/users/42`,
+2. `/` and the type of the page widget, for example `/CheckoutPage` for `MaterialPageRoute(builder: (_) => const CheckoutPage())`,
+3. `/` and the route's type, for example `/DialogRoute`.
+
+A trigger's navigation step such as `/users/{id}` is compared with that path by segment and case-sensitively; `{id}` is one non-empty segment, and a query string is ignored. Types 2 and 3 are minified in `--obfuscate` builds, so name the routes of an obfuscated app (`MaterialPageRoute(settings: const RouteSettings(name: '/checkout'), ...)`). A router that does not report to a `NavigatorObserver`, or whose route names are templates, reports its location itself:
+
+```dart
+router.routerDelegate.addListener(() => Traceway.recordNavigation(
+    router.routerDelegate.currentConfiguration.uri.path));
+```
+
+**Widgets.** A click or hover step takes a selector in CSS syntax, read against the widgets under the pointer:
+
+| Selector | Matches a widget that |
+|----------|-----------------------|
+| `ElevatedButton` | is of that type |
+| `#pay` | has `Key('pay')` (a string `ValueKey`), or is `Semantics(identifier: 'pay')` |
+| `.button` | is a `Semantics` with that role (`button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected`) |
+| `[key="42"]`, `[identifier="x"]` | has that `ValueKey` value or `Semantics.identifier` |
+| `[label="Delete"]` | has that semantics label or tooltip |
+| `[text="Pay now"]` | shows that text (never an input's content) |
+
+There are no element ids, classes or `data-*` attributes; these are the only names. Every tap is recorded with the best selector the tapped control has: a string key or semantics identifier first (`ElevatedButton#pay`), then any other key, the shown text (`ElevatedButton[text="Pay now"]`), the label, and the type alone. Text changes with the wording and the language, and type names are minified in `--obfuscate` builds, so a control a trigger should match needs a `Key` or a `Semantics(identifier:)`, the same handles integration tests, Appium and Maestro use. `GlobalKey`, `ObjectKey` and `UniqueKey` give no name.
+
+During setup, attach the observer and keep the route names the app already has. Add keys only to the controls the user wants to trigger on or asks about; do not key the whole app unasked. Reference: https://docs.tracewayapp.com/client/flutter#recording-triggers
+
 ## Manual capture
 
 ```dart
@@ -49,7 +91,59 @@ try {
 TracewayClient.instance?.captureMessage('User completed onboarding');
 ```
 
-## Options (`TracewayOptions`)
+## 2.x options (`TracewayOptions`)
+
+The `capture*` options, `screenCapture` and `sessions` are ceilings: remote rules can lower collection, never raise it.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `sampleRate` | `double` | `1.0` | Share of exceptions and messages reported |
+| `screenCapture` | `bool` | `false` | Record the screen (Android, iOS, macOS; needs a video encoder) |
+| `debug` | `bool` | `false` | Print debug info to the console |
+| `version` | `String` | `''` | Sent as `service.version` (`unknown` when empty) |
+| `serviceName` | `String?` | `flutter-app` | Sent as `service.name` |
+| `environment` | `String?` | none | Sent as `deployment.environment.name` |
+| `attributes` | `Map<String, String>` | `{}` | On every record; also used for remote-config targeting (`user.id`) |
+| `capturePixelRatio` | `double` | `0.75` | Screenshot resolution scale |
+| `maxBufferFrames` | `int` | `150` | Frames in the recording ring buffer (~10 s at 15 fps) |
+| `fps` | `int` | `15` | Frames per second for screen capture (1 to 59) |
+| `persistToDisk` | `bool` | `true` | Keep SDK state and undelivered telemetry on disk |
+| `captureLogs` | `bool` | `true` | `print` / `debugPrint` as log records |
+| `captureNetwork` | `bool` | `true` | `HttpOverrides.global`: every dart:io request as a client span |
+| `captureNavigation` | `bool` | `true` | Transitions from `Traceway.navigatorObserver` |
+| `captureUserActions` | `bool` | `true` | Taps with a widget selector; feeds click/hover trigger steps |
+| `captureMetrics` | `bool` | `true` | `app.*` performance metrics (Flutter Performance dashboard) |
+| `metricDimensions` | `Map<String, String>` | `{}` | Up to two `custom.<key>` metric dimensions |
+| `recordAllSessions` | `bool` | `false` | Stream breadcrumbs and recording instead of buffering them |
+| `collection` | `Map<String, Object?>?` | none | Local collection settings, the same document as a Data Collection rule |
+| `sessions` | `bool` | `true` | Send session records; the session id exists either way, so captures and rules that stream replay still work |
+| `baselineSampleRate` | `double` | `0` | Share of sessions whose breadcrumbs stream continuously |
+| `remoteConfig` | `bool` | `true` | Poll OpAMP for collection settings |
+| `exportDelayMs` | `int` | `1000` | Batching delay for logs and spans |
+| `propagateTraceHeaderUrls` | `List<Pattern>` | `[]` | Requests to these URLs carry a W3C `traceparent` naming their client span (`String`: URL prefix; `RegExp`: match) |
+| `telemetry` | `TracewayTelemetry?` | none | Send logs, spans and metrics to another OTLP/HTTP receiver (below) |
+
+In 2.x, breadcrumbs (console, network, navigation, taps, custom) are buffered on the device (2 MiB / 10 minutes) and uploaded when an exception or a trigger asks for them; errors and messages stream. Keep these production defaults; do not set `recordAllSessions` to prove setup works. To link app requests to backend traces, set `propagateTraceHeaderUrls` to the app's own API origins only (for example `['https://api.example.com/']`); it is empty by default because an unexpected header can break a strict CORS or signature check, and requests to Traceway or the `telemetry` receivers never get it. It reaches requests through `TracewayHttpClient` always and other dart:io requests only with `captureNetwork: true`; a request that already has a `traceparent` (the app's own tracing) keeps it. The backend must extract `traceparent` (OTel HTTP instrumentation does). `HttpOverrides` only sees dart:io clients: wrap a `cupertino_http` / `cronet_http` client in `TracewayHttpClient(inner)`. Wrapping the default dart:io client is also fine; each request is still recorded once. Other 2.x API: `Traceway.track(name, attrs)`, `Traceway.setAttribute`, `Traceway.recordNavigation(path)` for routers without a `NavigatorObserver`, `Traceway.reportFullyDisplayed()`, `Traceway.metric` / `Traceway.count`, `TracewayClient.instance?.flush()`, `refreshConfig()`.
+
+### 2.x: another OpenTelemetry backend, or standalone
+
+```dart
+Traceway.run(
+  connectionString: '<token>@https://<instance>/api/report',
+  options: const TracewayOptions(
+    telemetry: TracewayTelemetry(
+      url: 'https://collector.example.com',  // /v1/logs, /v1/traces, /v1/metrics appended
+      headers: {'x-api-key': '<collector-key>'},
+      // logs:, traces:, metrics: TracewayTelemetryEndpoint(url:, headers:) are complete URLs
+    ),
+  ),
+  child: MyApp(),
+);
+```
+
+With a connection string, ordinary logs (print, navigation, taps, `track`, `recordAction`), request spans and metrics go to the receiver; a signal without a destination stays on Traceway. Exceptions, `captureMessage` issues, session and control records, OpAMP and screen recordings stay on Traceway; both sides carry `session.id`. The Traceway token is never sent to the receiver. Leaving out `connectionString` runs standalone: `telemetry` then needs a base `url` or all three signal endpoints, every record (exceptions as `exception` log records) goes to the receiver, and remote config, recording uploads and session records are off. The receiver must accept OTLP/HTTP protobuf (logs and spans gzip-compressed) and delta sums and exponential histograms. URLs must be HTTP(S) without credentials, query or fragment. An invalid `telemetry` or connection string does not crash the app: `Traceway.run` reports it as a `FlutterError` (library `traceway`, in the console) and runs the app without the SDK, so after setup check the debug console for that error; `TracewayClient.initialize` called directly throws `ArgumentError`. A key in the app binary is readable by its users, so use a write-only ingestion key or a collector that holds the backend credentials.
+
+## 1.x options (`TracewayOptions`)
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -78,12 +172,23 @@ TracewayClient.instance?.captureMessage('User completed onboarding');
   ```xml
   <uses-permission android:name="android.permission.INTERNET"/>
   ```
+- **Android build**: `flutter_quick_video_encoder` 1.7.2 (the screen recorder's encoder) declares `compileSdk` 33, and a current Flutter template (Flutter 3.50, AGP 9.3) fails the release build with "requires libraries and applications that depend on it to compile against version 34 or later ... :flutter_quick_video_encoder is currently compiled against android-33". Add to `android/build.gradle.kts`, above `subprojects { project.evaluationDependsOn(":app") }`:
+  ```kotlin
+  // The encoder 1.7.2 declares API 33; the AndroidX libraries it builds with need 34.
+  project(":flutter_quick_video_encoder") {
+      plugins.withId("com.android.library") {
+          extensions.getByType<com.android.build.api.variant.LibraryAndroidComponentsExtension>().finalizeDsl {
+              it.compileSdk = maxOf(it.compileSdk ?: 0, 34)
+          }
+      }
+  }
+  ```
 - **macOS**: sandboxed by default; add `com.apple.security.network.client` (value `<true/>`) to BOTH `macos/Runner/DebugProfile.entitlements` and `macos/Runner/Release.entitlements`.
 - **iOS**: nothing needed.
 
 ## Screen recording
 
-With `screenCapture: true`, the SDK wraps the app in a `RepaintBoundary`, captures frames at ~15 fps, and on exception encodes the last ~10 seconds to MP4 and sends it with the report. Touch positions are rendered as blue circles on the captured frames only; the live app is unaffected.
+With `screenCapture: true`, the SDK wraps the app in a `RepaintBoundary`, captures frames at ~15 fps, and on exception encodes the last ~10 seconds to MP4 and sends it with the report (1.x) or uploads it to `/api/recordings` linked to the exception (2.x; a capture that asks for replay also streams the session as consecutive MP4 segments). Touch positions are rendered as blue circles on the captured frames only; the live app is unaffected.
 
 Mask sensitive content with `TracewayPrivacyMask` (applies to recorded frames only):
 
@@ -103,9 +208,9 @@ TracewayPrivacyMask(
 )
 ```
 
-## Logs and actions
+## Logs and actions (1.x)
 
-Every captured exception ships with the last ~10 seconds of context from two rolling buffers (200 entries each by default):
+In 2.x these are OpenTelemetry records in the ring buffer described above, not limited to 10 seconds, and taps are recorded too. In 1.x, every captured exception ships with the last ~10 seconds of context from two rolling buffers (200 entries each by default):
 
 - **Logs**: every `print` / `debugPrint` line, mirrored via a Zone print override. `dart:developer.log` is NOT captured.
 - **Network actions**: every dart:io HTTP request (method, URL, status, duration, byte counts) via `HttpOverrides.global`, which catches `package:http`, Dio, Firebase, and anything else on the dart:io HttpClient.

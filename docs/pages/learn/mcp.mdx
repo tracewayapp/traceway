@@ -89,8 +89,8 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `list_checks` / `get_check` | Monitors and their incidents |
 | `list_slos` / `get_slo` / `get_slo_series` / `preview_slo` | [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp): status and error budget, history, and a dry run of a definition |
 | `list_post_mortems` / `get_post_mortem` | Post-mortem documents |
-| `list_sdk_config_rules` | A browser project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
-| `preview_sdk_config` | The settings document saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live browser applied |
+| `list_sdk_config_rules` | A browser or Flutter project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
+| `preview_sdk_config` | The settings document saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live client applied |
 
 The write server adds `import_dashboards`, `create_dashboard_embed`, `create_read_token`, `list_personal_access_tokens`, `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, `create_slo`, `update_slo`, `delete_slo`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
 
@@ -121,7 +121,7 @@ These are the same documents the Traceway Claude Code skills are generated from,
 | `learn/monitors` | Monitors, incidents, status pages, post-mortems |
 | `learn/alerts` | Every alert rule type, channels, cooldowns, snoozing |
 | `learn/on-call` | Teams, schedules, overrides, escalation policies, pages, contact methods |
-| `learn/data-collection` | Remote SDK config for browser projects: signal modes, rules, triggers, captures, preview |
+| `learn/data-collection` | Remote SDK config for browser and Flutter projects: signal modes, rules, triggers, recording trigger steps (CSS selectors in a browser, widget selectors and route names in Flutter), captures, preview |
 | `learn/organization` | Projects, roles, organization views, settings, agent access |
 
 The same guide ships as the `traceway-learn` skill, installed with the other skills (`npx skills add tracewayapp/skills --all`, or the `tw` Claude Code plugin). Ask an agent how paging escalates, why an endpoint is Critical, or how to put a status page on your own domain, and it answers from the guide.

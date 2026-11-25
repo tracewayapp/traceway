@@ -11,16 +11,16 @@ import (
 
 func (s *server) addOpampReadTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{Name: "list_sdk_config_rules", OutputSchema: passThroughSchema,
-		Description: "List ordered OpAMP browser SDK rules, including conditions, settings and updatedAt. Later matching rules win. Browser frontend projects only; inspect before changing collection.", Annotations: readOnly()}, s.listSDKConfigRules)
+		Description: "List ordered OpAMP SDK rules, including conditions, settings and updatedAt. Later matching rules win. Browser and Flutter projects only (SDK 2.x); inspect before changing collection.", Annotations: readOnly()}, s.listSDKConfigRules)
 	mcp.AddTool(srv, &mcp.Tool{Name: "preview_sdk_config", OutputSchema: passThroughSchema,
-		Description: "Evaluate saved OpAMP rules for client attributes and optional instance UID. Returns effective settings, matched rules, plan limits, config hash and heartbeat interval. Read-only; this does not prove a browser has applied the config.", Annotations: readOnly()}, s.previewSDKConfig)
+		Description: "Evaluate saved OpAMP rules for client attributes and optional instance UID. Returns effective settings, matched rules, plan limits, config hash and heartbeat interval. Read-only; this does not prove a client has applied the config.", Annotations: readOnly()}, s.previewSDKConfig)
 }
 
 func (s *server) addOpampWriteTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{Name: "create_sdk_config_rule", OutputSchema: passThroughSchema,
-		Description: "Create an OpAMP collection rule, appended after existing rules. Empty conditions targets every browser; later matching rules win. Settings can stream sessions, breadcrumbs and replay or turn them off. MUTATING: only on the user's request; explain targeting, sampling and replay masking before saving. Requires agent writes enabled.", Annotations: additive()}, s.createSDKConfigRule)
+		Description: "Create an OpAMP collection rule, appended after existing rules. Empty conditions targets every client; later matching rules win. Settings can stream sessions, breadcrumbs and replay or turn them off. MUTATING: only on the user's request; explain targeting, sampling and replay masking before saving. Requires agent writes enabled.", Annotations: additive()}, s.createSDKConfigRule)
 	mcp.AddTool(srv, &mcp.Tool{Name: "update_sdk_config_rule", OutputSchema: passThroughSchema,
-		Description: "Replace an OpAMP rule's name, conditions and settings; omitted enabled preserves its state. Read list_sdk_config_rules first, preserve unrelated settings and triggers, and pass its updatedAt as expected_updated_at. A stale edit fails with 409. MUTATING: affects matching browsers on the next poll.", Annotations: mutating()}, s.updateSDKConfigRule)
+		Description: "Replace an OpAMP rule's name, conditions and settings; omitted enabled preserves its state. Read list_sdk_config_rules first, preserve unrelated settings and triggers, and pass its updatedAt as expected_updated_at. A stale edit fails with 409. MUTATING: affects matching clients on the next poll.", Annotations: mutating()}, s.updateSDKConfigRule)
 	mcp.AddTool(srv, &mcp.Tool{Name: "delete_sdk_config_rule", OutputSchema: passThroughSchema,
 		Description: "Delete an OpAMP rule. Earlier rules and SDK defaults take over, which may increase or reduce collection. MUTATING: only when requested; prefer disabling via update when temporary.", Annotations: destructive()}, s.deleteSDKConfigRule)
 	mcp.AddTool(srv, &mcp.Tool{Name: "reorder_sdk_config_rules", OutputSchema: passThroughSchema,
@@ -31,8 +31,8 @@ type sdkRuleIn struct {
 	projectIn
 	Name       string         `json:"name" jsonschema:"Rule name, required."`
 	Enabled    *bool          `json:"enabled,omitempty" jsonschema:"Defaults true on create; omitted on update preserves state."`
-	Conditions map[string]any `json:"conditions" jsonschema:"Targeting document; {} matches every browser. Use all: [{key, op, value}] and rollout: {percent: 0..100, by: instance or an attribute key}."`
-	Settings   map[string]any `json:"settings" jsonschema:"Partial SDK settings document (schemaVersion 1): enabled kill switch; signals modes off/buffer/stream and sampleRate 0..1; sessions enabled/baselineSampleRate; replay mode/sessionSampleRate/maskAllInputs; buffer; triggers. Server-owned captures and limits are forbidden."`
+	Conditions map[string]any `json:"conditions" jsonschema:"Targeting document; {} matches every client. Use all: [{key, op, value}] and rollout: {percent: 0..100, by: instance or an attribute key}."`
+	Settings   map[string]any `json:"settings" jsonschema:"Partial SDK settings document (schemaVersion 1): enabled kill switch; signals modes off/buffer/stream and sampleRate 0..1; sessions enabled/baselineSampleRate; replay mode/sessionSampleRate/maskAllInputs; buffer; triggers. A recording trigger step is {match: {event: {type, value}}} with type click, hover, navigation or log: in a browser project the value is a CSS selector or a URL path, in a Flutter project a widget selector (#pay is Key('pay') or a Semantics identifier) or a route name. Read traceway://knowledge/sdk-configuration before writing one. Server-owned captures and limits are forbidden."`
 }
 
 type updateSDKRuleIn struct {
@@ -54,7 +54,7 @@ type reorderSDKRulesIn struct {
 type previewSDKConfigIn struct {
 	projectIn
 	Attributes  map[string]string `json:"attributes" jsonschema:"Client attributes such as service.version, deployment.environment.name, user.id or session.id. {} previews an anonymous client."`
-	InstanceUID string            `json:"instance_uid,omitempty" jsonschema:"Browser instance UUID, used for sticky rollout evaluation."`
+	InstanceUID string            `json:"instance_uid,omitempty" jsonschema:"Client instance UUID (service.instance.id), used for sticky rollout evaluation."`
 }
 
 func (in sdkRuleIn) input() (client.SDKConfigRuleInput, error) {

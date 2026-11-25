@@ -72,9 +72,9 @@ func newOpampSaveRuleCmd(update bool) *cobra.Command {
 // server assigns one, so only an update names it.
 func opampSaveSummary(update bool, name string, id int) string {
 	if update {
-		return fmt.Sprintf("About to update OpAMP rule %q (id %d). Settings affect matching browsers at their next poll.", name, id)
+		return fmt.Sprintf("About to update OpAMP rule %q (id %d). Settings affect matching clients at their next poll.", name, id)
 	}
-	return fmt.Sprintf("About to create OpAMP rule %q. Settings affect matching browsers at their next poll.", name)
+	return fmt.Sprintf("About to create OpAMP rule %q. Settings affect matching clients at their next poll.", name)
 }
 
 func newOpampDeleteRuleCmd() *cobra.Command {

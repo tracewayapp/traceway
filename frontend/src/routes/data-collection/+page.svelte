@@ -23,7 +23,7 @@
 		{/key}
 	{:else if project}
 		<EmptyState
-			message="Remote collection settings are available for browser projects, whose SDKs ask Traceway what to send."
+			message="Remote collection settings are available for browser and Flutter projects, whose SDKs ask Traceway what to send."
 		>
 			{#snippet icon()}
 				<Upload class="h-6 w-6 text-muted-foreground" />

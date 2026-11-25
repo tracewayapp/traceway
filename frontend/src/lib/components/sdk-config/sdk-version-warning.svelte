@@ -1,14 +1,19 @@
 <script lang="ts">
 	import * as Alert from '$lib/components/ui/alert';
 	import { TriangleAlert } from '@lucide/svelte';
+	import { projectsState } from '$lib/state/projects.svelte';
+
+	const sdk = $derived(
+		projectsState.currentProject?.framework === 'flutter' ? 'Flutter' : 'JavaScript'
+	);
 </script>
 
 <Alert.Root class="border-amber-500/40 bg-amber-500/5">
 	<TriangleAlert />
-	<Alert.Title>JavaScript SDK v2 required</Alert.Title>
+	<Alert.Title>{sdk} SDK v2 required</Alert.Title>
 	<Alert.Description>
 		Remote client configuration (OpAMP), rules, and targeted captures work only with the Traceway
-		JavaScript SDK v2. V1 clients continue sending data but do not apply these settings. Check the
-		JavaScript SDK version in the session overview.
+		{sdk} SDK v2. V1 clients continue sending data but do not apply these settings. Check the
+		{sdk} SDK version in the session overview.
 	</Alert.Description>
 </Alert.Root>

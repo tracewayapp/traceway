@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -232,7 +233,7 @@ func readSegments(ctx context.Context, segments []models.SessionRecording) []*se
 				traceway.CaptureException(traceway.NewStackTraceErrorf("failed to parse session segment (key=%s): %w", seg.FilePath, err))
 				return nil
 			}
-			body.events = decodeArray(body.Events)
+			body.events = timeVideoEvents(decodeArray(body.Events), body.StartedAt, body.EndedAt)
 			body.logs = decodeArray(body.Logs)
 			body.actions = decodeArray(body.Actions)
 			body.Events, body.Logs, body.Actions = nil, nil, nil
@@ -242,6 +243,47 @@ func readSegments(ctx context.Context, segments []models.SessionRecording) []*se
 	}
 	_ = group.Wait()
 	return bodies
+}
+
+var flutterVideoType = []byte(`"flutter_video"`)
+
+// timeVideoEvents gives a segment's flutter_video events the wall-clock span of the segment. The segments of a
+// session are concatenated into one list of events, and the player needs to know where each clip sits on the
+// session's clock to seek to a moment of the timeline and to skip what was never recorded. An event that already
+// carries its startedAt keeps it.
+func timeVideoEvents(events []json.RawMessage, startedAt, endedAt *time.Time) []json.RawMessage {
+	if startedAt == nil {
+		return events
+	}
+	span := map[string]time.Time{"startedAt": startedAt.UTC()}
+	if endedAt != nil {
+		span["endedAt"] = endedAt.UTC()
+	}
+	fields, err := json.Marshal(span)
+	if err != nil {
+		return events
+	}
+	for i, event := range events {
+		// rrweb events never name the type, so the full decode below only runs for video clips.
+		if !bytes.Contains(event, flutterVideoType) {
+			continue
+		}
+		var head struct {
+			Type      string          `json:"type"`
+			StartedAt json.RawMessage `json:"startedAt"`
+		}
+		if json.Unmarshal(event, &head) != nil || head.Type != "flutter_video" || head.StartedAt != nil {
+			continue
+		}
+		object := bytes.TrimSpace(event)
+		stamped := make([]byte, 0, len(object)+len(fields))
+		stamped = append(stamped, fields[:len(fields)-1]...)
+		if rest := bytes.TrimSpace(object[1:]); len(rest) > 0 && rest[0] != '}' {
+			stamped = append(stamped, ',')
+		}
+		events[i] = append(stamped, object[1:]...)
+	}
+	return events
 }
 
 func decodeArray(raw json.RawMessage) []json.RawMessage {

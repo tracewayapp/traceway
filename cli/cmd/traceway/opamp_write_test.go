@@ -70,11 +70,11 @@ func TestOpampRejectsInvalidInputBeforeRequest(t *testing.T) {
 
 func TestOpampSaveSummaryNamesTheIdOnlyForUpdates(t *testing.T) {
 	create := opampSaveSummary(false, "Full sessions", 0)
-	if create != `About to create OpAMP rule "Full sessions". Settings affect matching browsers at their next poll.` {
+	if create != `About to create OpAMP rule "Full sessions". Settings affect matching clients at their next poll.` {
 		t.Errorf("create summary: %s", create)
 	}
 	update := opampSaveSummary(true, "Full sessions", 7)
-	if update != `About to update OpAMP rule "Full sessions" (id 7). Settings affect matching browsers at their next poll.` {
+	if update != `About to update OpAMP rule "Full sessions" (id 7). Settings affect matching clients at their next poll.` {
 		t.Errorf("update summary: %s", update)
 	}
 }

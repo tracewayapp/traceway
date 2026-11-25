@@ -33,8 +33,14 @@
 	};
 	let {
 		triggers = $bindable<unknown[]>([]),
-		disabled = false
-	}: { triggers?: unknown[]; disabled?: boolean } = $props();
+		disabled = false,
+		flutter = false
+	}: {
+		triggers?: unknown[];
+		disabled?: boolean;
+		/** A Flutter project: steps name widgets and routes instead of elements and URL paths. */
+		flutter?: boolean;
+	} = $props();
 	function sequence(value: unknown): value is Sequence {
 		const t = value as Sequence;
 		return (
@@ -78,8 +84,9 @@
 	<div>
 		<h3 class="font-medium">Recording triggers</h3>
 		<p class="text-xs text-muted-foreground">
-			Match events in order on the same tab, then send buffered replay and continue recording.
-			Unrelated events are ignored, and the first step happening again does not undo progress.
+			Match events in order {flutter ? 'in the same app session' : 'on the same tab'}, then send
+			buffered replay and continue recording. Unrelated events are ignored, and the first step
+			happening again does not undo progress.
 		</p>
 	</div>
 	{#each triggers as item, index (item)}
@@ -140,9 +147,10 @@
 									class="h-9 w-full rounded-md border bg-background px-2 text-sm"
 									bind:value={step.match.event.type}
 									{disabled}
-									><option value="click">Click</option><option value="hover">Hover</option><option
-										value="navigation">Navigation</option
-									><option value="log">Log</option></select
+									><option value="click">{flutter ? 'Tap' : 'Click'}</option><option value="hover"
+										>Hover</option
+									><option value="navigation">Navigation</option><option value="log">Log</option
+									></select
 								>
 							</div>
 							<div class="space-y-1">
@@ -151,7 +159,9 @@
 										? 'Route pattern'
 										: step.match.event.type === 'log'
 											? 'Log message'
-											: 'CSS selector'}</Label
+											: flutter
+												? 'Widget selector'
+												: 'CSS selector'}</Label
 								><Input
 									id={`seq-value-${index}-${i}`}
 									bind:value={step.match.event.value}
@@ -159,7 +169,9 @@
 										? '/users/{id}'
 										: step.match.event.type === 'log'
 											? 'User loaded'
-											: '#someId .some-class'}
+											: flutter
+												? '#pay or ElevatedButton[text="Pay now"]'
+												: '#someId .some-class'}
 									{disabled}
 								/>
 							</div>
@@ -249,10 +261,24 @@
 	{#if triggers.length < 20}<Button type="button" variant="outline" onclick={add} {disabled}
 			><Plus class="size-4" /> Add recording trigger</Button
 		>{/if}
-	<p class="text-xs text-muted-foreground">
-		Selectors support tags, IDs, classes, attributes and combinators; pseudo-classes and selector
-		lists are not supported. Hover fires when the pointer enters a matching element. Route
-		parameters match one path segment. Replay remains subject to consent, developer limits and
-		available buffer.
-	</p>
+	{#if flutter}
+		<p class="text-xs text-muted-foreground">
+			Selectors name widgets with CSS syntax: a widget type such as <code>ElevatedButton</code>,
+			<code>#pay</code> for <code>Key('pay')</code> or a semantics identifier,
+			<code>[text="Pay now"]</code> for the text a widget shows, <code>[label="Delete"]</code> for a
+			semantics label or tooltip (<code>IconButton[label="Delete"]</code>), and combinators;
+			pseudo-classes and selector lists are not supported. A tap matches the widget under the finger
+			or any widget above it. Hover fires when a mouse pointer enters a matching widget. Route
+			patterns match the route name, such as <code>/users/&lbrace;id&rbrace;</code>; a parameter
+			matches one path segment. Replay needs the SDK's <code>screenCapture</code> option and remains subject
+			to developer limits and available buffer.
+		</p>
+	{:else}
+		<p class="text-xs text-muted-foreground">
+			Selectors support tags, IDs, classes, attributes and combinators; pseudo-classes and selector
+			lists are not supported. Hover fires when the pointer enters a matching element. Route
+			parameters match one path segment. Replay remains subject to consent, developer limits and
+			available buffer.
+		</p>
+	{/if}
 </div>

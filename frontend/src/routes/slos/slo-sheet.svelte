@@ -763,7 +763,11 @@
 							id="slo-metric"
 							list="slo-metric-options"
 							bind:value={metricName}
-							placeholder={isFrontendProject ? 'browser.web_vital.lcp' : 'system.cpu.utilization'}
+							placeholder={!isFrontendProject
+								? 'system.cpu.utilization'
+								: projectsState.currentProject?.framework === 'flutter'
+									? 'app.start.duration'
+									: 'browser.web_vital.lcp'}
 							disabled={loading}
 						/>
 						<datalist id="slo-metric-options">

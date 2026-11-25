@@ -182,6 +182,10 @@ func (l logIssue) row(projectId uuid.UUID, stackTrace, hash string, isMessage bo
 	}
 }
 
+// tracewaySDKScopes are the instrumentation scopes of Traceway's own SDKs: the browser SDK and the Flutter SDK. The
+// session page shows their version, which tells whether a client applies remote collection settings.
+var tracewaySDKScopes = map[string]bool{"@tracewayapp/frontend": true, "traceway-flutter": true}
+
 // sessionFromLog turns a lifecycle event into a session upsert. Every event must name the session's start: on
 // ClickHouse started_at is part of the sorting key, so an update with a different start would create a second
 // session instead of replacing the first.
@@ -219,7 +223,7 @@ func sessionFromLog(eventName string, lr *logspb.LogRecord, resource []*commonpb
 		attrs["client.ip"] = clientIP
 	}
 
-	if record.ScopeName == "@tracewayapp/frontend" && record.ScopeVersion != "" {
+	if tracewaySDKScopes[record.ScopeName] && record.ScopeVersion != "" {
 		attrs["traceway.sdk.name"] = record.ScopeName
 		attrs["traceway.sdk.version"] = record.ScopeVersion
 	}

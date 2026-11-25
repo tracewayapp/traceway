@@ -2,8 +2,8 @@
 
 Remote SDK config decides, per group of browsers, what the browser SDK sends right away, what it keeps on the device in case it is needed, and what it drops, without shipping a new build.
 
-- **Who has it**: browser projects (React, Vue.js, Svelte, jQuery) whose app runs the 2.x browser SDK (`@tracewayapp/frontend` 2.x or a wrapper of the same version; npm `latest`). The 1.x SDK and the mobile SDKs never ask for settings. Backend and mobile projects have no Data Collection page, and the API refuses them with 403.
-- **Where**: **Data Collection** in the sidebar (`/data-collection`), shown for browser projects. It lists the **Rules** in order (enable switch, move up and down, edit, delete) with **Preview** and **New Rule**, and below them the **Captures** with their status, refreshed every 15 seconds, and **New Capture**.
+- **Who has it**: browser projects (React, Vue.js, Svelte, jQuery) whose app runs the 2.x browser SDK (`@tracewayapp/frontend` 2.x or a wrapper of the same version; npm `latest`), and Flutter projects whose app runs the Flutter SDK 2.x prerelease (`flutter pub add 'traceway:{"git":{"url":"https://github.com/tracewayapp/traceway-flutter.git","ref":"v2-session-capture"}}'`). The 1.x SDKs and the React Native, Android and iOS SDKs never ask for settings. Backend projects and the other mobile projects have no Data Collection page, and the API refuses them with 403.
+- **Where**: **Data Collection** in the sidebar (`/data-collection`), shown for browser and Flutter projects. It lists the **Rules** in order (enable switch, move up and down, edit, delete) with **Preview** and **New Rule**, and below them the **Captures** with their status, refreshed every 15 seconds, and **New Capture**.
 - **How it travels**: the SDK polls Traceway over OpAMP at start, every 5 minutes by default (`OPAMP_POLL_INTERVAL_SECONDS` on self-hosted servers), when a tab becomes visible after that interval, and when the app calls `refreshConfig()`. There is no push, so a saved change reaches a browser at its next poll.
 
 ## Modes and defaults
@@ -21,7 +21,9 @@ Every signal is in one mode: **stream** (sent within about a second), **buffer**
 | `routeTiming` | How long single-page-app route changes take to render (`browser.route_timing`) | off |
 | replay | rrweb session replay | buffer |
 
-**Page performance as metrics.** The SDK aggregates metrics on the device, independently of detailed signal modes. Keep `metrics.enabled: true` and `metrics.sampleRate: 1` for population coverage; lowering event/replay collection does not require lowering metrics. `metrics.flushSeconds` defaults to 300 (30..3600); page-hide and session-end also flush. `captureMetrics: false` is an app ceiling. A `2.0.0-beta.N` prerelease instead derives metrics only from uploaded performance events and streams `webVitals`. Read [rum.md](rum.md) for metric names, dimensions, sampling, dashboards, releases and SLOs. New browser projects receive Web Performance immediately; an empty chart is not evidence of healthy traffic.
+**Flutter projects** use the same document. Their signals are `errors`, `messages`, `console` (`print` / `debugPrint`), `network` (dart:io HTTP client spans), `navigation`, `userActions` (taps, with a widget selector), `custom` (`Traceway.track`, `Traceway.recordAction`) and replay (an MP4 screen recording, buffered as the last ~10 seconds of frames and streamed as video segments during a capture); the rule editor hides the browser-only signals. Recording trigger steps of type `click`, `hover`, `navigation` and `log` match widgets, routes and log lines there; see "Recording trigger steps" below. The Flutter SDK can also send its ordinary logs, spans and metrics to another OpenTelemetry backend (`telemetry`); exceptions, messages, session and control records, OpAMP and recordings stay on Traceway. A Flutter app without a connection string runs standalone and never polls.
+
+**Page performance as metrics.** The SDK aggregates metrics on the device, independently of detailed signal modes. Keep `metrics.enabled: true` and `metrics.sampleRate: 1` for population coverage; lowering event/replay collection does not require lowering metrics. `metrics.flushSeconds` defaults to 300 (30..3600); page-hide and session-end also flush. `captureMetrics: false` is an app ceiling. A browser `2.0.0-beta.N` prerelease instead derives metrics only from uploaded performance events and streams `webVitals`; the Flutter 2.x prerelease aggregates on the device and applies these settings. Read [rum.md](rum.md) for metric names, dimensions, sampling, dashboards, releases and SLOs. New browser projects receive Web Performance immediately; an empty chart is not evidence of healthy traffic.
 
 Session start and end events are sent unless `sessions.enabled` is false. The built-in `default-exception` trigger uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip on each exception (5-second cooldown, at most 20 per session). `recordAllSessions: true` in `init()` streams breadcrumbs and replay instead of buffering them.
 
@@ -34,13 +36,30 @@ Session start and end events are sent unless `sessions.enabled` is false. The bu
 
 **Triggers** run on the device: one to five steps matched in order (event name, signal, severity, log body with `contains`, `icontains`, `starts_with` or `glob`, span status and duration, any attribute), optionally a count within a sliding window, then actions: `flush` (upload the last N seconds, optionally with a replay clip), `stream`, `startReplay`, `emit` (a marker event) or `capture`. There is no regular expression operator on purpose.
 
+### Recording trigger steps
+
+The rule editor's **Recording triggers** builder writes steps that name a user journey: `{"match":{"event":{"type":"click","value":"#pay"}}}`, with `type` one of `click`, `hover`, `navigation` or `log` and an optional `withinSeconds` after the previous step. The same step means different things on the two platforms, because a Flutter app has no DOM and no URL.
+
+| Step | Browser | Flutter (the builder says **Tap** and **Widget selector**) |
+|---|---|---|
+| `click` | The clicked element or an ancestor matches the CSS selector | The widget under the finger or a widget above it matches the selector |
+| `hover` | A pointer enters a matching element, never touch | A mouse pointer enters a matching widget, desktop only |
+| `navigation` | The pathname of the page's URL; `/users/{id}` matches one segment | The path of the route arrived at: its name, else `/` and the page widget's type (`/CheckoutPage`), else `/` and the route's type |
+| `log` | A console line, an OpenTelemetry log record or `captureMessage`, with a level | A `print` / `debugPrint` line or `captureMessage`; every line is at info, so the builder offers no level |
+
+In a Flutter project the selector syntax reads widgets: `ElevatedButton` is the widget type, `#pay` is `Key('pay')` or `Semantics(identifier: 'pay')`, `.button` is a `Semantics` role, and the only attributes are `[key=...]`, `[identifier=...]`, `[label=...]` (semantics label or tooltip), `[text=...]` (the text shown) and `[type=...]`. There are no element ids, classes or `data-*` attributes. Keys and semantics identifiers are the stable names; text changes with the wording and the language, and type names are minified in `--obfuscate` builds.
+
+Nobody has to work a Flutter selector out. Every tap is recorded with a selector the SDK checked against the tapped widget (`ElevatedButton#pay`, or `ElevatedButton[text="Print Log Lines"]` when the button has no key), shown in the **Actions** list of a session and stored as the `browser.css_selector` attribute of the `browser.user_action.click` log record. Navigation rows of the same list show the route paths a navigation step is compared with. Navigation is reported only where the app attached `Traceway.navigatorObserver` or calls `Traceway.recordNavigation(path)`.
+
+A push or a replace arrives at the new route and a pop arrives at the route it returns to, so a step for `/` also matches coming back to the home screen. Full rules: https://docs.tracewayapp.com/client/flutter#recording-triggers
+
 **Captures** make one target upload what it was holding (the lookback, 10 minutes by default) and stream everything for 1 minute to 24 hours. A target is a device (`service.instance.id`), a user (`user.id`), a session or any attribute and value. At most 20 are active per project, and a client under a capture polls every 60 seconds. Start one from **New Capture**, from **Capture this device** on a session page, or from **Capture device** (or user, or session) on an issue's event card. A trigger's `capture` action starts one on the device itself. Capture status reads **Waiting for client**, **Delivered · awaiting acknowledgement**, **Applied · awaiting data**, **Collecting**, **Expired · no data received**, **Completed** or **Cancelled**, and reflects at least one matching browser, not every one.
 
 **Preview** shows the document a client with given attributes (and optionally an instance id, which decides rollout buckets) receives from the saved rules and active captures, with plan limits applied. It does not know the app's `init()` options or whether a browser has polled, so it is not proof of what a live browser runs.
 
 ## Seeing it work
 
-The SDK reports what it did as log records of the browser project that always stream unless the kill switch is on: `traceway.config.applied` (with the config hash), `traceway.trigger.fired` and `traceway.capture.started`. Breadcrumbs that were sent are stored once, as log records and spans tagged with `session.id`. The session page reads them for the whole session, and an issue's event card reads the 10 minutes before the exception. A session's overview shows the **JavaScript SDK** version that recorded it, which tells a 2.x client from a 1.x one.
+The SDK reports what it did as log records of the browser or Flutter project that always stream unless the kill switch is on: `traceway.config.applied` (with the config hash), `traceway.trigger.fired` and `traceway.capture.started`. Breadcrumbs that were sent are stored once, as log records and spans tagged with `session.id`. The session page reads them for the whole session, and an issue's event card reads the 10 minutes before the exception. A session's overview shows the version of the SDK that recorded it (**JavaScript SDK** or **Flutter SDK**), which tells a 2.x client from a 1.x one.
 
 ## Reading and changing it from an agent
 

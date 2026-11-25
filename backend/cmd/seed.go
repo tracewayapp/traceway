@@ -68,7 +68,7 @@ func seed(opts *options) error {
 			if err := lit.InsertExistingUuid(tx, project); err != nil {
 				return struct{}{}, err
 			}
-			if err := dashboards.EnsureBrowserDefault(tx, project); err != nil {
+			if err := dashboards.EnsureClientDefault(tx, project); err != nil {
 				return struct{}{}, err
 			}
 			config.LogfLocal("Seed: project %q connection string: %s@%s/api/report", project.Name, project.Token, opts.serverURL)

@@ -16,6 +16,6 @@ Read the relevant resource before configuring an area:
 - `traceway://knowledge/incident-actions`: pages, issues, monitor runs, post-mortems and expected latency.
 - `traceway://knowledge/dashboard-building`: dashboard charts and instrumentation discovery.
 - `traceway://knowledge/dashboard-embedding`: shared dashboard links and embedding a dashboard in the user's own application.
-- `traceway://knowledge/sdk-configuration`: browser collection, replay and OpAMP rules.
+- `traceway://knowledge/sdk-configuration`: browser and Flutter collection, replay, OpAMP rules, and recording triggers (CSS selectors in a browser, widget selectors and route names in Flutter).
 
 For product behavior and tradeoffs use `traceway://knowledge/learn/alerts`, `traceway://knowledge/learn/on-call` and the other learn resources.

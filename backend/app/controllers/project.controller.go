@@ -203,7 +203,14 @@ func (p projectController) CreateProject(c *gin.Context) {
 				return nil, err
 			}
 		}
-		return transactional.ProjectRepository.CreateWithOrganization(tx, request.Name, request.Framework, targetOrgId)
+		project, err := transactional.ProjectRepository.CreateWithOrganization(tx, request.Name, request.Framework, targetOrgId)
+		if err != nil {
+			return nil, err
+		}
+		if err := populateDashboardsOnCreate(tx, project, &userId); err != nil {
+			return nil, err
+		}
+		return project, nil
 	})
 	if err != nil {
 		if errors.Is(err, errNoOrgCreateAccess) {

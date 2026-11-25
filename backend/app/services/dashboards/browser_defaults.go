@@ -12,11 +12,23 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
 )
 
-// EnsureBrowserDefault runs in the project creation transaction so a project is
-// never visible without its dashboard. The organization lock serializes names
-// with other concurrently created projects on PostgreSQL.
+// EnsureClientDefault also covers Flutter projects seeded by embedded servers.
+func EnsureClientDefault(tx *sql.Tx, project *models.Project) error {
+	if project.Framework == "flutter" {
+		return ensurePerformanceDashboard(tx, project, "flutter-performance")
+	}
+	return EnsureBrowserDefault(tx, project)
+}
+
 func EnsureBrowserDefault(tx *sql.Tx, project *models.Project) error {
-	if project.OrganizationId == nil || !sdkconfig.IsBrowserFramework(project.Framework) {
+	if !sdkconfig.IsBrowserFramework(project.Framework) {
+		return nil
+	}
+	return ensurePerformanceDashboard(tx, project, "browser-performance")
+}
+
+func ensurePerformanceDashboard(tx *sql.Tx, project *models.Project, templateKey string) error {
+	if project.OrganizationId == nil {
 		return nil
 	}
 	org := *project.OrganizationId
@@ -25,19 +37,19 @@ func EnsureBrowserDefault(tx *sql.Tx, project *models.Project) error {
 			return err
 		}
 	}
-	existing, err := lit.SelectNamed[models.Dashboard](tx, `SELECT d.* FROM dashboards d JOIN project_dashboards pd ON pd.dashboard_id = d.id WHERE pd.project_id = :id AND d.template_key = :key`, lit.P{"id": project.Id, "key": "browser-performance"})
+	existing, err := lit.SelectNamed[models.Dashboard](tx, `SELECT d.* FROM dashboards d JOIN project_dashboards pd ON pd.dashboard_id = d.id WHERE pd.project_id = :id AND d.template_key = :key`, lit.P{"id": project.Id, "key": templateKey})
 	if err != nil {
 		return err
 	}
 	if len(existing) > 0 {
 		return nil
 	}
-	template, err := lit.SelectSingleNamed[models.DashboardTemplate](tx, "SELECT * FROM dashboard_templates WHERE key = :key", lit.P{"key": "browser-performance"})
+	template, err := lit.SelectSingleNamed[models.DashboardTemplate](tx, "SELECT * FROM dashboard_templates WHERE key = :key", lit.P{"key": templateKey})
 	if err != nil {
 		return err
 	}
 	if template == nil {
-		return fmt.Errorf("browser-performance dashboard template is not seeded")
+		return fmt.Errorf("%s dashboard template is not seeded", templateKey)
 	}
 	def, err := ParseDefinition(template.Definition)
 	if err != nil {

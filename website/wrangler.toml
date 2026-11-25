@@ -21,5 +21,6 @@ destinations = ["traceway"]
 
 [assets]
 directory = "./out"
+binding = "ASSETS"
 html_handling = "auto-trailing-slash"
 not_found_handling = "single-page-application"

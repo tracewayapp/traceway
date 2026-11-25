@@ -56,7 +56,7 @@ With several backend instances you can set the variable on all of them. The inst
 2. It renames the scratch table to `<table>_tagrepair_<partition>_<first day>`. That name is the record that the merged rows are complete, and of the first day they cover.
 3. `ALTER TABLE ... MOVE PARTITION` puts the merged rows into the rollup table in one step.
 4. `ALTER TABLE ... DELETE IN PARTITION` removes the unsorted rows from that first day on, as a background mutation the worker polls.
-5. It drops the staging table.
+5. It moves once more, checks that the staging table is empty, and drops it. A staging table that still holds rows is never dropped: the pass ends with `merged rows are still in <table>` and the next one takes the partition up again.
 
 Every query the worker sends to a rollup table reads one day of it, so none of them runs into the five minutes after which the ClickHouse connection ends a query.
 
@@ -66,14 +66,21 @@ The worker refuses to start while a rollup view does not sort its tags, because 
 
 ### What it costs
 
-- **Disk.** The delete rewrites every part that holds unsorted rows, and ClickHouse reserves 1.1 times a part's size while it does. A partition is skipped, with a warning, unless its disk has twice the size of the partition's largest part free. Free space, or add a volume, and the next pass takes it up. Space comes back a few minutes after a partition is done, when ClickHouse removes the old parts.
+- **Disk.** The delete rewrites every part that holds unsorted rows, and ClickHouse reserves 1.1 times a part's size while it does. A partition is skipped, with a warning, unless its disk has twice the size of the partition's largest part free. Object storage (ClickHouse Cloud, an S3 disk) reports no limit, so nothing is skipped there. Free space, or add a volume, and the next pass takes it up. Space comes back a few minutes after a partition is done, when ClickHouse removes the old parts.
 - **I/O.** Merging and rewriting compete with ingest and dashboard queries. There is no throttle; start it outside your peak hours.
 - **Double counting, briefly.** Between steps 3 and 4 a partition holds both the merged rows and the originals. Averages, minima, maxima, percentiles and rates read the same during that time. The `sum` and `count` aggregations of ranges longer than 72 hours read up to twice their value for those series, until the delete of that partition finishes.
 
 As a reference, 2.26 million split rows in six partitions were merged into 376,000 in 7.5 seconds on a 4 vCPU machine, and `metric_points_1h` went from 32.8 MB to 6.0 MB.
 
+## ClickHouse Cloud and replicated tables
+
+The repair runs on ClickHouse Cloud, where the rollups are `SharedMergeTree` tables, as it does on a single server. Two things differ there, and the worker allows for both:
+
+- **A read can miss a write of a moment ago**, because another replica answered it. The counts that decide something (the merged rows written, the unsorted rows left after a delete, whether the staging table is empty) are read with `select_sequential_consistency = 1`. The setting has no effect on a plain `MergeTree`.
+- **The staging table is dropped only once it is empty.** If the move ran on a replica that had not seen every merged row yet, the rows left behind are moved in the next attempt; after five attempts the pass ends and keeps the table.
+
 <Callout type="warning">
-  On replicated tables (`ReplicatedMergeTree`, ClickHouse Cloud) `MOVE PARTITION` adds the rows to the destination and removes them from the source in two steps. A ClickHouse server that crashes exactly between the two can leave merged rows in both tables. Traceway's own migrations create plain `AggregatingMergeTree` tables, where the move is one transaction. Take a backup first if your tables are replicated.
+  On replicated tables (`ReplicatedMergeTree`, `SharedMergeTree`) `MOVE PARTITION` adds the rows to the destination and removes them from the source in two steps. A ClickHouse server that crashes exactly between the two can leave merged rows in both tables. Traceway's own migrations create plain `AggregatingMergeTree` tables, where the move is one transaction. Take a backup first if your tables are replicated. The repair is tested on a single server (ClickHouse 24.8 and 26.8) and has been run on ClickHouse Cloud; it is not tested on a self-managed `ReplicatedMergeTree` cluster.
 </Callout>
 
 ## Follow the progress

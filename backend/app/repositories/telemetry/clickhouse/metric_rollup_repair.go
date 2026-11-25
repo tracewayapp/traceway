@@ -37,6 +37,12 @@ import (
 // left as they are, so the delete stops at the first staged day: an older row of the
 // same partition has no merged copy.
 //
+// On a replicated table (ReplicatedMergeTree, SharedMergeTree on ClickHouse Cloud) a
+// read can miss a part another replica wrote a moment ago. The counts that decide
+// something are therefore read with select_sequential_consistency, and the staging table
+// is dropped only once such a count finds it empty: a copy the move had not seen would
+// be lost with the table.
+//
 // This holds only while nothing writes unsorted rows, which is what the sorted rollup
 // views guarantee: the rows to merge can then only become fewer. The tables in front of
 // the views, and the minute rollup, are left alone: their rows expire within 30 days.
@@ -54,6 +60,9 @@ const (
 	rollupRepairDayLayout = "2006-01-02"
 	// The first staged day, as the staging table's name ends.
 	rollupRepairSinceLayout = "20060102"
+	// Ends a count that has to see what every replica wrote. No effect on a plain MergeTree.
+	rollupRepairConsistent = " SETTINGS select_sequential_consistency = 1"
+	rollupRepairMoveTries  = 5
 	// A mutation reserves 1.1 times the part it rewrites, and several parts are rewritten at once.
 	rollupRepairSpaceFactor   = 2
 	rollupRepairDeleteRetries = 3
@@ -389,8 +398,8 @@ func (p *rollupRepairPass) repair(ctx context.Context, item rollupRepairWork, in
 	if err := p.guard("move"); err != nil {
 		return err
 	}
-	if err := chdb.Conn.Exec(ctx, "ALTER TABLE "+staged+" MOVE PARTITION ID '"+partition+"' TO TABLE "+t.name); err != nil {
-		return fmt.Errorf("moving the merged rows in: %w", err)
+	if err := t.moveStaged(ctx, staged, partition); err != nil {
+		return err
 	}
 	movedAt := time.Now()
 	if err := p.guard("delete"); err != nil {
@@ -401,6 +410,10 @@ func (p *rollupRepairPass) repair(ctx context.Context, item rollupRepairWork, in
 	}
 	deletedAt := time.Now()
 	if err := p.guard("drop"); err != nil {
+		return err
+	}
+	// Once more, now that the delete has given every replica time to see the copies.
+	if err := t.moveStaged(ctx, staged, partition); err != nil {
 		return err
 	}
 	if err := chdb.Conn.Exec(ctx, "DROP TABLE IF EXISTS "+staged+" SYNC"); err != nil {
@@ -420,6 +433,34 @@ func (p *rollupRepairPass) repair(ctx context.Context, item rollupRepairWork, in
 	return nil
 }
 
+// moveStaged puts the merged copies into the rollup and returns once the staging table
+// is empty, moving again while it is not. A move of a partition that is already gone
+// adds nothing, so it can be repeated.
+func (t rollupRepairTable) moveStaged(ctx context.Context, staged, partition string) error {
+	var left uint64
+	for try := 1; ; try++ {
+		if err := chdb.Conn.Exec(ctx, "ALTER TABLE "+staged+" MOVE PARTITION ID '"+partition+"' TO TABLE "+t.name); err != nil {
+			return fmt.Errorf("moving the merged rows in: %w", err)
+		}
+		if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+staged+rollupRepairConsistent).Scan(&left); err != nil {
+			return err
+		}
+		if left == 0 {
+			return nil
+		}
+		if try == rollupRepairMoveTries {
+			return fmt.Errorf("%d merged rows are still in %s after %d moves, the table is kept", left, staged, try)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(rollupRepairMaxPoll):
+		}
+	}
+}
+
+// lacksSpace names the disk that is too full to rewrite the partition's parts. Object
+// storage reports no limit, so nothing is skipped there.
 func (t rollupRepairTable) lacksSpace(ctx context.Context, partition string) (string, error) {
 	rows, err := chdb.Conn.Query(ctx,
 		"SELECT parts.disk_name, max(parts.bytes_on_disk), any(disks.unreserved_space) FROM system.parts AS parts "+
@@ -467,7 +508,7 @@ func (p *rollupRepairPass) stage(ctx context.Context, item rollupRepairWork, sta
 			return 0, fmt.Errorf("merging %s: %w", b.day, err)
 		}
 		var written uint64
-		if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+build).Scan(&written); err != nil {
+		if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+build+rollupRepairConsistent).Scan(&written); err != nil {
 			return 0, err
 		}
 		took := time.Since(started).Milliseconds()
@@ -512,7 +553,7 @@ func (t rollupRepairTable) deleteUnsorted(ctx context.Context, partition, since 
 		var left uint64
 		for _, day := range days {
 			var rows uint64
-			if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+t.name+" WHERE _partition_id = ? AND "+rollupRepairOnDay+" AND "+rollupRepairUnsorted, partition, day).Scan(&rows); err != nil {
+			if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+t.name+" WHERE _partition_id = ? AND "+rollupRepairOnDay+" AND "+rollupRepairUnsorted+rollupRepairConsistent, partition, day).Scan(&rows); err != nil {
 				return 0, err
 			}
 			left += rows

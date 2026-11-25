@@ -82,8 +82,11 @@ func seedSplitRollups(t *testing.T, projectId uuid.UUID) int {
 						t.Fatal(err)
 					}
 				}
-				// Half of the rows are from before weight_squares existed.
-				weight := float64(order % 2)
+				// Half of the unsorted rows carry no weight and count as cnt * 1000. The sorted
+				// row has one: a stored 0 next to a merged copy would be lost in the next merge,
+				// and no real row has it, since the column came with the tables and defaults to
+				// cnt * 1000.
+				weight := float64((order + 1) % 2)
 				for _, table := range []string{"metric_histograms_1h", "metric_histograms_1d"} {
 					if err := chdb.Conn.Exec(ctx, "INSERT INTO "+table+" (project_id, name, recorded_at, view, tags, cnt, total, min_val, max_val, zero_cnt, buckets, weight_squares) "+
 						"SELECT toUUID(?), 'http.server.request.duration', toDateTime(?), '/orders', mapFromArrays(?, ?), 2, ?, ?, ?, 1, ([toInt32(?), toInt32(60)], [1., 1.]), ?",
@@ -128,6 +131,18 @@ func assertRollupsRepaired(t *testing.T, projectId uuid.UUID, want map[string]ui
 	for table, print := range rollupFingerprint(t, projectId) {
 		if print != want[table] {
 			t.Errorf("%s reads differently after the repair", table)
+		}
+	}
+	// And once ClickHouse has merged the copies with the rows that were already sorted,
+	// which it does in the background at a time of its own choosing.
+	for _, table := range repairedRollups {
+		if err := chdb.Conn.Exec(context.Background(), "OPTIMIZE TABLE "+table+" FINAL"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for table, print := range rollupFingerprint(t, projectId) {
+		if print != want[table] {
+			t.Errorf("%s reads differently once the repaired rows are merged", table)
 		}
 	}
 	for _, table := range repairedRollups {
@@ -305,5 +320,33 @@ func TestRepairMetricRollups_ReadsExactlyTheLastYear(t *testing.T) {
 	again, err := RepairMetricRollups(ctx, func(string) error { return nil })
 	if err != nil || again.Partitions != 0 || again.RowsBefore != 0 {
 		t.Errorf("a second pass must find nothing in the last year, got %+v %v", again, err)
+	}
+}
+
+// The staging table is dropped at the end, so it must be empty by then. One whose rows
+// the move does not take, here because they belong to another partition than its name
+// says, stops the pass and stays.
+func TestRepairMetricRollups_KeepsAStagingTableThatStillHoldsRows(t *testing.T) {
+	setupTestDB(t)
+	ctx := context.Background()
+	emptyRollups(t)
+
+	staged := "metric_points_1d_tagrepair_202609_20260901"
+	if err := chdb.Conn.Exec(ctx, "CREATE TABLE "+staged+" AS metric_points_1d"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = chdb.Conn.Exec(ctx, "DROP TABLE IF EXISTS "+staged+" SYNC") })
+	if err := chdb.Conn.Exec(ctx, "INSERT INTO "+staged+" SELECT toUUID(?), 'system.network.io', map('a', '1'), toDateTime64('2026-08-15 00:00:00', 3), minState(v), maxState(v), sumState(v), countState() FROM (SELECT toFloat64(1) AS v)",
+		uuid.New().String()); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := RepairMetricRollups(ctx, func(string) error { return nil })
+	if err == nil || report.Partitions != 0 {
+		t.Fatalf("a staging table that keeps its rows must stop the pass, got %+v %v", report, err)
+	}
+	var rows uint64
+	if err := chdb.Conn.QueryRow(ctx, "SELECT count() FROM "+staged).Scan(&rows); err != nil || rows != 1 {
+		t.Errorf("the staging table must be kept with its row, got %d rows (%v)", rows, err)
 	}
 }

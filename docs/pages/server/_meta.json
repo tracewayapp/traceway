@@ -13,5 +13,6 @@
   "capacity-monitoring": "Capacity & Self-Monitoring",
   "upgrade-1-8": "Upgrading to 1.8",
   "upgrade-request-limits": "Upgrade Notes: Request Limits",
-  "upgrade-v2-tables": "V2 Telemetry Migration"
+  "upgrade-v2-tables": "V2 Telemetry Migration",
+  "repair-metric-rollups": "Repairing Metric Rollups"
 }

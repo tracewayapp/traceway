@@ -29,6 +29,7 @@ func (r *metricHistogramRepository) InsertCells(ctx context.Context, cells []sha
 		return nil
 	}
 	return chdb.SendBatch(ctx, histogramInsert, func(batch driver.Batch) error {
+		var sorted chdb.SortedMap
 		for _, cell := range cells {
 			columns, tags := shared.SplitHistogramDims(cell.Dims)
 			indexes, counts := cell.Hist.BucketArrays()
@@ -37,7 +38,7 @@ func (r *metricHistogramRepository) InsertCells(ctx context.Context, cells []sha
 			for _, column := range columns {
 				values = append(values, column)
 			}
-			values = append(values, tags, cell.Hist.Count, cell.Hist.Sum, cell.Hist.Min, cell.Hist.Max, cell.Hist.Zero, []any{indexes, counts}, cell.Hist.WeightSquareSum())
+			values = append(values, sorted.Of(tags), cell.Hist.Count, cell.Hist.Sum, cell.Hist.Min, cell.Hist.Max, cell.Hist.Zero, []any{indexes, counts}, cell.Hist.WeightSquareSum())
 			if err := batch.Append(values...); err != nil {
 				return err
 			}
@@ -284,12 +285,13 @@ func (r *metricHistogramRepository) FindExemplars(ctx context.Context, projectId
 
 // HotSeries returns the series of every metric that has at least minSeries of them
 // since from, at most limit series each, from the hourly rollup: it holds what every
-// instance wrote, and a day of it is a small read.
+// instance wrote, and a day of it is a small read. Tags are compared sorted: rows from
+// before tags were written in key order hold one series under several key orders.
 func (r *metricHistogramRepository) HotSeries(ctx context.Context, from time.Time, minSeries, limit int) ([]shared.MetricSeriesSet, error) {
 	dimensions := strings.Join(shared.HistogramDimensionColumnOrder, ", ")
 	from = from.UTC().Truncate(time.Hour)
 	rows, err := chdb.Conn.Query(ctx,
-		"SELECT project_id, name FROM metric_histograms_1h WHERE recorded_at >= ? GROUP BY project_id, name HAVING uniq("+dimensions+", tags) >= ?"+
+		"SELECT project_id, name FROM metric_histograms_1h WHERE recorded_at >= ? GROUP BY project_id, name HAVING uniq("+dimensions+", mapSort(tags)) >= ?"+
 			fmt.Sprintf(" LIMIT %d", shared.MaxHotSeriesMetrics), from, uint64(minSeries))
 	if err != nil {
 		return nil, err
@@ -309,7 +311,7 @@ func (r *metricHistogramRepository) HotSeries(ctx context.Context, from time.Tim
 	}
 	for i := range sets {
 		series, err := chdb.Conn.Query(ctx,
-			"SELECT DISTINCT "+dimensions+", tags FROM metric_histograms_1h WHERE project_id = ? AND name = ? AND recorded_at >= ?"+fmt.Sprintf(" LIMIT %d", limit),
+			"SELECT DISTINCT "+dimensions+", mapSort(tags) FROM metric_histograms_1h WHERE project_id = ? AND name = ? AND recorded_at >= ?"+fmt.Sprintf(" LIMIT %d", limit),
 			sets[i].ProjectId, sets[i].Name, from)
 		if err != nil {
 			return nil, err

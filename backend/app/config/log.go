@@ -39,6 +39,19 @@ func LogfContext(ctx context.Context, format string, v ...any) {
 	traceway.EmitLog(ctx, severityOf(msg), msg)
 }
 
+// LogEvent is LogfContext for a line an operator filters by: fields become attributes
+// of the exported record. The message must still read on its own, stdout has no fields.
+func LogEvent(ctx context.Context, fields map[string]string, format string, v ...any) {
+	if !LoggingEnabled && !traceway.Enabled() {
+		return
+	}
+	msg := fmt.Sprintf(format, v...)
+	if LoggingEnabled {
+		log.Print("[tracewaybackend] " + msg)
+	}
+	traceway.EmitLogFields(ctx, severityOf(msg), msg, fields)
+}
+
 // LogfLocal writes to stdout only and is never exported to self-monitoring,
 // whose logs every member of the monitoring project's organization can read.
 // A line that carries a secret (a token, a password reset or invitation

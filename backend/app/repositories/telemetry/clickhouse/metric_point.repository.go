@@ -20,8 +20,9 @@ func (r *metricPointRepository) InsertAsync(ctx context.Context, points []models
 		return nil
 	}
 	return chdb.SendBatch(ctx, "INSERT INTO metric_points (project_id, name, value, tags, recorded_at)", func(batch driver.Batch) error {
+		var tags chdb.SortedMap
 		for _, p := range points {
-			if err := batch.Append(p.ProjectId, p.Name, p.Value, p.Tags, p.RecordedAt); err != nil {
+			if err := batch.Append(p.ProjectId, p.Name, p.Value, tags.Of(p.Tags), p.RecordedAt); err != nil {
 				return err
 			}
 		}
@@ -214,13 +215,16 @@ func rateSource(table string, intervalMinutes int) (string, int, time.Duration) 
 	return table, intervalMinutes, shared.RateLookback + time.Duration(step)*time.Minute
 }
 
+// Rows stored before tags were written in key order hold one series under several key
+// orders, so a series is its sorted tags: grouped by tags as stored, a rollup bucket
+// would be several samples of the series and the window would difference them.
 func rateDeltasSelect(table, where string) string {
-	source := table + where
+	source := "(SELECT recorded_at, mapSort(points.tags) AS series, value FROM " + table + " AS points" + where + ")"
 	if table != "metric_points" {
-		source = "(SELECT recorded_at, tags, maxMerge(max_val) AS value FROM " + table + where + " GROUP BY recorded_at, tags)"
+		source = "(SELECT recorded_at, mapSort(points.tags) AS series, maxMerge(max_val) AS value FROM " + table + " AS points" + where + " GROUP BY recorded_at, series)"
 	}
-	return "SELECT recorded_at, tags, value - lagInFrame(value) OVER w AS delta, row_number() OVER w AS rn FROM " + source +
-		" WINDOW w AS (PARTITION BY mapSort(tags) ORDER BY recorded_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
+	return "SELECT recorded_at, series AS tags, value - lagInFrame(value) OVER w AS delta, row_number() OVER w AS rn FROM " + source +
+		" WINDOW w AS (PARTITION BY series ORDER BY recorded_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)"
 }
 
 func aggregationFunc(agg string, table string) string {

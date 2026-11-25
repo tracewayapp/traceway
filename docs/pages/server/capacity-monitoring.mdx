@@ -182,6 +182,24 @@ The [SLO](/learn/slos) worker recomputes every enabled SLO each `SLO_POLL_SECOND
 | `traceway.slo.computed.delta` / `errors.delta` / `timeouts.delta` | SLOs computed, failed, and stopped by `SLO_COMPUTE_TIMEOUT_SECONDS` since the last report. Each failure and timeout is also captured as an exception naming the SLO |
 | `traceway.slo.shards_owned` / `instances` | SLO shards leased by this instance, and the backend instances sharing them (Postgres builds; a single instance owns all 64) |
 
+### Metric rollup repair
+
+Reported only while the opt-in [metric rollup repair](/server/repair-metric-rollups) runs (`METRIC_ROLLUP_REPAIR=true`, ClickHouse deployments). Every metric but `pass_ms` and `failures` carries a `table` tag.
+
+| Metric | Meaning |
+|--------|---------|
+| `traceway.rollup_repair.partitions_pending` | Partitions of the table the current pass still has to repair. Falls to 0 as the pass advances |
+| `traceway.rollup_repair.rows_pending` | Unsorted rows in those partitions |
+| `traceway.rollup_repair.partitions_done` | Partitions finished (a count; sum it over a range) |
+| `traceway.rollup_repair.partitions_skipped` | Partitions left for a later pass, usually for lack of free disk |
+| `traceway.rollup_repair.rows_merged` / `rows_written` | Split rows removed, and the merged rows written in their place |
+| `traceway.rollup_repair.batches` | Days of data merged into the scratch table |
+| `traceway.rollup_repair.batch_ms` | Longest merge of one day in the interval |
+| `traceway.rollup_repair.partition_ms` | Longest partition in the interval, by `step` tag: `stage`, `move`, `delete`, `total` |
+| `traceway.rollup_repair.delete_parts_to_do` | Parts the running delete still has to rewrite. A value that stays flat for 30 minutes ends the pass with an error; check the free disk space |
+| `traceway.rollup_repair.pass_ms` | Duration of the last pass |
+| `traceway.rollup_repair.failures` | Passes that ended with an error; each is also an issue |
+
 ## Source map cache sizing
 
 Source maps and bundles live in blob storage at `sourcemaps/{projectId}/{filename}`. The default memory cache holds compiled artifacts with flat token tables and interned names. A cache entry’s size is the compiled size. Concurrent lookups for the same key share a load within the process.

@@ -1,0 +1,131 @@
+import { Callout } from "nextra/components";
+
+# Repairing metric rollups
+
+This page applies to **ClickHouse** deployments only. SQLite and DuckDB were never affected.
+
+Earlier releases wrote the tags of a metric in a different key order from one insert to the next. ClickHouse compares a `Map` in the order its entries were written, so `{'a':'1','b':'2'}` and `{'b':'2','a':'1'}` were two values, and the rollup tables stored one series as many rows that never merged ([issue #448](https://github.com/tracewayapp/traceway/issues/448)). On a small installation `metric_points_1h` held 58 times and `metric_points_1d` 470 times the rows it needed, and both grew by hundreds of megabytes a day.
+
+The current release fixes this in three places, with no action on your side:
+
+- the backend writes tags in key order,
+- the five rollup views sort tags themselves (startup migrations `0123` to `0127`), so an older backend still running during a rolling deploy cannot split a rollup,
+- the two reads that took the whole tag map as a series identity (the `rate` aggregation past 6 hours, and the series budget of client metrics) now sort it, so rows that are already stored read correctly.
+
+Growth stops with the upgrade. **Rows that were already split stay** until their TTL, and that is what the opt-in repair on this page is for.
+
+| Table | Split rows expire after | Repaired |
+|-------|-------------------------|----------|
+| `metric_points` | 7 days | no, expires on its own |
+| `metric_points_1m` | 30 days | no, expires on its own |
+| `metric_points_1h` | 1 year | yes |
+| `metric_points_1d` | never | yes |
+| `metric_histograms` | 7 days | no, expires on its own |
+| `metric_histograms_1h` | 90 days | yes |
+| `metric_histograms_1d` | 2 years | yes |
+
+## Check whether you need it
+
+Compare the rows a table holds with the rows it would hold with sorted tags:
+
+```sql
+SELECT
+    count() AS stored_rows,
+    uniqExact(project_id, name, recorded_at, mapSort(tags)) AS needed_rows,
+    countIf(tags != mapSort(tags)) AS unsorted_rows
+FROM metric_points_1d;
+```
+
+Run it for `metric_points_1h` too. When `unsorted_rows` is 0, or the difference is not worth the disk it costs you, leave the repair off: charts and alerts are correct either way.
+
+## Run the repair
+
+Set one variable on the backend and restart it:
+
+```dotenv
+METRIC_ROLLUP_REPAIR=true
+```
+
+A pass starts at startup. It scans the four tables, then works through every partition that holds unsorted rows. When a pass leaves nothing behind, the worker logs `metric rollup repair: complete, METRIC_ROLLUP_REPAIR can be unset` and ends. When a pass fails or skips a partition, it runs again an hour later, and at every restart. Leaving the variable set costs one scan of the four tables per start.
+
+With several backend instances you can set the variable on all of them. The instance that runs a pass holds a PostgreSQL advisory lock, and the others log `another instance is running it` and look again in an hour.
+
+### What a pass does to one partition
+
+1. It builds the merged rows of the partition's unsorted rows in a scratch table, one day of data per `INSERT`.
+2. It renames the scratch table to `<table>_tagrepair_<partition>`. That name is the record that the merged rows are complete.
+3. `ALTER TABLE ... MOVE PARTITION` puts the merged rows into the rollup table in one step.
+4. `ALTER TABLE ... DELETE IN PARTITION` removes the unsorted rows, as a background mutation the worker polls.
+5. It drops the staging table.
+
+Every step can be repeated, so a backend that is stopped or crashes at any point is picked up by the next pass without a row lost or counted twice. Do not drop a `_tagrepair_` table by hand while unsorted rows remain in its partition: the next pass would merge them a second time.
+
+The worker refuses to start while a rollup view does not sort its tags, because the procedure is only safe when no new unsorted row can appear.
+
+### What it costs
+
+- **Disk.** The delete rewrites every part that holds unsorted rows, and ClickHouse reserves 1.1 times a part's size while it does. A partition is skipped, with a warning, unless its disk has twice the size of the partition's largest part free. Free space, or add a volume, and the next pass takes it up. Space comes back a few minutes after a partition is done, when ClickHouse removes the old parts.
+- **I/O.** Merging and rewriting compete with ingest and dashboard queries. There is no throttle; start it outside your peak hours.
+- **Double counting, briefly.** Between steps 3 and 4 a partition holds both the merged rows and the originals. Averages, minima, maxima, percentiles and rates read the same during that time. The `sum` and `count` aggregations of ranges longer than 72 hours read up to twice their value for those series, until the delete of that partition finishes.
+
+As a reference, 2.26 million split rows in six partitions were merged into 376,000 in 7.5 seconds on a 4 vCPU machine, and `metric_points_1h` went from 32.8 MB to 6.0 MB.
+
+<Callout type="warning">
+  On replicated tables (`ReplicatedMergeTree`, ClickHouse Cloud) `MOVE PARTITION` adds the rows to the destination and removes them from the source in two steps. A ClickHouse server that crashes exactly between the two can leave merged rows in both tables. Traceway's own migrations create plain `AggregatingMergeTree` tables, where the move is one transaction. Take a backup first if your tables are replicated.
+</Callout>
+
+## Follow the progress
+
+Every step is one log line that starts with `metric rollup repair:` followed by the event and `key=value` pairs:
+
+```text
+metric rollup repair: table_scanned table=metric_points_1h partitions=14 rows=8200000 took_ms=5210
+metric rollup repair: pass_started partitions=31 rows=14300000
+metric rollup repair: batch_merged table=metric_points_1h partition=202609 batch=2026-09-03 position=3/30 rows_in=288000 rows_out=4800 took_ms=358
+metric rollup repair: delete_running table=metric_points_1h partition=202609 parts_to_do=4 elapsed_ms=30021
+metric rollup repair: partition_done table=metric_points_1h partition=202609 position=1/31 rows_in=8640000 rows_out=144000 stage_ms=9320 move_ms=8 delete_ms=41765 took_ms=51097
+metric rollup repair: pass_finished partitions_done=31 partitions_skipped=0 rows_in=14300000 rows_out=250000 took_ms=412504
+```
+
+| Event | Written |
+|-------|---------|
+| `table_scanned` | Once per table at the start of a pass: partitions and unsorted rows found |
+| `pass_started` | Once per pass: the total work |
+| `batch_merged` | After each day of a partition is merged into the scratch table |
+| `partition_resumed` | When a partition an earlier run left staged is taken up again |
+| `delete_running` | Every 30 seconds while a partition's delete runs, with the parts still to rewrite |
+| `partition_done` | When a partition is finished, with the time each step took |
+| `partition_skipped` | Warning: a partition was left for a later pass, with the reason |
+| `pass_finished` / `pass_failed` | End of a pass, with totals; `pass_failed` is a warning and carries `error` |
+
+With [self-monitoring](/server/capacity-monitoring) on, the same lines are log records of the monitoring project, and every pair is also an attribute named `rollup_repair.<key>`. In **Logs**, filter by `rollup_repair.event = partition_done` to see partitions finishing, or add `rollup_repair.table = metric_points_1h` to follow one table. The numbers are attributes too, so `rollup_repair.took_ms` can be charted from the same page. Each pass is also a task named `retention.metric_rollup_repair` under **Tasks**, and a failed pass is an issue.
+
+The metrics are listed under [Metric rollup repair](/server/capacity-monitoring#metric-rollup-repair) in the metric reference. `traceway.rollup_repair.rows_pending` and `partitions_pending` fall to 0 as a pass advances.
+
+## Do it by hand
+
+The worker is the supported way. If you would rather run the statements yourself, these are the ones it runs, for one partition of `metric_points_1h`. The backend must already be on the current release, so that the views sort.
+
+```sql
+-- 1. the partitions with unsorted rows
+SELECT _partition_id, count() FROM metric_points_1h
+WHERE tags != mapSort(tags) GROUP BY _partition_id ORDER BY _partition_id;
+
+-- 2. merged copies of one partition's unsorted rows
+CREATE TABLE metric_points_1h_tagrepair_202609 AS metric_points_1h;
+
+INSERT INTO metric_points_1h_tagrepair_202609
+    (project_id, name, recorded_at, tags, min_val, max_val, sum_val, count_val)
+SELECT project_id, name, recorded_at, mapSort(tags) AS sorted_tags,
+       minMergeState(min_val), maxMergeState(max_val), sumMergeState(sum_val), countMergeState(count_val)
+FROM metric_points_1h
+WHERE _partition_id = '202609' AND tags != mapSort(tags)
+GROUP BY project_id, name, recorded_at, sorted_tags;
+
+-- 3. put them in, 4. remove the originals, 5. clean up
+ALTER TABLE metric_points_1h_tagrepair_202609 MOVE PARTITION ID '202609' TO TABLE metric_points_1h;
+ALTER TABLE metric_points_1h DELETE IN PARTITION ID '202609' WHERE tags != mapSort(tags) SETTINGS mutations_sync = 2;
+DROP TABLE metric_points_1h_tagrepair_202609;
+```
+
+Run the `INSERT` exactly once per partition. `metric_points_1d` takes the same statements. The histogram tables group by their dimension columns as well (`release, env, os, os_major, client, client_major, form_factor, device_class, network, country, view`) and merge with `sum(cnt), sum(total), min(min_val), max(max_val), sum(zero_cnt), sumMap(buckets.1, buckets.2), sum(if(weight_squares > 0, weight_squares, cnt * 1000))`.

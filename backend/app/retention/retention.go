@@ -32,6 +32,7 @@ func Start(ctx context.Context) {
 		moveOverWindow = telemetryDays
 	}
 	startMoveOver(ctx, moveOverWindow)
+	startMetricRollupRepair(ctx)
 }
 
 func parseRetentionDays(value string) int {

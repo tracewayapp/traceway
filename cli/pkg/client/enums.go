@@ -13,15 +13,12 @@ var (
 	EndpointRequestsOrderByValues = []string{"duration", "recordedAt", "statusCode"}
 	EndpointChartMetricTypes      = []string{"total_time", "p50", "p95", "p99"}
 
-	// MetricAggregations are the values the server accepts on metrics/query.
-	// The server has no quantile aggregation for metric points: p50/p95/p99
-	// are silently computed as avg. The CLI accepts them for parity with the
-	// dashboard; the MCP server rejects them (see MetricAggregationsExact).
-	MetricAggregations = []string{"avg", "sum", "count", "min", "max", "rate", "last", "p50", "p95", "p99"}
+	// MetricAggregations are the CLI choices for metrics/query. Percentiles
+	// are computed for distributions and require a histogram metric.
+	MetricAggregations = []string{"avg", "sum", "count", "min", "max", "rate", "last", "p50", "p75", "p90", "p95", "p99"}
 
-	// MetricAggregationsExact are the aggregations the server actually
-	// computes as named. Latency percentiles come from the endpoints
-	// endpoints, never from metrics/query.
+	// MetricAggregationsExact are the MCP choices that do not require a
+	// histogram metric.
 	MetricAggregationsExact = []string{"avg", "sum", "count", "min", "max", "rate", "last"}
 )
 

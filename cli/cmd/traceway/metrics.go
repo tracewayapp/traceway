@@ -13,7 +13,6 @@ import (
 )
 
 // metricAggregations is the canonical list of aggregations the server accepts.
-// Kept in lockstep with the --aggregation flag's help text.
 var metricAggregations = client.MetricAggregations
 
 func newMetricsCmd() *cobra.Command {
@@ -33,7 +32,7 @@ func newMetricsQueryCmd() *cobra.Command {
 	}
 	addTimeRangeFlags(cmd)
 	cmd.Flags().String("name", "", "Metric name (required)")
-	cmd.Flags().String("aggregation", "avg", "Aggregation: avg, sum, count, min, max, rate, last, p50, p95, p99")
+	cmd.Flags().String("aggregation", "avg", "Aggregation: "+strings.Join(metricAggregations, ", "))
 	cmd.Flags().StringSlice("tag", nil, "Tag filter as key=value (repeatable)")
 	cmd.Flags().String("group-by", "", "Tag to group series by")
 	cmd.Flags().Int("interval-minutes", 0, "Time bucket size in minutes (0 = auto)")

@@ -44,7 +44,7 @@ Flag translation: `--since/--from/--to` are `since`/`from`/`to`; `--page/--page-
 Differences from the CLI:
 
 - Project selection: tools take an optional `project_id` param and fall back to the CLI's current project. There is no `projects use` tool; the default is whatever `traceway projects use` set on the host machine.
-- Current `query_metrics` rejects percentile aggregations. The CLI accepts p50/p95/p99, which current servers compute for distributions. Use `list_endpoints` for endpoint request percentiles; read `traceway://knowledge/learn/rum` for RUM query and dashboard capability limits.
+- Current `query_metrics` rejects percentile aggregations. The CLI accepts p50/p75/p90/p95/p99, which current servers compute for distributions. Use `list_endpoints` for endpoint request percentiles; read `traceway://knowledge/learn/rum` for RUM query and dashboard capability limits.
 - No confirmation gate: write tools execute immediately, so only call them on an explicit user request. The MCP client's own tool-approval flow is the confirmation. `--content-file` on the post-mortem commands becomes the `content_md` string param.
 - Login, logout, and profile management are CLI-only (`traceway login` in a terminal); the MCP server uses the credentials stored by the CLI.
 - Shell-piping recipes (`jq` filters) in the knowledge files describe CLI usage; with MCP tools, read the same fields from the structured tool result instead.

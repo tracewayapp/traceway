@@ -58,7 +58,7 @@ For collection changes, inspect rules in order, preserve unrelated fields, targe
 
 Discover before querying: `traceway metrics discover --since 24h`, then `--name browser.web_vital.inp --key service.version` for release values. MCP has `discover_metrics`. Read sessions with `sessions show <id> --started-at <timestamp>` / `get_session`; no session-list CLI exists.
 
-Current CLI accepts metric p50/p95/p99; current MCP `query_metrics` still rejects percentile aggregations. CLI does not expose p75/p90, `good_ratio`, `threshold` or `wholeRange`. Its response model also omits per-query errors, so an empty CLI result alone is not enough to diagnose a distribution query. Use the dashboard for unsupported reads, or an authorized account-authenticated API query (never a public ingest token). Do not invent flags or bypass Agent Access restrictions.
+Current CLI accepts metric p50/p75/p90/p95/p99; current MCP `query_metrics` still rejects percentile aggregations. CLI does not expose `good_ratio`, `threshold` or `wholeRange`. Its response model also omits per-query errors, so an empty CLI result alone is not enough to diagnose a distribution query. Use the dashboard for unsupported reads, or an authorized account-authenticated API query (never a public ingest token). Do not invent flags or bypass Agent Access restrictions.
 
 The current server accepts p50/p75/p90/p95/p99 and `good_ratio` on distributions. `POST /api/metrics/query?projectId=PROJECT_UUID` accepts UTC `from`/`to`, `queries`, and `wholeRange: true` to merge the full range:
 

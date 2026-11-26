@@ -311,7 +311,7 @@ All pull requests require **at least one approving review** before merging. This
 
 - **Correctness**: does the code do what the PR says it does?
 - **Testing**: are the requirements in "Before submitting" met? Repository changes need the ClickHouse + PostgreSQL Docker tests to pass.
-- **Patterns**: does the change follow the conventions in [CLAUDE.md](https://github.com/tracewayapp/traceway/blob/main/CLAUDE.md)? Reviewers will push back on divergence from established patterns.
+- **Patterns**: does the change follow the conventions in [AGENTS.md](https://github.com/tracewayapp/traceway/blob/main/AGENTS.md)? Reviewers will push back on divergence from established patterns.
 - **Scope**: is the PR focused? A small, focused PR is always preferred over one that mixes unrelated changes.
 
 ### Merge strategy
@@ -330,7 +330,7 @@ Ground rules:
 
 - **You are personally responsible for your code.** Whether you typed it, an autocomplete suggested it, or an AI agent generated the whole file, it is your code the moment it lands in a PR.
 - **Read and understand every line.** You are expected to understand each line you submit. Read the diff. If you cannot explain why a line is there or what it does, it is not ready for a PR. Reviewers will ask.
-- **Follow the project's guidelines and keep the style consistent**, regardless of how the code was written. AI does not know the conventions in this repo; you do. Cross-check generated code against [CLAUDE.md](https://github.com/tracewayapp/traceway/blob/main/CLAUDE.md), especially the error handling patterns, transaction middleware, and repository patterns.
+- **Follow the project's guidelines and keep the style consistent**, regardless of how the code was written. AI does not know the conventions in this repo; you do. Cross-check generated code against [AGENTS.md](https://github.com/tracewayapp/traceway/blob/main/AGENTS.md), especially the error handling patterns, transaction middleware, and repository patterns.
 - **Test locally, rigorously, before committing.** Do not rely on AI saying "this should work." A human runs the code and the relevant tests (see "Before submitting") and confirms it works before it is committed.
 
 There is no stigma around AI usage here. The bar is the same as it has always been: correct, tested, idiomatic code that you understand and stand behind.

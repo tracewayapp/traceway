@@ -105,7 +105,7 @@
               ${goBanner}
               ${nodeBanner}
               ${secretBanner}
-              echo "  commands: see the Quick Start table in CLAUDE.md"
+              echo "  commands: see the Quick Start table in AGENTS.md"
             '';
           };
 

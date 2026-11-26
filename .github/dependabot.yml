@@ -42,4 +42,4 @@ updates:
         exclude-patterns:
           - "actions/*"
     # No `labels:` on purpose: `ci` is the collaborator trust gate that makes PR
-    # CI opt-in (see CLAUDE.md), so a reviewer applies it after reading the bump.
+    # CI opt-in (see AGENTS.md), so a reviewer applies it after reading the bump.

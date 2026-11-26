@@ -1,4 +1,4 @@
-# CLAUDE.md - Docs
+# AGENTS.md - Docs
 
 ## Navbar
 

@@ -41,7 +41,8 @@ export function getInstallCommand(framework: Framework): string {
 		case 'android':
 			return 'implementation("com.tracewayapp:traceway:1.0.1")';
 		case 'ios':
-			return '.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "0.1.0")';
+			// 2.x is a beta: SwiftPM only offers prereleases to a requirement that names one.
+			return '.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "2.0.0-beta.1")';
 		default:
 			return '';
 	}
@@ -319,7 +320,10 @@ struct MyApp: App {
     init() {
         Traceway.start(
             connectionString: "${connectionString}",
-            options: TracewayOptions(version: "1.0.0")
+            options: TracewayOptions(
+                version: "1.0.0",
+                screenCapture: true
+            )
         )
     }
 
@@ -388,8 +392,10 @@ throw StateError('Test error from Traceway integration');`;
 throw RuntimeException("Test error from Traceway integration")`;
 	}
 	if (framework === 'ios') {
-		return `// Trigger a test error
-fatalError("Test error from Traceway integration")`;
+		return `// Send a test error (a caught one works with the debugger attached)
+struct TestError: Error {}
+Traceway.capture(TestError())
+Traceway.flush(timeout: 5)`;
 	}
 	if (framework && isJsFramework(framework)) {
 		return `// Trigger a test error

@@ -11,6 +11,8 @@ import {
 	BUILT_IN_ERROR_TRIGGER,
 	type SdkConfigRule,
 	optionalNumber,
+	sdkPlatform,
+	SDK_PLATFORM_NAMES,
 	signalsFor,
 	SIGNALS,
 	summarizeConditions,
@@ -134,8 +136,8 @@ describe('log-line triggers', () => {
 	});
 
 	it('offers a Flutter project only the signals its SDK reports, in its terms', () => {
-		expect(signalsFor(false)).toBe(SIGNALS);
-		const flutter = signalsFor(true);
+		expect(signalsFor('browser')).toBe(SIGNALS);
+		const flutter = signalsFor('flutter');
 		expect(flutter.map((signal) => signal.key)).toEqual([
 			'errors',
 			'messages',
@@ -149,6 +151,17 @@ describe('log-line triggers', () => {
 		expect(SIGNALS.find((signal) => signal.key === 'userActions')?.hint).toBe('Clicks');
 		const browserOnly = TRIGGER_TEMPLATES.filter((t) => t.browserOnly).map((t) => t.trigger.id);
 		expect(browserOnly).toEqual(['error-log-burst', 'frozen-page', 'slow-route-change']);
+	});
+
+	it('offers an iOS project the app signals, in its terms', () => {
+		const ios = signalsFor('ios');
+		expect(ios.map((signal) => signal.key)).toEqual(signalsFor('flutter').map((signal) => signal.key));
+		expect(ios.find((signal) => signal.key === 'console')?.hint).toBe('Traceway.log lines');
+		expect(ios.find((signal) => signal.key === 'network')?.hint).toBe('URLSession requests');
+		expect(sdkPlatform('ios')).toBe('ios');
+		expect(sdkPlatform('flutter')).toBe('flutter');
+		expect(sdkPlatform('react')).toBe('browser');
+		expect(SDK_PLATFORM_NAMES[sdkPlatform('ios')]).toBe('iOS');
 	});
 
 	it('gives a template an id no other rule of the project uses', () => {

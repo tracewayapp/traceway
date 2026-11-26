@@ -279,9 +279,29 @@ func TestSdkConfigServesFlutterProjects(t *testing.T) {
 	}
 }
 
+func TestSdkConfigServesIosProjects(t *testing.T) {
+	f := newSdkConfigFixture(t)
+	if _, err := db.DB.Exec("UPDATE projects SET framework = ? WHERE id = ?", "ios", f.projectId); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/sdk-config/rules", "/api/sdk-config/captures"} {
+		if code, body := f.do("GET", path, ""); code != http.StatusOK {
+			t.Fatalf("%s: %d %v", path, code, body)
+		}
+	}
+	// A click step takes the selector the iOS SDK records for a tap.
+	rule := `{"name":"Pay tapped","settings":{"triggers":[{"id":"pay","steps":[{"match":{"event":{"type":"click","value":"UIButton#pay"}}}],"actions":[{"type":"flush","lookbackSeconds":60}]}]}}`
+	if code, out := f.do("POST", "/api/sdk-config/rules", rule); code != http.StatusCreated {
+		t.Fatalf("create = %d %v", code, out)
+	}
+	if code, out := f.do("POST", "/api/sdk-config/captures", `{"target":{"kind":"instance","value":"0195f2a0-0000-7000-8000-000000000001"},"durationMinutes":5,"replay":true}`); code != http.StatusCreated && code != http.StatusOK {
+		t.Fatalf("capture = %d %v", code, out)
+	}
+}
+
 func TestSdkConfigRejectsUnsupportedProjects(t *testing.T) {
 	f := newSdkConfigFixture(t)
-	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "ios", "android"} {
+	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "android"} {
 		t.Run(framework, func(t *testing.T) {
 			if _, err := db.DB.Exec("UPDATE projects SET framework = ? WHERE id = ?", framework, f.projectId); err != nil {
 				t.Fatal(err)

@@ -27,6 +27,7 @@
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import { ArrowRight, Radar } from '@lucide/svelte';
 	import SdkCaptureDialog from '$lib/components/sdk-config/sdk-capture-dialog.svelte';
+	import { sdkPlatform, SDK_PLATFORM_NAMES } from '$lib/components/sdk-config/sdk-config';
 	import { SDK_CONFIG_FRAMEWORKS } from '$lib/state/projects.svelte';
 	import type {
 		SessionActionEvent,
@@ -186,11 +187,11 @@
 			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework) &&
 			projectsState.canWriteCurrentProject
 	);
-	const isFlutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
 	const sdkVersion = $derived(session?.attributes?.['traceway.sdk.version']);
 	const sdkLabel = $derived(
 		sdkVersion
-			? `${isFlutter ? 'Flutter' : 'JS'} SDK v${sdkVersion}`
+			? `${platform === 'browser' ? 'JS' : SDK_PLATFORM_NAMES[platform]} SDK v${sdkVersion}`
 			: session?.attributes?.['traceway.sdk.generation'] === '1'
 				? 'V1 · legacy ingestion'
 				: 'Unknown · not reported'
@@ -243,9 +244,12 @@
 		{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
 			<p
 				class="text-sm text-muted-foreground"
-				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; {isFlutter
-					? 'performance metrics'
-					: 'web vitals'} are collected independently."
+				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; {platform ===
+				'flutter'
+					? 'performance metrics are'
+					: platform === 'ios'
+						? 'errors are'
+						: 'web vitals are'} collected independently."
 			>
 				Session requests are diagnostic samples, not overall performance statistics.
 			</p>
@@ -259,7 +263,7 @@
 				<LabelValue label="Duration" value={sessionDurationLabel(session)} />
 				<LabelValue label="App version" value={session.appVersion || '—'} />
 				{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
-					<LabelValue label={isFlutter ? 'Flutter SDK' : 'JavaScript SDK'} value={sdkLabel} />
+					<LabelValue label={`${SDK_PLATFORM_NAMES[platform]} SDK`} value={sdkLabel} />
 					<LabelValue
 						label="Failed replay uploads"
 						value={session.attributes?.['traceway.replay.failed_segments'] ?? 'Not reported'}

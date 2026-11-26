@@ -130,11 +130,12 @@
 		replayRef?.seek(offsetMs);
 	}
 
-	// The browser and Flutter SDKs report whole sessions, so an occurrence links to its session page.
+	// The OpenTelemetry SDKs (browser, Flutter, iOS) report whole sessions, so an occurrence links to its session
+	// page.
 	const hasFullSessions = $derived(
 		!!projectsState.currentProject &&
 			(isBrowserFramework(projectsState.currentProject.framework) ||
-				projectsState.currentProject.framework === 'flutter')
+				SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework))
 	);
 	let captureOpen = $state(false);
 	const canCapture = $derived(

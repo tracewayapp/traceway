@@ -28,6 +28,7 @@
 		conditionText,
 		isNumericOp,
 		optionalNumber,
+		sdkPlatform,
 		signalsFor,
 		type CaptureMode,
 		type ConditionRow,
@@ -45,13 +46,16 @@
 	}
 
 	let { open = $bindable(), rule, otherTriggerIds = [], onSaved }: Props = $props();
-	let flutter = $derived(projectsState.currentProject?.framework === 'flutter');
-	// Recorded sequences match clicks, hovers and navigation, which the browser and Flutter SDKs report.
+	let platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
+	let flutter = $derived(platform === 'flutter');
+	// An app SDK (Flutter, iOS): taps, screens and app logs instead of clicks, pages and console calls.
+	let app = $derived(platform !== 'browser');
+	// Recorded sequences match clicks, hovers and navigation, which the browser and app SDKs report.
 	let recordsSequences = $derived(
 		!!projectsState.currentProject &&
-			(isBrowserFramework(projectsState.currentProject.framework) || flutter)
+			(isBrowserFramework(projectsState.currentProject.framework) || app)
 	);
-	let triggerTemplates = $derived(TRIGGER_TEMPLATES.filter((t) => !flutter || !t.browserOnly));
+	let triggerTemplates = $derived(TRIGGER_TEMPLATES.filter((t) => !app || !t.browserOnly));
 
 	type Choice = 'inherit' | Mode;
 
@@ -152,11 +156,11 @@
 		for (const signal of SIGNALS)
 			next[signal.key] = settings.signals?.[signal.key]?.mode ?? 'inherit';
 		signalChoices = next;
-		// A Flutter project is not offered the browser-only signals, but a rule that already sets one keeps
+		// An app project is not offered the browser-only signals, but a rule that already sets one keeps
 		// showing it, so the form can still change it.
-		shownSignals = flutter
+		shownSignals = app
 			? [
-					...signalsFor(true),
+					...signalsFor(platform),
 					...SIGNALS.filter(
 						(signal) => BROWSER_ONLY_SIGNALS.has(signal.key) && next[signal.key] !== 'inherit'
 					)
@@ -307,7 +311,7 @@
 			<Sheet.Title>{rule ? 'Edit Rule' : 'New Rule'}</Sheet.Title>
 			<Sheet.Description>
 				Clients whose attributes match get these settings. Rules apply top to bottom, and a later
-				rule overrides what an earlier one set. Settings only lower what the SDK's {flutter
+				rule overrides what an earlier one set. Settings only lower what the SDK's {app
 					? 'TracewayOptions'
 					: 'init() options'}
 				allow.
@@ -463,9 +467,9 @@
 				{:else if tab === 'triggers'}
 					<div class="space-y-4">
 						{#if recordsSequences}
-							<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} {flutter} />
+							<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} {platform} />
 						{/if}
-						<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} {flutter} />
+						<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} {platform} />
 					</div>
 				{:else if tab === 'signals'}
 					<div class="space-y-4">
@@ -501,7 +505,11 @@
 								<div>
 									<div class="text-sm">Session replay</div>
 									<div class="text-xs text-muted-foreground">
-										{flutter ? 'Screen recording' : 'rrweb recording'}
+										{flutter
+											? 'Screen recording'
+											: platform === 'ios'
+												? 'Wireframe of the view hierarchy'
+												: 'rrweb recording'}
 									</div>
 								</div>
 								<Select.Root type="single" bind:value={replayChoice} disabled={saving}>
@@ -597,9 +605,13 @@
 								placeholder="Inherit (0% by default)"
 							/>
 							<p class="text-xs text-muted-foreground">
-								Try 1% for a stable sample of session breadcrumbs and request spans. Errors and {flutter
-									? 'performance metrics'
-									: 'web vitals'} stay on; replay stays error-triggered unless configured separately.
+								Try 1% for a stable sample of session breadcrumbs and request spans. {platform ===
+								'ios'
+									? 'Errors stay on'
+									: flutter
+										? 'Errors and performance metrics stay on'
+										: 'Errors and web vitals stay on'}; replay stays error-triggered unless configured
+								separately.
 							</p>
 						</div>
 						<div class="space-y-2">

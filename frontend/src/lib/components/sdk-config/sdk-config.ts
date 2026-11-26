@@ -96,18 +96,44 @@ export const BROWSER_ONLY_SIGNALS: ReadonlySet<string> = new Set([
 	'routeTiming'
 ]);
 
-const FLUTTER_SIGNAL_HINTS: Record<string, string> = {
-	network: 'HTTP client spans',
-	console: 'print and debugPrint lines',
-	userActions: 'Taps'
+/**
+ * The SDK that takes a project's settings: the browser SDK, or one of the app SDKs (Flutter, iOS), which share the
+ * settings document but report taps, screens and app logs instead of clicks, pages and console calls.
+ */
+export type SdkPlatform = 'browser' | 'flutter' | 'ios';
+
+export function sdkPlatform(framework: string | undefined | null): SdkPlatform {
+	if (framework === 'flutter' || framework === 'ios') return framework;
+	return 'browser';
+}
+
+/** The SDK's name as the dashboard writes it: "the Flutter SDK", "the iOS SDK v2 required". */
+export const SDK_PLATFORM_NAMES: Record<SdkPlatform, string> = {
+	browser: 'JavaScript',
+	flutter: 'Flutter',
+	ios: 'iOS'
+};
+
+const APP_SIGNAL_HINTS: Record<Exclude<SdkPlatform, 'browser'>, Record<string, string>> = {
+	flutter: {
+		network: 'HTTP client spans',
+		console: 'print and debugPrint lines',
+		userActions: 'Taps'
+	},
+	ios: {
+		network: 'URLSession requests',
+		console: 'Traceway.log lines',
+		userActions: 'Taps'
+	}
 };
 
 /** The signals a project's SDK reports, described in its terms. */
-export function signalsFor(flutter: boolean): Array<{ key: string; label: string; hint: string }> {
-	if (!flutter) return SIGNALS;
+export function signalsFor(platform: SdkPlatform): Array<{ key: string; label: string; hint: string }> {
+	if (platform === 'browser') return SIGNALS;
+	const hints = APP_SIGNAL_HINTS[platform];
 	return SIGNALS.filter((signal) => !BROWSER_ONLY_SIGNALS.has(signal.key)).map((signal) => ({
 		...signal,
-		hint: FLUTTER_SIGNAL_HINTS[signal.key] ?? signal.hint
+		hint: hints[signal.key] ?? signal.hint
 	}));
 }
 

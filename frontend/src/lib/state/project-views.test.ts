@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isProjectViewAvailable, SDK_CONFIG_FRAMEWORKS } from './projects.svelte';
 
 describe('project view availability', () => {
-	it.each(['react-native', 'android', 'ios'] as const)(
+	it.each(['react-native', 'android'] as const)(
 		'keeps browser collection and full session views off %s',
 		(framework) => {
 			expect(SDK_CONFIG_FRAMEWORKS).not.toContain(framework);
@@ -51,6 +51,24 @@ describe('project view availability', () => {
 			'/connection'
 		]) {
 			expect(isProjectViewAvailable('flutter', path), path).toBe(true);
+		}
+	});
+	it('enables the session and collection views for ios, without metric dashboards or SLOs', () => {
+		expect(SDK_CONFIG_FRAMEWORKS).toContain('ios');
+		for (const path of [
+			'/sessions',
+			'/sessions/session-id',
+			'/data-collection',
+			'/logs',
+			'/spans',
+			'/issues',
+			'/connection'
+		]) {
+			expect(isProjectViewAvailable('ios', path), path).toBe(true);
+		}
+		// The iOS SDK sends no app performance metrics.
+		for (const path of ['/slos', '/slos/slo-id', '/dashboards']) {
+			expect(isProjectViewAvailable('ios', path), path).toBe(false);
 		}
 	});
 	it.each(['opentelemetry', 'gin', 'nestjs', 'nextjs', 'remix'] as const)(

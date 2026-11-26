@@ -407,9 +407,32 @@ func TestOpampServesFlutterProjects(t *testing.T) {
 	}
 }
 
+// The iOS SDK's tests pin the same AgentToServer bytes as the Flutter and browser SDKs.
+func TestOpampServesIosProjects(t *testing.T) {
+	f := newOpampFixture(t)
+	f.project.Framework = "ios"
+	f.rule("stream app events", `{}`, `{"signals":{"custom":{"mode":"stream"}},"replay":{"mode":"stream"}}`)
+	body, err := hex.DecodeString(flutterAgentToServerHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := f.post(body, map[string]string{instanceUidHeader: "0195f2a0-0000-7000-8000-000000000001"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", response.Code, response.Body.String())
+	}
+	var resp protobufs.ServerToAgent
+	if err := proto.Unmarshal(response.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	doc := resp.GetRemoteConfig().GetConfig().GetConfigMap()["traceway"]
+	if doc == nil || !strings.Contains(string(doc.GetBody()), `"custom":{"mode":"stream"`) {
+		t.Fatalf("an iOS project must receive its remote settings, got %s", doc.GetBody())
+	}
+}
+
 func TestOpampRejectsUnsupportedProjects(t *testing.T) {
 	f := newOpampFixture(t)
-	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "ios", "android", ""} {
+	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "android", ""} {
 		t.Run(framework, func(t *testing.T) {
 			f.project.Framework = framework
 			response := f.post(nil, nil)

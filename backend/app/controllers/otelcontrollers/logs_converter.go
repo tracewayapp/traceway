@@ -85,7 +85,8 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 				debugIds := debugIdsFrom(lr.Attributes, resource)
 				shared.NormalizeStoredAttributes(record.LogAttributes)
 				if stackTrace := record.LogAttributes["exception.stacktrace"]; stackTrace != "" {
-					record.LogAttributes["exception.stacktrace"] = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName, debugIds)
+					stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName, debugIds)
+					record.LogAttributes["exception.stacktrace"] = otelSymbolicateIos(existingProject, projectId, ctx, stackTrace, language)
 				}
 
 				issue := logIssue{
@@ -182,9 +183,9 @@ func (l logIssue) row(projectId uuid.UUID, stackTrace, hash string, isMessage bo
 	}
 }
 
-// tracewaySDKScopes are the instrumentation scopes of Traceway's own SDKs: the browser SDK and the Flutter SDK. The
+// tracewaySDKScopes are the instrumentation scopes of Traceway's own SDKs: the browser, Flutter and iOS SDKs. The
 // session page shows their version, which tells whether a client applies remote collection settings.
-var tracewaySDKScopes = map[string]bool{"@tracewayapp/frontend": true, "traceway-flutter": true}
+var tracewaySDKScopes = map[string]bool{"@tracewayapp/frontend": true, "traceway-flutter": true, "traceway-ios": true}
 
 // sessionFromLog turns a lifecycle event into a session upsert. Every event must name the session's start: on
 // ClickHouse started_at is part of the sorting key, so an update with a different start would create a second

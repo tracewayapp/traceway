@@ -16,6 +16,8 @@
 	import SdkConfigPreviewDialog from './sdk-config-preview-dialog.svelte';
 	import SdkCaptureDialog from './sdk-capture-dialog.svelte';
 	import {
+		sdkPlatform,
+		SDK_PLATFORM_NAMES,
 		summarizeConditions,
 		summarizeSettings,
 		triggerIdsOfRules,
@@ -36,7 +38,9 @@
 	let deletingRule = $state<SdkConfigRule | null>(null);
 
 	const canWrite = $derived(projectsState.canWriteCurrentProject);
-	const flutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
+	// An app SDK (Flutter, iOS) polls when the app comes back to the foreground.
+	const app = $derived(platform !== 'browser');
 
 	async function load() {
 		const projectId = projectsState.currentProjectId;
@@ -138,9 +142,9 @@
 <div class="space-y-6">
 	<SdkVersionWarning />
 	<p class="text-sm text-muted-foreground">
-		The {flutter ? 'Flutter' : 'browser'} SDK asks Traceway for these settings over OpAMP. Clients pick
-		up a change within about
-		{Math.max(1, Math.round(heartbeatSeconds / 60))} min. {flutter
+		The {app ? SDK_PLATFORM_NAMES[platform] : 'browser'} SDK asks Traceway for these settings over OpAMP.
+		Clients pick up a change within about
+		{Math.max(1, Math.round(heartbeatSeconds / 60))} min. {app
 			? 'An app coming back to the foreground checks again at once.'
 			: 'Returning to a tab checks again once its poll interval has elapsed.'}
 	</p>
@@ -176,11 +180,16 @@
 
 			{#if rules.length === 0}
 				<p class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-					{#if flutter}
+					{#if platform === 'flutter'}
 						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
 						breadcrumbs, and the last seconds of the screen recording when screen capture is on, are
 						uploaded on an error. Sessions and performance metrics stay on; healthy-session sampling
 						is off. Explicit SDK options can override these defaults.
+					{:else if platform === 'ios'}
+						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
+						breadcrumbs, and a 30-second wireframe replay clip when screen capture is on, are uploaded
+						on an error. Sessions stay on; healthy-session sampling is off. Explicit SDK options can
+						override these defaults.
 					{:else}
 						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
 						breadcrumbs and a 30-second replay clip are uploaded on an error. Lightweight session
@@ -291,7 +300,7 @@
 							<span class="min-w-0 truncate font-mono text-xs">{capture.label}</span>
 							<span class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
 								<span
-									title="Status reflects at least one matching {flutter
+									title="Status reflects at least one matching {app
 										? 'app'
 										: 'browser'}, not every device in the cohort. Collecting means tagged log data has reached Traceway; external-only telemetry cannot be confirmed here."
 									>{capture.status}</span

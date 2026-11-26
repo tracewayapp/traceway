@@ -33,7 +33,8 @@
 		isFrontendFramework,
 		isBrowserFramework,
 		isCloudflareFramework,
-		isProjectViewAvailable
+		isProjectViewAvailable,
+		SDK_CONFIG_FRAMEWORKS
 	} from '$lib/state/projects.svelte';
 	import { LayoutDashboard } from '@lucide/svelte';
 	import { page } from '$app/state';
@@ -110,7 +111,7 @@
 		);
 		if (framework && isFrontendFramework(framework)) {
 			const hidden =
-				isBrowserFramework(framework) || framework === 'flutter'
+				isBrowserFramework(framework) || SDK_CONFIG_FRAMEWORKS.includes(framework)
 					? hiddenForBrowser
 					: hiddenForMobile;
 			return items.filter((item) => !hidden.has(item.title));

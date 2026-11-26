@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +84,43 @@ func TestConvertLogs_SymbolicatesExceptionStacktrace(t *testing.T) {
 	}
 	if got := records[0].LogAttributes["exception.type"]; got != "Error" {
 		t.Errorf("expected other attributes untouched, got exception.type=%q", got)
+	}
+}
+
+// The iOS SDK sends an error's frames as binary-image offsets; with the build's dSYM uploaded, the stored record
+// and the issue carry function, file and line, as on the native report protocol.
+func TestConvertLogs_SymbolicatesIosStacktrace(t *testing.T) {
+	projectId := uuid.MustParse("00000000-0000-0000-0000-0000000000ac")
+	dsym, err := os.ReadFile(filepath.Join("..", "..", "symbolicator", "ios", "fixtures", "sample", "sample.dsym"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace, err := os.ReadFile(filepath.Join("..", "..", "symbolicator", "ios", "fixtures", "sample", "trace.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	setFakeStore(t, map[string][]byte{
+		services.IOSSymbolsKey(projectId, "2dd71042118432be8f92dd4e3d3fe24a"): dsym,
+	})
+	req := logsRequest("swift", "traceway-ios",
+		strKV("event.name", "exception"),
+		strKV("exception.type", "SampleError"),
+		strKV("exception.message", "boom"),
+		strKV("exception.stacktrace", string(trace)),
+	)
+	project := tokenProject(projectId)
+	project.Framework = "ios"
+	converted := convertLogs(context.Background(), project, projectId, "", req)
+	if len(converted.Records) != 1 || len(converted.Exceptions) != 1 {
+		t.Fatalf("expected one record and one issue, got %d and %d", len(converted.Records), len(converted.Exceptions))
+	}
+	for _, got := range []string{converted.Records[0].LogAttributes["exception.stacktrace"], converted.Exceptions[0].StackTrace} {
+		if !strings.Contains(got, "leaf (sample.c:7:18)") || !strings.Contains(got, "main (sample.c:18)") {
+			t.Errorf("expected the frames resolved through the dSYM, got %q", got)
+		}
+		if !strings.HasPrefix(got, "SampleError: boom") {
+			t.Errorf("expected the error line first, got %q", got)
+		}
 	}
 }
 

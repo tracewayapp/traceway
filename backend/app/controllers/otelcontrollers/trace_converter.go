@@ -461,6 +461,7 @@ func buildException(
 	stackTrace = otelSymbolicateJs(existingProject, projectId, ctx, stackTrace, language, scopeName, debugIds)
 	stackTrace = otelSymbolicateAndroid(existingProject, projectId, ctx, stackTrace, language, proguardUuid)
 	stackTrace = otelSymbolicateDart(existingProject, projectId, ctx, stackTrace, language)
+	stackTrace = otelSymbolicateIos(existingProject, projectId, ctx, stackTrace, language)
 
 	// traceway.is_message is how the backend's own CaptureMessage marks a
 	// message: hashed as written, like the native protocol's isMessage.

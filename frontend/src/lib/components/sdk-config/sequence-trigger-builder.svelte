@@ -3,7 +3,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Plus, Trash2, ArrowUp, ArrowDown } from '@lucide/svelte';
-	import { newTriggerId } from './sdk-config';
+	import { newTriggerId, type SdkPlatform } from './sdk-config';
 	type Step = {
 		match: {
 			event: {
@@ -34,13 +34,17 @@
 	let {
 		triggers = $bindable<unknown[]>([]),
 		disabled = false,
-		flutter = false
+		platform = 'browser'
 	}: {
 		triggers?: unknown[];
 		disabled?: boolean;
-		/** A Flutter project: steps name widgets and routes instead of elements and URL paths. */
-		flutter?: boolean;
+		/**
+		 * The project's SDK. An app SDK's steps name widgets or views and screens instead of elements and URL
+		 * paths; on iOS a hover never happens.
+		 */
+		platform?: SdkPlatform;
 	} = $props();
+	let app = $derived(platform !== 'browser');
 	function sequence(value: unknown): value is Sequence {
 		const t = value as Sequence;
 		return (
@@ -84,7 +88,7 @@
 	<div>
 		<h3 class="font-medium">Recording triggers</h3>
 		<p class="text-xs text-muted-foreground">
-			Match events in order {flutter ? 'in the same app session' : 'on the same tab'}, then send
+			Match events in order {app ? 'in the same app session' : 'on the same tab'}, then send
 			buffered replay and continue recording. Unrelated events are ignored, and the first step
 			happening again does not undo progress.
 		</p>
@@ -147,9 +151,10 @@
 									class="h-9 w-full rounded-md border bg-background px-2 text-sm"
 									bind:value={step.match.event.type}
 									{disabled}
-									><option value="click">{flutter ? 'Tap' : 'Click'}</option><option value="hover"
-										>Hover</option
-									><option value="navigation">Navigation</option><option value="log">Log</option
+									><option value="click">{app ? 'Tap' : 'Click'}</option>{#if platform !== 'ios' || step.match.event.type === 'hover'}<option
+											value="hover">Hover</option
+										>{/if}<option value="navigation">Navigation</option><option value="log"
+										>Log</option
 									></select
 								>
 							</div>
@@ -159,9 +164,11 @@
 										? 'Route pattern'
 										: step.match.event.type === 'log'
 											? 'Log message'
-											: flutter
+											: platform === 'flutter'
 												? 'Widget selector'
-												: 'CSS selector'}</Label
+												: platform === 'ios'
+													? 'View selector'
+													: 'CSS selector'}</Label
 								><Input
 									id={`seq-value-${index}-${i}`}
 									bind:value={step.match.event.value}
@@ -169,9 +176,11 @@
 										? '/users/{id}'
 										: step.match.event.type === 'log'
 											? 'User loaded'
-											: flutter
+											: platform === 'flutter'
 												? '#pay or ElevatedButton[text="Pay now"]'
-												: '#someId .some-class'}
+												: platform === 'ios'
+													? '#pay or UIButton[text="Pay now"]'
+													: '#someId .some-class'}
 									{disabled}
 								/>
 							</div>
@@ -261,7 +270,21 @@
 	{#if triggers.length < 20}<Button type="button" variant="outline" onclick={add} {disabled}
 			><Plus class="size-4" /> Add recording trigger</Button
 		>{/if}
-	{#if flutter}
+	{#if platform === 'ios'}
+		<p class="text-xs text-muted-foreground">
+			Selectors name views with CSS syntax: a class such as <code>UIButton</code>,
+			<code>#pay</code> for an <code>accessibilityIdentifier</code>, <code>[text="Pay now"]</code> for
+			the text a label or button shows, <code>[label="Delete"]</code> for an
+			<code>accessibilityLabel</code>, <code>.button</code> for accessibility traits,
+			<code>[key="42"]</code> for a <code>tag</code>, and combinators; pseudo-classes and selector
+			lists are not supported. A tap matches the view under the finger or any of its superviews; iOS
+			has no hover. Route patterns match the screen path, such as
+			<code>/CheckoutViewController</code> or a path the app reports with
+			<code>.tracewayScreen</code> or <code>Traceway.recordNavigation</code>, like
+			<code>/users/&lbrace;id&rbrace;</code>; a parameter matches one path segment. Replay needs the
+			SDK's <code>screenCapture</code> option.
+		</p>
+	{:else if platform === 'flutter'}
 		<p class="text-xs text-muted-foreground">
 			Selectors name widgets with CSS syntax: a widget type such as <code>ElevatedButton</code>,
 			<code>#pay</code> for <code>Key('pay')</code> or a semantics identifier,

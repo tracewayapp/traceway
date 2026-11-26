@@ -24,6 +24,17 @@ Growth stops with the upgrade. **Rows that were already split stay** until their
 | `metric_histograms_1h` | 90 days | yes |
 | `metric_histograms_1d` | 2 years | yes, the last year |
 
+## The steps
+
+1. **Upgrade** every backend instance to the current release and let it start once, so that the startup migrations make the rollup views sort their tags. The repair refuses to run before that.
+2. **Check** how many rows are split ([below](#check-whether-you-need-it)). With few of them, stop here.
+3. **Set `METRIC_ROLLUP_REPAIR=true`** and restart the backend, outside your peak hours.
+4. **Follow** the log lines or the metrics ([Follow the progress](#follow-the-progress)). The first lines are the scan; nothing is changed before `pass_started`.
+5. **Wait for** `metric rollup repair: complete, METRIC_ROLLUP_REPAIR can be unset`. The worker has ended by then.
+6. **Check the result** ([below](#check-the-result)), then set `METRIC_ROLLUP_REPAIR=false` or remove it. It takes effect at the next restart, and no restart is needed for it.
+
+Nothing else has to be stopped. Ingest, dashboards and alerts keep running during the repair.
+
 ## Check whether you need it
 
 Compare the rows a table holds with the rows it would hold with sorted tags:
@@ -36,7 +47,7 @@ SELECT
 FROM metric_points_1d;
 ```
 
-Run it for `metric_points_1h` too. When `unsorted_rows` is 0, or the difference is not worth the disk it costs you, leave the repair off: charts and alerts are correct either way.
+Run it for `metric_points_1h` too. On a table with hundreds of millions of rows the query takes minutes: run it from `clickhouse-client`, or a month at a time by adding `WHERE toYYYYMM(recorded_at) = 202611`. When `unsorted_rows` is 0, or the difference is not worth the disk it costs you, leave the repair off: charts and alerts are correct either way.
 
 ## Run the repair
 
@@ -45,6 +56,8 @@ Set one variable on the backend and restart it:
 ```dotenv
 METRIC_ROLLUP_REPAIR=true
 ```
+
+The variable is read once, at startup. `true` (or `1`) turns the repair on; `false`, any other value, or no value leaves it off.
 
 A pass starts at startup. It scans the last year of the four tables, today first and going back a day per query, then works through every partition that holds unsorted rows, the newest first. Rows older than a year are left as they are: they read correctly, and only keep the disk they use. When a pass leaves nothing behind, the worker logs `metric rollup repair: complete, METRIC_ROLLUP_REPAIR can be unset` and ends. When a pass fails or skips a partition, it runs again an hour later, and at every restart. Leaving the variable set costs one scan of the four tables per start.
 
@@ -70,7 +83,35 @@ The worker refuses to start while a rollup view does not sort its tags, because 
 - **I/O.** Merging and rewriting compete with ingest and dashboard queries. There is no throttle; start it outside your peak hours.
 - **Double counting, briefly.** Between steps 3 and 4 a partition holds both the merged rows and the originals. Averages, minima, maxima, percentiles and rates read the same during that time. The `sum` and `count` aggregations of ranges longer than 72 hours read up to twice their value for those series, until the delete of that partition finishes.
 
-As a reference, 2.26 million split rows in six partitions were merged into 376,000 in 7.5 seconds on a 4 vCPU machine, and `metric_points_1h` went from 32.8 MB to 6.0 MB.
+### How long it takes
+
+Time goes into three things: the scan at the start of a pass, merging a partition's days, and the delete that rewrites its parts. The move is instant.
+
+On a small installation, 2.26 million split rows in six partitions were merged into 376,000 in 7.5 seconds on a 4 vCPU machine, and `metric_points_1h` went from 32.8 MB to 6.0 MB.
+
+On a large one (ClickHouse Cloud, a 4 vCPU backend) 876 million split rows in 18 monthly partitions took about an hour of worker time:
+
+| What | Rows | Time |
+|------|------|------|
+| Scan of `metric_points_1h` | 557 million unsorted, 8 partitions | 7 min 56 s |
+| Scan of `metric_points_1d` | 310 million unsorted, 8 partitions | 5 min 12 s |
+| Scan of `metric_points_1h` after its repair | 4 million unsorted left | 13 s |
+| One month of `metric_points_1h` | 120 million merged into 1.8 million | 6 min 10 s: 2 min 42 s merging, 3 min 27 s delete |
+| One month of `metric_points_1d` | 105 million merged into 226,000 | 4 min 17 s: 1 min 28 s merging, 2 min 48 s delete |
+| One month of `metric_histograms_1h` | 4.35 million merged into 38,000 | 20 s |
+
+A day of 4 to 8 million split rows merged in 3 to 9 seconds. No insert failed or was delayed while it ran.
+
+## Stopping and resuming
+
+To stop the repair, set `METRIC_ROLLUP_REPAIR=false` and restart the backend. Set it to `true` again and restart to go on. Both are safe at any moment:
+
+- A partition that was being merged starts over. Its scratch table is replaced.
+- A partition whose merged rows were complete is taken up where it was, logged as `partition_resumed`. Its staging table `<table>_tagrepair_<partition>_<first day>` stays in the database in the meantime; leave it alone.
+- A delete that was already running goes on in ClickHouse without the worker and finishes by itself.
+- A pass that starts again scans again, which is the time in the table above.
+
+One state is worth avoiding: a partition stopped after its move and before its delete was issued reads double (see [What it costs](#what-it-costs)) until the repair goes on. The delete is issued once the worker has counted the rows to remove, which follows the partition's last `batch_merged` line by up to a minute on a large partition, and `delete_running` shows it is under way. So stop while days are still being merged or after `delete_running` has appeared, and when you have stopped in between, resume soon.
 
 ## ClickHouse Cloud and replicated tables
 
@@ -112,6 +153,38 @@ metric rollup repair: pass_finished partitions_done=31 partitions_skipped=0 rows
 With [self-monitoring](/server/capacity-monitoring) on, the same lines are log records of the monitoring project, and every pair is also an attribute named `rollup_repair.<key>`. In **Logs**, filter by `rollup_repair.event = partition_done` to see partitions finishing, or add `rollup_repair.table = metric_points_1h` to follow one table. The numbers are attributes too, so `rollup_repair.took_ms` can be charted from the same page. Each pass is also a task named `retention.metric_rollup_repair` under **Tasks**, and a failed pass is an issue.
 
 The metrics are listed under [Metric rollup repair](/server/capacity-monitoring#metric-rollup-repair) in the metric reference. `traceway.rollup_repair.rows_pending` and `partitions_pending` fall to 0 as a pass advances.
+
+## Check the result
+
+After `complete`, the last year holds no unsorted row and no staging table is left:
+
+```sql
+SELECT count() FROM metric_points_1h
+WHERE tags != mapSort(tags) AND toDate(recorded_at) >= today() - INTERVAL 1 YEAR;
+
+SELECT name FROM system.tables
+WHERE database = currentDatabase() AND (name LIKE '%\_tagrepair\_%' OR name LIKE '%\_tagbuild');
+```
+
+The first returns 0 for each of the four tables, the second no row. `pass_finished` carries the totals of the last pass (`rows_in` split rows merged into `rows_out`), and `partitions_skipped=0`.
+
+Charts read the same as before. To see it, compare the `count` of a metric per day over more than 72 hours, before and after: the numbers are equal. A day at twice its neighbours means its partition is between the move and the delete, which ends when the repair goes on.
+
+## When a pass does not finish
+
+A pass that fails writes `pass_failed` with the error, then `stopped, retrying in 1h0m0s`, and with self-monitoring on it is an issue in the monitoring project. Nothing has to be undone: the next pass, an hour later or at the next restart, takes it from there.
+
+| Message | What it means |
+|---------|---------------|
+| `<view> does not sort tags, so rows of <table> cannot be merged safely` | The startup migrations `0123` to `0127` have not run on this database. Start the current release once, and check the view in `system.tables`. Nothing was changed |
+| `i/o timeout` on a query | One query ran past the five minutes the connection allows. Each query reads one day of one table, so that day is very large or ClickHouse is overloaded. The next pass goes on from the partitions that are left |
+| `N partitions were skipped` / `partition_skipped` | Not enough free disk to rewrite the partition's parts. Free space or add a volume; the next pass takes them up |
+| `the mutation made no progress for 30m0s` | A delete stalled, usually on a full disk. The worker has killed it. Check the free space and `system.mutations` |
+| `the mutation keeps failing: <reason>` | ClickHouse refuses the delete, with its own reason. The worker has killed it |
+| `N unsorted rows are left after 3 deletes` | Something still writes unsorted rows: an older backend, or a rollup view that was changed by hand |
+| `N merged rows are still in <table> after 5 moves, the table is kept` | The staging table could not be emptied into the rollup. Nothing is lost: the merged rows are in that table, and the next pass moves them |
+| `staging table <name> is not named <partition>_<first day>` | A table whose name starts with `<table>_tagrepair_` was not made by this worker. Rename or drop it if it is yours |
+| `another instance is running it` | Not an error: this instance waits and looks again in an hour |
 
 ## Do it by hand
 

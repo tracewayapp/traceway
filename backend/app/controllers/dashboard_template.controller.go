@@ -160,10 +160,10 @@ func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.Das
 	return dashboard
 }
 
-// populateDashboardsOnCreate installs a new project's default dashboards on the paths a person creates it from (the
-// project page, registration, OAuth signup). React Native, Android and iOS projects have no Dashboards page and their
+// PopulateDashboardsOnCreate installs a new project's default dashboards on the paths a person creates it from (the
+// project page, registration, OAuth signup, the bootstrap file). React Native, Android and iOS projects have no Dashboards page and their
 // SDKs send no app.* metrics yet, so they get nothing there; the batch path keeps installing theirs.
-func populateDashboardsOnCreate(tx *sql.Tx, project *models.Project, createdBy *int) error {
+func PopulateDashboardsOnCreate(tx *sql.Tx, project *models.Project, createdBy *int) error {
 	if mobileFrameworks[project.Framework] && project.Framework != "flutter" {
 		return nil
 	}

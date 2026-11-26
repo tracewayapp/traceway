@@ -113,6 +113,14 @@ func nullIfEmpty(s string) any {
 	return s
 }
 
+func (r *userRepository) HasUsers(tx *sql.Tx) (bool, error) {
+	result, err := lit.SelectSingle[models.CountResult](tx, "SELECT COUNT(*) as count FROM users")
+	if err != nil {
+		return false, err
+	}
+	return result != nil && result.Count > 0, nil
+}
+
 func (r *userRepository) EmailExists(tx *sql.Tx, email string) (bool, error) {
 	user, err := r.FindByEmail(tx, email)
 	if err != nil {

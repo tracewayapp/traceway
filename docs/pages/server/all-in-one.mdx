@@ -31,7 +31,7 @@ docker run -d --name traceway \
   ghcr.io/tracewayapp/traceway:latest
 ```
 
-After starting, open `http://localhost/register` to create your first account.
+After starting, open `http://localhost/register` to create your first account. To have that account, the organization and the projects created from a file instead, see [Pre-configure an Instance](/learn/preconfigure).
 
 The `traceway-storage` volume holds [blob storage](/server/storage): uploaded source maps, session recordings, and AI traces. Without it those files are lost when the container is recreated. To use S3 instead of a volume, see [Blob Storage](/server/storage).
 
@@ -74,6 +74,7 @@ docker run -d --name traceway \
 | `POSTGRES_SSLMODE` | `disable` | PostgreSQL SSL mode |
 | `JWT_SECRET` | *(required)* | Signs dashboard sessions and CLI/MCP access tokens. Set a strong unique secret (min 32 chars, `openssl rand -hex 32`) and keep it stable. Former built-in keys are rejected. See [CLI Authentication](/learn/cli-auth#set-a-strong-jwt_secret). |
 | `GIN_MODE` | `release` | Gin framework mode |
+| `BOOTSTRAP_FILE` | *(unset)* | Path of a file that creates the organization, the first users and the projects with fixed tokens on the first start, while the database is empty. Ignored once the instance has data. See [Pre-configure an Instance](/learn/preconfigure). |
 | `APP_BASE_URL` | *(none)* | Public URL of your Traceway instance (e.g. `https://traceway.example.com`). Used for SDK setup instructions, email links, deep links in notifications, OAuth callback URLs, and the CLI/MCP OAuth issuer plus device-login verification URL. If unset, the device-auth and `/.well-known` endpoints derive it per-request from the `Host` / `X-Forwarded-*` headers; set it explicitly behind a proxy that rewrites `Host`. See [CLI Authentication](/learn/cli-auth). |
 | `TRUSTED_PROXIES` | *(loopback)* | Comma-separated CIDRs of the proxies in front of Traceway whose `X-Forwarded-For` / `X-Real-IP` is trusted for the real client IP. Every per-IP rate limit keys on it, and `/api/report` stores it as each session's `client.ip`. Unset trusts loopback only, so a proxy container on a Docker network or an in-cluster ingress has to be listed before its header counts. A value replaces the default, so list every hop between the client and this server, not just the outermost one: naming only a CDN leaves a private ingress untrusted and turns `X-Forwarded-For` off entirely. `*` trusts every peer and lets clients spoof their address. Until the proxy is listed, every visitor shares one rate-limit bucket keyed on the proxy, and the server logs a warning the first time it sees a forwarding header from a peer it does not trust. |
 | `TRUSTED_PROXY_HEADER` | *(none)* | A header taken as the client IP on every request, ahead of `TRUSTED_PROXIES`: `X-Real-IP` behind ingress-nginx, `CF-Connecting-IP` behind Cloudflare. Only safe when every request provably passes through a proxy that overwrites the header; a directly reachable backend lets clients set it freely. |

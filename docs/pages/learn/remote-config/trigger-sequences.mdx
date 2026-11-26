@@ -1,35 +1,132 @@
 # Record the journeys that matter
 
-Build an ordered sequence of clicks, hovers, navigations and log messages in **Data Collection → New Rule → Add recording trigger**. When a browser completes the sequence, it requests a replay capture. Sessions show the trigger name and a readable sequence, so you can find the visits that followed that journey.
+A recording trigger is an ordered sequence of clicks, hovers, navigations and log messages. When a visitor's browser completes the sequence, it uploads the replay it was holding, keeps recording for a while, and tags the session with the trigger's name. You get a replay of the visits that followed that journey without recording every visit, and you can list those sessions later.
 
-Recording triggers need browser SDK 2.0 or later (`@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version) or the Flutter SDK 2.x, where click and hover steps match widgets and navigation steps match routes (see [Recording triggers](/client/flutter#recording-triggers)). The SDK advertises `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client the rule matches gets it. An SDK that cannot read one of these event matchers drops the whole trigger, and the legacy 1.x SDK never polls for rules, so [upgrade](/client/js-sdk/migration) the browser integration before relying on one; the Flutter SDK 1.x never polls either. The builder is shown for browser projects (React, Vue, Svelte, jQuery) and Flutter projects.
+You build the sequence in a form. There is no query language to learn.
 
-## Build a sequence without writing a query
+| | What you do | Where |
+|---|---|---|
+| **1** | [Create a rule](#step-1-create-a-rule) for the clients that should get the trigger | **Data Collection** |
+| **2** | [Describe the journey](#step-2-describe-the-journey) as up to five steps | The rule's **Triggers** tab |
+| **3** | [Choose how much to record](#step-3-choose-how-much-to-record) and save | The same tab |
+
+Then [check that it works](#check-that-it-works) and [find the sessions](#find-the-sessions-a-trigger-recorded) it recorded.
+
+**Before you start.** The app has to run the browser SDK 2.0 or later (`@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version) or the Flutter SDK 2.x. The 1.x SDKs never ask for rules, so [upgrade](/client/js-sdk/migration) first. Installing the SDK is covered in [Set up remote config](/learn/remote-config/setup). The form is shown for browser projects (React, Vue, Svelte, jQuery) and Flutter projects. What differs in Flutter is in [In a Flutter app](#in-a-flutter-app).
+
+## Step 1: Create a rule
+
+A trigger lives inside a Data Collection rule. The rule decides which clients receive it.
 
 1. Select the browser or Flutter project and open **Data Collection** in its sidebar.
-2. Create a Rule. Use the rule's targeting controls to choose the release, environment or cohort that should receive it.
-3. Add a recording trigger and give it a recognizable name, such as **Open user journey**.
-4. Add **Click** with `#open-user`, **Navigation** with `/users/{id}`, and **Log** with `User loaded`. Choose exact or contains matching for the log.
-5. Set the time allowed between steps, replay lookback, capture duration, cooldown and maximum fires per session. Save the Rule.
+2. Click **New Rule** and type a **Name**, such as `Record the open-user journey`.
+3. On the **Applies to** tab, add conditions if only one release, environment or group of users should get the trigger. Without a condition the rule applies to every client. The conditions and the rollout percentage are described in [Create a rule](/learn/remote-config/setup#create-a-rule).
+4. Open the **Triggers** tab.
 
-The form supports up to five ordered steps. You can reorder or remove them; no expression language is needed. The sequence shown on sessions is a display summary, not executable code.
+<img src="/remote-config/trigger-rule-sheet.png" alt="The New Rule panel with the name 'Record the open-user journey' and the tabs Applies to, Triggers, Signals and JSON. The Triggers tab is open and shows the Recording triggers card with an Add recording trigger button" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
-![Visual editor for a click, navigation and log recording trigger](/remote-config/sequence-builder.png)
+To add a trigger to a rule you already have, click the pencil on its row and open the same tab. Creating and changing rules needs write access to the project.
 
-## What each event means
+## Step 2: Describe the journey
 
-| Event | Matching behavior |
-| --- | --- |
-| Click | A trusted browser click whose target or an ancestor matches the selector. Clicking a button's nested icon or span still matches the button. |
-| Hover | A trusted pointer entry into a matching element. Moving between its children does not count again. Touch pointer entries do not count as hover. |
-| Navigation | A case-sensitive pathname match. `/users/{id}` matches one nonempty segment, such as `/users/42`. Queries and fragments are ignored; `/users/42/edit` does not match. SPA navigation and same-tab full-page navigation are supported. |
-| Log | A log line: a console call, a record of the OpenTelemetry logs API, or a Traceway message. Exact matching is the default; contains matching is case-sensitive. Matching examines at most the first 4 KB of the message. |
+1. Click **Add recording trigger** and type a **Trigger name**, such as `Open user journey`. This is the name you will see on sessions.
+2. In **Step 1**, choose the **Event** and fill in the field next to it. For the example: **Click** with the CSS selector `#open-user`.
+3. Click **Add step**, choose **Navigation** and type the route pattern `/users/{id}`.
+4. Click **Add step**, choose **Log** and type the log message `User loaded`. **Message matching** is **Exactly matches** unless you switch it to **Contains**.
+5. For every step after the first, set **Within seconds of previous step**: how long the visitor has to get from the step before to this one. It starts at 30.
 
-Use stable IDs, classes or data attributes such as `[data-action="open-user"]`. Quote an attribute value that is not a plain name: `[data-step="2"]`, not `[data-step=2]`, which browsers reject. Selectors support tags, IDs, classes, attributes and descendant/child/sibling combinators. Pseudo-selectors, comma lists and escaped selectors are intentionally unsupported. Avoid dynamic user-specific selectors or text containing personal information.
+| Event | What you type | Example |
+|---|---|---|
+| **Click** | The CSS selector of the element that is clicked | `#open-user` |
+| **Hover** | The CSS selector of the element the pointer enters | `#profile-hint` |
+| **Navigation** | The path of the page, with `{name}` for a part that varies | `/users/{id}` |
+| **Log** | The text of a log line, in full or in part | `User loaded` |
+
+<img src="/remote-config/trigger-sequence-builder.png" alt="The Recording triggers form with the trigger name 'Open user journey' and three steps: Click on #open-user, Navigation to /users/{id} within 30 seconds, and Log 'User loaded' exactly matching within 30 seconds. Below them: Replay lookback 60, Continue recording 30, Cooldown 60, Captures per session 3" style={{ maxWidth: '640px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+A trigger has up to five steps. The arrows on a step move it up or down and the bin removes it. A rule holds up to 20 triggers, so several journeys can share one rule. Exactly what each event matches is in [What each event matches](#what-each-event-matches).
+
+## Step 3: Choose how much to record
+
+The four fields under the steps set what is uploaded when the last step happens.
+
+| Field | Starts at | What it sets |
+|---|---|---|
+| **Replay lookback (seconds)** | 60 | How far back the uploaded replay starts. Only what the device still holds in its buffer can be sent |
+| **Continue recording (seconds)** | 30 | How long recording goes on after the last step |
+| **Cooldown (seconds)** | 60 | The shortest time between two recordings by this trigger in one session |
+| **Captures per session** | 3 | How often this trigger may record in one session |
+
+Together with the replay, the capture uploads the console lines, navigations, clicks and network requests of the same period.
+
+Click **New Rule** to save (**Update Rule** on a rule that already existed). The rule's row shows who it applies to and how many triggers it holds.
+
+<img src="/remote-config/trigger-rule-row.png" alt="The rule 'Record the open-user journey' in the Data Collection list: it is enabled, applies to all clients and holds 2 triggers, with a Sessions button and reorder, edit and delete buttons" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+A page that loads after you saved asks for its settings right away. A tab that was already open picks the rule up at its next poll, within about 5 minutes by default.
+
+## Check that it works
+
+1. Open your app in a new browser tab.
+2. Walk through the journey yourself. For the example: click the element with the id `open-user`, land on `/users/42`, and wait for the app to log `User loaded`.
+3. In Traceway, open **Sessions**. Your session has the trigger's name in the **Recorded by** column.
+
+<img src="/remote-config/trigger-sessions-recorded-by.png" alt="The Sessions list. Three of five sessions have an 'Open user journey' tag in the Recorded by column, and one of them also has a 'Profile inspection' tag" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+Open the session. The **Recording triggers** card names every trigger that asked for a recording, with its steps, and the replay is below it.
+
+<img src="/remote-config/trigger-session-card.png" alt="The Recording triggers card of a session: 'Open user journey' with the steps click(#open-user), navigation(/users/{id}), log(User loaded), and 'Profile inspection' with hover(#profile-hint), log(User loaded)" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+A tag means the SDK asked for the recording. It does not prove that the replay arrived: an offline device, a failed upload, the session's [collection budget](/client/js-sdk/session-replay#collection-budget-and-gaps) and retention all still apply. The session shows whether it has a recording.
+
+A trigger cannot record what the app or the plan has switched off. If the app turns replay off (for example because the visitor did not consent) or the plan has no replay, the trigger still fires, but nothing is recorded and the session gets no tag.
+
+If the tag does not appear, see [When a trigger does not fire](#when-a-trigger-does-not-fire).
+
+## Find the sessions a trigger recorded
+
+There are three ways to the same list:
+
+- **From a tag.** Click a tag in **Recorded by**, in the list or on a session. Hover it first to read its steps. It opens the sessions that trigger recorded in the last 24 hours.
+- **From the filter.** On **Sessions**, click **Add filter**, pick the trigger under **Recording trigger** and click **Apply**. **Recorded by rule** in the same panel selects the sessions recorded by any trigger of one rule.
+- **From the rule.** On **Data Collection**, click **Sessions** on the rule's row. It opens the sessions that rule recorded in the last 7 days.
+
+<img src="/remote-config/trigger-sessions-filtered.png" alt="The Sessions list with the filter 'Recording trigger = Open user journey' applied. It shows the three sessions that trigger recorded" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+The filter is part of the page's address (`triggerId`), so you can share the link. It counts sessions, not how often the trigger fired, and it combines with the time range, the search and the other filters.
+
+A session can carry several tags, one for each trigger that fired in it. In the screenshots the project has a second trigger, **Profile inspection** (hover `#profile-hint`, then the same log line), and one visit completed both.
+
+Tags keep their history. Each one stores the trigger's name and steps as they were when it fired, so editing or deleting the rule later leaves the tags on older sessions as they are, until the sessions themselves reach the end of their retention. The filter follows the trigger across its edits. If the SDK delivers the same recording request twice, the session still gets one tag.
+
+## Examples
+
+| You want to see | Steps |
+|---|---|
+| Visitors who open a profile and get its data | Click `#open-user`, then Navigation `/users/{id}`, then Log `User loaded` |
+| Payments that fail after the visitor pressed Pay | Click `#pay`, then Log containing `payment failed` |
+| Searches that end without a result | Navigation `/search`, then Log containing `no results` |
+
+A Log step matches a console line the app already prints, so journeys like the last two often need no change to the app.
+
+## What each event matches
+
+| Event | Matches when |
+|---|---|
+| Click | A real click by the visitor whose target, or an element around it, matches the selector. A click on the icon or text inside a button still matches the button. Clicks made by scripts do not count |
+| Hover | The pointer enters a matching element. Moving between its children does not count again, and touch input never counts as a hover |
+| Navigation | The path of the new page matches the pattern, including upper and lower case. `/users/{id}` matches one non-empty segment, such as `/users/42`, and does not match `/users/42/edit`. The query and the fragment are ignored. Navigation inside a single-page app and a full page load in the same tab both count |
+| Log | A log line equals the text, or contains it when you chose **Contains**. Both are case-sensitive. A log line is a console call, a record of the OpenTelemetry logs API or a Traceway message. Only the first 4 KB of a message are looked at |
+
+**Selectors.** Use ids, classes or data attributes that do not change between releases, such as `[data-action="open-user"]`. Tags, ids, classes, attributes and the descendant, child and sibling combinators are supported. Pseudo-classes such as `:hover`, comma lists and escaped characters are not. Quote an attribute value that is not a plain name: `[data-step="2"]`, not `[data-step=2]`, which browsers reject. Do not put a user's id or text with personal information in a selector.
+
+**Route patterns.** A pattern starts with `/` and is typed the way the path reads: `/café` matches the address the browser reports as `/caf%C3%A9`.
+
+A selector, pattern or log message can be 256 characters long.
 
 ### In a Flutter app
 
-The same four steps work in a Flutter project, where the builder labels them **Tap**, **Hover**, **Navigation** and **Log**. A Flutter app has no DOM and no URL, so two of them are compared with something else:
+The same four steps work in a Flutter project ([Recording triggers](/client/flutter#recording-triggers) in the Flutter guide), where the form labels them **Tap**, **Hover**, **Navigation** and **Log**. A Flutter app has no DOM and no URL, so two of them are compared with something else:
 
 | Event | Browser | Flutter |
 | --- | --- | --- |
@@ -51,26 +148,50 @@ A navigation step for `/users/{id}` matches a route named `/users/42`. A route w
 
 You do not have to work a selector out: open a session of the app and copy it from the **Actions** list, where every tap is shown with the selector the SDK recorded for it. The full rules, with Dart examples, are in the Flutter guide: [element selectors](/client/flutter#element-selectors-naming-widgets) and [navigation](/client/flutter#navigation-naming-routes).
 
-One event advances at most one step. Unrelated events do not complete the next step, and they do not undo progress either: when the first step happens again in the middle of a sequence (the user hovers the menu a second time, an error storm continues), the sequence already under way keeps going and a second one starts beside it. Each later step has a timeout measured from the step before it; progress older than that is dropped. A path is matched as it reads, so `/café` matches the address the browser reports as `/caf%C3%A9`. A new trigger defaults to a 60-second lookback, 30-second capture, 60-second cooldown and three fires per session. The lookback can include only replay already present in the bounded local buffer.
+## How a sequence is followed
 
-Pending progress is stored in **sessionStorage**, scoped to the project token and session. A same-origin full-page navigation in the same tab can continue it after remote settings load. It does not join journeys across tabs, origins or sessions. Changed steps or actions invalidate pending progress. If storage is unavailable, the current page still evaluates the sequence but reload recovery is unavailable. A Flutter app keeps pending progress on disk, so a sequence continues after the app restarts within the same session.
+The SDK matches the steps on the device, in order, in one tab.
 
-## Find sessions by recording trigger
+- **One event advances at most one step.** Events that match nothing are ignored. They do not complete the next step and they do not undo progress.
+- **The first step happening again does not start over.** When the visitor hovers the menu a second time, or an error storm goes on, the sequence already under way keeps going and a second one starts beside it.
+- **Every later step has a time limit**, measured from the step before it. Progress older than that is dropped.
+- **The lookback is limited by the buffer.** A trigger can only upload replay the device was still holding when the last step happened.
 
-The session list shows clickable tags with the trigger name and sequence. Choose **Recording trigger** to filter sessions, or click a tag to open a shareable URL with `triggerId`. The filter counts sessions, not trigger fires, and works with the selected time range and other session filters.
+Progress survives a page load. The browser keeps it in `sessionStorage`, scoped to the project token and the session, so a full page load on the same origin in the same tab continues the sequence once the settings have loaded. It does not join journeys across tabs, origins or sessions. If you change the steps or the actions of a trigger, progress made under the old version is thrown away. Where storage is blocked, the sequence still works within one page but does not survive a reload. A Flutter app keeps the progress on disk, so a sequence continues after the app restarts within the same session.
 
-![Sessions with multiple recording trigger tags](/remote-config/sequence-session-tags.png)
+The rule reaches the device with the rest of [remote config](/learn/remote-config): over OpAMP, at the SDK's next poll. The replay and the telemetry leave through the SDK's normal exporters. The SDK announces `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client the rule matches receives the trigger, and an SDK that cannot read one of these event matchers drops the whole trigger. The sequence format is Traceway's own, not an OpAMP standard. Its JSON form is in the [settings reference](/learn/remote-config/reference#matchers), and the steps shown on a session are a summary for reading, not code that runs.
 
-![Session list filtered by a recording trigger](/remote-config/sequence-filter.png)
+Recordings made by a trigger are a sample chosen for diagnosis. Use them to understand how a journey went wrong, not to count: they are not an unbiased base for a conversion rate or a reliability number, and what the browser reports is neither an audit trail nor proof that a transaction happened. Metrics and SLOs keep measuring every visit. [RUM](/learn/rum) shows how to go from a metric to the sessions behind it.
 
-A session can have multiple reasons. Traceway stores a separate association for each session, trigger and revision, with a snapshot of the name and sequence. Repeated delivery does not duplicate the tag. Editing or deleting the rule leaves historical reasons intact until telemetry retention removes them. Filtering uses the stable trigger ID across its revisions.
+## When a trigger does not fire
 
-![Session replay with the reasons that requested recording](/remote-config/sequence-replay.png)
+**Saving fails.** The panel shows why a step cannot be used, and names the trigger and the step:
 
-A reason means the SDK requested capture; it does not guarantee that replay arrived. Check the session's recording availability. Collection ceilings, replay disabled by the application, consent, offline delivery and retention still apply. Browser-reported reasons are diagnostic telemetry, not an audit trail or proof of a business transaction.
+```
+triggers[0]: steps[0].match: selectors support tags, ids,
+classes, attributes and combinators, without pseudo-classes or
+selector lists; quote an attribute value that is not a name,
+e.g. [data-step="2"]
+```
 
-## Why use it
+The selector of a Click or Hover step uses a pseudo-class, a comma list, an escaped character or an unquoted attribute value that is not a plain name. See [What each event matches](#what-each-event-matches).
 
-Capture a specific interaction that leads to a confusing state without recording every visit. Combine multiple independent journeys on one session, then return to the same population through a trigger filter. Metrics and SLOs still measure the broader observed population: sequence-selected replay is a diagnostic sample and must not be used as an unbiased conversion or reliability denominator.
+```
+triggers[0]: steps[1].match: navigation uses a pathname with
+optional {parameter} segments
+```
 
-OpAMP distributes the settings and reports configuration status. The sequence matcher runs locally in the SDK, and existing replay and telemetry exporters deliver the capture. This sequence schema is Traceway-specific; it is not an OpAMP standard action language. See the [settings reference](/learn/remote-config/reference) for the wire representation and [RUM](/learn/rum) for the metric-to-session workflow.
+A route pattern has to start with `/` and cannot contain `?`, `#` or `*`.
+
+**The rule is saved, but sessions are not tagged or have no replay:**
+
+| What you see | What to check |
+|---|---|
+| No tag on a session that followed the journey | The tab was open before you saved: reload it, or wait for the next poll. The rule's **Applies to** conditions do not match this client: **Preview** on the Data Collection page [shows what a client gets](/learn/remote-config/setup#check-what-a-client-will-get). The app still runs a 1.x SDK: a session's overview shows its SDK version |
+| The journey is slow and never tagged | A step came later than **Within seconds of previous step** allows. Raise it |
+| A Log step never matches | **Exactly matches** needs the whole line. Switch to **Contains**, and check upper and lower case |
+| The first visits are tagged and later ones in the same session are not | **Captures per session** is used up, or the trigger fired again within its **Cooldown** |
+| The trigger fired (see below), but the session has no tag | The app turned replay off or the plan has no replay. A session is tagged only when the trigger was allowed to ask for a replay |
+| A tag, but no replay | The device was offline or the upload failed: the session's overview counts **Failed replay uploads**. A short clip can also mean the buffer held less than the lookback |
+
+To see whether the trigger fired on a device at all, filter [Logs](/learn/logs) for the event `traceway.trigger.fired`. It carries `traceway.trigger.id` and `traceway.trigger.name`.

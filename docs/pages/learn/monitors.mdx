@@ -1,87 +1,145 @@
 # Monitors
 
-Monitors answer the question your telemetry cannot: is the service actually reachable from the outside? Traces and logs only exist while requests arrive. A monitor keeps probing on a schedule, so you find out your site is down before a user tells you.
+A monitor probes your service from the outside on a schedule and tells you when it stops answering. Traces and logs only exist while requests arrive. A monitor keeps asking, so you find out your site is down before a user tells you.
 
-They live under **Monitors** in the sidebar, with tabs for the monitors themselves, **Status Pages**, and **Post-Mortems**. The badge counts the monitors currently down on the current project. Every monitor across all of the organization's projects, with uptime, latency, and incident history, is on the [Organization Overview](/learn/organization-overview#monitors).
+Setting it up takes two steps, and a third if your users should see the uptime too:
 
-## Check types
+| | What you do | Who | How often |
+|---|---|---|---|
+| **1** | [Create a monitor](#step-1-create-a-monitor) for a URL or a port | Anyone with write access to the project | Once per thing you want watched |
+| **2** | [Add a Monitor Down alert rule](#step-2-get-alerted-when-a-monitor-goes-down) | Same person | Once per project |
+| **3** | [Publish a status page](#step-3-publish-a-status-page) | An organization owner or admin | Once per public page |
 
-- **HTTP** probes a URL like Postman would: method, headers, auth (basic, bearer, or a custom header), request body, and a set of expected results. You can assert on status codes, response body content (substring or regex), a maximum response time, and a minimum number of days before the TLS certificate expires. With no status assertion, anything below 400 counts as up.
-- **TCP** connects to a host and port, optionally over TLS, optionally sending a payload and asserting on the response. Useful for databases, SMTP, or anything that is not HTTP.
-- **Browser** runs a real [@playwright/test](https://playwright.dev) script in headless Chromium. You write the spec in a code editor right on the check, so a login flow or a checkout journey can be your uptime probe. Failed runs automatically store a screenshot and the Playwright output; both open from the run history (the screenshot and logs links).
+Monitors belong to a project and live under **Monitors** in its sidebar. The badge on that item counts the project's monitors that are down right now. The item is not shown for browser and mobile projects.
 
-Every check has an interval (30 seconds to 24 hours), a timeout, and a failure threshold. The threshold is flap damping: a check only transitions to **down** after that many consecutive failures, so one flaky probe does not page anyone at 3am.
+## Step 1: Create a monitor
 
-## How runs work
+A monitor is one probe that repeats: a request to a URL, a connection to a port, or a browser script. Start with an HTTP monitor on the address your users open.
 
-A scheduler enqueues each due check into a durable run queue in the main database, and executors claim runs from it. Results land in the telemetry store, so uptime and latency charts use the same retention and aggregation machinery as everything else.
+1. Open the project and click **Monitors** in the sidebar.
+2. Click **New Monitor**.
+3. Enter a **Name** and leave **Type** on **HTTP**.
+4. Under **Request**, keep `GET` and enter the URL.
+5. Open the **Expected results** tab and say what a healthy answer looks like. With nothing filled in, any status code below 400 counts as up.
+6. Leave **Interval**, **Timeout (seconds)** and **Failures before down** as they are for now.
+7. Click **New Monitor**.
 
-<img src="/monitors/monitor-run-lifecycle.svg" alt="Monitor run lifecycle: the scheduler enqueues due checks into the run queue, an executor claims and probes, results land in telemetry feeding status pages and alerts, and expired queued runs are recorded as missed" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+<img src="/monitors/new-monitor.png" alt="The New Monitor panel: Name is Storefront homepage, Type is HTTP, Interval is Every minute, Timeout is 30 seconds, Failures before down is 2, the request is GET https://example.com/, and on the Expected results tab Status codes is 200, Max response time is 2000 ms, Body contains is Example Domain and Min TLS days remaining is 14" style={{ maxWidth: '560px', width: '100%', height: 'auto', marginTop: '16px' }} />
 
-Two properties matter operationally:
+The first probe runs within about 15 seconds. The monitor is listed as **Pending** until its first result is in, and as **Up** or **Down** after that. **Uptime** and **Avg latency** cover the last 30 days.
 
-- **A probe never runs late.** A queued run that outlives its window (the check's interval, capped at five minutes) is recorded as `missed`, not executed. A stale "is it up" answer would corrupt the uptime timeline.
-- **Downtime of Traceway itself shows as a gap, not as uptime.** If the backend was off, no runs existed, and the charts show unknown rather than a fabricated 100%.
+<img src="/monitors/monitors-list.png" alt="The Monitors page of the checkout-api project with Monitors selected in the sidebar and a New Monitor button at the top right. The list shows three monitors, Help center, Storefront homepage and Storefront TLS port, each with its target, type, status Up, 100% uptime, average latency and last run" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
-## Keeping monitors out of your analytics
+The three settings you left alone decide how fast you hear about an outage:
 
-Monitor traffic is not real user traffic, so you usually want it out of Google Analytics and similar tools.
+| Setting | Default | What it does |
+|---|---|---|
+| **Interval** | Every minute | How often the probe runs, from every 30 seconds to every 24 hours |
+| **Timeout (seconds)** | 30 | How long one probe may take before it counts as failed, from 1 to 120 |
+| **Failures before down** | 2 | How many probes in a row must fail before the monitor turns **Down**, from 1 to 10 |
 
-**HTTP checks** do not run JavaScript, so a client-side analytics tag never fires for them. Every HTTP probe also sends two headers you can match on:
+**Failures before down** is what keeps one flaky probe from paging anyone at 3am. With the defaults, a real outage shows as **Down** after the second failed probe, about a minute after the first. One successful probe turns the monitor **Up** again.
 
-```
-User-Agent: Traceway-Synthetics/1.0
-X-Traceway-Synthetics: 1
-```
+TCP and browser monitors are created the same way. What each type can check is listed under [Monitor types](#monitor-types).
 
-A custom `User-Agent` on the check replaces the default one. `X-Traceway-Synthetics` is always sent. Use it to skip server-side analytics, or to drop monitor requests from your access logs.
+## Step 2: Get alerted when a monitor goes down
 
-**Browser checks** run a real Chromium, so the page's analytics tag runs and every run counts as a visit. Traceway does not add the header to browser checks automatically. A header added to every request would also go to third-party APIs the page calls, and a cross-origin request carrying an unknown header fails its CORS preflight. That would break the page you are trying to monitor.
+A monitor that goes down turns red in the dashboard and opens an incident, but it notifies nobody until the project has an alert rule for it.
 
-Instead, add the header in your script, scoped to your own origin:
+1. Click **Alerts** in the sidebar. If the project has no channel yet, create one first: [Alerts, step 1](/learn/alerts#step-1-create-a-channel).
+2. Switch to the **Rules** tab and click **New Rule**.
+3. Enter a **Name** and pick the **Channel**.
+4. Set **Rule Type** to **Monitor Down**. It has no settings of its own.
+5. Click **New Rule**.
 
-```ts
-import { test, expect } from '@playwright/test';
+<img src="/monitors/monitor-down-rule.png" alt="The New Rule dialog: Name is A checkout-api monitor is down, Channel is Operations email, Rule Type is Monitor Down, with a note that the rule fires when a monitor transitions to down after its failure threshold, sends a recovery notice when it comes back up, and applies to every monitor in this project" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px' }} />
 
-test('homepage loads', async ({ page }) => {
-  await page.route('https://example.com/**', (route) =>
-    route.continue({
-      headers: { ...route.request().headers(), 'x-traceway-synthetics': '1' },
-    })
-  );
-  await page.goto('https://example.com/');
-  await expect(page).toHaveTitle(/Example/);
-});
-```
+One rule covers every monitor in the project, including the ones you add later. The notification names the monitor and carries the last probe error, and a recovery notice follows when the monitor is up again.
 
-Your server can then leave the analytics snippet out of the page when the header is present. For example, in a server-rendered template:
+To wake someone up instead of sending a message, pick an escalation policy channel. The rule then opens an [on-call page](/learn/on-call). There is one page per monitor however often it fails, and recovery resolves the page, so a blip at night that goes away by itself never needs a human. [Monitor Down](/learn/alerts#monitor-down) on the Alerts page has the details.
 
-```js
-const isMonitor = req.headers['x-traceway-synthetics'] === '1';
-// render the Google Analytics <script> only when !isMonitor
-```
+## Step 3: Publish a status page
 
-If you would rather not touch the server, block analytics requests from the script itself. The tag still loads, but nothing reaches Google:
+A status page shows the uptime of the monitors you pick on a public page, with no login. Skip this step if only your team needs to know.
 
-```ts
-await page.route(/google-analytics\.com|googletagmanager\.com|analytics\.google\.com/, (route) =>
-  route.abort()
-);
-```
+1. On the **Monitors** page, open the **Status Pages** tab. Only organization owners and admins see it.
+2. Click **New Status Page**.
+3. Enter a **Title** and a **Slug**. The slug is the last part of the address: 3 to 60 lowercase letters, digits and hyphens.
+4. Optionally add a **Description** and upload a logo (PNG or JPEG, up to 1 MB).
+5. Tick the monitors to show under **Monitors (from this project)**. A page needs at least one and can show up to 50.
+6. Leave **Publicly accessible** ticked and click **New Status Page**.
 
-Do not rely on Google Analytics' built-in bot filtering. It works from a list of known bots and often lets headless Chrome through.
+<img src="/monitors/new-status-page.png" alt="The New Status Page dialog: Title is Acme Status, Slug is acme after the /status/ prefix, Description is Live availability of Acme services, an Upload logo button, an empty Custom domain field, Publicly accessible ticked, and the three monitors of the project ticked" style={{ maxWidth: '480px', width: '100%', height: 'auto', marginTop: '16px' }} />
 
-## Alerting
+The page is live at `/status/<slug>` on your Traceway instance. On Traceway Cloud that is `https://cloud.tracewayapp.com/status/<slug>`. The **Public URL** column of the tab links to it.
 
-Add a notification rule of type **Monitor Down** on the Alerts page. It fires when any monitor in the project crosses its failure threshold, and sends a recovery notice when the check comes back. Pointing the rule at an escalation channel opens an on-call page instead; the page deduplicates per check, and recovery resolves it automatically, so a blip at night that recovers by itself never needs a human.
+<img src="/monitors/public-status-page.png" alt="The public status page Acme Status with the description Live availability of Acme services, a green All systems operational banner, and one card per monitor showing Operational, the uptime of the last 90 days and a bar per day, with a legend for Operational, Partial outage, Major outage and No data" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
-## Status pages
+Each monitor gets one bar per day for the last 90 days: green for operational, amber for a partial outage, red for a major outage, and gray for days without data, such as the days before the monitor existed. Below the monitors, **Past Incidents** lists the incidents of the last 90 days, once there are any. The page refreshes itself every minute.
 
-A status page publishes the uptime of selected monitors at `/status/<slug>`: a branded light page with 90 days of per-day uptime bars (green operational, amber partial outage, red major outage, gray no data), incident history, and no login required. Create one under the **Status Pages** tab on the Monitors page (organization admins only), pick the monitors, choose a slug, and toggle it public. Branding: a title, an optional description, and an uploaded PNG/JPEG logo. Latency numbers stay internal; the public payload only carries availability.
+Visitors see availability only. Latency numbers and probe error messages stay inside Traceway. A page with **Publicly accessible** unticked answers "Status page not found", like a slug that does not exist.
 
-### Serving a status page on your own domain
+To put the page on an address such as `status.acme.com`, see [Serve a status page on your own domain](#serve-a-status-page-on-your-own-domain).
 
-Every public status page is always available at `/status/<slug>` on your Traceway instance. On Traceway Cloud that is `https://cloud.tracewayapp.com/status/<slug>`. To show it on a domain of your own, such as `status.acme.com`, there are two paths:
+## Check that it works
+
+Run a probe by hand and watch the result arrive.
+
+1. On the **Monitors** page, click the monitor.
+2. Click **Run now**.
+
+A few seconds later the run is the first row of **Run history**, with its result, latency and status code. A failed run shows its error in the same row.
+
+<img src="/monitors/monitor-page.png" alt="The page of the Storefront homepage monitor: status Up, buttons Run now, Pause, Edit and Delete, tiles for 100% uptime, average latency, a 1 minute interval and 0 recent incidents, the Availability bar, the Latency chart, and a Run history table with four runs that are all Up with status code 200" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+To test the alert from step 2 without touching a real monitor, create a throwaway one that is meant to fail: point it at a path on your site that returns 404 and set **Failures before down** to 1. Its first probe turns it **Down**, and the notification arrives on the rule's channel. Delete the monitor afterwards. Deleting a monitor removes its run history and incidents and resolves any on-call page it opened.
+
+If something does not behave as described, see [When it fails](#when-it-fails).
+
+## Monitor types
+
+You choose the type when you create a monitor. It cannot be changed afterwards.
+
+### HTTP
+
+Sends one request and judges the answer.
+
+| Tab | What you set |
+|---|---|
+| **Headers** | Any request headers |
+| **Auth** | **Basic auth**, **Bearer token**, or a **Custom header** such as `X-Api-Key` |
+| **Body** | A request body and its `Content-Type`, for `POST`, `PUT`, `PATCH` and `DELETE` |
+| **Expected results** | What counts as healthy, see below |
+
+Everything under **Expected results** is optional, and a probe is up only when every expectation you set holds:
+
+- **Status codes**: a list such as `200, 204`. Left empty, any code below 400 passes.
+- **Max response time (ms)**: a slower answer fails the probe.
+- **Body contains** and **Body matches regex**: checked against the first 1 MB of the response body.
+- **Min TLS days remaining**: fails the probe when the certificate expires sooner. This is how you hear about a certificate before it runs out.
+- **Follow redirects** is on by default. **Skip TLS verification** is off by default.
+
+### TCP
+
+Opens a connection to a host and port. Use it for a database, an SMTP server, or anything else that does not speak HTTP. Optionally the probe connects over TLS (**Use TLS**), sends a payload, expects the response to contain a string, and checks **Min TLS days remaining**.
+
+### Browser
+
+Runs a real [@playwright/test](https://playwright.dev) script in headless Chromium, so a login flow or a checkout journey can be your uptime probe. You write the spec in the code editor of the monitor, up to 100 KB, and can give it environment variables. A failed run stores a screenshot and the Playwright output. Both open from icons in the run's row of **Run history**.
+
+Browser monitors need an instance that was set up to run them. On a self-hosted instance that is a decision of whoever operates it, see [Browser monitors on a self-hosted instance](#browser-monitors-on-a-self-hosted-instance).
+
+## Change, pause or delete a monitor
+
+The buttons are at the top of the monitor's page.
+
+- **Edit** opens the same panel as **New Monitor**.
+- **Pause** stops the probes and drops any run that is still queued. The monitor is listed as **Paused**. **Resume** starts it again.
+- **Delete** removes the monitor with its run history and incidents, and resolves the on-call pages it opened.
+
+## Serve a status page on your own domain
+
+Every public status page is always available at `/status/<slug>` on your Traceway instance. To show it on a domain of your own, such as `status.acme.com`, there are two paths:
 
 | | Path 1: CNAME | Path 2: iframe |
 |---|---|---|
@@ -92,7 +150,7 @@ Every public status page is always available at `/status/<slug>` on your Tracewa
 
 Both paths need the status page to be public.
 
-#### Path 1: CNAME to your Traceway instance
+### Path 1: CNAME to your Traceway instance
 
 Use this when you run Traceway yourself. Traceway does not handle HTTPS itself, so this path needs a reverse proxy with SSL in front of it. That proxy holds the certificate for `status.acme.com` and forwards requests to Traceway. Traceway Cloud does not issue certificates for your hostnames, so on Cloud use path 2.
 
@@ -104,17 +162,17 @@ Any of these proxies works:
 
 Then:
 
-1. Set **Custom domain** on the status page to `status.acme.com`.
+1. Edit the status page and set **Custom domain (optional)** to `status.acme.com`.
 2. Create a DNS CNAME record from `status.acme.com` to your Traceway instance's hostname.
 3. Add `status.acme.com` to your reverse proxy with its certificate. The proxy must pass the original `Host` header through, since that is how Traceway recognizes the domain. Cloudflare, Caddy and Traefik do this by default. With nginx, set `proxy_set_header Host $host;`.
 
-Anyone who opens `https://status.acme.com` sees the status page at `/`, whether or not they are logged in to Traceway. The dashboard is never served on a status domain, and every other path redirects to `/`. The custom domain can't be the hostname Traceway itself runs on.
+Anyone who opens `https://status.acme.com` sees the status page at `/`, whether or not they are logged in to Traceway. The dashboard is never served on a status domain, and every other path redirects to `/`. The custom domain can't be the hostname Traceway itself runs on, and one domain belongs to one status page.
 
-#### Path 2: embed the page in an iframe
+### Path 2: embed the page in an iframe
 
 Use this on Traceway Cloud, or on a self-hosted instance when you would rather not touch the proxy. Status pages are allowed to be framed by any site, so you host one small HTML file that fills the whole window with the status page.
 
-1. Leave **Custom domain** empty on the status page and note its slug.
+1. Leave **Custom domain (optional)** empty on the status page and note its slug.
 2. Save the file below as `index.html` and replace `acme` with your slug. On a self-hosted instance, also replace `https://cloud.tracewayapp.com` with your own Traceway URL.
 3. Host it at `status.acme.com` on any static host with HTTPS, such as Cloudflare Pages, Netlify, GitHub Pages, or an S3 bucket behind CloudFront.
 
@@ -143,12 +201,66 @@ Use this on Traceway Cloud, or on a self-hosted instance when you would rather n
     </style>
   </head>
   <body>
-    <iframe src="https://cloud.tracewayapp.com/status/acme" title="Acme status"></iframe>
+    <iframe
+      src="https://cloud.tracewayapp.com/status/acme"
+      title="Acme status"
+    ></iframe>
   </body>
 </html>
 ```
 
 The iframe takes the full window with no padding or border, and the status page scrolls inside it. The page keeps refreshing on its own, so the file never needs to change. Search engines and link previews see only this file, so set its `<title>` to something meaningful.
+
+## Keep monitors out of your analytics
+
+Monitor traffic is not real user traffic, so you usually want it out of Google Analytics and similar tools.
+
+**HTTP monitors** do not run JavaScript, so a client-side analytics tag never fires for them. Every HTTP probe also sends two headers you can match on:
+
+```
+User-Agent: Traceway-Synthetics/1.0
+X-Traceway-Synthetics: 1
+```
+
+A `User-Agent` header you set on the monitor replaces the default one. `X-Traceway-Synthetics` is always sent. Use it to skip server-side analytics, or to drop monitor requests from your access logs.
+
+**Browser monitors** run a real Chromium, so the page's analytics tag runs and every run counts as a visit. Traceway does not add the header to browser monitors automatically. A header added to every request would also go to third-party APIs the page calls, and a cross-origin request carrying an unknown header fails its CORS preflight. That would break the page you are trying to monitor.
+
+Instead, add the header in your script, scoped to your own origin:
+
+```ts
+import { test, expect } from '@playwright/test';
+
+test('homepage loads', async ({ page }) => {
+  await page.route('https://example.com/**', (route) =>
+    route.continue({
+      headers: {
+        ...route.request().headers(),
+        'x-traceway-synthetics': '1',
+      },
+    })
+  );
+  await page.goto('https://example.com/');
+  await expect(page).toHaveTitle(/Example/);
+});
+```
+
+Your server can then leave the analytics snippet out of the page when the header is present. For example, in a server-rendered template:
+
+```js
+const isMonitor = req.headers['x-traceway-synthetics'] === '1';
+// render the Google Analytics <script> only when !isMonitor
+```
+
+If you would rather not touch the server, block analytics requests from the script itself. The tag still loads, but nothing reaches Google:
+
+```ts
+const analytics =
+  /google-analytics\.com|googletagmanager\.com|analytics\.google\.com/;
+await page.route(analytics, (route) => route.abort());
+```
+
+Do not rely on Google Analytics' built-in bot filtering. It works from a list of known bots and often lets headless Chrome through.
 
 ## Incidents and post-mortems
 
@@ -158,13 +270,43 @@ Monitors feed a full incident-management workflow, covered in depth in [Incident
 - **The public story is yours to tell.** Give incidents public titles and post statuspage-style timeline updates (Investigating, Identified, Monitoring, Update, Resolved). The last 90 days appear in the **Past Incidents** section of the public page; probe error messages stay internal.
 - **Post-mortems** are internal write-ups in the **Post-Mortems** tab, owned by the project like the monitors themselves: a WYSIWYG markdown editor with a raw-markdown toggle, tags, an optional link to the incident (one per incident), a full edit activity log, and search across titles, content, and tags. They never appear on public status pages.
 
-## Browser execution modes
+## Monitors in the CLI and for AI agents
 
-Browser checks execute real user-authored JavaScript, so where that code runs is an explicit deployment decision, controlled by `SYNTHETICS_BROWSER_MODE`:
+The [CLI](/learn/cli) and the [MCP server](/learn/mcp) read monitors and can queue a run. Creating and changing monitors and status pages stays in the dashboard.
+
+```bash
+# Every monitor of the project with its current status
+traceway monitors list
+
+# One monitor with its recent incidents
+traceway monitors show <id>
+
+# Queue a run now (the write CLI)
+traceway-write monitors run <id>
+```
+
+`monitors run` changes something, so it needs the write CLI and [Agent Write Access](/learn/agent-write-access) turned on for the organization. The MCP tools are `list_checks`, `get_check` and, on the write server, `run_check`.
+
+Every monitor of all the organization's projects, with uptime, latency and incident history, is on the [Organization Overview](/learn/organization-overview#monitors).
+
+## How runs work
+
+A scheduler enqueues each due monitor into a durable run queue in the main database, and executors claim runs from it. HTTP and TCP probes run on the Traceway server itself. Results land in the telemetry store, so uptime and latency charts use the same retention and aggregation machinery as everything else.
+
+<img src="/monitors/monitor-run-lifecycle.svg" alt="Monitor run lifecycle: the scheduler enqueues due checks into the run queue, an executor claims and probes, results land in telemetry feeding status pages and alerts, and expired queued runs are recorded as missed" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+Two properties matter operationally:
+
+- **A probe never runs late.** A queued run that outlives its window (the monitor's interval, capped at five minutes) is recorded as `missed`, not executed. A stale "is it up" answer would corrupt the uptime timeline. Missed runs do not change the monitor's status and are left out of the uptime number.
+- **Downtime of Traceway itself shows as a gap, not as uptime.** If the backend was off, no runs existed, and the charts show unknown rather than a fabricated 100%.
+
+## Browser monitors on a self-hosted instance
+
+Browser monitors execute real user-authored JavaScript, so where that code runs is an explicit deployment decision, controlled by `SYNTHETICS_BROWSER_MODE`:
 
 | Mode | What it means |
 |------|---------------|
-| `off` (default) | HTTP and TCP checks only. Works in every image with no size cost; creating a browser check is rejected with a pointer here. Existing browser checks stay editable and pausable, and simply do not run until a browser mode is enabled. |
+| `off` (default) | HTTP and TCP monitors only. Works in every image with no size cost; creating a browser monitor is rejected with a pointer to the setup. Existing browser monitors stay editable and pausable, and simply do not run until a browser mode is enabled. |
 | `embedded` | The backend spawns Playwright in-process. Ships ready to go in the [`:browser` image](/server/browser), or [without Docker](/server/browser#without-docker) on any host with Node and a Playwright harness. |
 | `remote` | The backend only queues browser runs; one or more [**runners**](/server/runner) claim and execute them. |
 
@@ -172,25 +314,52 @@ Runners are deployment infrastructure, managed by whoever operates the server, n
 
 The [Remote Runners guide](/server/runner) walks through the whole setup: getting the binary, preparing the Playwright harness, a systemd unit, verifying the runner is attached, and operations like rotation, scaling, and per-runner self-monitoring via `TRACEWAY_RUNNER_MONITORING`.
 
-Browser check scripts run with an allowlisted environment: they see the variables configured on the check, never the server's own environment. In embedded mode the scripts still execute inside the Traceway container as arbitrary code, which is the trade-off for one-container convenience; use `remote` mode to keep them off the box entirely. Browser checks are disabled in cloud mode.
+Browser scripts run with an allowlisted environment: they see the variables configured on the monitor, never the server's own environment. In embedded mode the scripts still execute inside the Traceway container as arbitrary code, which is the trade-off for one-container convenience; use `remote` mode to keep them off the box entirely.
 
 ## Configuration
+
+These are server settings for self-hosted instances.
 
 ```bash
 SYNTHETICS_POLL_SECONDS=15              # scheduler tick
 SYNTHETICS_BROWSER_MODE=off             # off | embedded | remote
 SYNTHETICS_HTTP_CONCURRENCY=8           # concurrent http/tcp probes
 SYNTHETICS_BROWSER_CONCURRENCY=2        # concurrent Chromium instances (embedded)
-SYNTHETICS_ALLOW_PRIVATE_TARGETS=true   # "false" refuses checks against private/LAN addresses
+SYNTHETICS_ALLOW_PRIVATE_TARGETS=true   # "false" refuses private/LAN targets
 SYNTHETICS_PLAYWRIGHT_DIR=/opt/traceway-playwright   # harness dir (embedded/runner)
 SYNTHETICS_SCREENSHOT_RETENTION_DAYS=30 # failure screenshots on local storage; 0 disables cleanup
 SYNTHETICS_RUNNER_SECRET=               # shared runner credential; required for remote mode
 ```
 
-When private targets are allowed (the default), HTTP probes honor the standard `HTTP_PROXY`/`HTTPS_PROXY` environment variables, so monitors work on instances that can only reach the internet through an egress proxy. With `SYNTHETICS_ALLOW_PRIVATE_TARGETS=false` the proxy is deliberately ignored: the private-address guard vets the exact address being dialed, and a proxy tunnel would blind it. On Traceway Cloud, checks can only target public addresses; the guard is always on there.
+When private targets are allowed (the default), HTTP probes honor the standard `HTTP_PROXY`/`HTTPS_PROXY` environment variables, so monitors work on instances that can only reach the internet through an egress proxy. With `SYNTHETICS_ALLOW_PRIVATE_TARGETS=false` the proxy is deliberately ignored: the private-address guard vets the exact address being dialed, and a proxy tunnel would blind it. On Traceway Cloud, monitors can only target public addresses; the guard is always on there.
 
-Check results follow the telemetry retention of your deployment (the SQLite/DuckDB retention worker, or a 90-day TTL on ClickHouse).
+Run results follow the telemetry retention of your deployment (the SQLite/DuckDB retention worker, or a 90-day TTL on ClickHouse).
 
 ### Monitoring the monitors
 
 When self-monitoring is on (`MONITORING_TRACEWAY_URL`), the instance emits `traceway.synthetics.*` metrics every 10 seconds: `queued`, `claimed`, `oldest_queued_sec`, `checks_down`, `runners_online`, and `executed.delta` / `missed.delta`. A healthy fleet shows near-zero queue age, throughput on `executed.delta`, and zero `missed.delta`; alert on `runners_online` dropping to 0 in remote mode. `/api/health/deep` exposes the same numbers as a `synthetics` block; it is an operator endpoint gated by the `HEALTH_DEEP_TOKEN` deploy secret (unset disables it).
+
+## Who can do what
+
+| Action | Who |
+|---|---|
+| See monitors, run history and incidents | Every member of the organization |
+| Create, edit, pause, delete and run a monitor | Members with write access to the project, which is every role except `readonly` |
+| Add the **Monitor Down** alert rule | Members with write access to the project |
+| Create, edit and delete status pages | Organization owners and admins |
+| Open a public status page | Anyone with the address |
+
+## When it fails
+
+| What you see | Cause | Fix |
+|---|---|---|
+| `This instance is not running in a mode that can execute browser checks.` | You created or ran a browser monitor where browser mode is off | On a self-hosted instance the operator [turns browser mode on](#browser-monitors-on-a-self-hosted-instance). Until then, use an HTTP or TCP monitor. |
+| `The URL must point at a public address.` | The target is a private or LAN address, and the instance refuses those | Use a public address. On a self-hosted instance the operator can allow private targets. |
+| `A run for this check is already queued.` | **Run now** was used while a run was still waiting | Wait for that run to finish |
+| `Your plan includes ... monitors. Upgrade your plan to add more.` | The organization reached the monitor limit of its Traceway Cloud plan | Delete a monitor or upgrade the plan |
+| A run with the result **Missed** | The run was not picked up within its window, for example because the instance was restarting or no runner was online | Nothing for a single one. If it keeps happening, the operator checks the [queue metrics](#monitoring-the-monitors). |
+| The monitor is **Down** but nobody was notified | The project has no enabled **Monitor Down** rule, the rule is snoozed, or its channel does not deliver | Do [step 2](#step-2-get-alerted-when-a-monitor-goes-down), then test the channel on the Alerts page |
+| `This slug is already taken.` | Another status page on the instance uses the slug | Pick a different slug |
+| `Select at least one check.` | The status page was saved with no monitor ticked | Tick at least one monitor |
+| `Custom domain must not be the host Traceway itself is served on.` | The custom domain is the address of the dashboard | Use a separate hostname such as `status.acme.com` |
+| "Status page not found" on the public address | The slug is wrong, or **Publicly accessible** is unticked | Edit the status page and tick **Publicly accessible** |

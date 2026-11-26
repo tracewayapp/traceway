@@ -1,28 +1,97 @@
 # Dashboards
 
-Dashboards visualize your metrics as tabs of chart widgets. A dashboard belongs to your **organization**, not to a single project: you build it once and apply it to any number of projects, and edits show up everywhere it is applied. Every dashboard is a plain JSON document underneath, so you can edit, export, import, and version-control them as code.
+A dashboard is a tab of charts built from your [metrics](/learn/metrics). This page shows how to add one, put your own metrics on it, and share it with people who have no Traceway account.
 
-<img src="/dashboards/dashboards-page.png" alt="The Dashboards page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+A dashboard belongs to your **organization**, not to one project. You build it once, show it in any number of projects, and an edit shows up in all of them. Underneath, every dashboard is one JSON document, so you can also edit, export, import and version it as code.
 
-## Frontend dashboards
+<img src="/dashboards/dashboards-page.png" alt="The Dashboards page with two dashboard tabs and six line charts of Go runtime metrics, ending in an Add Metric Widget tile" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-React, Vue, Svelte and jQuery projects receive **Web Performance** immediately when created. It includes LCP, INP and CLS, rating shares, page and release breakdowns, route timings, blocking time, request metrics and user-impact counts. Existing browser projects receive missing defaults through a one-time migration; custom dashboards remain intact. See the [RUM walkthrough](/learn/rum) for the workflow and fresh screenshots.
+Two steps get you a chart: [add a dashboard](#step-1-add-a-dashboard), then [add a widget](#step-2-add-a-widget) for a metric. Everything after that is optional.
 
-Client projects filter by release, OS and country, rather than backend instance. Use a **Rating Bar** for experience quality and a **Breakdown Table** for whole-window comparisons; line charts show the trend. Show observation counts beside percentiles.
+## Step 1: Add a dashboard
 
-## The Dashboards page
+Each tab on the **Dashboards** page is one dashboard shown in the current project. A new project starts with the one that fits it: **OTelemetry Server Agent** for an OpenTelemetry backend, **Web Performance** for a React, Vue, Svelte or jQuery project, and **Flutter Performance** for a Flutter app. React Native, iOS and Android projects have no Dashboards page. To add another:
 
-Each tab on the Dashboards page is one dashboard applied to the current project. A project with no dashboards yet shows a single **Browse Dashboards & Templates** button that opens the command palette described below. The active tab's menu holds everything you can do with a dashboard:
+1. Open **Dashboards** in the sidebar.
+2. Press <kbd>⌘K</kbd> (<kbd>Ctrl K</kbd> on Windows and Linux), or click **Add or find dashboards...** in the header. The **+** next to the tabs opens the same search. A project that has no dashboard yet shows a **Browse Dashboards & Templates** button instead, or in a browser or Flutter project a button that adds its default dashboard.
+3. Pick what to add:
+   - **New Dashboard** asks for a name and creates an empty dashboard. Names are unique within the organization and at most 100 characters long.
+   - A **template** installs a ready-made dashboard as a new dashboard of your organization. The [built-in templates](#built-in-templates) are listed below.
+   - One of **Your Dashboards** shows an existing dashboard in this project as well. A dashboard from another organization is copied instead.
+   - **Import JSON** and **Import from Grafana** are covered in [Dashboards as code](#dashboards-as-code) and [Importing from Grafana](#importing-from-grafana).
 
-<img src="/dashboards/dashboards-menu.png" alt="Dashboard menu" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/dashboards/dashboard-palette.png" alt="The search box opened with Ctrl K. Under Actions it lists New Dashboard, Import JSON and Import from Grafana, and under Your Dashboards the Checkout and OTelemetry Server Agent dashboards, both marked applied" style={{ maxWidth: '480px', width: '100%', height: 'auto', marginTop: '16px' }} />
 
-- **Rename Dashboard**: names are unique within the organization
-- **Edit as JSON**: edit the whole dashboard as one document
-- **Export JSON**: download the dashboard for versioning or sharing
-- **Share Dashboard**: copy a read-only link to this dashboard for the current project, time range and filters
-- **Apply to Projects**: choose which projects show this dashboard
-- **Remove from this Project**: unassign it here; it stays available everywhere else
-- **Delete Dashboard**: remove it from every project, permanently
+The dashboard opens as a new tab. Drag a tab to change the order of the tabs for this project.
+
+The same search box also finds every metric name seen in your organization's projects. Picking a metric opens the widget editor of step 2 with that metric filled in.
+
+## Step 2: Add a widget
+
+A widget is one chart. The editor starts it with one metric.
+
+1. Click **Add Metric Widget**, the dashed tile after the last widget.
+2. Under **Select metric**, choose the metric. The list holds the metrics this project reported in the time range selected at the top of the page, so widen the range if yours is missing.
+3. Choose the aggregation next to it. It starts at `avg`, or at `p75` for a distribution metric such as a web vital or an OpenTelemetry histogram. Use `rate` for a counter. See [Counters, rates and inverted values](#counters-rates-and-inverted-values).
+4. Choose the **Widget Type**. **Line Chart** is the default, and [Widget types](#widget-types) lists the other eight.
+5. Optional: once a metric is selected, **Tag Filters** limits the chart to some tag values and **Group By** draws one series per value of a tag. **Title**, **Unit** and the source's label default to the metric's own name and unit.
+6. Click **New Widget**.
+
+<img src="/dashboards/dashboard-new-widget.png" alt="The New Widget panel with the fields Title, Widget Type set to Line Chart, Legend, Unit, a Select metric dropdown with the aggregation avg next to it, a label field and an Invert checkbox, above Cancel and New Widget buttons" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+The widget appears at the end of the dashboard, in every project that shows this dashboard. Its **⋮** menu has **Edit**, **Duplicate**, **Move up**, **Move down**, **Width** (one to three columns), **Height** (small, medium or large) and **Delete**. You can also drag a widget by the handle that appears left of its title. A dashboard holds up to 100 widgets.
+
+## Check that it works
+
+The new chart draws a line for the time range selected at the top of the page. Change the range, or drag across any chart to zoom all of them into that span.
+
+**No data** means the metric has no samples in that range with the widget's filters. Widen the range first. If the chart stays empty, check that the metric is arriving at all:
+
+```bash
+traceway metrics discover --since 24h
+```
+
+An empty list means the project received no metrics in the last 24 hours. [Metrics](/learn/metrics) explains how to send them.
+
+## What you can do with a dashboard
+
+The **⋮** on the active tab holds everything you can do with that dashboard.
+
+<img src="/dashboards/dashboard-menu.png" alt="The Dashboards page of the checkout-api project with the menu of the Checkout tab open: Rename Dashboard, Edit as JSON, Export JSON, Share Dashboard, Apply to Projects, Remove from this Project and Delete Dashboard" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+| Menu item | What it does |
+| --- | --- |
+| **Rename Dashboard** | Changes the name in every project. |
+| **Edit as JSON** | Opens the whole dashboard as one document. See [Dashboards as code](#dashboards-as-code). |
+| **Export JSON** | Downloads the document as `<name>.dashboard.json`. |
+| **Share Dashboard** | Creates a read-only link for people without an account. See [Share and embed a dashboard](#share-and-embed-a-dashboard). |
+| **Apply to Projects** | Chooses which projects show the dashboard. See [Applying across projects](#applying-across-projects). |
+| **Remove from this Project** | Removes the tab here. The dashboard stays in the other projects and in the search box. |
+| **Delete Dashboard** | Deletes the dashboard and its widgets in every project. This cannot be undone. |
+
+What each of these needs is in [Who can do what](#who-can-do-what).
+
+## Filtering by instance
+
+The filter under the page title narrows every widget on the page to one reporting machine. Click **Add filter**, choose an **Instance** and click **Apply 1 change**. The list holds the `server_name` values seen in the selected time range, so it shows what is reporting now and not a fixed list.
+
+The filter is added to each widget's queries, on top of the filters the widget already has. Nothing is saved to the dashboard, so it does not change what your teammates see. It lives in the URL as `?server=<name>` and survives a change of time range, which makes the filtered view a link you can pass on.
+
+Without a filter a widget shows whatever its sources define. The **OTelemetry Server Agent** template groups every widget by `server_name`, so its charts draw one line per server until you pick one. A widget of your own does the same once you set its **Group By** to `server_name`.
+
+This is where a row on the organization's [Servers page](/learn/organization-overview#servers) leads. Selecting a server there opens its project's dashboards already filtered to that machine over the last 30 minutes, on the **OTelemetry Server Agent** tab when the project has it. Remove the filter to see the whole project again.
+
+Browser and Flutter projects have no instances. Their filters are **Release** and **OS**, plus **Country** once the project has country data. The [RUM walkthrough](/learn/rum) shows them in use.
+
+## Starring widgets
+
+The star on a widget pins it to the project's home page, where you can resize and reorder the starred widgets. Stars belong to the project, so each project curates its own home page even when the dashboard is shared.
+
+## Applying across projects
+
+**Apply to Projects** in the tab menu controls exactly which projects show a dashboard. The definition is shared, so a fix made in one project is live in all of them at once. Unchecking a project removes the tab there, unstars its widgets on that project's home page, and stops every shared link issued for that project.
+
+<img src="/dashboards/dashboards-apply.png" alt="The Apply to Projects dialog with a Shared across projects warning and a checkbox for each project of the organization" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 ## Share and embed a dashboard
 
@@ -30,19 +99,27 @@ A shared dashboard is a read-only page at `/embed/dashboard` that opens without 
 
 ### Share a link
 
-Select the project and filters, then choose **Share Dashboard** from the active dashboard tab’s menu. You need write access to the project.
+Select the project and the filters the viewer should see, then choose **Share Dashboard** from the active tab's menu. You need write access to the project.
 
 1. Under **Share for**, enter the number of days the link should work, from 1 to 90. The default is one day.
 2. Under **Timeframe**, choose **Last 30 minutes**, **Last 6 hours**, **Last 24 hours**, **Last 42 hours** (default), **Last 7 days**, or **Last 30 days**.
 3. Choose **Generate Link**. Check **Expires at**, shown in your local timezone, then choose **Copy Link**.
 
-For example, share for **3 days** with **Last 7 days**. Each time someone opens the link during those three days, every widget shows the same seven-day window ending at that open time. Opening the link again moves the window forward and keeps the original expiry.
+<img src="/dashboards/share-dashboard-dialog.png" alt="The Share Dashboard dialog with Share for set to 3 days and Timeframe set to Last 7 days, the generated share link, its expiry time, and the POST request a backend sends to issue the same link" style={{ maxWidth: '480px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+In this example the link works for three days and shows the last seven. Each time someone opens it during those three days, every widget shows the same seven-day window ending at that moment. Opening the link again moves the window forward and keeps the original expiry.
 
 ### Issue a link from your backend
 
-To show KPIs inside your own application, such as a customer admin panel, issue a fresh link each time your application has authorized a viewer. The share dialog shows the exact endpoint for the current dashboard and project.
+To show KPIs inside your own application, such as a customer admin panel, issue a fresh link each time your application has authorized a viewer. The share dialog shows the exact request for the current dashboard and project.
 
-An AI agent can add this to your codebase for you: the `traceway-setup` and `traceway-write` skills and the MCP resource `traceway://knowledge/dashboard-embedding` carry the same steps. To try a dashboard and filter before writing code, `traceway-write dashboards embed <id> --tag account_id=acme --yes` (or the `create_dashboard_embed` MCP tool) issues one link.
+An AI agent can add this to your codebase for you: the `traceway-setup` and `traceway-write` skills and the MCP resource `traceway://knowledge/dashboard-embedding` carry the same steps. To try a dashboard and a filter before writing code, issue one link from the write CLI (or with the `create_dashboard_embed` MCP tool):
+
+```bash
+traceway-write dashboards embed <id> --tag account_id=acme --yes
+```
+
+The request your backend sends:
 
 ```http
 POST /api/dashboards/{dashboardId}/embed-token?projectId={projectId}&timeframe=7d
@@ -77,7 +154,7 @@ url.searchParams.set('timeframe', '7d');
 const response = await fetch(url, {
   method: 'POST',
   headers: {
-    Authorization: `Bearer ${process.env.TRACEWAY_WRITE_TOKEN}`,
+    Authorization: `Bearer ${process.env.TRACEWAY_EMBED_TOKEN}`,
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({ tagFilters: { account_id: String(viewer.accountId) } })
@@ -117,9 +194,9 @@ showAccountKpis();
 
 A renewed link for the same dashboard replaces what is on screen without a blank frame, and the charts move to the new link's time range. You can also change the theme on an existing link without requesting a new token. Set `theme` in the query before the fragment, for example `/embed/dashboard?dashboard=<uuid>&theme=dark#token=<jwt>`.
 
-Traceway reads the JWT from the URL fragment, which browsers do not send to servers or include in the `Referer` header, and validates it on every request for the dashboard or its widgets. Neither backend stores an embed session. A link cannot be revoked on its own before it expires, which is why no link lasts longer than 90 days; removing the dashboard from the project stops every link for that project at once.
+Traceway reads the JWT from the URL fragment, which browsers do not send to servers or include in the `Referer` header, and validates it on every request for the dashboard or its widgets. Neither backend stores an embed session. A link cannot be revoked on its own before it expires, which is why no link lasts longer than 90 days. Removing the dashboard from the project stops every link for that project at once.
 
-The page receives each widget's title and display settings only. Traceway runs the queries itself, so the filters saved on a widget never reach the viewer's browser. A metric's name is shown where the chart uses it as a series label; give the source a label to show that instead.
+The page receives each widget's title and display settings only. Traceway runs the queries itself, so the filters saved on a widget never reach the viewer's browser. A metric's name is shown where the chart uses it as a series label. Give the source a label to show that instead.
 
 Reads of a shared dashboard are limited per client address: 60 opens and 600 widget reads a minute. Past that Traceway answers **429** with a `Retry-After` header.
 
@@ -135,54 +212,9 @@ Reads of a shared dashboard are limited per client address: 60 opens and 600 wid
 | The iframe says the dashboard is no longer shared | The dashboard was removed from the project or deleted. |
 | The frame stays empty | The `src` must be the `/embed/dashboard` URL built from `embedPath`. The rest of the Traceway dashboard refuses to load inside an iframe. |
 
-## Adding dashboards: the command palette
-
-Press <kbd>⌘K</kbd> (<kbd>Ctrl K</kbd> on Windows/Linux), or click **Add or find dashboards...** in the header. One search box covers your organization's dashboards, the built-in template marketplace, and every metric name seen across your organization's projects:
-
-<img src="/dashboards/dashboards-palette.png" alt="Command palette" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-- Selecting one of **your dashboards** applies it to the current project (dashboards from another organization are copied)
-- Selecting a **template** installs it as a new dashboard in your organization
-- Selecting a **metric** opens the widget editor prefilled with that metric on the active dashboard
-
-## Built-in templates
-
-Templates are ready-made dashboards you install and then customize freely. The marketplace ships with:
-
-| Template | Category | Source of the metrics |
-| --- | --- | --- |
-| Web Performance | browser | Browser SDK: Web Vitals, route timings, blocking, requests and user impact |
-| Mobile Performance | mobile | Mobile SDK: app start, screen timing and app metrics |
-| OTelemetry Server Agent | server | [Traceway OTel Agent](/learn/otel-agent) host CPU, memory, disk and network metrics |
-| Go Application | go | Go runtime and process metrics (goroutines, heap, GC, CPU, memory) |
-| Traceway ClickHouse | traceway | A monitored Traceway instance's `traceway.ch.*` metrics |
-| Traceway DuckDB | traceway | A monitored Traceway instance's `traceway.duckdb.*` metrics |
-
-<img src="/dashboards/dashboards-palette-templates.png" alt="Templates in the command palette" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-Widgets can group series by resource tags such as `container.name`, `k8s.pod.name`, `k8s.node.name`, or `postgresql.database.name`, so one widget shows one line per container, pod, node, or database. Point the matching OpenTelemetry Collector receiver at your Traceway project's OTLP endpoint and build widgets on the metrics it reports.
-
-## Filtering by instance
-
-The instance picker in the dashboard header narrows every widget on the page to one reporting machine. It lists the `server_name` values seen in the selected time range, so it stays in step with what is actually reporting rather than with a static list.
-
-The scope is applied as an extra tag filter on each widget's queries, on top of whatever filters the widget already has. Nothing is saved to the dashboard, so it does not change what teammates see; it lives in the URL as `?server=<name>` and survives time-range changes, which makes the filtered view shareable.
-
-With **All instances** selected a widget shows whatever its sources define. The **OTelemetry Server Agent** template groups every widget by `server_name`, so its charts draw one line per server until you narrow the picker to one; a widget of your own does the same once you set its **Group By** to `server_name`.
-
-This is where a row on the organization's [Servers page](/learn/organization-overview#servers) leads. Selecting a server there opens its project's dashboards already scoped to that machine over the last 30 minutes, jumping straight to the **OTelemetry Server Agent** tab when the project has it installed. Clear the picker to go back to the whole project.
-
-## Counters, rates and inverted values
-
-Host metrics such as `system.network.io` and `system.disk.io` are cumulative counters: the value only ever grows. Charted as an average they climb forever, so give such a source the **rate** aggregation. Each series (every distinct tag set, so a counter per device or direction stays on its own) is differenced against its previous sample, resets are dropped, and the result is a per-second rate with a matching unit: bytes become `B/s`, packets become packets per second. A rate keeps the same reach as any other aggregation. On ClickHouse a range over six hours reads the minute rollup and one over three days reads the hourly rollup, so buckets there are at least an hour wide.
-
-A source can also be **inverted**, which charts 1 − value. The OTel agent reports `system.cpu.utilization` per state, and the `idle` state inverted is the busy share; that is how the Server Agent template draws CPU. The template's other widgets carry the matching filters (state `used` for memory and filesystem usage, `ESTABLISHED` TCP for open connections) so a widget never averages unrelated states together. `system.filesystem.utilization` has no state, one series per mount, so its widget charts the fullest writable mount (`mode=rw`): read-only mounts such as snap images always read as full.
-
-Dashboards installed from the Server Agent template before these sources existed are upgraded once at startup: a widget that still carries the original plain average takes the template's current sources for its metric, and so does a Filesystem Utilization widget that still filters on state `used`, which matched no data. A widget you have edited is left as it is.
-
 ## Dashboards as code
 
-Every dashboard is a single JSON document. Widget order in the array is the display order, and each widget carries its own config:
+Every dashboard is a single JSON document. The order of the widgets in the array is the order on the page, and each widget carries its own config:
 
 ```json
 {
@@ -203,78 +235,75 @@ Every dashboard is a single JSON document. Widget order in the array is the disp
 }
 ```
 
-**Edit as JSON** gives you the document in place, validated on save:
+**Edit as JSON** in the tab menu opens the document in place and validates it when you click **Update Dashboard**. This is also how you overlay a second metric on one chart: the widget editor configures the sources a widget already has, and a further entry in `sources` is added here.
 
-<img src="/dashboards/dashboards-edit-json.png" alt="Edit as JSON" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/dashboards/dashboards-edit-json.png" alt="The Edit as JSON dialog showing the dashboard document with its schemaVersion, name, description and the first widgets, above Cancel and Update Dashboard buttons" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-**Export/Import** round-trips the same document. Import accepts a single dashboard or a whole-organization bundle, and the API supports an upsert mode that matches dashboards by name, so a CI job can keep dashboards in sync from files in your repository:
+**Export JSON** downloads the same document, and **Import JSON** in the search box (<kbd>⌘K</kbd>) takes it back: paste it or use **Load from file**. Import accepts one dashboard or a bundle with a `dashboards` array, creates new dashboards, and shows them in the current project.
+
+Each widget's `id` is a stable string generated by the server. Keep the ids when you edit so that home page stars survive, or leave them out and new ones are generated.
+
+To keep dashboards in step with files in your repository, import from the command line. The `upsert` mode matches dashboards by name, so a CI job can run it on every merge:
 
 ```bash
 traceway-write dashboards validate --file system.dashboard.json
 traceway-write dashboards import --file system.dashboard.json --mode upsert --yes
 ```
 
-This requires [agent write access](/learn/agent-write-access).
-
-Widget `id`s are server-generated stable strings; keep them when editing so homepage stars survive, or omit them and they are regenerated.
-
-## Applying across projects
-
-**Apply to Projects** controls exactly which projects show a dashboard. Because the definition is shared, a fix made in one project is instantly live in all of them. Unchecking a project removes its tab there and stops every shared link issued for that project.
-
-<img src="/dashboards/dashboards-apply.png" alt="Apply to Projects" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+This needs [agent write access](/learn/agent-write-access). [Build dashboards with the CLI or an AI agent](#build-dashboards-with-the-cli-or-an-ai-agent) describes both commands in full.
 
 ## Importing from Grafana
 
-Paste any Grafana dashboard JSON export and Traceway converts it on a best-effort basis: `timeseries`/`graph` panels become line charts, `stat` becomes a single value, `gauge` stays a gauge, and Prometheus queries are unwrapped into metric sources (metric name, exact label matchers, `by (...)` grouping, aggregation).
+Choose **Import from Grafana** in the search box (<kbd>⌘K</kbd>) and paste a Grafana dashboard JSON export. Traceway converts it on a best-effort basis: `timeseries` and `graph` panels become line charts, `stat` becomes a single value, `gauge` stays a gauge, and Prometheus queries are unwrapped into metric sources (metric name, exact label matchers, `by (...)` grouping, aggregation).
 
-<img src="/dashboards/dashboards-grafana-import.png" alt="Grafana import" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/dashboards/dashboards-grafana-import.png" alt="The Import from Grafana dialog with a pasted Grafana export, a Load from file button and an Import Dashboard button" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-Anything that cannot be converted faithfully is reported instead of silently dropped: `rate()` approximations, unsupported panel types, regex matchers, non-Prometheus queries.
+Anything that cannot be converted faithfully is reported and not silently dropped: `rate()` approximations, unsupported panel types, regex matchers, queries that are not Prometheus.
 
-<img src="/dashboards/dashboards-grafana-warnings.png" alt="Grafana conversion warnings" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-## Widgets
-
-| Type | Best For |
-| --- | --- |
-| Line Chart | Trends over time (CPU usage, request rate) |
-| Area Chart | Volume over time with filled area |
-| Stacked Area | Composition of a total across series |
-| Bar Chart | Compare the latest bucket of each source/group |
-| Single Value | Current or aggregated value at a glance |
-| Gauge | A value against thresholds |
-| Table | Latest, minimum, maximum and average of the first series |
-| Rating Bar | Share of good, needs-improvement and poor experiences of a web vital over the range |
-| Breakdown Table | The slowest pages, hosts or releases over the range, busiest first, with their counts |
-
-Each widget has one or more **sources**: a metric name (auto-discovered from your project), an aggregation (`avg`, `min`, `max`, `sum`, `count`, `last`, `rate`, and for a distribution metric such as a web vital or an OpenTelemetry histogram also `p50`, `p75`, `p90`, `p95`, `p99` and `good_ratio`), optional tag filters, and an optional group-by that splits the chart into one series per tag value. Multiple sources overlay on the same chart.
-
-<img src="/dashboards/dashboards-new-widget.png" alt="Widget editor" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-## Starring widgets
-
-The star on any widget pins it to that project's homepage, where you can resize and reorder your starred set. Stars are per project, so each project curates its own homepage even when dashboards are shared.
-
+<img src="/dashboards/dashboards-grafana-warnings.png" alt="The Import from Grafana dialog after the import, listing the warnings: an approximated rate(), two dropped matchers and a skipped heatmap panel" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 ## Build dashboards with the CLI or an AI agent
 
-Ask an agent with the `traceway-write` skill to inspect your instrumented codebase and build charts for its important operations. The skill's separate `dashboard-building.md` guide explains all nine chart types, counter/gauge/histogram semantics, JSON configuration and verification. The same guide is available from the write MCP server as `traceway://knowledge/dashboard-building`.
+An agent that has [write access](/learn/agent-write-access) can read your instrumented code and build the charts for its important operations. Ask for the questions you want answered:
 
-Start by confirming which metrics actually arrived:
+```
+/traceway-write Look at the metrics this service records and
+build a "Checkout" dashboard: request rate, p95 latency, error
+rate, and queue depth per worker.
+```
+
+The agent discovers the recorded metric names and tags, writes the dashboard JSON, validates it and imports it into the selected project. The `traceway-write` skill's `dashboard-building.md` guide explains all nine chart types, counter, gauge and histogram semantics, the JSON configuration and how to verify the result. The write MCP server offers the same guide as `traceway://knowledge/dashboard-building`.
+
+You can run the same commands yourself. Start by confirming which metrics arrived:
 
 ```bash
+# Every metric of the last 24 hours, with type, unit and tag keys
 traceway-write metrics discover --since 24h --output json
-traceway-write metrics discover --name jobs.completed --key outcome --since 24h --output json
-traceway-write metrics query --name jobs.completed --aggregation rate --group-by outcome --since 24h --output json
+
+# The values of one tag of one metric
+traceway-write metrics discover --name jobs.completed --key outcome \
+  --since 24h --output json
+
+# The series a widget would draw
+traceway-write metrics query --name jobs.completed --aggregation rate \
+  --group-by outcome --since 24h --output json
+
+# The dashboards of your organizations and the projects they are in
 traceway-write dashboards library --output json
 ```
 
-Replace the example names with names found in your application and discovery results. Inspect metric declarations, recording sites, units, attributes and exporter configuration. Spans and logs do not automatically create metrics. Match each chart to a question: incoming work, completions, failures, dependency latency or capacity. Use `rate` for cumulative counters, `max` or `last` for backlog/saturation, and bounded groups such as queue, outcome or instance. Delta values need different treatment; `count` counts stored samples, not events. For latency percentiles, query a histogram by its instrument name. Explicit-bucket backend histograms also expose `.avg` and `.count` series. Metric widgets do not support arbitrary formulas.
+Replace the example names with names from your application and from the discovery results. Inspect metric declarations, recording sites, units, attributes and exporter configuration. Spans and logs do not create metrics on their own.
 
-Use line charts for trends, stacked areas for additive contributions with matching units, and gauges only where capacity is known. Single values and gauges reduce only the first series, so avoid grouping them. Tables also summarize only the first series. An empty query means no observations, not zero failures.
+Match each chart to a question: incoming work, completions, failures, dependency latency or capacity.
 
-Save an importable dashboard document as shown above, then validate and import it:
+- Use `rate` for cumulative counters, and `max` or `last` for backlog and saturation. Delta values need different treatment. `count` counts stored samples, not events.
+- Group by tags with few values, such as queue, outcome or instance.
+- For latency percentiles, query a histogram by its instrument name. Explicit-bucket backend histograms also expose `.avg` and `.count` series.
+- Use line charts for trends, stacked areas for additive contributions with matching units, and gauges only where the capacity is known.
+- Single values, gauges and tables reduce only the first series, so do not group them.
+- An empty query means no observations, not zero failures. Metric widgets do not support arbitrary formulas.
+
+Save the dashboard as a document like the one in [Dashboards as code](#dashboards-as-code), then validate and import it:
 
 ```bash
 traceway-write dashboards validate --file system.dashboard.json
@@ -283,11 +312,15 @@ traceway-write dashboards list --output json
 traceway-write dashboards export 42 --output json > system.saved.json
 ```
 
-Use the returned dashboard ID instead of `42`. Validation runs offline without credentials and rejects malformed documents, unsupported schema versions/chart types/aggregations, missing metric sources and oversized widget configurations. Import runs the same validation before sending a write. The backend still checks authorization and persistence constraints; neither validation nor a successful import proves that a metric has data.
+Use the dashboard ID that the import returns in place of `42`.
 
-The default `create` mode makes a new dashboard, suffixes duplicate names with ` (imported)`, and applies it to the selected project. It is not idempotent: list dashboards before retrying after an ambiguous timeout. `upsert` matches names case-insensitively across the selected project's organization and replaces the entire definition and description. Every assigned project sees the edit. Inspect `dashboards library` for `appliedProjectIds`, export the original, preserve unrelated widgets and widget IDs, and re-export before saving if someone else may have edited it. Upsert has no concurrent-edit check. Restore an earlier export with another upsert if needed.
+**Validation** runs offline, without a login. It rejects malformed documents, unsupported schema versions, chart types and aggregations, missing metric sources and oversized widget configurations. Import runs the same validation before it sends anything. The server still checks authorization and persistence constraints. Neither validation nor a successful import proves that a metric has data.
 
-Agent imports use only the selected project's organization and apply to that project; body overrides of `organizationId` or `applyToProjectIds` are refused. Deleting dashboards or removing assignments still uses the UI.
+**`create`**, the default mode, makes a new dashboard and applies it to the selected project. A name that is already taken gets the suffix ` (imported)`. It is not idempotent: list the dashboards before you retry after an unclear timeout.
+
+**`upsert`** matches names case-insensitively across the selected project's organization and replaces the whole definition and description. Every project that shows the dashboard sees the edit, and there is no concurrent-edit check. Before an upsert, inspect `dashboards library` for `appliedProjectIds`, export the original, keep unrelated widgets and widget IDs, and export again before saving if someone else may have edited it. To go back, upsert an earlier export.
+
+Agent imports use only the selected project's organization and apply to that project. A body that sets `organizationId` or `applyToProjectIds` is refused. Deleting a dashboard or removing it from a project is done on the Dashboards page.
 
 ### MCP workflow
 
@@ -312,4 +345,64 @@ Both MCP servers offer `discover_metrics`, `query_metrics`, `list_dashboards`, `
 }
 ```
 
-`data` can also be a bundle with `schemaVersion: 1` and a `dashboards` array. MCP uses the same validation and backend permission checks as CLI imports. After saving, export the returned ID and query each source with its exact aggregation, filters and grouping. Report any absent data or truncated groups rather than claiming the dashboard is verified.
+`data` can also be a bundle with `schemaVersion: 1` and a `dashboards` array. MCP uses the same validation and server permission checks as CLI imports. After saving, export the returned ID and query each source with its exact aggregation, filters and grouping. If data is absent or groups are truncated, report that and do not call the dashboard verified.
+
+## Counters, rates and inverted values
+
+Host metrics such as `system.network.io` and `system.disk.io` are cumulative counters: the value only ever grows. Charted as an average they climb forever, so give such a source the **rate** aggregation. Each series (every distinct tag set, so a counter per device or direction stays on its own) is differenced against its previous sample, resets are dropped, and the result is a per-second rate with a matching unit: bytes become `B/s`, packets become packets per second. A rate keeps the same reach as any other aggregation. On ClickHouse a range over six hours reads the minute rollup and one over three days reads the hourly rollup, so buckets there are at least an hour wide.
+
+A source can also be **inverted**, which charts 1 − value. It is the **Invert** checkbox of the widget editor. The OTel agent reports `system.cpu.utilization` per state, and the `idle` state inverted is the busy share. That is how the Server Agent template draws CPU. The template's other widgets carry the matching filters (state `used` for memory and filesystem usage, `ESTABLISHED` TCP for open connections) so a widget never averages unrelated states together. `system.filesystem.utilization` has no state, one series per mount, so its widget charts the fullest writable mount (`mode=rw`): read-only mounts such as snap images always read as full.
+
+Dashboards installed from the Server Agent template before these sources existed are upgraded once at startup: a widget that still carries the original plain average takes the template's current sources for its metric, and so does a Filesystem Utilization widget that still filters on state `used`, which matched no data. A widget you have edited is left as it is.
+
+## Widget types
+
+| Type | Best for |
+| --- | --- |
+| Line Chart | Trends over time (CPU usage, request rate) |
+| Area Chart | Volume over time with filled area |
+| Stacked Area | Composition of a total across series |
+| Bar Chart | Compare the latest bucket of each source or group |
+| Single Value | Current or aggregated value at a glance |
+| Gauge | A value against thresholds |
+| Table | Latest, minimum, maximum and average of the first series |
+| Rating Bar | Share of good, needs-improvement and poor experiences of a web vital over the range |
+| Breakdown Table | The slowest pages, hosts or releases over the range, busiest first, with their counts |
+
+Each widget has one or more **sources**. A source is a metric name, an aggregation, optional tag filters, and an optional group-by that splits the chart into one series per tag value. Several sources overlay on the same chart.
+
+The aggregations are `avg`, `min`, `max`, `sum`, `count`, `last` and `rate`. A distribution metric, such as a web vital or an OpenTelemetry histogram, also has `p50`, `p75`, `p90`, `p95`, `p99` and `good_ratio`, and has no `last`.
+
+For client metrics, use a line chart for the trend, a **Rating Bar** for experience quality and a **Breakdown Table** to compare pages or releases over the whole range. Show the observation count next to a percentile.
+
+Widgets can group series by resource tags such as `container.name`, `k8s.pod.name`, `k8s.node.name`, or `postgresql.database.name`, so one widget shows one line per container, pod, node, or database. Point the matching OpenTelemetry Collector receiver at your Traceway project's OTLP endpoint and build widgets on the metrics it reports.
+
+## Built-in templates
+
+Templates are ready-made dashboards that you install from the search box and then change freely. A template you install becomes an ordinary dashboard of your organization.
+
+<img src="/dashboards/dashboard-palette-templates.png" alt="The search box filtered to templates: Web Performance, Go Application, Flutter Performance, Mobile Performance and OTelemetry Server Agent, each with its category, widget count and description" style={{ maxWidth: '480px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+| Template | Category | Source of the metrics |
+| --- | --- | --- |
+| Web Performance | browser | Browser SDK: web vitals, route timings, blocking, requests and user impact |
+| Flutter Performance | mobile | Flutter SDK: app start, screen display times, frames, hangs, errors, memory and requests |
+| Mobile Performance | mobile | Mobile SDK: app start, screen timing and app metrics |
+| OTelemetry Server Agent | server | [Traceway OTel Agent](/learn/otel-agent) host CPU, memory, disk and network metrics |
+| Go Application | go | Go runtime and process metrics (goroutines, heap, GC, CPU, memory) |
+| Traceway ClickHouse | traceway | A monitored Traceway instance's `traceway.ch.*` metrics |
+| Traceway DuckDB | traceway | A monitored Traceway instance's `traceway.duckdb.*` metrics |
+
+**Web Performance** is what a browser project starts with. It includes LCP, INP and CLS, rating shares, page and release breakdowns, route timings, blocking time, request metrics and user-impact counts. Browser projects created before this default existed received it through a one-time migration, and their own dashboards were left intact. The [RUM walkthrough](/learn/rum) shows the workflow.
+
+## Who can do what
+
+| Action | Who |
+| --- | --- |
+| View dashboards, filter them, export JSON | Every member of the organization |
+| Star a widget, reorder the tabs, share a dashboard, remove a dashboard from a project | Members with write access to that project |
+| Create, import or install a dashboard, rename it, edit its widgets or its JSON, apply it to projects, delete it | Members whose organization role is not `readonly` |
+
+Write access to a project means any role but `readonly`, after per-project overrides. Showing a dashboard in a project also needs write access to that project, and so does removing it through **Apply to Projects**. A dashboard you create, install or import is shown in the current project, so it needs both.
+
+An AI agent can list and export dashboards with either edition of the CLI and MCP server. Issuing a share link and importing dashboards take the write edition, and importing also needs **Allow agent writes**. Everything else here is done on the Dashboards page. See [Agent Write Access](/learn/agent-write-access).

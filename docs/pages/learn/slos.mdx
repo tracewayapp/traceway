@@ -1,8 +1,71 @@
 # SLOs
 
-A service level objective (SLO) holds a service level indicator (SLI) to a target over a rolling window. The SLI is the share of good events: requests that succeeded, spans that were fast enough, task runs without an exception, probes that came back up, metric slices that stayed under a limit, or sessions that ended without a crash. The target says how many of them have to be good, such as 99.9% over the last 30 days. Everything the target leaves over is the error budget, and the burn rate says how fast that budget is being spent.
+A service level objective (SLO) is a promise about your service that Traceway keeps score of: 99.9% of checkout requests succeed over the last 30 days, or 75% of page views load within 2.5 seconds. For every SLO you see how much room for failure is left (the error budget) and how fast it is being used (the burn rate), and an alert tells you when the budget is burning too fast, while there is still time to act.
 
-SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge counts the SLOs that are currently breached. Each row shows the current SLI, how much of the error budget is left, the burn rate over the last hour and a status. The detail page adds the burn rate over the last six hours. The statuses are:
+Setting it up takes two steps in the dashboard. First you create the **SLO**: what counts as a good event, which share of events has to be good, and over how many days. Then you add an **alert rule** that watches how fast its error budget burns.
+
+SLOs belong to a project and live under **SLOs** in its sidebar. The badge on that item counts the SLOs that are breached right now. To create or change them you need write access to the project, which is every role except `readonly`.
+
+## Step 1: Create an SLO
+
+Start with the availability of the endpoint your users depend on most. The other indicators are created the same way.
+
+1. Open the project and click **SLOs** in the sidebar.
+2. Click **New SLO**.
+3. Enter a **Name**, and a **Description** of what the objective protects if you like.
+4. Leave **Indicator** on **Endpoint**. In **Endpoint**, pick one of the suggestions or type the name exactly as the Endpoints page shows it, such as `POST /api/checkout`. Leave the field empty to count every endpoint of the project.
+5. Leave **Good when** on **Status below 500**. To hold the endpoint to a response time instead, pick **Faster than a threshold** and set **Threshold (ms)**.
+6. Set **Target (%)** and **Window**. The form opens with 99.9 and 30 days.
+7. Click **Preview last 24h**. The share of good events and the counts of the last 24 hours appear next to the button, for example `Last 24h: 99.95% (19,990 / 20,000)`.
+8. Click **New SLO**.
+
+<img src="/slos/new-slo.png" alt="The New SLO panel: Name is Checkout availability, Description is Checkout requests that did not fail on our side, Indicator is Endpoint, Target is 99.9 percent, Window is 30 days, the Endpoint is POST /api/checkout, Good when is Status below 500, and below it a Preview last 24h button and an Enabled checkbox" style={{ maxWidth: '560px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+The preview in step 7 is worth the click. `Last 24h: no events matched` means the name or a filter matches nothing, so the SLO would stay empty. A share below your target means the SLO would start out breached: pick a target the service meets today, and raise it later.
+
+The SLO is in the list as soon as you save it, with the status **No data**. Its numbers appear within about a minute, once the first matching events are counted, and the history of the window fills in over the next few minutes.
+
+<img src="/slos/slos-list.png" alt="The SLOs page with a New SLO button and two SLOs. Checkout availability, an endpoint SLO with a 99.9% target over 30 days, has no numbers yet and the status No data. Storefront availability, a monitor SLO with the same target, shows a current SLI of 100.00%, 100.0% of its budget left, a burn rate of 0.0x and the status Meeting" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+In this picture Checkout availability has not counted a request yet. Storefront availability, a monitor SLO, already has data.
+
+An endpoint is one of six things an SLO can count. To hold a queue consumer, a background task, an uptime monitor or a metric to a target, change **Indicator**: the box below it shows the fields of that kind, and [SLI kinds](#sli-kinds) says what each one counts. Browser and Flutter projects offer other indicators, described under [Frontend performance objectives](#frontend-performance-objectives).
+
+## Step 2: Get alerted when the budget burns
+
+An SLO notifies nobody by itself. A breached SLO turns red in the list and counts in the sidebar badge, but a message or a page needs an alert rule.
+
+1. Click **Alerts** in the sidebar. If the project has no channel yet, create one first: [Alerts, step 1](/learn/alerts#step-1-create-a-channel).
+2. Switch to the **Rules** tab and click **New Rule**.
+3. Enter a **Name** and pick the **Channel**.
+4. Set **Rule Type** to **SLO Burn Rate**.
+5. Under **Rule Configuration**, pick the **SLO** you created in step 1.
+6. Leave **Preset** on **Fast**. It sets the long window to 60 minutes, the short window to 5 minutes and the threshold to 14.4.
+7. Click **New Rule**.
+
+<img src="/slos/burn-rate-rule.png" alt="The New Rule dialog: Name is Checkout availability is burning fast, Channel is Platform pager, Rule Type is SLO Burn Rate, and under Rule Configuration the SLO is Checkout availability, the Fast preset is selected, Long window is 60 minutes, Short window is 5 minutes and Burn rate threshold is 14.4" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+With the Fast preset the rule fires when the budget burned 14.4 times faster than the target allows over both the last hour and the last five minutes. At that speed a 30-day budget is gone in about two days. The rule fires once when the burn starts and sends a recovery notice when it stops.
+
+To wake someone up instead of sending a message, pick an escalation policy channel. The rule then opens an [on-call page](/learn/on-call), and the recovery resolves it.
+
+One rule catches the fast burns. Most teams add two more per SLO: the **Slow** preset to a chat channel, and an **SLO Budget Consumed** rule at 80%. [Burn-rate alerting](#burn-rate-alerting) explains what each one is for.
+
+## Check that it works
+
+1. Click **SLOs** in the sidebar. Within about a minute the row of your SLO shows a **Current SLI**, the **Budget left** and a status.
+2. Click the row to open the SLO.
+3. Scroll to the **Alert rules** card. It lists every rule that reads this SLO, with its channel and whether it is on.
+
+<img src="/slos/slo-alert-rules.png" alt="The Alert rules card on the page of the Checkout availability SLO, with the buttons Manage alert rules and View requests. It lists two rules that are both On: Checkout availability is burning fast, an SLO Burn Rate rule at 14.4x over 60 and 5 minutes that sends to Platform pager, and Checkout availability used 80% of its budget, an SLO Budget Consumed rule at 80% that sends to #checkout-alerts" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+A burn-rate rule cannot be fired by hand, because it reads real events. To make sure the notification would arrive, send a test through its channel: [Alerts, check that it works](/learn/alerts#check-that-it-works).
+
+If the SLO stays at **No data**, see [When it fails](#when-it-fails).
+
+## What the list and the SLO page show
+
+Each row of the list shows the target and the window, the **Current SLI** over the whole window, the **Budget left**, the burn rate of the last hour (**Burn 1h**) and a status:
 
 | Status | Meaning |
 |--------|---------|
@@ -11,82 +74,81 @@ SLOs live under **SLOs** in the sidebar, one list per project. The sidebar badge
 | No data | Nothing matched the indicator in the window yet |
 | Paused | The SLO is disabled; nothing is computed, and an alert that was firing on it sends its recovery notice |
 
-## Frontend performance objectives
+**Budget left** is the share of the error budget that is not spent yet. It goes below zero once the target is missed. A burn rate is shown in amber from 1x, the speed that uses up the budget exactly over the window, and in red from 14.4x.
 
-[RUM](/learn/rum) supports objectives over the experience itself: for example, the share of observed INP values at or below 200 ms. Choose **Metric**, select `browser.web_vital.inp`, and use **Every observation**, `≤`, and `200`. Choose the target and rolling window for your product; 75% is a p75 benchmark, not an automatic reliability promise. Add tags for the environment and population you want to protect.
+Click a row to open the SLO. Its page adds the burn rate over the last six hours and two charts, **SLI** with the target as a line and **Error budget consumed**, for the range you pick at the top. The range cannot be longer than the SLO's window and opens on the whole window.
 
-**One SLO per** creates a separate objective for each selected release, device or other dimension value (up to 20). Each gets its own error budget. Use this to see a regression that an aggregate can hide.
+<img src="/slos/slo-page.png" alt="The page of the Storefront availability SLO: status Meeting, kind Monitor, target 99.9% over a 30-day window, with Edit and Delete buttons. Four tiles show a current SLI of 100.00%, 100.0% of the error budget left, and burn rates of 0.0x over one hour and over six hours. The SLI chart below is a flat line at 100 above the dashed target line at 99.9" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
-![Frontend SLOs comparing two releases in a controlled demo](/rum/slos-releases.png)
+While the history of a new SLO is still being computed, a note above the charts says how many days of the range it covers.
 
-The histogram supplies estimated good and total observations, including sampling weights. Bucket boundary interpolation makes threshold counts approximate. Missing observations contribute neither success nor failure: **Slices without data count as bad** is not supported for distributions. A page without an interaction has no INP observation; it is not a zero-latency interaction. Monitor telemetry delivery separately.
+The button next to **Manage alert rules** takes you from the number to the events behind it:
 
-![A breached frontend interaction SLO with its error budget and burn rates](/rum/slo-detail.png)
+| SLO kind | Button | Opens |
+|----------|--------|-------|
+| Endpoint | **View requests** | The endpoint page, or the endpoints list for all endpoints |
+| Span | **View bad spans** | The span explorer, prefiltered |
+| Task | **View task runs** | The task page, or the tasks list for all tasks |
+| Monitor | **Open monitor** | The monitor page, or the monitors list for several monitors |
+| Metric | **Open dashboards** | Dashboards |
+| Session | **View sessions** | The sessions page |
 
-Pair the objective with multi-window burn-rate alerts to distinguish sustained budget consumption from a brief spike. A fast frontend can still crash, so retain a separate session-reliability objective where session reporting is enabled.
+## Change, pause or delete an SLO
+
+Open the SLO and use the buttons at the top of its page.
+
+- **Edit** opens the same form. A new name, description, target or window applies at once and keeps the history. A change to what the indicator measures, or to the slice length of a metric SLO, recomputes the history from scratch. The form shows a **History will be recomputed** warning before you save, and the SLI and the budget are empty until the recomputation is done.
+- To pause an SLO, click **Edit** and untick **Enabled**. A paused SLO is not computed, and an alert that was firing on it sends its recovery notice.
+- **Delete** removes the SLO and its computed history for good. The alert rules that read it are deleted with it, and the on-call pages they opened are resolved.
 
 ## SLI kinds
 
-| Kind | Counts | Good when | View bad events opens |
-|------|--------|-----------|-----------------------|
-| Endpoint | Requests of one endpoint, or of every endpoint in the project | The status is below 500, or the request took at most a threshold | The endpoint page, or the endpoints list for all endpoints |
-| Span | Spans matching [span explorer](/learn/spans#span-explorer) filters: service, name, kind and exact attribute values | The span status is not error, or the span took at most a threshold | The span explorer, prefiltered |
-| Task | Background task runs, all tasks or one by name | No exception or captured message was recorded on the run's own span | The task page, or the tasks list for all tasks |
-| Monitor | Probes of the selected [monitors](/learn/monitors) | The probe came back up; missed probes do not count | The monitor page, or the monitors list for several monitors |
-| Metric | Fixed time slices of a metric (1, 5, 15 or 60 minutes), optionally filtered by tags. With **Every observation** on a distribution metric, each observation is an event instead | The slice's aggregate (average, min, max, sum or last value) satisfies the comparison; with **Every observation**, the observation itself does ("75% of page views have an LCP at most 2500 ms") | Dashboards |
-| Session | Sessions reported by the SDK, all versions or one app version | No exception was recorded in the session; captured messages count only if you say so | The sessions page |
+The service level indicator (SLI) is the share of good events. The kind decides what an event is:
 
-Browser projects (React, Vue, Svelte, jQuery) and Flutter projects get the session kind, the classic crash-free sessions objective, optionally per app version, and the metric kind for their [client metrics](/learn/client-metrics). Backend projects get the other five. React Native, Android and iOS projects have no SLOs page in the dashboard yet. Their SDKs, Flutter 1.x and the legacy 1.x browser SDK send no spans; the Flutter SDK 2.x buffers its HTTP client spans like the 2.x browser SDK. The 2.x browser SDK sends `fetch` and XHR requests as CLIENT spans, but by default it keeps them on the device and uploads them around errors and captures, so they are [diagnostic samples](/learn/remote-config/reference#diagnostic-samples-and-averages), not a count of every request. To hold the requests a browser makes to a target, put the SLO on the backend project that serves them.
+| Kind | Counts | Good when |
+|------|--------|-----------|
+| Endpoint | Requests of one endpoint, or of every endpoint in the project | The status is below 500, or the request took at most a threshold |
+| Span | Spans matching [span explorer](/learn/spans#span-explorer) filters: service, name, kind and exact attribute values | The span status is not error, or the span took at most a threshold |
+| Task | Background task runs, all tasks or one by name | No exception or captured message was recorded on the run's own span |
+| Monitor | Probes of the selected [monitors](/learn/monitors) | The probe came back up; missed probes do not count |
+| Metric | Fixed time slices of a metric (1, 5, 15 or 60 minutes), optionally filtered by tags. With **Every observation** on a distribution metric, each observation is an event instead | The slice's aggregate (average, minimum, maximum, sum or last value) satisfies the comparison; with **Every observation**, the observation itself does ("75% of page views have an LCP at most 2500 ms") |
+| Session | Sessions reported by the SDK, all versions or one app version | No exception was recorded in the session; captured messages count only if you say so |
+
+Backend projects get the first five kinds. Browser projects (React, Vue, Svelte, jQuery) and Flutter projects get the session kind, the classic crash-free sessions objective, and the metric kind for their [client metrics](/learn/client-metrics). React Native, Android and iOS projects have no SLOs page in the dashboard yet.
+
+Browser and mobile projects have no endpoint or span kind, because their SDKs do not report every request: the spans they send are [diagnostic samples](/learn/remote-config/reference#diagnostic-samples-and-averages), not a count. To hold the requests a browser makes to a target, put the SLO on the backend project that serves them.
 
 The session kind counts the sessions an SDK reports. The 2.x browser SDK reports every session unless `sessions: false` is set. The legacy 1.x browser SDK reports one per visit only when [always-on session recording](/client/js-sdk/v1/session-replay#always-on-session-recording) is on (`recordAllSessions: true`). A 1.x app without `recordAllSessions`, and the stable mobile SDKs today, report no sessions, so a session SLO stays at No data.
 
 The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Endpoints and tasks are promoted from spans, so a span SLO covers them too.
 
-For point metrics, the metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat. Empty slices count only from the moment the SLO was saved, or its indicator last changed. The backfill of older history never turns the time before the metric existed, or past its retention, into bad slices.
+For point metrics, the metric kind is a timeslice SLI: every slice of the window is one unit, which is what Datadog and Elastic call time slice or timeslices budgeting. A slice without any sample is ignored by default. Turn on **Slices without data count as bad** for a metric whose absence means the thing it measures is gone, such as a heartbeat. Empty slices count only from the moment the SLO was saved, or its indicator last changed. The backfill of older history never turns the time before the metric existed, or past its retention, into bad slices. Like a newly saved SLO, **Preview last 24h** does not count empty slices as bad.
 
 Endpoint latency indicators leave streaming endpoints out, since a connection lifetime is not a response time. They also ignore the status code, so a fast 500 counts as good; pair a latency SLO with an availability one.
 
 When **Drop healthy healthcheck requests** is on (the default, see [Healthchecks](/learn/healthchecks)), healthy probes are never stored, so an endpoint SLO only sees the failing ones. To hold a health endpoint to a target, use a monitor SLO, or turn the toggle off for that project.
 
-The sheet has a **Preview last 24h** button that runs the indicator straight against your telemetry, so you can see the share of good events and the counts before saving. Like a newly saved SLO, the preview does not count empty metric slices as bad.
-
 An SLO can watch at most 50 monitors, 20 metric tags and 10 span attribute filters.
 
-## Manage SLOs with the CLI or MCP
+## Frontend performance objectives
 
-Both CLI editions read SLOs: `traceway slos list`, `slos show <id>` (the SLO plus the alert rules that read it), `slos series <id> --file range.json` and `slos preview --file slo.json`, which runs a definition against the last 24 hours without saving it. The MCP tools are `list_slos`, `get_slo`, `get_slo_series` and `preview_slo`.
+[RUM](/learn/rum) supports objectives over the experience itself: for example, the share of observed INP values at or below 200 ms. In the **New SLO** form of a browser project:
 
-Creating, changing and deleting needs `traceway-write` and [Agent Write Access](/learn/agent-write-access):
+1. Set **Indicator** to **Metric** and enter `browser.web_vital.inp` in **Metric**.
+2. Leave **Counts** on **Every observation**.
+3. Set **Good when value is** to **at most** and **Threshold** to `200`.
+4. Under **Tag filters**, add the environment and the population you want to protect.
+5. Choose the target and the window for your product. 75% is a p75 benchmark, not an automatic reliability promise.
 
-```bash
-traceway-write slos preview --file slo.json
-traceway-write slos create --file slo.json
-traceway-write slos update 7 --file slo.json
-traceway-write slos delete 7
-```
+**One SLO per** creates a separate objective for each value of a release, device or other dimension that was reported so far (up to 20). Each gets its own error budget, so you see a regression that an aggregate can hide. A value that shows up later, such as the next release, needs its own SLO.
 
-```json
-{
-  "name": "Checkout availability",
-  "sliKind": "endpoint",
-  "sliConfig": {"endpoint": "POST /api/checkout", "good": "availability"},
-  "targetPercent": 99.9,
-  "windowDays": 30
-}
-```
+<img src="/rum/slos-releases.png" alt="The SLOs page of a browser project with two metric SLOs, Fast interactions (0.2.0) and Fast interactions (0.1.0), one per release. Both count INP observations at most 200 ms against a 90% target over 30 days. The 0.2.0 release is breached with a burn rate of 10x, the 0.1.0 release is meeting its target" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
-`sliKind` is `endpoint`, `span`, `task`, `monitor`, `metric` or `session`. `sliConfig` holds the fields of that kind:
+The histogram supplies estimated good and total observations, including sampling weights. Bucket boundary interpolation makes threshold counts approximate. Missing observations contribute neither success nor failure: **Slices without data count as bad** is not supported for distributions. A page without an interaction has no INP observation; it is not a zero-latency interaction. Monitor telemetry delivery separately.
 
-| `sliKind` | `sliConfig` |
-|-----------|-------------|
-| `endpoint` | `endpoint` (empty for every endpoint), `good` (`availability` or `latency`), `latencyThresholdMs` |
-| `span` | `serviceName`, `name`, `kind`, `attributes` (`[{key, value}]`), `good`, `latencyThresholdMs` |
-| `task` | `taskName` (empty for every task) |
-| `monitor` | `checkIds` |
-| `metric` | `metricName`, `aggregation` (`avg`, `min`, `max`, `sum`, `last`, or `distribution` for Every observation), `operator` (`gt`, `gte`, `lt`, `lte`), `threshold`, `tags`, `missingIsBad`; the slice length is the top-level `bucketMinutes` |
-| `session` | `appVersion`, `includeMessages` |
+<img src="/rum/slo-detail.png" alt="The page of the breached Fast interactions (0.2.0) SLO: a current SLI of 0.00% against a 90% target, an error budget at minus 900%, burn rates of 10x over one hour and over six hours, and the SLI and Error budget consumed charts" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
-An update replaces the whole definition, so send every field. The MCP tools `create_slo`, `update_slo` and `delete_slo` take the same document as `data`.
+Pair the objective with multi-window burn-rate alerts to distinguish sustained budget consumption from a brief spike. A fast frontend can still crash, so retain a separate session-reliability objective where session reporting is enabled.
 
 ## Windows and the error budget
 
@@ -94,7 +156,7 @@ The window is rolling: 7, 30 or 90 days ending now. The error budget is the shar
 
 The burn rate is the observed bad rate divided by the allowed bad rate. A burn rate of 1 spends the budget exactly at the end of the window. 14.4 exhausts a 30-day budget in about two days. The two burn rate tiles use the last hour and the last six hours; a window without events burns nothing.
 
-Changing the target or the window applies at once and keeps the history, since both are applied on read. Changing what the indicator measures, or the metric slice length, recomputes the history from scratch; the sheet warns before you save.
+Changing the target or the window applies at once and keeps the history, since both are applied on read. Changing what the indicator measures, or the metric slice length, recomputes the history from scratch.
 
 ## Burn-rate alerting
 
@@ -105,19 +167,119 @@ Two [alert rule](/learn/alerts) types read the SLO:
 
 The presets follow the Google SRE workbook:
 
-| Preset | Long / short window | Threshold | Share of a 30-day budget burned when it fires | Time to exhaustion at that rate |
-|--------|---------------------|-----------|-----------------------------------------------|---------------------------------|
-| Fast | 1h / 5m | 14.4x | 2% | about 2 days |
-| Slow | 6h / 30m | 6x | 5% | 5 days |
-| Long | 3d / 6h | 1x | 10% | 30 days |
+| Preset | Windows | Threshold | When it fires |
+|--------|---------|-----------|---------------|
+| Fast | 1h / 5m | 14.4x | 2% of a 30-day budget burned in an hour; at that rate it is gone in about 2 days |
+| Slow | 6h / 30m | 6x | 5% burned in six hours; gone in 5 days |
+| Long | 3d / 6h | 1x | 10% burned in three days; gone in 30 days |
 
-Point the Fast preset at a paging channel and the Slow and Long ones at chat. Add SLO Budget Consumed at 80% as the planning signal that says the next deploy should be a careful one. Pointing either rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically. The rules fire once when the condition starts and again only after it cleared, so they do not re-page every poll. A rule is still evaluated during its cooldown so the recovery is never delayed; the cooldown only holds back a new fire, and a recovery notice does not restart it. Changing a rule's type, channel or condition, disabling it or deleting it resolves the page it opened, and so does disabling or deleting its SLO. Deleting an SLO also deletes the rules that read it. While a changed SLO is being recomputed, its rules keep their state, so a definition change does not send a false recovery.
+Point the Fast preset at a paging channel and the Slow and Long ones at chat. Add SLO Budget Consumed at 80% as the planning signal that says the next deploy should be a careful one. Pointing either rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically.
+
+The rules fire once when the condition starts and again only after it cleared, so they do not re-page every poll. A rule is still evaluated during its cooldown so the recovery is never delayed; the cooldown only holds back a new fire, and a recovery notice does not restart it. Changing a rule's type, channel or condition, disabling it or deleting it resolves the page it opened, and so does disabling or deleting its SLO. While a changed SLO is being recomputed, its rules keep their state, so a definition change does not send a false recovery.
 
 On a metric SLO with slices longer than a minute, both windows are rounded up to whole slices, so a 5-minute short window over 60-minute slices reads the last hour. The rule form says so when it happens.
 
+## Manage SLOs with the CLI or MCP
+
+Everything above can also be done from a terminal or by an AI agent. Reading works with the [`traceway` CLI](/learn/cli). Creating, changing and deleting needs `traceway-write` and the organization's Agent Access switch, both described in [Agent Write Access](/learn/agent-write-access).
+
+An SLO is one JSON document:
+
+```json filename="slo.json"
+{
+  "name": "Checkout availability",
+  "sliKind": "endpoint",
+  "sliConfig": {"endpoint": "POST /api/checkout", "good": "availability"},
+  "targetPercent": 99.9,
+  "windowDays": 30
+}
+```
+
+A preview takes only the indicator, without the name, target and window:
+
+```json filename="preview.json"
+{
+  "sliKind": "endpoint",
+  "sliConfig": {"endpoint": "POST /api/checkout", "good": "availability"}
+}
+```
+
+The history of an SLO is read for a time range of at most 91 days; a longer range is cut to its last 91 days. `intervalMinutes` is optional:
+
+```json filename="range.json"
+{
+  "fromDate": "2026-11-01T00:00:00Z",
+  "toDate": "2026-11-26T00:00:00Z",
+  "intervalMinutes": 60
+}
+```
+
+```bash
+# Look at what exists (both CLI editions)
+traceway slos list
+traceway slos show 7
+
+# Run an indicator against the last 24 hours without saving it
+traceway slos preview --file preview.json
+
+# Good and total events per bucket over a time range
+traceway slos series 7 --file range.json
+
+# Create, change, delete (the write CLI)
+traceway-write slos validate create --file slo.json
+traceway-write slos create --file slo.json --yes
+traceway-write slos update 7 --file slo.json --yes
+traceway-write slos delete 7 --yes
+```
+
+Replace the example id and endpoint name with your own. `sliKind` is `endpoint`, `span`, `task`, `monitor`, `metric` or `session`, and `sliConfig` holds the fields of that kind:
+
+| `sliKind` | `sliConfig` |
+|-----------|-------------|
+| `endpoint` | `endpoint` (empty for every endpoint), `good` (`availability` or `latency`), `latencyThresholdMs` |
+| `span` | `serviceName`, `name`, `kind`, `attributes` (`[{key, value}]`), `good`, `latencyThresholdMs` |
+| `task` | `taskName` (empty for every task) |
+| `monitor` | `checkIds` |
+| `metric` | `metricName`, `aggregation` (`avg`, `min`, `max`, `sum`, `last`, or `distribution` for Every observation), `operator` (`gt`, `gte`, `lt`, `lte`), `threshold`, `tags`, `missingIsBad`; the slice length is the top-level `bucketMinutes` |
+| `session` | `appVersion`, `includeMessages` |
+
+A few things to know:
+
+- **`preview` returns `good`, `total` and `sli`** for the last 24 hours. `sli` is a percentage, or `null` when nothing matched. It refuses the full `slo.json` as having unknown fields, so keep a separate file. A metric indicator also needs `bucketMinutes` here.
+- **`show` returns the SLO and the alert rules that read it**, with the status (`ok`, `breached` or `no_data`), `currentSli`, `budgetRemaining` and the burn rates.
+- **`series` returns `good` and `total` per bucket** of the range, so you can compute the SLI of any stretch yourself.
+- **`validate` runs offline.** It checks the shape of the file and rejects `sliConfig` fields the kind does not have. The server checks the values when you create or update.
+- **A metric SLO needs the top-level `bucketMinutes`**: 1, 5, 15 or 60.
+- **`update` replaces the whole definition**, so send every field. Leaving out `enabled` keeps the SLO on or paused as it was; `"enabled": false` pauses it.
+- **`delete` also deletes the alert rules that read the SLO.** `slos show` lists them first.
+
+The burn-rate rules are ordinary alert rules that name the SLO by its id:
+
+```json filename="rule.json"
+{
+  "name": "Checkout availability is burning fast",
+  "channelId": 12,
+  "ruleType": "slo_burn_rate",
+  "config": {
+    "sloId": 7,
+    "longWindowMinutes": 60,
+    "shortWindowMinutes": 5,
+    "burnRateThreshold": 14.4
+  }
+}
+```
+
+```bash
+traceway-write alerts create --file rule.json --yes
+```
+
+An SLO Budget Consumed rule has the `ruleType` `slo_budget_consumed`, and its `config` holds `sloId` and `consumedPercent`, for example 80. The rest of the rule document is described in [Alerts](/learn/alerts#configure-alerting-with-the-cli-or-mcp).
+
+The MCP tools are `list_slos`, `get_slo`, `get_slo_series` and `preview_slo` on both servers, and `create_slo`, `update_slo` and `delete_slo` on the write server. They take the same documents as `data`. The write skill's **slo-configuration.md**, which the write server also serves as `traceway://knowledge/slo-configuration`, is the same reference written for an agent.
+
 ## How history is computed
 
-A background worker computes the indicator into buckets of one minute (or the metric slice length) and stores them next to the telemetry, so the SLI, the budget and the burn rates are sums over buckets rather than scans of raw data. Every poll recomputes the last ten minutes, so data that arrives a little late still lands in its bucket, and backfills older history in chunks until the whole window is covered. A new 90-day SLO fills over a few minutes; the detail page says how much of the range the history covers while it does. All SLOs share one five-second backfill budget per poll, so adding many at once never delays the refresh of the others.
+A background worker computes the indicator into buckets of one minute (or the metric slice length) and stores them next to the telemetry, so the SLI, the budget and the burn rates are sums over buckets rather than scans of raw data. Every poll recomputes the last ten minutes, so data that arrives a little late still lands in its bucket, and backfills older history in chunks until the whole window is covered. A new 90-day SLO fills over a few minutes; the SLO's page says how much of the range the history covers while it does. All SLOs share one five-second backfill budget per poll, so adding many at once never delays the refresh of the others.
 
 Data that arrives late is picked up too. Every 15 minutes, at a moment that differs per SLO so they never all run together, the worker recomputes the last hour and a quarter, which catches requests longer than ten minutes (a span is counted at its start but exported at its end) and batches an exporter retried after an outage. Sessions and task runs are counted at their start but turn bad when their exception arrives, so their buckets stay open longer: every 15 minutes the worker recomputes about the last two and a half hours of a session SLO and the last six and a half hours of a task SLO. A crash that is uploaded on the next app launch is caught too: once a day the worker recomputes the last three days of every session SLO, so a crash counts when the app is opened again within two days, and usually up to three.
 
@@ -127,10 +289,19 @@ Buckets are kept for 120 days whatever the raw telemetry retention is. On SQLite
 
 ## Configuration
 
+These settings are for self-hosted instances.
+
 ```bash
-SLO_POLL_SECONDS=60               # how often buckets are refreshed and statuses recomputed; values below 5 fall back to 60
-SLO_COMPUTE_WORKERS=4             # SLOs computed at once per instance (max 64)
-SLO_COMPUTE_TIMEOUT_SECONDS=30    # an SLO whose queries take longer is skipped for that tick and retried on the next
+# How often buckets are refreshed and statuses recomputed.
+# Values below 5 fall back to 60.
+SLO_POLL_SECONDS=60
+
+# SLOs computed at once per instance (max 64)
+SLO_COMPUTE_WORKERS=4
+
+# An SLO whose queries take longer is skipped for that tick
+# and retried on the next
+SLO_COMPUTE_TIMEOUT_SECONDS=30
 ```
 
 With several backend instances on Postgres, the instances split the SLOs between them: SLOs are spread over 64 shards, and each instance leases an equal share. When an instance stops, the others take over its shards within about five minutes.
@@ -138,3 +309,29 @@ With several backend instances on Postgres, the instances split the SLOs between
 Each poll re-reads only the recent hours of an SLO's buckets and keeps the older part of the window in memory, so a 90-day SLO costs about as much as a 7-day one. The whole window is re-read once an hour per SLO, and whenever older buckets change.
 
 To watch the worker, turn on [self-monitoring](/server/capacity-monitoring#slo-worker-every-30s). It reports how far behind the SLOs are, how long ticks take and which SLO was slowest, so you can alert when SLOs fall behind. `/api/health/deep` shows the same numbers in its `slo` block.
+
+## Who can do what
+
+| Action | Who |
+|--------|-----|
+| See the SLOs of a project, their pages and history, and run a preview | Every member of the organization |
+| Create, edit, pause and delete an SLO, and manage its alert rules | Members with write access to the project: every role except `readonly` |
+| Read SLOs with the CLI or MCP | Any login or token of a member |
+| Create, change and delete SLOs with the CLI or MCP | A write login or write token, with [Agent Write Access](/learn/agent-write-access) turned on for the organization. The person's own role still applies |
+
+A member without write access sees the list and the SLO pages, but no **New SLO**, **Edit** or **Delete** button.
+
+## When it fails
+
+| What you see | Cause | Fix |
+|---|---|---|
+| The preview says `Last 24h: no events matched`, or the SLO stays at **No data** | Nothing matches the indicator: a name that differs from the one on the Endpoints or Tasks page, filters that are too narrow, or no traffic in the window | Pick the name from the suggestions in the form and run **Preview last 24h** until it shows counts |
+| An SLO on a health endpoint shows no data or only failures | Healthy healthcheck requests are not stored by default | Use a monitor SLO, or turn off **Drop healthy healthcheck requests**: see [SLI kinds](#sli-kinds) |
+| A session SLO stays at **No data** | The SDK of the app reports no sessions | See the session paragraph under [SLI kinds](#sli-kinds) |
+| "History covers 3.0 of 30 days in this range" above the charts | The history is still being computed, or the older telemetry is past its retention | Wait a few minutes. Days past the retention cannot be computed: see [How history is computed](#how-history-is-computed) |
+| The SLI and the budget are empty after an edit | The edit changed what the indicator measures, so the history is being recomputed | Nothing to do; the numbers return within minutes |
+| The SLO is **Breached** but no alert arrived | An SLO Burn Rate rule watches how fast the budget burns, not whether the target is met. A slow leak never reaches 14.4x | Add the Slow and Long presets and an SLO Budget Consumed rule: see [Burn-rate alerting](#burn-rate-alerting) |
+| `Use Every observation for a client distribution metric.` | A browser or mobile performance metric is a distribution and has no slices to aggregate | Set **Aggregate per slice** to **Every observation** |
+| `unknown slos field "targetPercent"` from `slos preview`, or the same with another field name | The preview got the full SLO document | Send only `sliKind` and `sliConfig`, plus `bucketMinutes` for a metric |
+| `bucketMinutes is required for a metric SLO (1, 5, 15 or 60)` | A metric SLO document without its slice length | Add the top-level `bucketMinutes` |
+| `Agent write access is turned off for this organization.` | The organization does not allow agent writes yet | An owner or admin turns it on: [Agent Write Access, step 1](/learn/agent-write-access#step-1-turn-on-agent-access) |

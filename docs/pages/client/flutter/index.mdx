@@ -478,7 +478,9 @@ TracewayOptions(
 
 `TracewayScreenCaptureMode.wireframe` records the widget tree instead of pixels: each screen becomes an HTML document of boxes, text and images, and what changes becomes rrweb mutations, which the dashboard replays with the same player as a browser session. A segment is a few kilobytes, no video encoder is needed, and it works on every platform; on Linux and Windows the SDK always records a wireframe. It is not pixel-exact: the browser draws the text in its own font and custom painting is shown as a placeholder. Text typed into fields is masked unless a rule sets `replay.maskAllInputs: false`.
 
-A rule's `replay.captureMode` (`video` or `wireframe`, **Replay type** in the rule editor) overrides `screenCaptureMode`; leaving it unset keeps the app's choice. A change applies at once unless the current session already uploaded replay in the other mode; then it applies from the next session, so one session's replay is all video or all wireframe.
+A rule's `replay.captureMode` (`video` or `wireframe`, **Replay type** in the rule editor) overrides `screenCaptureMode`; leaving it unset keeps the app's choice. A change applies at once unless the current session already uploaded replay in the other mode; then it applies from the next session, so one session's replay is all video or all wireframe. The recorder is replaced when the mode changes, so the frames buffered so far are dropped and the next clip only reaches back to the switch.
+
+The rule arrives with the first poll, which can answer after the first session has started. An app's first launch therefore starts in `screenCaptureMode` and switches when the poll answers. Later launches start in the cached setting, unless `persistToDisk` is off. To record a wireframe from the very first session, set `screenCaptureMode` in the app instead of relying on a rule.
 
 ## Privacy Masking
 

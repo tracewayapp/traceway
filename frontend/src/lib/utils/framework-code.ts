@@ -36,8 +36,8 @@ export function getInstallCommand(framework: Framework): string {
 		case 'opentelemetry':
 			return '';
 		case 'flutter':
-			// The Flutter v2 preview is distributed from its Git branch.
-			return `flutter pub add 'traceway:{"git":{"url":"https://github.com/tracewayapp/traceway-flutter.git","ref":"v2-session-capture"}}'`;
+			// 2.x is a prerelease on pub.dev: without the constraint pub installs 1.x.
+			return `flutter pub add 'traceway:^2.0.0-beta.1'`;
 		case 'android':
 			return 'implementation("com.tracewayapp:traceway:1.0.1")';
 		case 'ios':

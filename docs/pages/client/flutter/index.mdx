@@ -2,12 +2,12 @@
 
 Integrate Traceway into your Flutter application with the [`traceway`](https://pub.dev/packages/traceway) package. The SDK is built on the standard OpenTelemetry SDK for Dart ([`dartastic_opentelemetry`](https://pub.dev/packages/dartastic_opentelemetry)): exceptions, logs and request spans leave as OTLP/HTTP, performance metrics as OTLP metrics, and the SDK polls Traceway over [OpAMP](https://opentelemetry.io/docs/specs/opamp/) for its collection settings, like the [browser SDK](/client/js-sdk) 2.x.
 
-> **2.0 is a beta.** It needs a Traceway server that accepts Flutter projects on its OTLP and OpAMP endpoints; there is no fallback to the 1.x `/api/report` protocol. `flutter pub add traceway` without a version installs the newest stable release, 1.x, so install the 2.x preview from Git as shown below. Commit the resolved revision in your app’s pubspec.lock. On an older server stay on `traceway: ^1.0.9`. See [Migrating from 1.x](#migrating-from-1x).
+> **2.0 is a beta.** It needs a Traceway server that accepts Flutter projects on its OTLP and OpAMP endpoints; there is no fallback to the 1.x `/api/report` protocol. `flutter pub add traceway` without a version installs the newest stable release, 1.x, so ask for the beta by version as shown below. An app that installed the preview from Git (`ref: v2-session-capture`) replaces that dependency with the version below. On an older server stay on `traceway: ^1.0.9`. See [Migrating from 1.x](#migrating-from-1x).
 
 ## Installation
 
 ```bash
-flutter pub add 'traceway:{"git":{"url":"https://github.com/tracewayapp/traceway-flutter.git","ref":"v2-session-capture"}}'
+flutter pub add 'traceway:^2.0.0-beta.1'
 ```
 
 ## Setup
@@ -217,7 +217,7 @@ The signal names, modes, triggers and limits are the browser SDK's, so one rule 
 
 The SDK polls the server over OpAMP (plain HTTP: at start, every 5 minutes by default, when the app returns to the foreground, and about 2 seconds after `Traceway.setAttribute` or a new session, so a rule targeting an attribute applies soon) and applies the collection settings you define under **Data Collection** in the project's sidebar: signal modes and sample rates, buffer sizes, metrics settings, extra triggers (for example "flush when `checkout_failed` happens twice in a minute") and on-demand captures of one user or device. See [Remote SDK Config](/learn/remote-config/setup) for a walkthrough.
 
-- The options you pass to `Traceway.run` are **ceilings**. Remote settings can lower what is collected but never raise it: with `captureNetwork: false` no rule can turn network capture on, and without `screenCapture: true` nothing is recorded.
+- The `capture*` options, `screenCapture` and `sessions` are **ceilings**. Remote settings can lower what is collected but never raise it: with `captureNetwork: false` no rule can turn network capture on, and without `screenCapture: true` nothing is recorded. `sampleRate`, `baselineSampleRate` and `recordAllSessions` are defaults: a rule can change them in either direction.
 - The last applied settings are cached, so they are in effect from the first frame of the next start.
 - Set `remoteConfig: false` to never poll. Standalone (no connection string) the SDK never polls either.
 

@@ -29,6 +29,7 @@
 		isNumericOp,
 		optionalNumber,
 		signalsFor,
+		type CaptureMode,
 		type ConditionRow,
 		type Mode,
 		type SdkConfigRule,
@@ -67,6 +68,8 @@
 	let signalChoices = $state<Record<string, Choice>>({});
 	let shownSignals = $state(SIGNALS);
 	let replayChoice = $state<Choice>('inherit');
+	let captureModeChoice = $state<'inherit' | CaptureMode>('inherit');
+	let showCaptureMode = $state(false);
 	let sessionsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let collectionChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let metricsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
@@ -82,6 +85,11 @@
 		stream: 'Stream'
 	};
 	const toggleLabels = { inherit: 'Inherit', on: 'On', off: 'Off' };
+	const captureModeLabels: Record<'inherit' | CaptureMode, string> = {
+		inherit: 'Inherit',
+		video: 'Video',
+		wireframe: 'Wireframe'
+	};
 
 	$effect(() => {
 		if (!open) return;
@@ -129,7 +137,7 @@
 	let conditionCount = $derived(rows.filter((row) => row.key.trim() !== '').length);
 	let signalCount = $derived(
 		Object.values(signalChoices).filter((choice) => choice !== 'inherit').length +
-			[replayChoice, sessionsChoice, collectionChoice, metricsChoice].filter(
+			[replayChoice, captureModeChoice, sessionsChoice, collectionChoice, metricsChoice].filter(
 				(choice) => choice !== 'inherit'
 			).length
 	);
@@ -155,6 +163,10 @@
 				]
 			: SIGNALS;
 		replayChoice = settings.replay?.mode ?? 'inherit';
+		captureModeChoice = settings.replay?.captureMode ?? 'inherit';
+		// Only the Flutter SDK reads the replay type, but a rule that already sets one keeps showing it, so the
+		// form can still change it.
+		showCaptureMode = flutter || captureModeChoice !== 'inherit';
 		sessionsChoice =
 			settings.sessions?.enabled === undefined
 				? 'inherit'
@@ -176,7 +188,10 @@
 			if (choice !== 'inherit') signals[key] = { mode: choice };
 		}
 		if (Object.keys(signals).length > 0) settings.signals = signals;
-		if (replayChoice !== 'inherit') settings.replay = { mode: replayChoice };
+		const replay: NonNullable<SettingsDocument['replay']> = {};
+		if (replayChoice !== 'inherit') replay.mode = replayChoice;
+		if (captureModeChoice !== 'inherit') replay.captureMode = captureModeChoice;
+		if (Object.keys(replay).length > 0) settings.replay = replay;
 		if (sessionsChoice !== 'inherit') settings.sessions = { enabled: sessionsChoice === 'on' };
 		const baseline = optionalNumber(baselinePercent);
 		if (baseline !== undefined)
@@ -486,7 +501,7 @@
 								<div>
 									<div class="text-sm">Session replay</div>
 									<div class="text-xs text-muted-foreground">
-										{flutter ? 'Screen recording, as video' : 'rrweb recording'}
+										{flutter ? 'Screen recording' : 'rrweb recording'}
 									</div>
 								</div>
 								<Select.Root type="single" bind:value={replayChoice} disabled={saving}>
@@ -498,6 +513,26 @@
 									</Select.Content>
 								</Select.Root>
 							</div>
+							{#if showCaptureMode}
+								<div class="flex items-center justify-between gap-3">
+									<div>
+										<div class="text-sm">Replay type</div>
+										<div class="text-xs text-muted-foreground">
+											{flutter ? 'Video, or a wireframe of the widget tree' : 'Flutter SDK only'}
+										</div>
+									</div>
+									<Select.Root type="single" bind:value={captureModeChoice} disabled={saving}>
+										<Select.Trigger class="w-28"
+											>{captureModeLabels[captureModeChoice]}</Select.Trigger
+										>
+										<Select.Content>
+											{#each Object.entries(captureModeLabels) as [value, label] (value)}
+												<Select.Item {value}>{label}</Select.Item>
+											{/each}
+										</Select.Content>
+									</Select.Root>
+								</div>
+							{/if}
 							<div class="flex items-center justify-between gap-3">
 								<div>
 									<div class="text-sm">Sessions</div>

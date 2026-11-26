@@ -100,7 +100,17 @@ type ReplaySettings struct {
 	Mode              *Mode    `json:"mode,omitempty"`
 	SessionSampleRate *float64 `json:"sessionSampleRate,omitempty"`
 	MaskAllInputs     *bool    `json:"maskAllInputs,omitempty"`
+	// CaptureMode is how the Flutter SDK records the screen: "video" (MP4 from the hardware encoder) or
+	// "wireframe" (the widget tree as rrweb HTML and mutations). It overrides the app's
+	// TracewayOptions.screenCaptureMode; the browser SDKs ignore it. A change waits for the next session when the
+	// current one already uploaded replay in the other mode, so one session's replay is all one or the other.
+	CaptureMode *string `json:"captureMode,omitempty"`
 }
+
+const (
+	CaptureModeVideo     = "video"
+	CaptureModeWireframe = "wireframe"
+)
 
 type BufferSettings struct {
 	MaxBytes       *int64 `json:"maxBytes,omitempty"`
@@ -293,6 +303,9 @@ func (s Settings) Validate() error {
 		}
 		if !validRate(s.Replay.SessionSampleRate) {
 			return invalid("replay.sessionSampleRate must be between 0 and 1")
+		}
+		if c := s.Replay.CaptureMode; c != nil && *c != CaptureModeVideo && *c != CaptureModeWireframe {
+			return invalid("replay.captureMode must be video or wireframe")
 		}
 	}
 	if m := s.Metrics; m != nil {

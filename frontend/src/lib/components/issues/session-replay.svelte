@@ -14,8 +14,9 @@
 	interface Props {
 		events: SessionReplayEvent[] | null;
 		/**
-		 * The moment the caller's time offsets count from, such as the session's start. A Flutter recording whose
-		 * segments carry their wall-clock span then seeks and reports on that clock; otherwise an offset is a time
+		 * The moment the caller's time offsets count from, such as the session's start. A Flutter video recording
+		 * whose segments carry their wall-clock span, and an rrweb recording (which may start after it, like a
+		 * replay a trigger started mid-session), then seek and report on that clock; otherwise an offset is a time
 		 * into the recording.
 		 */
 		startedAt?: string | null;
@@ -34,11 +35,19 @@
 		if (isFlutterVideo && videoEl) {
 			seekPlayer(playerTimeForOffset(ms));
 		} else if (player) {
-			player.goto(ms, false);
+			player.goto(Math.max(0, ms - rrwebShift), false);
 		}
 	}
 
 	let isFlutterVideo = $derived(events && events.length > 0 && events[0]?.type === 'flutter_video');
+
+	// rrweb counts time from the recording's first event; the caller's offsets count from startedAt.
+	const rrwebShift = $derived.by(() => {
+		if (!startedAt || !events || events.length === 0 || isFlutterVideo) return 0;
+		const origin = Date.parse(startedAt);
+		const first = (events[0] as eventWithTime).timestamp;
+		return Number.isFinite(origin) && Number.isFinite(first) ? first - origin : 0;
+	});
 
 	// A Flutter recording is one MP4 clip, or the consecutive segments of a streamed session. They play back to
 	// back as one recording on a player timeline; see video-segments.ts.
@@ -258,7 +267,19 @@
 		return metaEvent?.data?.href ?? '';
 	});
 
+	// A recording of a phone (an rrweb wireframe from a mobile SDK) is taller than wide: its player is too, up to
+	// where the screen shows at full size.
+	const portrait = $derived.by(() => {
+		if (!events || isFlutterVideo) return false;
+		const metas = (
+			events as (eventWithTime & { data?: { width?: number; height?: number } })[]
+		).filter((e) => e.type === 4);
+		const last = metas[metas.length - 1]?.data;
+		return !!last?.width && !!last?.height && last.height > last.width;
+	});
+
 	function getPlayerHeight(width: number): number {
+		if (portrait) return Math.round(Math.min(width * 1.1, 760));
 		return Math.round((width * 9) / 16);
 	}
 
@@ -286,7 +307,9 @@
 
 		const firstTs = (events[0] as eventWithTime).timestamp;
 		const lastTs = (events[events.length - 1] as eventWithTime).timestamp;
-		player.goto(lastTs - firstTs, true);
+		// The replayer sizes its frame to the first Meta event in a timeout; seeking before it runs would leave a
+		// recording whose viewport changed (a resized window, a rotated phone) at its first size.
+		setTimeout(() => player?.goto(lastTs - firstTs, true), 0);
 
 		resizeObserver = new ResizeObserver((entries) => {
 			for (const entry of entries) {
@@ -305,7 +328,7 @@
 				const t = player.getReplayer().getCurrentTime();
 				if (t !== lastReportedMs) {
 					lastReportedMs = t;
-					onTimeUpdate?.(t);
+					onTimeUpdate?.(t + rrwebShift);
 				}
 			} catch {
 				// Replayer may briefly be unavailable during init/destroy
@@ -540,7 +563,8 @@
 	}
 
 	/* Mouse cursor */
-	.player-wrapper :global(.replayer-mouse) {
+	/* A touch recording keeps rrweb's touch ring. */
+	.player-wrapper :global(.replayer-mouse:not(.touch-device)) {
 		background-image: url('data:image/svg+xml;charset=utf-8;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMDBweCcgaGVpZ2h0PSczMDBweCcgdmlld0JveD0nMCAwIDUwIDUwJz48cGF0aCBkPSdNNSAyTDUgNDNMMTQuNSAzM0wyMyA0OEwzMCA0NC41TDIxLjUgMjkuNUwzNSAyOS41WicgZmlsbD0nIzAwMDAwMCcgc3Ryb2tlPScjZmZmZmZmJyBzdHJva2Utd2lkdGg9JzIuNScgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcvPjwvc3ZnPg==') !important;
 	}
 

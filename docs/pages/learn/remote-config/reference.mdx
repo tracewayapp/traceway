@@ -56,6 +56,9 @@ A rule stores a **partial** document: only what it changes. The server merges th
 | `mode` | `off`, `buffer`, `stream` | Buffered segments upload with a trigger's flush or a capture; streamed ones as they complete |
 | `sessionSampleRate` | 0 to 1 | Share of sessions that may stream replay, decided per session id, so a session is all or nothing |
 | `maskAllInputs` | boolean | Mask every input field in the recording (default `true`) |
+| `captureMode` | `video`, `wireframe` | Flutter SDK only, see below; browser SDKs ignore it |
+
+`captureMode` picks how a Flutter app records replay, overriding its `TracewayOptions.screenCaptureMode`: `video` is MP4 clips from the device's hardware encoder, `wireframe` the widget tree recorded as rrweb HTML and mutations. Leaving it unset keeps the app's choice. Video needs a hardware encoder (Android, iOS, macOS); on Linux and Windows the SDK records a wireframe whatever the setting says. A change applies at once unless the current session already uploaded replay in the other mode; then it applies from the next session, so one session's replay is all video or all wireframe.
 
 ### Buffer
 

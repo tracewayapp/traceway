@@ -48,6 +48,13 @@ describe('sdk-config helpers', () => {
 		).toBe('network: off, replay: stream, 2 triggers');
 	});
 
+	it('names the replay type in the summary', () => {
+		expect(summarizeSettings({ replay: { captureMode: 'wireframe' } })).toBe('replay as wireframe');
+		expect(summarizeSettings({ replay: { mode: 'stream', captureMode: 'video' } })).toBe(
+			'replay: stream, replay as video'
+		);
+	});
+
 	it('only offers the form when it can show every field', () => {
 		expect(
 			fitsForm({ schemaVersion: 1, signals: { console: { mode: 'stream' } }, enabled: false })
@@ -57,6 +64,12 @@ describe('sdk-config helpers', () => {
 		expect(fitsForm({ sessions: { enabled: true, baselineSampleRate: 0.01 } })).toBe(true);
 		expect(fitsForm({ sessions: { futureSetting: true } } as never)).toBe(false);
 		expect(fitsForm({ replay: { mode: 'buffer', sessionSampleRate: 0.5 } })).toBe(false);
+	});
+
+	it('shows the replay type in the form, next to the replay mode', () => {
+		expect(fitsForm({ replay: { captureMode: 'wireframe' } })).toBe(true);
+		expect(fitsForm({ replay: { mode: 'stream', captureMode: 'video' } })).toBe(true);
+		expect(fitsForm({ replay: { captureMode: 'wireframe', maskAllInputs: false } })).toBe(false);
 	});
 });
 

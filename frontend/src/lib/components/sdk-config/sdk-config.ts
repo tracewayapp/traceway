@@ -1,5 +1,8 @@
 export type Mode = 'off' | 'buffer' | 'stream';
 
+/** Video is MP4 from the device's hardware encoder; a wireframe is the widget tree as rrweb HTML. */
+export type CaptureMode = 'video' | 'wireframe';
+
 export type ConditionOp =
 	| 'eq'
 	| 'neq'
@@ -34,7 +37,13 @@ export type SettingsDocument = Record<string, unknown> & {
 	enabled?: boolean;
 	signals?: Record<string, { mode?: Mode; sampleRate?: number; minSeverity?: string }>;
 	sessions?: { enabled?: boolean; baselineSampleRate?: number };
-	replay?: { mode?: Mode; sessionSampleRate?: number; maskAllInputs?: boolean };
+	replay?: {
+		mode?: Mode;
+		sessionSampleRate?: number;
+		maskAllInputs?: boolean;
+		/** How the Flutter SDK records replay; it overrides the app's screenCaptureMode. Browser SDKs ignore it. */
+		captureMode?: CaptureMode;
+	};
 	/**
 	 * The aggregates: histograms and counters built on the device and uploaded as one small payload.
 	 * The signals above govern the detailed events of the same measurements.
@@ -411,6 +420,7 @@ export function summarizeSettings(settings: SettingsDocument): string {
 	}
 	if (settings.replay?.mode)
 		parts.push(`replay: ${MODE_LABELS[settings.replay.mode].toLowerCase()}`);
+	if (settings.replay?.captureMode) parts.push(`replay as ${settings.replay.captureMode}`);
 	if (settings.sessions?.baselineSampleRate !== undefined)
 		parts.push(`${settings.sessions.baselineSampleRate * 100}% healthy session sample`);
 	if (settings.sessions?.enabled === false) parts.push('sessions off');
@@ -442,7 +452,7 @@ export function fitsForm(settings: SettingsDocument): boolean {
 		Object.keys(settings.sessions ?? {}).every(
 			(k) => k === 'enabled' || k === 'baselineSampleRate'
 		) &&
-		Object.keys(settings.replay ?? {}).every((k) => k === 'mode') &&
+		Object.keys(settings.replay ?? {}).every((k) => k === 'mode' || k === 'captureMode') &&
 		Object.keys(settings.metrics ?? {}).every((k) => k === 'enabled' || k === 'sampleRate')
 	);
 }

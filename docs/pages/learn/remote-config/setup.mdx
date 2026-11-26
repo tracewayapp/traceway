@@ -93,7 +93,7 @@ Click **New Rule**. A rule has three parts:
 
 - **Applies to**: conditions over the attributes clients report, all of which must hold. No condition matches every client. Useful keys: `service.version`, `deployment.environment.name`, `browser.name`, `browser.version`, `os.name`, `user.id`, and anything your app sets with `setAttribute`. Operators include equals, is one of, contains (also case-insensitive), starts with, matches pattern (`*` and `?`), version matches (`>=2.4 <3`), greater or less than a number (`>`, `≥`, `<`, `≤`), is set and is not set.
 - **Roll out to**: the share of matching clients the rule applies to. Each browser profile lands in a fixed bucket per rule, so the same clients stay in as you raise the percentage.
-- **Settings**: for each signal, **Inherit** (keep what earlier rules and the defaults say), **Off**, **Buffer** or **Stream**; plus session replay, session events and the kill switch.
+- **Settings**: for each signal, **Inherit** (keep what earlier rules and the defaults say), **Off**, **Buffer** or **Stream**; plus session replay, session events and the kill switch. A Flutter project also has **Replay type**: **Inherit**, **Video** or **Wireframe** (`replay.captureMode`).
 
 <img src="/remote-config/rule-dialog-form.png" alt="The rule dialog in form mode: a condition on service.version with a version range, a rollout percentage, and Inherit, Off, Buffer and Stream for each signal" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 

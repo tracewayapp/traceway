@@ -263,6 +263,20 @@ func TestSdkConfigServesFlutterProjects(t *testing.T) {
 			t.Fatalf("%s: %d %v", path, code, body)
 		}
 	}
+
+	if code, out := f.do("POST", "/api/sdk-config/rules", `{"name":"Wireframe replay","settings":{"replay":{"mode":"stream","captureMode":"wireframe"}}}`); code != http.StatusCreated {
+		t.Fatalf("create = %d %v", code, out)
+	}
+	if code, out := f.do("POST", "/api/sdk-config/rules", `{"name":"x","settings":{"replay":{"captureMode":"pixels"}}}`); code != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown capture mode = %d %v, want 422", code, out)
+	}
+	code, preview := f.do("POST", "/api/sdk-config/preview", `{"attributes":{}}`)
+	if code != http.StatusOK {
+		t.Fatalf("preview = %d %v", code, preview)
+	}
+	if replay := preview["settings"].(map[string]any)["replay"].(map[string]any); replay["captureMode"] != "wireframe" || replay["mode"] != "stream" {
+		t.Fatalf("the capture mode must reach the evaluated document, got %v", replay)
+	}
 }
 
 func TestSdkConfigRejectsUnsupportedProjects(t *testing.T) {

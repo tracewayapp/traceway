@@ -388,7 +388,7 @@ const flutterAgentToServerHex = "0a100195f2a000007000800000000000000110031a6f0a1
 func TestOpampServesFlutterProjects(t *testing.T) {
 	f := newOpampFixture(t)
 	f.project.Framework = "flutter"
-	f.rule("stream app events", `{}`, `{"signals":{"custom":{"mode":"stream"}}}`)
+	f.rule("stream app events", `{}`, `{"signals":{"custom":{"mode":"stream"}},"replay":{"captureMode":"wireframe"}}`)
 	body, err := hex.DecodeString(flutterAgentToServerHex)
 	if err != nil {
 		t.Fatal(err)
@@ -402,7 +402,7 @@ func TestOpampServesFlutterProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc := resp.GetRemoteConfig().GetConfig().GetConfigMap()["traceway"]
-	if doc == nil || !strings.Contains(string(doc.GetBody()), `"custom":{"mode":"stream"`) {
+	if doc == nil || !strings.Contains(string(doc.GetBody()), `"custom":{"mode":"stream"`) || !strings.Contains(string(doc.GetBody()), `"captureMode":"wireframe"`) {
 		t.Fatalf("a Flutter project must receive its remote settings, got %s", doc.GetBody())
 	}
 }

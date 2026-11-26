@@ -36,6 +36,7 @@ func TestParseSettingsRejectsInvalidDocuments(t *testing.T) {
 		"unknown field":        `{"signals":{"errors":{"mode":"stream","loud":true}}}`,
 		"bad mode":             `{"signals":{"console":{"mode":"sometimes"}}}`,
 		"rate above one":       `{"replay":{"sessionSampleRate":1.5}}`,
+		"bad capture mode":     `{"replay":{"captureMode":"screenshots"}}`,
 		"baseline above one":   `{"sessions":{"baselineSampleRate":1.1}}`,
 		"baseline negative":    `{"sessions":{"baselineSampleRate":-0.1}}`,
 		"bad severity":         `{"signals":{"console":{"minSeverity":"chatty"}}}`,
@@ -304,6 +305,44 @@ func TestBaselineOverlayPreservesLifecycle(t *testing.T) {
 	Merge(&settings, mustSettings(t, `{"sessions":{"baselineSampleRate":0}}`))
 	if settings.Sessions.Enabled == nil || !*settings.Sessions.Enabled || settings.Sessions.BaselineSampleRate == nil || *settings.Sessions.BaselineSampleRate != 0 {
 		t.Fatalf("unexpected session settings: %+v", settings.Sessions)
+	}
+}
+
+func TestReplayCaptureModeIsLaidOverLikeAnyOtherField(t *testing.T) {
+	for _, mode := range []string{CaptureModeVideo, CaptureModeWireframe} {
+		mustSettings(t, `{"replay":{"captureMode":"`+mode+`"}}`)
+	}
+	for _, mode := range []string{`"Wireframe"`, `"pixels"`, `""`} {
+		if _, err := ParseSettings([]byte(`{"replay":{"captureMode":` + mode + `}}`)); err == nil || err.Error() != "replay.captureMode must be video or wireframe" {
+			t.Errorf("captureMode %s: got %v", mode, err)
+		}
+	}
+	compiled := &Compiled{Rules: []Rule{
+		{Id: "everyone", Settings: mustSettings(t, `{"replay":{"mode":"buffer","captureMode":"video","maskAllInputs":true}}`)},
+		{Id: "linux", Conditions: mustConditions(t, `{"all":[{"key":"os.type","op":"eq","value":"linux"}]}`),
+			Settings: mustSettings(t, `{"replay":{"captureMode":"wireframe"}}`)},
+		{Id: "beta", Conditions: mustConditions(t, `{"all":[{"key":"service.version","op":"version","value":">=3"}]}`),
+			Settings: mustSettings(t, `{"replay":{"mode":"stream"}}`)},
+	}}
+	someone := uid("0195f2a0-0000-7000-8000-000000000001")
+
+	linux := compiled.Evaluate(map[string]string{"os.type": "linux", "service.version": "3.1.0"}, someone, time.Now()).Settings
+	if *linux.Replay.CaptureMode != CaptureModeWireframe || *linux.Replay.Mode != ModeStream || !*linux.Replay.MaskAllInputs {
+		t.Errorf("a later rule replaces the capture mode, and one that sets only the mode keeps it: %+v", linux.Replay)
+	}
+	body, _, err := Render(linux)
+	if err != nil || !strings.Contains(string(body), `"replay":{"mode":"stream","maskAllInputs":true,"captureMode":"wireframe"}`) {
+		t.Errorf("rendered document: %s (%v)", body, err)
+	}
+	android := compiled.Evaluate(map[string]string{"os.type": "android"}, someone, time.Now()).Settings
+	if *android.Replay.CaptureMode != CaptureModeVideo {
+		t.Errorf("a client the wireframe rule misses keeps video: %+v", android.Replay)
+	}
+	if none := mustSettings(t, `{"replay":{"mode":"stream"}}`); none.Replay.CaptureMode != nil {
+		t.Errorf("an unset capture mode leaves the app's choice: %+v", none.Replay)
+	}
+	if *compiled.Rules[0].Settings.Replay.CaptureMode != CaptureModeVideo {
+		t.Error("evaluation must not modify the compiled rules")
 	}
 }
 

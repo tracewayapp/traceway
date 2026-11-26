@@ -43,7 +43,7 @@ For a request to stream every session, breadcrumb and replay, retain masking and
 }
 ```
 
-Signals support `off`, `buffer` and `stream`; sample rates are 0..1. `sessions.baselineSampleRate` samples healthy breadcrumbs/network, **not replay**. Replay needs its own mode and sessionSampleRate. `settings.enabled: false` is a collection kill switch; `enabled: false` on the rule only skips that rule. Never send server-owned `limits` or `captures` in settings. Settings can also carry `buffer` and `triggers`; preserve them when changing an existing rule.
+Signals support `off`, `buffer` and `stream`; sample rates are 0..1. `sessions.baselineSampleRate` samples healthy breadcrumbs/network, **not replay**. Replay needs its own mode and sessionSampleRate. In a Flutter project `replay.captureMode` picks how replay is recorded, `video` (MP4 from the hardware encoder) or `wireframe` (the widget tree, replayed as HTML), and overrides the app's `screenCaptureMode`; unset keeps the app's choice, and browser SDKs ignore it. Linux and Windows have no video encoder and record a wireframe whatever it says. A change applies at once unless the session already uploaded replay in the other mode; then it applies from the next session. `settings.enabled: false` is a collection kill switch; `enabled: false` on the rule only skips that rule. Never send server-owned `limits` or `captures` in settings. Settings can also carry `buffer` and `triggers`; preserve them when changing an existing rule.
 
 ## Recording triggers: steps, selectors and routes
 
@@ -102,7 +102,7 @@ Do not invent a selector. Take it from one of these:
 - Navigation exists only where the app attached `Traceway.navigatorObserver` to its navigators, or calls `Traceway.recordNavigation`. Recorded navigations are log records named `browser.navigation` whose `url.full` is the path, so read real paths there before writing a pattern.
 - Type-based paths are minified in `--obfuscate` builds. A route a trigger should match needs a name.
 
-**Flutter logs have no level.** Every `print` line is recorded at info, so a trigger condition on `severity` above info never matches there. `captureUserActions: false`, `captureNavigation: false` and `captureLogs: false` in the app switch tap, navigation and `print`-line steps off, and replay needs `screenCapture: true` on Android, iOS or macOS.
+**Flutter logs have no level.** Every `print` line is recorded at info, so a trigger condition on `severity` above info never matches there. `captureUserActions: false`, `captureNavigation: false` and `captureLogs: false` in the app switch tap, navigation and `print`-line steps off, and replay needs `screenCapture: true` (video on Android, iOS or macOS; a wireframe on every platform).
 
 After saving, say which widget and route the trigger names and that it is unverified until the journey is performed on a device: a fired trigger sends a `traceway.trigger.fired` log record and, when it asked for replay, the session lists it under **Recording triggers**.
 

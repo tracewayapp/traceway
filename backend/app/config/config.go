@@ -20,6 +20,8 @@ type Cfg struct {
 	PostgresSSLMode  string
 	SQLitePath       string
 
+	BootstrapFile string
+
 	SQLiteCacheSizeMB string
 
 	DuckDBMemoryLimit         string
@@ -236,6 +238,8 @@ func LoadFromEnv() *Cfg {
 		PostgresPassword: os.Getenv("POSTGRES_PASSWORD"),
 		PostgresSSLMode:  os.Getenv("POSTGRES_SSLMODE"),
 		SQLitePath:       os.Getenv("SQLITE_PATH"),
+
+		BootstrapFile: os.Getenv("BOOTSTRAP_FILE"),
 
 		SQLiteCacheSizeMB: os.Getenv("SQLITE_CACHE_SIZE_MB"),
 

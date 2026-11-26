@@ -31,7 +31,7 @@ docker run -d --name traceway \
 
 Both SQLite files (`traceway.db`, `traceway_telemetry.db`) and uploaded blobs (under `storage/`) land inside the mounted folder.
 
-After starting, open `http://localhost/register` to create your first account.
+After starting, open `http://localhost/register` to create your first account. To have that account, the organization and the projects created from a file instead, see [Pre-configure an Instance](/learn/preconfigure).
 
 If the host or container has less than 16 GB of memory, also set `SQLITE_CACHE_SIZE_MB`. The default can use several gigabytes; see [Memory sizing](#memory-sizing).
 
@@ -81,6 +81,7 @@ If `STORAGE_TYPE` is unset (or set to `local`), blobs are written to `/data/stor
 | `OPAMP_POLL_INTERVAL_SECONDS` | `300` | [Remote SDK config](/learn/remote-config): how often 2.x browser SDKs poll for their settings, in seconds, clamped to 60-86400. Every open tab of every instrumented app polls, so this is a load setting; clients under a capture poll every 60 seconds |
 | `OPAMP_MAX_CONCURRENT` | *(4 x CPU cores, min 8)* | Remote SDK config: OpAMP polls (`/api/otel/v1/opamp`) processed at once, on a gate separate from `INGEST_MAX_CONCURRENT`. Excess polls get 503 with `Retry-After: 60`, and the browser keeps its last settings |
 | `SQLITE_PATH` | `/data/traceway.db` | Main SQLite file. Telemetry DB is derived as `<path>_telemetry.db` |
+| `BOOTSTRAP_FILE` | *(unset)* | Path of a file that creates the organization, the first users and the projects with fixed tokens on the first start, while the database is empty. Ignored once the instance has data. See [Pre-configure an Instance](/learn/preconfigure). |
 | `SQLITE_CACHE_SIZE_MB` | `512` | Page cache of the telemetry database in megabytes, per connection. Up to 4 connections are open and each megabyte costs about two, so the caches can take up to 8 times this value: 4 GB at the default. Set it on any memory-capped host, for example `32` for a 1 GB container. A value that is not a positive number falls back to the default. See [Memory sizing](#memory-sizing). |
 | `STORAGE_TYPE` | `local` | Blob storage backend. `local` or `s3` |
 | `STORAGE_PATH` | `/data/storage` | Folder for local blob storage. Ignored when `STORAGE_TYPE=s3` |

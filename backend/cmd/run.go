@@ -128,6 +128,10 @@ func run(standalone bool, opts ...Option) {
 
 	runStartupMigrations(cfg.DBType, standalone)
 
+	if o == nil {
+		runBootstrap(cfg.BootstrapFile)
+	}
+
 	if o != nil {
 		if err := seed(o); err != nil {
 			panic(fmt.Errorf("seeding failed: %w", err))

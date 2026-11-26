@@ -27,7 +27,7 @@ docker run -d --name traceway \
   ghcr.io/tracewayapp/traceway:minimal
 ```
 
-After starting, open `http://localhost/register` to create your first account.
+After starting, open `http://localhost/register` to create your first account. To have that account, the organization and the projects created from a file instead, see [Pre-configure an Instance](/learn/preconfigure).
 
 The `traceway-storage` volume holds [blob storage](/server/storage): uploaded source maps, session recordings, and AI traces. Without it those files are lost when the container is recreated. To use S3 instead of a volume, see [Blob Storage](/server/storage).
 

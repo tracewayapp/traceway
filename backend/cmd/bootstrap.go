@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/mail"
 	"os"
 	"regexp"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/transactional"
 	"github.com/tracewayapp/traceway/backend/v2/app/services"
 
+	"github.com/gin-gonic/gin/binding"
 	"go.yaml.in/yaml/v3"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -29,10 +29,20 @@ const bootstrapAdvisoryLockId = 824737010 // metric rollup repair: 824737009, ba
 const maxBootstrapFileBytes = 1 << 20
 
 // Tokens travel in an Authorization header and before the @ of a connection
-// string, so the alphabet stays URL- and header-safe.
-var bootstrapTokenPattern = regexp.MustCompile(`^[A-Za-z0-9._~-]{16,128}$`)
+// string, so the alphabet stays URL- and header-safe. 64 is the width of
+// projects.token and projects.source_map_token on Postgres.
+var bootstrapTokenPattern = regexp.MustCompile(`^[A-Za-z0-9._~-]{16,64}$`)
+
+// bcrypt.Cost alone accepts a truncated or mistyped hash, which would lock
+// the user out of an instance nobody else can sign in to.
+var bcryptHashPattern = regexp.MustCompile(`^\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}$`)
+
+// users.email and users.name are VARCHAR(255) on Postgres.
+const maxBootstrapUserFieldChars = 255
 
 var yamlTypeSuffix = regexp.MustCompile(` in type \S+`)
+
+var yamlTypeMismatch = regexp.MustCompile("cannot unmarshal !!(\\w+)(?: `.*`)? into (\\S+)")
 
 type bootstrapFile struct {
 	Organization bootstrapOrganization `yaml:"organization"`
@@ -105,21 +115,30 @@ func applyBootstrapFile(path string) (bool, error) {
 		return false, err
 	}
 
-	applied, err := db.ExecuteTransaction(func(tx *sql.Tx) (bool, error) {
+	applied := false
+	generated, err := db.ExecuteTransaction(func(tx *sql.Tx) ([]*models.Project, error) {
 		if !db.IsSQLite() {
 			if _, err := tx.Exec(fmt.Sprintf("SELECT pg_advisory_xact_lock(%d)", bootstrapAdvisoryLockId)); err != nil {
-				return false, err
+				return nil, err
 			}
 		}
 		// Replicas starting together all saw an empty database above; the lock lets one of them apply the file.
 		fresh, err := isFreshInstance(tx)
 		if err != nil || !fresh {
-			return false, err
+			return nil, err
 		}
-		return true, file.apply(tx, hashes)
+		applied = true
+		return file.apply(tx, hashes)
 	})
-	if err != nil || !applied {
+	if err != nil {
 		return false, err
+	}
+	if !applied {
+		config.Logf("Bootstrap: %s was not applied, another instance starting at the same time applied it", path)
+		return false, nil
+	}
+	for _, project := range generated {
+		config.LogfLocal("Bootstrap: project %q was given the token %s", project.Name, project.Token)
 	}
 	config.Logf("Bootstrap: created organization %q with %d users and %d projects from %s", file.Organization.Name, len(file.Users), len(file.Projects), path)
 	return true, nil
@@ -158,12 +177,45 @@ func parseBootstrapFile(data []byte) (*bootstrapFile, error) {
 		if errors.Is(err, io.EOF) {
 			return nil, errors.New("the file is empty")
 		}
-		return nil, errors.New(yamlTypeSuffix.ReplaceAllString(err.Error(), ""))
+		return nil, errors.New(readableYAMLError(err))
+	}
+	// A second document would be dropped without a word, and with it whatever the operator expected it to create.
+	if err := decoder.Decode(new(yaml.Node)); !errors.Is(err, io.EOF) {
+		return nil, errors.New("the file holds more than one YAML document (a line with ---), only one is read")
 	}
 	if err := file.validate(); err != nil {
 		return nil, err
 	}
 	return &file, nil
+}
+
+// readableYAMLError drops what only a Go programmer can read from a decoding
+// error, and the quoted start of the value, which may be part of a secret.
+func readableYAMLError(err error) string {
+	msg := yamlTypeSuffix.ReplaceAllString(err.Error(), "")
+	return yamlTypeMismatch.ReplaceAllStringFunc(msg, func(mismatch string) string {
+		parts := yamlTypeMismatch.FindStringSubmatch(mismatch)
+		found := "a single value"
+		switch parts[1] {
+		case "map":
+			found = "a mapping"
+		case "seq":
+			found = "a list"
+		}
+		expected := "a mapping"
+		switch {
+		case strings.HasPrefix(parts[2], "[]"):
+			expected = "a list"
+		case parts[2] == "string":
+			expected = "a single value"
+		}
+		return fmt.Sprintf("expected %s, found %s", expected, found)
+	})
+}
+
+// The sign-in form binds models.LoginRequest, so an address it refuses could never sign in.
+func signInAcceptsEmail(email string) bool {
+	return binding.Validator.ValidateStruct(&models.LoginRequest{Email: email, Password: "-"}) == nil
 }
 
 func (f *bootstrapFile) validate() error {
@@ -194,8 +246,10 @@ func (f *bootstrapFile) validate() error {
 		at := fmt.Sprintf("users[%d]", i)
 
 		u.Email = strings.TrimSpace(u.Email)
-		if address, err := mail.ParseAddress(u.Email); err != nil || address.Address != u.Email {
-			add("%s.email: %q is not an email address", at, u.Email)
+		if !signInAcceptsEmail(u.Email) {
+			add("%s.email: %q is not an email address of the form name@domain.tld", at, u.Email)
+		} else if utf8.RuneCountInString(u.Email) > maxBootstrapUserFieldChars {
+			add("%s.email: must be at most %d characters", at, maxBootstrapUserFieldChars)
 		} else if first, seen := emails[strings.ToLower(u.Email)]; seen {
 			add("%s.email: %s is already used by users[%d]", at, u.Email, first)
 		} else {
@@ -205,6 +259,9 @@ func (f *bootstrapFile) validate() error {
 		u.Name = strings.TrimSpace(u.Name)
 		if u.Name == "" {
 			u.Name, _, _ = strings.Cut(u.Email, "@")
+		}
+		if utf8.RuneCountInString(u.Name) > maxBootstrapUserFieldChars {
+			add("%s.name: must be at most %d characters", at, maxBootstrapUserFieldChars)
 		}
 
 		switch u.Role {
@@ -219,8 +276,8 @@ func (f *bootstrapFile) validate() error {
 		case u.Password != "" && u.PasswordHash != "":
 			add("%s: set password or passwordHash, not both", at)
 		case u.PasswordHash != "":
-			if _, err := bcrypt.Cost([]byte(u.PasswordHash)); err != nil {
-				add("%s.passwordHash: is not a bcrypt hash", at)
+			if _, err := bcrypt.Cost([]byte(u.PasswordHash)); err != nil || !bcryptHashPattern.MatchString(u.PasswordHash) {
+				add("%s.passwordHash: is not a complete bcrypt hash ($2a$, $2b$ or $2y$ followed by the cost and 53 characters)", at)
 			}
 		case u.Password == "":
 			add("%s: password or passwordHash is required", at)
@@ -257,7 +314,7 @@ func (f *bootstrapFile) validate() error {
 				continue
 			}
 			if !bootstrapTokenPattern.MatchString(token.value) {
-				add("%s.%s: must be 16 to 128 characters of letters, digits, '.', '_', '~' and '-'", at, token.field)
+				add("%s.%s: must be 16 to 64 characters of letters, digits, '.', '_', '~' and '-'", at, token.field)
 			} else if first, seen := tokens[token.value]; seen {
 				add("%s.%s: is the same as %s", at, token.field, first)
 			} else {
@@ -290,20 +347,21 @@ func (f *bootstrapFile) passwordHashes() ([]string, error) {
 	return hashes, nil
 }
 
-func (f *bootstrapFile) apply(tx *sql.Tx, hashes []string) error {
+// apply answers with the projects whose token it generated, for the caller to print once the transaction committed.
+func (f *bootstrapFile) apply(tx *sql.Tx, hashes []string) ([]*models.Project, error) {
 	org, err := transactional.OrganizationRepository.Create(tx, f.Organization.Name, f.Organization.Timezone)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var owner *models.User
 	for i, u := range f.Users {
 		user, err := transactional.UserRepository.Create(tx, u.Email, u.Name, hashes[i])
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := transactional.OrganizationRepository.AddUser(tx, org.Id, user.Id, u.Role); err != nil {
-			return err
+			return nil, err
 		}
 		if owner == nil && u.Role == "owner" {
 			owner = user
@@ -312,21 +370,22 @@ func (f *bootstrapFile) apply(tx *sql.Tx, hashes []string) error {
 
 	for _, hook := range controllers.PostRegistrationHooks {
 		if err := hook(tx, org, owner); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
+	var generated []*models.Project
 	for _, p := range f.Projects {
 		project, err := transactional.ProjectRepository.CreateWithOrganizationAndTokens(tx, p.Name, p.Framework, org.Id, p.Token, p.SourceMapToken)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := controllers.PopulateDashboardsOnCreate(tx, project, &owner.Id); err != nil {
-			return err
+			return nil, err
 		}
 		if p.Token == "" {
-			config.LogfLocal("Bootstrap: project %q was given the token %s", project.Name, project.Token)
+			generated = append(generated, project)
 		}
 	}
-	return nil
+	return generated, nil
 }

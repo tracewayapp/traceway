@@ -16,7 +16,7 @@ This is for instances that are built rather than clicked together: embedded Linu
 
 The file describes what exists after the first start: one organization, the people who can sign in, and the projects that receive data.
 
-**Pick the tokens.** A project token is what senders authenticate with. It is 16 to 128 characters of letters, digits, `.`, `_`, `~` and `-`. If your fleet already has a configuration that every device reads, take the tokens from there. Otherwise generate one per project:
+**Pick the tokens.** A project token is what senders authenticate with. It is 16 to 64 characters of letters, digits, `.`, `_`, `~` and `-`. If your fleet already has a configuration that every device reads, take the tokens from there. Otherwise generate one per project:
 
 ```bash
 openssl rand -hex 16
@@ -28,7 +28,7 @@ openssl rand -hex 16
 mkpasswd -m bcrypt -R 12
 ```
 
-It asks for the password and prints the hash. `htpasswd -B` from Apache works too: any hash that starts with `$2a$`, `$2b$` or `$2y$` is accepted.
+It asks for the password and prints the hash. `htpasswd -nB admin` from Apache works too, where the hash is the part after `admin:`. Any complete bcrypt hash that starts with `$2a$`, `$2b$` or `$2y$` is accepted.
 
 **Write the file.** Save it as `bootstrap.yaml`, with your tokens and hashes in place of these:
 
@@ -59,7 +59,7 @@ What the parts do:
 
 - **`organization`** is the one organization of this instance. The timezone is an IANA name; leave it out for `UTC`.
 - **`users`** are the people who can sign in on day one, each with a role: `owner`, `admin`, `user` or `readonly`. At least one must be an `owner`. Invite everyone else later from the dashboard.
-- **`projects`** each get their own token. Use `opentelemetry` for anything that sends OTLP (services, devices, the Collector) and a browser or mobile framework for apps that use a Traceway SDK. A project without a `token` gets a generated one, printed once to the server's standard output.
+- **`projects`** each get their own token. Use `opentelemetry` for anything that sends OTLP (services, devices, the Collector) and a browser or mobile framework for apps that use a Traceway SDK. A project without a `token` gets a generated one, printed once in the server's log.
 
 Every field and its rules are in the [reference](#reference). The file can also be JSON.
 
@@ -173,7 +173,7 @@ With the PostgreSQL build, several replicas can start with the same file at the 
 
 ```text
 FATAL: cannot use bootstrap file /etc/traceway/bootstrap.yaml:
-  projects[0].token: must be 16 to 128 characters of letters, digits, '.', '_', '~' and '-'
+  projects[0].token: must be 16 to 64 characters of letters, digits, '.', '_', '~' and '-'
 Nothing was created. Fix the file and start Traceway again.
 ```
 
@@ -181,7 +181,7 @@ Nothing was created. Fix the file and start Traceway again.
 
 ## Reference
 
-The file is YAML or JSON, at most 1 MB. A field Traceway does not know stops startup with its line number, so a misspelled `pasword` is never silently ignored.
+The file is one YAML or JSON document, at most 1 MB. A field Traceway does not know stops startup with its line number, so a misspelled `pasword` is never silently ignored.
 
 ### organization
 
@@ -196,11 +196,11 @@ At least one user, and at least one with the role `owner`.
 
 | Field | Description |
 |---|---|
-| `email` | Required. Unique, ignoring case. People sign in with it, and [SSO](/learn/sso) matches it to link their account. |
-| `name` | Shown in the dashboard. Defaults to the part of the email before `@`. |
+| `email` | Required. A full address such as `admin@plant7.example`, up to 255 characters, unique ignoring case. An address without a domain ending, such as `root@localhost`, is refused because the sign-in form does not accept it. People sign in with it, and [SSO](/learn/sso) matches it to link their account. |
+| `name` | Shown in the dashboard, up to 255 characters. Defaults to the part of the email before `@`. |
 | `role` | Required. `owner` or `admin`: full access, including organization settings and members. `user`: works in every project. `readonly`: sees every project, changes nothing, and project tokens are hidden. |
 | `password` | 8 to 72 bytes. Traceway stores a bcrypt hash of it, but the file keeps the plain text. |
-| `passwordHash` | A bcrypt hash (`$2a$`, `$2b$` or `$2y$`). Use either this or `password`, not both. |
+| `passwordHash` | A complete bcrypt hash: 60 characters that start with `$2a$`, `$2b$` or `$2y$`. Use either this or `password`, not both. |
 
 ### projects
 
@@ -210,7 +210,7 @@ Optional. Projects can also be created later in the dashboard.
 |---|---|
 | `name` | Required. Letters, numbers, spaces, hyphens and underscores, up to 100 characters. Unique in the file, ignoring case. |
 | `framework` | `opentelemetry` (the default) for anything that sends OTLP. `react`, `svelte`, `vuejs` or `jquery` for a browser app. `flutter`, `react-native`, `android` or `ios` for a mobile app. |
-| `token` | The project token: the OTLP `Bearer` token, and the part before `@` in an SDK connection string. 16 to 128 characters of letters, digits, `.`, `_`, `~` and `-`. Left out, a token is generated and printed once to standard output. |
+| `token` | The project token: the OTLP `Bearer` token, and the part before `@` in an SDK connection string. 16 to 64 characters of letters, digits, `.`, `_`, `~` and `-`. Left out, a token is generated and printed once in the server's log. |
 | `sourceMapToken` | The upload token for source maps and debug symbols, with the same rules. Left out, generate one later on the project's **Connection** page (`ios` projects get one automatically). |
 
 No two tokens in the file can be the same, whether `token` or `sourceMapToken`.
@@ -229,10 +229,14 @@ It applies to the server binary and the container images. [Embedded mode](/learn
 |---|---|
 | `open /etc/traceway/bootstrap.yaml: no such file or directory` | The path in `BOOTSTRAP_FILE` does not exist where Traceway runs. Inside a container, check the `-v` mount. |
 | `open /etc/traceway/bootstrap.yaml: permission denied` | The Traceway process cannot read the file. Make it readable to the user Traceway runs as. |
+| `read /etc/traceway/bootstrap.yaml: is a directory` | The file did not exist on the host when the container was created, so Docker made a directory in its place. Remove that directory, put the file there and recreate the container. |
 | `line 6: field pasword not found` | A misspelled or unsupported field on that line. The [reference](#reference) lists every field. |
+| `line 2: expected a mapping, found a single value` | The value on that line has the wrong shape, for example `organization: Plant 7` instead of `name: Plant 7` indented under `organization:`. |
+| `the file holds more than one YAML document` | The file contains a `---` separator line. Keep everything in one document. |
+| `users[0].email: "root@localhost" is not an email address of the form name@domain.tld` | The sign-in form only accepts addresses with a domain ending. Use an address such as `root@plant7.example`; it does not have to receive mail. |
 | `users: at least one user needs the role owner` | Nobody could manage the organization. Give at least one user `role: owner`. |
-| `users[0].passwordHash: is not a bcrypt hash` | The hash comes from another algorithm, for example `mkpasswd` without `-m bcrypt` (yescrypt, starting with `$y$`). |
-| `projects[0].token: must be 16 to 128 characters ...` | The token is too short or contains a character such as a space, `@` or `/`. |
+| `users[0].passwordHash: is not a complete bcrypt hash ...` | The hash comes from another algorithm, for example `mkpasswd` without `-m bcrypt` (yescrypt, starting with `$y$`), or it was cut off or changed when it was copied. In YAML, put it in single quotes. |
+| `projects[0].token: must be 16 to 64 characters ...` | The token is too short, too long, or contains a character such as a space, `@` or `/`. |
 | `projects[1].token: is the same as projects[0].token` | Every token must be different, so each project's data stays in that project. |
 | `... was not applied, the database already has an organization or a user` | Not an error. The database already holds data, for example from a reused volume or an earlier start. See [Later starts](#later-starts). |
 | A user from the file cannot sign in | The account was created on an earlier start, from an earlier version of the file. The current file is not applied again. |

@@ -19,15 +19,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func writeBootstrapFile(t *testing.T, content string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "bootstrap.yaml")
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
 func operatorHash(t *testing.T) string {
 	t.Helper()
 	hash, err := bcrypt.GenerateFromPassword([]byte("operator-password"), bcrypt.MinCost)

@@ -6,11 +6,11 @@ Upload source maps to Traceway so that minified stack traces in production excep
 
 Most bundlers do not write `.map` files for a production build unless you ask them to. Turn it on before you wire up any upload:
 
-| Bundler | Setting |
-|---------|---------|
-| Vite | `build: { sourcemap: true }` in `vite.config.js` |
-| Rollup | `output: { sourcemap: true }` |
-| webpack | `devtool: "source-map"` |
+| Bundler | Setting                                                 |
+| ------- | ------------------------------------------------------- |
+| Vite    | `build: { sourcemap: true }` in `vite.config.js`        |
+| Rollup  | `output: { sourcemap: true }`                           |
+| webpack | `devtool: "source-map"`                                 |
 | Next.js | `productionBrowserSourceMaps: true` in `next.config.js` |
 
 This matters because the uploader treats an empty result as success. With no maps on disk, `traceway-sourcemaps` prints `No .map files found in <dir>` and exits with code 0, so a `postbuild` hook or CI step looks green while nothing was ever uploaded. After a build, confirm the files exist:
@@ -37,10 +37,11 @@ Treat it like any other CI secret. **Regenerate** issues a new token and invalid
 
 ```bash
 traceway-sourcemaps \
-  --url https://your-traceway-instance.com \
-  --token your-sourcemap-token \
+  --token "$TRACEWAY_SOURCEMAP_TOKEN" \
   --directory ./dist
 ```
+
+The maps go to Traceway Cloud (`https://cloud.tracewayapp.com`). For a self-hosted server, add `--url https://traceway.mycompany.com` (or set `TRACEWAY_URL`): the CLI reads the address like the SDK's `baseUrl` (`https://` added when there is no scheme, a trailing `/api` dropped) before it appends `/api/sourcemaps/upload`. Before 2.1.0, `--url` was required, also on Traceway Cloud.
 
 The CLI recursively finds all `*.map` files in the specified directory and uploads them to Traceway via `POST /api/sourcemaps/upload`, together with the sibling `.js`/`.cjs`/`.mjs` bundle next to each map when one exists. The bundle is what lets the backend resolve the enclosing function name for each frame; without it, symbolication still resolves file, line, and column but leaves function names as the browser reported them.
 
@@ -48,23 +49,23 @@ On self-hosted instances, uploaded files land in the backend's [blob storage](/s
 
 ## CLI Options
 
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--url <url>` | Yes | Traceway backend URL |
-| `--token <token>` | Yes | Source map upload token |
-| `--directory <dir>` | No | Directory to search (default: current directory) |
-| `--help`, `-h` | No | Print the usage and exit |
+| Flag                | Required | Description                                                                                           |
+| ------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `--url <url>`       | No       | A self-hosted Traceway server (default: `https://cloud.tracewayapp.com`; a trailing slash is ignored) |
+| `--token <token>`   | Yes      | Source map upload token                                                                               |
+| `--directory <dir>` | No       | Directory to search (default: current directory)                                                      |
+| `--help`, `-h`      | No       | Print the usage and exit                                                                              |
 
 ## Environment Variables
 
 Instead of passing flags, you can set environment variables:
 
-| Variable | Equivalent Flag |
-|----------|----------------|
-| `TRACEWAY_URL` | `--url` |
-| `TRACEWAY_SOURCEMAP_TOKEN` | `--token` |
+| Variable                   | Equivalent Flag |
+| -------------------------- | --------------- |
+| `TRACEWAY_URL`             | `--url`         |
+| `TRACEWAY_SOURCEMAP_TOKEN` | `--token`       |
 
-Flags take precedence over environment variables when both are set.
+Flags take precedence over environment variables when both are set, and an empty value (an unset CI secret) counts as not given, so a blank `TRACEWAY_URL` is Traceway Cloud. Write each flag and its value as two arguments (`--url https://...`); the `--url=https://...` form is not parsed.
 
 ## Limits
 
@@ -99,8 +100,8 @@ jobs:
       - name: Upload source maps
         run: npx traceway-sourcemaps --directory ./dist
         env:
-          TRACEWAY_URL: ${{ secrets.TRACEWAY_URL }}
           TRACEWAY_SOURCEMAP_TOKEN: ${{ secrets.TRACEWAY_SOURCEMAP_TOKEN }}
+          # TRACEWAY_URL: ${{ secrets.TRACEWAY_URL }}   # only for a self-hosted server
 ```
 
 ## Build Script Integration
@@ -116,7 +117,15 @@ Add the upload step to your `package.json` scripts:
 }
 ```
 
-Make sure `TRACEWAY_URL` and `TRACEWAY_SOURCEMAP_TOKEN` are set in your environment.
+Make sure `TRACEWAY_SOURCEMAP_TOKEN` is set in the environment of the build (and `TRACEWAY_URL` for a self-hosted server). npm does not read `.env` files for scripts, so a token kept in an untracked file has to be loaded first:
+
+```json
+{
+  "scripts": {
+    "postbuild": "set -a; . ./.env.sourcemaps; set +a; traceway-sourcemaps --directory ./dist"
+  }
+}
+```
 
 ## HTTP API
 
@@ -131,7 +140,7 @@ Content-Type: multipart/form-data
 Files go in the repeatable multipart field `files`. Upload each bundle together with its map:
 
 ```bash
-curl --fail -X POST "https://your-traceway-instance.com/api/sourcemaps/upload" \
+curl --fail -X POST "https://cloud.tracewayapp.com/api/sourcemaps/upload" \
   -H "Authorization: Bearer $TRACEWAY_SOURCEMAP_TOKEN" \
   -F "files=@dist/assets/index-DZ8aDdLF.js" \
   -F "files=@dist/assets/index-DZ8aDdLF.js.map"
@@ -139,16 +148,16 @@ curl --fail -X POST "https://your-traceway-instance.com/api/sourcemaps/upload" \
 
 The contract:
 
-| Behavior | Detail |
-|----------|--------|
-| Accepted extensions | `.map`, `.js`, `.cjs`, `.mjs`. Files with any other extension are silently skipped, not rejected. |
-| Size limit | 50MB per file. A larger file fails the request with `400` and an error message. |
-| Total request size | 250MB across all files in one request. A larger body fails with `413`. |
-| File count | 1000 files per request, counting the bundles uploaded next to the maps. More than that fails with `422`; upload the build in smaller batches. |
-| Auth failure | Missing or invalid token returns `401`. |
-| Response | `200` with `{"uploaded": N}`, counting only the stored files (skipped files are excluded). |
-| Debug IDs | Detected server-side in the uploaded content; no extra fields or flags needed. |
-| Effect | Immediate. Cached resolvers for the uploaded filenames are evicted before the response, and precompiled [`.tw` resolvers](/symbolicator#the-tw-resolver-format) are rebuilt in the background so the first exception after a deploy finds a warm cache. |
+| Behavior            | Detail                                                                                                                                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Accepted extensions | `.map`, `.js`, `.cjs`, `.mjs`. Files with any other extension are silently skipped, not rejected.                                                                                                                                                       |
+| Size limit          | 50MB per file. A larger file fails the request with `400` and an error message.                                                                                                                                                                         |
+| Total request size  | 250MB across all files in one request. A larger body fails with `413`.                                                                                                                                                                                  |
+| File count          | 1000 files per request, counting the bundles uploaded next to the maps. More than that fails with `422`; upload the build in smaller batches.                                                                                                           |
+| Auth failure        | Missing or invalid token returns `401`.                                                                                                                                                                                                                 |
+| Response            | `200` with `{"uploaded": N}`, counting only the stored files (skipped files are excluded).                                                                                                                                                              |
+| Debug IDs           | Detected server-side in the uploaded content; no extra fields or flags needed.                                                                                                                                                                          |
+| Effect              | Immediate. Cached resolvers for the uploaded filenames are evicted before the response, and precompiled [`.tw` resolvers](/symbolicator#the-tw-resolver-format) are rebuilt in the background so the first exception after a deploy finds a warm cache. |
 
 The multipart filename becomes the stored name, and stack frames match against the basename of the frame's file, so send plain filenames without directory paths. `curl -F` already does this: it uses the basename of the local path.
 

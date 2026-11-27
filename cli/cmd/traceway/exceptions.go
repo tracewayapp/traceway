@@ -1,7 +1,12 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -95,12 +100,8 @@ func runExceptionsList(cmd *cobra.Command, _ []string) error {
 		tw := output.NewTabWriter(cmd.OutOrStdout())
 		_, _ = fmt.Fprintln(tw, "HASH\tCOUNT\tLAST SEEN\tFIRST SEEN\tFIRST LINE")
 		for _, e := range resp.Data {
-			hash := e.ExceptionHash
-			if len(hash) > 12 {
-				hash = hash[:12]
-			}
 			_, _ = fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\n",
-				hash, e.Count,
+				e.ExceptionHash, e.Count,
 				e.LastSeen.Format("2006-01-02 15:04:05"),
 				e.FirstSeen.Format("2006-01-02 15:04:05"),
 				firstLine(e.StackTrace),
@@ -114,8 +115,12 @@ func newExceptionsShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show <hash>",
 		Short: "Show a single exception group with its occurrences",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runExceptionsShow,
+		Long: `Show a single exception group with its occurrences.
+
+<hash> is the full hash from "exceptions list", or a unique prefix of it (at
+least 4 hex characters) among the groups seen in the last 30 days.`,
+		Args: cobra.ExactArgs(1),
+		RunE: runExceptionsShow,
 	}
 	addPaginationFlags(cmd)
 	return cmd
@@ -138,6 +143,13 @@ func runExceptionsShow(cmd *cobra.Command, args []string) error {
 
 	c := sess.Client()
 	resp, err := c.GetException(ctx, sess.ProjectID, args[0], page)
+	if errors.Is(err, client.ErrNotFound) && hashPrefixRegex.MatchString(args[0]) {
+		hash, resolveErr := resolveExceptionHashPrefix(ctx, c, sess.ProjectID, args[0])
+		if resolveErr != nil {
+			return renderHashPrefixError(cmd.ErrOrStderr(), mode, args[0], err, resolveErr)
+		}
+		resp, err = c.GetException(ctx, sess.ProjectID, hash, page)
+	}
 	if err != nil {
 		return renderAPIError(cmd.ErrOrStderr(), mode, err, false)
 	}
@@ -267,11 +279,70 @@ func runExceptionsOccurrence(cmd *cobra.Command, args []string) error {
 	}
 }
 
-// truncateHash returns hash, or its first n chars if longer. Used for
-// human-readable summaries; the full hash always goes to the API.
-func truncateHash(hash string, n int) string {
-	if len(hash) <= n {
-		return hash
+// A full hash is 16 characters and is looked up as it is, so only a shorter one is a prefix.
+var hashPrefixRegex = regexp.MustCompile(`^[0-9a-fA-F]{4,15}$`)
+
+const (
+	hashPrefixLookback = 30 * 24 * time.Hour
+	hashPrefixMaxPages = 10
+)
+
+var errHashPrefixNoMatch = errors.New("no exception group matches the prefix")
+
+type errHashPrefixAmbiguous struct{ matches []string }
+
+func (e *errHashPrefixAmbiguous) Error() string {
+	return "the prefix matches " + strings.Join(e.matches, ", ")
+}
+
+// resolveExceptionHashPrefix finds the one group of the last 30 days whose hash starts with prefix, so a hash cut
+// short (an older CLI printed 12 characters) still opens its group.
+func resolveExceptionHashPrefix(ctx context.Context, c *client.Client, projectID, prefix string) (string, error) {
+	prefix = strings.ToLower(prefix)
+	now := time.Now().UTC()
+	var matches []string
+	for page := 1; page <= hashPrefixMaxPages; page++ {
+		resp, err := c.ListExceptions(ctx, projectID, client.ListExceptionsRequest{
+			TimeRange:       client.TimeRange{From: now.Add(-hashPrefixLookback), To: now},
+			Pagination:      client.PaginationParams{Page: page, PageSize: 100},
+			IncludeArchived: true,
+			OrderBy:         "lastSeen",
+		})
+		if err != nil {
+			return "", err
+		}
+		for _, e := range resp.Data {
+			if strings.HasPrefix(strings.ToLower(e.ExceptionHash), prefix) {
+				matches = append(matches, e.ExceptionHash)
+			}
+		}
+		if len(resp.Data) < 100 || int64(page) >= resp.Pagination.TotalPages {
+			break
+		}
 	}
-	return hash[:n]
+	switch len(matches) {
+	case 0:
+		return "", errHashPrefixNoMatch
+	case 1:
+		return matches[0], nil
+	default:
+		return "", &errHashPrefixAmbiguous{matches: matches}
+	}
+}
+
+func renderHashPrefixError(errOut io.Writer, mode output.Mode, prefix string, notFound, resolveErr error) error {
+	var ambiguous *errHashPrefixAmbiguous
+	switch {
+	case errors.As(resolveErr, &ambiguous):
+		return renderUsageError(errOut, mode,
+			fmt.Sprintf("exception hash prefix %q matches %d groups: %s", prefix, len(ambiguous.matches), strings.Join(ambiguous.matches, ", ")),
+			"pass more characters of the hash, or the full hash from "+appdir.Binary+" exceptions list")
+	case errors.Is(resolveErr, errHashPrefixNoMatch):
+		env := classifyError(notFound, false)
+		env.Hint = "no exception group of the last 30 days starts with " + prefix + "; " + appdir.Binary + " exceptions list --since 30d prints the full hashes"
+		_ = output.RenderError(errOut, mode, env)
+		return newCLIError(env.ExitCode, env.Code)
+	default:
+		return renderAPIError(errOut, mode, resolveErr, false)
+	}
 }

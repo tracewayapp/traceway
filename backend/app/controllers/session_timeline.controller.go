@@ -45,6 +45,7 @@ type timelineAction struct {
 	Action     string         `json:"action,omitempty"`
 	From       string         `json:"from,omitempty"`
 	To         string         `json:"to,omitempty"`
+	Route      string         `json:"route,omitempty"`
 	Category   string         `json:"category,omitempty"`
 	Name       string         `json:"name,omitempty"`
 	Data       map[string]any `json:"data,omitempty"`
@@ -72,6 +73,8 @@ var timelineContextKeys = map[string]bool{
 	"traceway.session.started_at": true,
 	// The app SDKs stamp every record with the dashboard captures running while it was made.
 	"traceway.capture.ids": true,
+	// Where the app or page was; the navigation rows show it.
+	"app.screen.name": true, "app.screen.route": true, "app.screen.previous": true, "app.screen.duration_ms": true,
 }
 
 // clickDataKeys maps the data of a click row to the record attributes it comes from. The app SDKs (Flutter, iOS,
@@ -185,14 +188,19 @@ func BuildSessionTimeline(records []models.LogRecord, spans []shared.SessionSpan
 		case "", "browser.console":
 			timeline.Logs = append(timeline.Logs, timelineLog{Type: "log", Timestamp: record.Timestamp, Level: timelineLevel(record.SeverityNumber), Message: record.Body})
 		case "exception":
-			message := strings.TrimSpace(attrs["exception.type"] + ": " + attrs["exception.message"])
-			timeline.Logs = append(timeline.Logs, timelineLog{Type: "log", Timestamp: record.Timestamp, Level: "error", Message: strings.TrimPrefix(message, ": ")})
+			timeline.Logs = append(timeline.Logs, timelineLog{Type: "log", Timestamp: record.Timestamp, Level: "error", Message: exceptionTimelineMessage(attrs)})
 		case "traceway.message":
 			timeline.Logs = append(timeline.Logs, timelineLog{Type: "log", Timestamp: record.Timestamp, Level: "info", Message: record.Body})
 		case "browser.navigation":
 			action := navigationAction(attrs)
 			to := attrs["url.full"]
-			timeline.Actions = append(timeline.Actions, timelineAction{Type: "navigation", Timestamp: record.Timestamp, Action: action, From: lastURL, To: to})
+			from := lastURL
+			if from == "" {
+				// The first navigation of the window: the SDKs name the screen it left.
+				from = attrs["navigation.from"]
+			}
+			timeline.Actions = append(timeline.Actions, timelineAction{Type: "navigation", Timestamp: record.Timestamp, Action: action, From: from, To: to,
+				Route: attrs["app.screen.route"]})
 			lastURL = to
 		case "browser.user_action.click":
 			data := map[string]any{}
@@ -246,6 +254,22 @@ func BuildSessionTimeline(records []models.LogRecord, spans []shared.SessionSpan
 	}
 	slices.SortStableFunc(timeline.Actions, func(a, b timelineAction) int { return a.Timestamp.Compare(b.Timestamp) })
 	return timeline
+}
+
+// exceptionTimelineMessage is an exception's line on the timeline: its type and message, and for a hang the process
+// did not survive (reported on the next launch) that it was fatal.
+func exceptionTimelineMessage(attrs map[string]string) string {
+	parts := make([]string, 0, 2)
+	for _, part := range []string{attrs["exception.type"], attrs["exception.message"]} {
+		if part = strings.TrimSpace(part); part != "" {
+			parts = append(parts, part)
+		}
+	}
+	message := strings.Join(parts, ": ")
+	if attrs["app.hang.fatal"] == "true" {
+		message += " (fatal, the app was terminated)"
+	}
+	return message
 }
 
 // navigationAction names a navigation the way the replay player does. The instrumentation only sets

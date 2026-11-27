@@ -1,0 +1,7 @@
+With `replay.maskAllInputs` on, which is the default, the value of every `input`, `textarea` and `select` is recorded as `*`. With it off, only password fields are. It is a collection setting:
+
+```json
+{ "replay": { "maskAllInputs": true } }
+```
+
+Set to `true` in the app's `collection`, it is a floor: a rule's `"maskAllInputs": false` leaves the inputs masked. Left out of `collection`, inputs are masked by default and a rule can switch masking off; set to `false` there, a rule can switch it on. A field that must stay hidden even with `maskAllInputs` off belongs inside an element with `traceway-mask` or `traceway-blank` (next section). A change of `maskAllInputs` restarts the recorder and drops the buffered replay recorded with the old setting.

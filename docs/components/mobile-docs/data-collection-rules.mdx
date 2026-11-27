@@ -1,0 +1,41 @@
+A rule changes what the SDK collects on the devices it applies to, without a release. Every setting on this page has a field in a rule.
+
+1. Open **Data Collection** in the project's sidebar. The page lists the rules, in the order they apply, and the active captures.
+
+<img
+  src="/session-capture/data-collection.png"
+  alt="The Data Collection page: the rules in the order they apply, each with its conditions and what it changes, and below them the active captures"
+  style={{ maxWidth: "100%", height: "auto", marginTop: "16px" }}
+/>
+
+2. Click **New Rule** and give it a **Name**.
+3. On **Applies to**, choose the devices: **Add condition** for an attribute such as `service.version`, `user.id` or `os.name`, and **Roll out to** a share of them. Every condition has to match. A rule with no conditions applies to every device.
+
+<img
+  src="/session-capture/rule-dialog-applies.png"
+  alt="The rule dialog's Applies to tab: a condition on the app version and a rollout percentage"
+  style={{
+    maxWidth: "560px",
+    width: "100%",
+    height: "auto",
+    marginTop: "16px",
+  }}
+/>
+
+4. On **Signals**, set what to change. For replay: **Session replay** (**Off**, **Buffer** or **Stream**), **Replay images** (**Off**, **Wi‑Fi only** or **Always**) and **Healthy session sample (%)**. **Inherit** leaves a setting as the SDK defaults and the earlier rules have it.
+
+<img
+  src="/session-capture/rule-dialog-signals.png"
+  alt="The rule dialog's Signals tab: a mode for each signal, then Session replay, Replay images, Sessions, Performance metrics and the healthy session sample"
+  style={{
+    maxWidth: "560px",
+    width: "100%",
+    height: "auto",
+    marginTop: "16px",
+  }}
+/>
+
+5. On **Triggers**, add recording triggers ([Step 4](#record-a-journey-with-a-trigger)). The **JSON** tab shows the rule as the settings document it sends, for the fields the form does not have, such as `replay.sessionSampleRate` and `replay.maskAllInputs`.
+6. Click **New Rule**. Devices pick it up at their next poll.
+
+Rules apply in their order on the page: a later rule replaces the fields an earlier one set. **Preview** shows which rules a device matches and the settings it receives. The document a rule holds is the same one the app's `collection` option takes, so a policy can move between the app and the dashboard unchanged. See the [settings reference](/learn/remote-config/reference) for every field.

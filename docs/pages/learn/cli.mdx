@@ -64,14 +64,15 @@ The default `traceway login` runs a browser device flow with an auto-refreshing 
 | `traceway profiles {list,use}` | Manage multiple Traceway accounts/instances |
 | `traceway projects {list,use}` | List or select the active project |
 | `traceway exceptions list` | Recent grouped exceptions |
-| `traceway exceptions show <hash>` | A single exception group + occurrences |
+| `traceway exceptions show <hash>` | A single exception group + occurrences; takes the full hash or a unique prefix of 4 or more hex characters |
 | `traceway exceptions occurrence <id> --recorded-at <t>` | A single occurrence by id (+ `sessionId` and recording) |
 | `traceway logs query` | Query logs with severity / service / search filters |
 | `traceway endpoints list` | Per-endpoint p50/p95/p99 stats |
 | `traceway endpoints show <id> --recorded-at <t>` | A single request (transaction) by id: spans + linked errors |
 | `traceway tasks show <id> --recorded-at <t>` | A single background task run by id |
 | `traceway ai-traces show <id> --recorded-at <t>` | A single AI trace by id + its conversation |
-| `traceway sessions show <id> --started-at <t>` | A single session by id + the exceptions that fired in it |
+| `traceway sessions list` | Sessions that started in the window, with id, start, duration, version, replay and user (`--search` by session id, client IP or an attribute value such as a user id) |
+| `traceway sessions show <id> [--started-at <t>]` | A single session by id + the exceptions that fired in it; without `--started-at` the start is looked up among the last 30 days |
 | `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
 | `traceway metrics query` | Time-series metric queries, including `rate`, `last`, and percentiles or `good_ratio` of a distribution metric; `--whole-range` returns one value for the window |
 | `traceway metrics discover` | Recorded metric names, types, units and tag keys; `--name M --key K` discovers tag values |
@@ -89,7 +90,7 @@ The default `traceway login` runs a browser device flow with an auto-refreshing 
 Run `traceway <command> --help` for full per-command flags.
 
 <Callout type="info">
-  The `show` / `occurrence` commands take a UUID plus a **required** timestamp flag (`--recorded-at`, or `--started-at` for `sessions`). Telemetry tables are partitioned by day; the timestamp bounds the query so the lookup prunes partitions instead of scanning all of them. Get the id and its timestamp together: from a dashboard URL's `?t=` param, a notification's `Occurred at`, or a list row's `recordedAt`. Omitting the flag exits 2 (`usage_error`).
+  The `show` / `occurrence` commands take a UUID plus a **required** timestamp flag (`--recorded-at`). Telemetry tables are partitioned by day; the timestamp bounds the query so the lookup prunes partitions instead of scanning all of them. Get the id and its timestamp together: from a dashboard URL's `?t=` param, a notification's `Occurred at`, or a list row's `recordedAt`. Omitting the flag exits 2 (`usage_error`). `sessions show` is the exception: `--started-at` is optional, and without it the CLI looks the start up among the last 30 days' sessions first (one more query; pass it when you know it).
 </Callout>
 
 ## Profiles
@@ -97,7 +98,7 @@ Run `traceway <command> --help` for full per-command flags.
 Multiple Traceway instances or accounts coexist via profiles. Configuration (URL, username) lives in `$XDG_CONFIG_HOME/traceway/config.json` so it can be checked in or managed declaratively; credentials and the active project live in `$XDG_STATE_HOME/traceway/state.json`.
 
 ```bash
-traceway login --url https://traceway.example.com --profile work
+traceway login --url https://traceway.mycompany.com --profile work   # a self-hosted instance
 traceway profiles list
 traceway profiles use work
 traceway --profile personal exceptions list   # one-off override

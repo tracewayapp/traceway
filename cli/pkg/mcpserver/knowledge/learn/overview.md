@@ -33,7 +33,7 @@ This guide explains every part of the product: what each page shows, the terms i
 | Monitors and status pages | [monitors.md](monitors.md) | `traceway://knowledge/learn/monitors` | HTTP, TCP and browser checks, runs, incidents, public status pages, post-mortems |
 | Alerts | [alerts.md](alerts.md) | `traceway://knowledge/learn/alerts` | Every rule type and its settings, channels, cooldown, snooze, history |
 | On-call | [on-call.md](on-call.md) | `traceway://knowledge/learn/on-call` | Teams, schedules, layers, overrides, escalation policies, pages, contact methods |
-| Remote SDK config | [data-collection.md](data-collection.md) | `traceway://knowledge/learn/data-collection` | What browser and Flutter apps send: stream, buffer and off per signal, rules, triggers, captures, preview (browser and Flutter projects, 2.x SDKs) |
+| Remote SDK config | [data-collection.md](data-collection.md) | `traceway://knowledge/learn/data-collection` | What browser and mobile apps send: stream, buffer and off per signal, rules, triggers, captures, preview (browser, Flutter, Android and iOS projects, 2.x SDKs) |
 | Organization and access | [organization.md](organization.md) | `traceway://knowledge/learn/organization` | Projects, roles, the home page, organization views, Connection, Account, Settings, agent access |
 
 ## Page map
@@ -59,11 +59,11 @@ This guide explains every part of the product: what each page shows, the terms i
 | Connection | `/connection` | organization.md |
 | Account | `/account` | organization.md, on-call.md |
 | Settings | `/settings` (owners and admins) | organization.md |
-| Data Collection | **Data Collection** in the sidebar (browser and Flutter projects) | data-collection.md |
+| Data Collection | **Data Collection** in the sidebar (browser, Flutter, Android and iOS projects) | data-collection.md |
 | Organization | `/organization` (Servers, Issues, Monitors, On-Call, Projects) | organization.md |
-| Project setup | `/setup` | organization.md |
+| Project setup | `/setup` (an organization that already has projects: `/setup?mode=add`) | organization.md |
 
-Browser and Flutter projects also have Dashboards, SLOs, Logs, Spans and Data Collection. React Native, Android and iOS projects have none of these: their SDKs do not supply those diagnostic OTLP signals or poll OpAMP. The Flutter views need the Flutter SDK 2.x; a 1.x app sends only issues.
+Browser, Flutter, Android and iOS projects also have Sessions, Dashboards, SLOs, Logs, Spans and Data Collection. React Native projects have none of these: their SDK does not supply those diagnostic OTLP signals or poll OpAMP. The views need the platform's 2.x SDK; a 1.x app (iOS 0.1.x) sends only issues.
 
 ## Common questions
 

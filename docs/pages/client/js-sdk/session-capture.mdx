@@ -1,0 +1,197 @@
+import Intro from "../../../components/client-docs/session-capture/intro.mdx";
+import Step1 from "../../../components/client-docs/session-capture/step-1.mdx";
+import Inputs from "../../../components/client-docs/session-capture/step-2-inputs.mdx";
+import Mask from "../../../components/client-docs/session-capture/step-2-mask.mdx";
+import MaskCheck from "../../../components/client-docs/session-capture/step-2-check.mdx";
+import Step3 from "../../../components/client-docs/session-capture/step-3.mdx";
+import Defaults from "../../../components/client-docs/session-capture/step-4-default.mdx";
+import Sample from "../../../components/client-docs/session-capture/step-4-sample.mdx";
+import Trigger from "../../../components/client-docs/session-capture/step-4-trigger.mdx";
+import Elements from "../../../components/client-docs/session-capture/step-4-elements.mdx";
+import Pages from "../../../components/client-docs/session-capture/step-4-pages.mdx";
+import Step5 from "../../../components/client-docs/session-capture/step-5.mdx";
+import Step6 from "../../../components/client-docs/session-capture/step-6.mdx";
+import Check from "../../../components/client-docs/session-capture/check.mdx";
+import Limits from "../../../components/client-docs/session-capture/limits.mdx";
+import WhenItFails from "../../../components/client-docs/session-capture/when-it-fails.mdx";
+
+# Configure Session Capture
+
+<Intro />
+
+This page uses `@tracewayapp/frontend` directly. For a framework, follow its own page: [React](/client/react/session-capture), [Vue](/client/vue/session-capture), [Svelte](/client/svelte/session-capture) or [jQuery](/client/jquery/session-capture). [Session Replay](/client/js-sdk/session-replay) is the reference.
+
+## Step 1: Turn on replay and set the limits in the app
+
+<Step1>
+
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  version: "1.4.2",
+  sessionRecording: true, // the default; false means no replay, whatever a rule says
+  replayImages: "always", // the default; "wifi" or "off" caps what a rule may allow for pictures
+  collection: {
+    // maskAllInputs: true here is a floor: no rule can unmask inputs
+    replay: { maskAllInputs: true, images: "wifi" },
+  },
+});
+```
+
+With the CDN script, the same object goes to `Traceway.init({ token: "YOUR_TOKEN", … })`.
+
+</Step1>
+
+## Step 2: Hide private content
+
+### Inputs are masked by default
+
+<Inputs />
+
+### Mark elements with a mask
+
+<Mask>
+
+```html
+<p class="traceway-mask">Card ending 4242, Alice Smith</p>
+<!-- replays as: **** ****** ***** ***** ***** -->
+<div class="traceway-mask">
+  <img src="/avatars/42.jpg" alt="" /> Alice Smith
+</div>
+<div class="traceway-blank"><canvas id="signature"></canvas></div>
+```
+
+An element your script creates gets the class when it is created, before it is added to the page:
+
+```javascript
+const name = document.createElement("span");
+name.className = "traceway-mask";
+name.textContent = user.name;
+document.querySelector("#account").append(name);
+```
+
+</Mask>
+
+### Check the mask before you ship
+
+<MaskCheck />
+
+## Step 3: Choose whether replays show images
+
+<Step3>
+
+The ceiling in the app:
+
+```javascript
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  replayImages: "wifi", // image URLs at most, never copies, whatever a rule says
+});
+```
+
+</Step3>
+
+## Step 4: Choose which sessions upload replay
+
+### What uploads by default
+
+<Defaults />
+
+### Record every session or a sample
+
+<Sample />
+
+### Record a journey with a trigger
+
+<Trigger>
+
+```javascript
+import { log, captureMessage } from "@tracewayapp/frontend";
+
+log("Payment declined", "warn", { provider: "stripe" }); // matches a Log step "Payment declined"
+captureMessage("Checkout abandoned"); // also opens an issue
+```
+
+</Trigger>
+
+### Name the elements a trigger can match
+
+<Elements />
+
+### Name your pages
+
+<Pages>
+
+The SDK reads the route template from React Router in framework mode, Remix, TanStack Router, the Next.js Pages Router, Vue Router and Nuxt without any code. For another router, hand it over once, or name the page yourself:
+
+```javascript
+import { trackRouter, setRoute, recordNavigation } from "@tracewayapp/frontend";
+
+trackRouter(router); // a React Router data router, a TanStack Router, a Vue Router or the Next.js Pages Router
+
+setRoute("/orders/:id"); // or name the page being shown; null goes back to the router's name
+
+// Navigation the address does not show (a hash or memory router, a modal, a wizard step):
+recordNavigation(
+  "/checkout/payment",
+  "push",
+  "/checkout/address",
+  "/checkout/:step",
+);
+```
+
+A `recordNavigation` path is what a **Navigation** step matches, and it counts as a page view for the performance metrics. Without a route template, id-like path segments are replaced (`/orders/8841` becomes `/orders/:id`). See [Screens and navigation](/client/js-sdk#screens-and-navigation).
+
+</Pages>
+
+## Step 5: Capture one user or device from the dashboard
+
+<Step5>
+
+```javascript
+import {
+  setAttribute,
+  refreshConfig,
+  getInstanceId,
+} from "@tracewayapp/frontend";
+
+async function onSignedIn(user) {
+  setAttribute("user.id", String(user.id));
+  await refreshConfig();
+}
+
+document.querySelector("#device-id").textContent = getInstanceId() ?? "";
+```
+
+</Step5>
+
+## Step 6: Change collection remotely with Data Collection rules
+
+<Step6 />
+
+## Check that it works
+
+<Check>
+
+```javascript
+import { init, captureException, flush } from "@tracewayapp/frontend";
+
+init({ token: import.meta.env.VITE_TRACEWAY_TOKEN, debug: true });
+
+document.querySelector("#test-error").addEventListener("click", async () => {
+  captureException(new Error("Traceway replay test"));
+  await flush();
+});
+```
+
+</Check>
+
+## What replay does not record
+
+<Limits />
+
+## When it fails
+
+<WhenItFails />

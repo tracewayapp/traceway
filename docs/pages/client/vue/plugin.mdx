@@ -11,47 +11,55 @@ import App from "./App.vue";
 
 const app = createApp(App);
 
-app.use(createTracewayPlugin({
-  connectionString: "your-token@https://traceway.example.com/api/report",
-}));
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  }),
+);
 
 app.mount("#app");
 ```
 
 ## Plugin Options
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `connectionString` | `string \| StandaloneOptions` | Yes | Your Traceway connection string. An options object with a `telemetry` destination runs the SDK [without a Traceway server](/client/js-sdk/initialization#standalone-without-a-traceway-server) |
-| `options` | `TracewayFrontendOptions` | No | SDK configuration options, passed to `init()` |
+| Option    | Type                      | Required                                                | Description                                                                                                                                                                                                                 |
+| --------- | ------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `token`   | `string`                  | Yes, unless `options.telemetry` is the only destination | The project token, from the project's **Connection** page. Without one, only a `telemetry` destination in `options` receives anything, see [Standalone](/client/js-sdk/initialization#standalone-without-a-traceway-server) |
+| `baseUrl` | `string`                  | No                                                      | The Traceway server, only for a self-hosted one. Default `https://cloud.tracewayapp.com`                                                                                                                                    |
+| `options` | `TracewayFrontendOptions` | No                                                      | Every other option, passed to `init()`                                                                                                                                                                                      |
 
-The plugin calls `init()` when it is installed. The SDK starts once per page: another `init()` is a no-op until `await shutdown()`. When `connectionString` is an options object, it carries the SDK options itself and `options` is ignored.
+The plugin calls `init()` when it is installed. The SDK starts once per page: another `init()` is a no-op until `await shutdown()`. `app.use()` never throws: a build without its token mounts the app as usual, with the SDK off and one console warning that says what is missing. The 2.0 `connectionString` field still works, deprecated, with one warning; see [Upgrading from 2.0](/client/js-sdk/migration#upgrading-from-20).
 
 ## SDK Options
 
 `options` takes every option of the browser SDK. The ones used most:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log the problems the SDK would otherwise swallow (a `beforeCapture` that throws, a rejected project token). The plugin also prints every error its `errorHandler` catches, see [Automatic Error Handling](#automatic-error-handling) |
-| `version` | `string` | none | Your application version, reported as `service.version` |
-| `environment` | `string` | `undefined` | `deployment.environment.name`, e.g. `"production"` |
-| `serviceName` | `string` | the page's host name | `service.name` of this app |
-| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
-| `beforeCapture` | `({ type, message, stack, attributes }) => boolean` | `undefined` | Return `false` to suppress an error. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
-| `sessionRecording` | `boolean` | `true` | Allow rrweb session replay at all |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | Replay segment length in ms |
-| `recordAllSessions` | `boolean` | `false` | Stream every replay segment and breadcrumb instead of keeping them on the device for error clips. See [Session Replay](/client/js-sdk/session-replay) |
-| `captureLogs` | `boolean` | `true` | Allow `console.*` calls as breadcrumbs |
-| `captureNetwork` | `boolean` | `true` | Allow `fetch` / `XHR` calls as CLIENT spans |
-| `captureNavigation` | `boolean` | `true` | Allow navigation breadcrumbs (page loads and History API transitions) |
-| `captureUserActions` | `boolean` | `true` | Allow click breadcrumbs |
-| `captureMetrics` | `boolean` | `true` | Allow the [performance metrics](/learn/client-metrics) aggregated on the device |
-| `propagateTraceHeaderCorsUrls` | `Array<string \| RegExp>` | `undefined` | Cross-origin URLs that receive the W3C `traceparent` header (same-origin requests always do) |
-| `remoteConfig` | `boolean` | `true` | Fetch collection settings from Traceway, so the **Data Collection** page can change what the app sends without a release. See [Remote SDK Config](/learn/remote-config) |
-| `exportDelayMs` | `number` | `1000` | Delay between uploads of streamed telemetry, in ms |
+| Option                            | Type                      | Default                   | Description                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `debug`                           | `boolean`                 | `false`                   | Explain what the SDK does with the page's own `console.warn`: the start, remote config applied or rejected, every dropped exception or message and why, and SDK failures it contained. The plugin also logs every error its `errorHandler` catches, see [Automatic Error Handling](#automatic-error-handling) and [Debug Mode](/client/js-sdk/initialization#debug-mode) |
+| `version`                         | `string`                  | none                      | Your application version, reported as `service.version`                                                                                                                                                                                                                                                                                                                  |
+| `environment`                     | `string`                  | `undefined`               | `deployment.environment.name`, e.g. `"production"`                                                                                                                                                                                                                                                                                                                       |
+| `serviceName`                     | `string`                  | the page's host name      | `service.name` of this app                                                                                                                                                                                                                                                                                                                                               |
+| `ignoreErrors`                    | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/initialization#error-filtering)                                                                                                                                                                                                                                          |
+| `beforeCapture`                   | `(captured) => boolean`   | `undefined`               | Receives a `TracewayCapturedError`, `{ error, type, message, isMessage, stack, attributes }`; return `false` to drop it. See [beforeCapture Callback](/client/js-sdk/initialization#beforecapture-callback)                                                                                                                                                              |
+| `attributes`                      | `Record<string, string>`  | `{}`                      | Initial global attributes, see [Custom Attributes](#custom-attributes)                                                                                                                                                                                                                                                                                                   |
+| `sessionRecording`                | `boolean`                 | `true`                    | Allow rrweb session replay at all                                                                                                                                                                                                                                                                                                                                        |
+| `sessionRecordingSegmentDuration` | `number`                  | `30000`                   | Replay segment length in ms                                                                                                                                                                                                                                                                                                                                              |
+| `recordAllSessions`               | `boolean`                 | `false`                   | Stream every replay segment and breadcrumb instead of keeping them on the device for error clips. See [Configure Session Capture](/client/vue/session-capture)                                                                                                                                                                                                           |
+| `sessions`                        | `boolean`                 | `true`                    | Record session start and end. See [Sessions](/learn/sessions)                                                                                                                                                                                                                                                                                                            |
+| `captureLogs`                     | `boolean`                 | `true`                    | Allow `console.*` calls and `log()` lines as breadcrumbs                                                                                                                                                                                                                                                                                                                 |
+| `captureNetwork`                  | `boolean`                 | `true`                    | Allow `fetch` / `XHR` calls as CLIENT spans                                                                                                                                                                                                                                                                                                                              |
+| `captureNavigation`               | `boolean`                 | `true`                    | Allow navigation breadcrumbs (page loads and History API transitions)                                                                                                                                                                                                                                                                                                    |
+| `captureUserActions`              | `boolean`                 | `true`                    | Allow click breadcrumbs                                                                                                                                                                                                                                                                                                                                                  |
+| `captureMetrics`                  | `boolean`                 | `true`                    | Allow the [performance metrics](/learn/client-metrics) aggregated on the device                                                                                                                                                                                                                                                                                          |
+| `captureHttpServerErrors`         | `boolean`                 | `false`                   | Report `fetch` / `XHR` responses with status >= 500 as message issues                                                                                                                                                                                                                                                                                                    |
+| `propagateTraceHeaderCorsUrls`    | `Array<string \| RegExp>` | `undefined`               | Cross-origin URLs that receive the W3C `traceparent` header (same-origin requests always do)                                                                                                                                                                                                                                                                             |
+| `remoteConfig`                    | `boolean`                 | `true`                    | Fetch collection settings from Traceway, so the **Data Collection** page can change what the app sends without a release. See [Remote SDK Config](/learn/remote-config)                                                                                                                                                                                                  |
+| `collection`                      | `CollectionSettings`      | SDK defaults              | Local collection policy: signal modes, sampling, replay (`maskAllInputs`, `images`), buffer and triggers. See [Local collection settings](/client/js-sdk/initialization#local-collection-settings)                                                                                                                                                                       |
+| `telemetry`                       | `TelemetryOptions`        | none                      | Send logs, traces and metrics to another OpenTelemetry provider, see [below](#send-telemetry-to-another-opentelemetry-provider)                                                                                                                                                                                                                                          |
+| `exportDelayMs`                   | `number`                  | `1000`                    | Delay between uploads of streamed telemetry, in ms                                                                                                                                                                                                                                                                                                                       |
 
-The `capture*` and `sessionRecording` options are ceilings: remote settings can restrict a signal further, but never turn on what the app turned off. See [Initialization](/client/js-sdk/initialization#options-reference) for the full list.
+The `capture*`, `sessionRecording` and `sessions` options are ceilings: remote settings can restrict a signal further, but never turn on what the app turned off. See [Initialization](/client/js-sdk/initialization#options-reference) for the full list.
 
 By default errors and messages are sent as they happen, while console, network, navigation and click breadcrumbs and the replay stay on the device. A captured error uploads up to 10 minutes of those breadcrumbs and a 30-second replay clip.
 
@@ -64,14 +72,16 @@ import App from "./App.vue";
 
 const app = createApp(App);
 
-app.use(createTracewayPlugin({
-  connectionString: "your-token@https://traceway.example.com/api/report",
-  options: {
-    debug: import.meta.env.DEV,
-    version: import.meta.env.VITE_APP_VERSION,
-    environment: import.meta.env.MODE,
-  },
-}));
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+    options: {
+      debug: import.meta.env.DEV,
+      version: import.meta.env.VITE_APP_VERSION,
+      environment: import.meta.env.MODE,
+    },
+  }),
+);
 
 app.mount("#app");
 ```
@@ -81,12 +91,14 @@ app.mount("#app");
 By default, 4xx HTTP errors, network errors, and timeouts are ignored. To capture everything:
 
 ```javascript
-app.use(createTracewayPlugin({
-  connectionString: "your-token@https://traceway.example.com/api/report",
-  options: {
-    ignoreErrors: [],
-  },
-}));
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+    options: {
+      ignoreErrors: [],
+    },
+  }),
+);
 ```
 
 ## Automatic Error Handling
@@ -104,18 +116,20 @@ app.config.errorHandler = (err, instance, info) => {
 };
 ```
 
-A thrown value that is not an `Error` is reported as a message, with `captureMessage(String(err))`. With `debug: true` the handler also prints the error, the component instance and Vue's info string with `console.error`.
+A thrown value that is not an `Error` is reported as a message, with `captureMessage(String(err))`. With `debug: true` the handler also logs the error and Vue's info string (`Traceway: Vue error (<info>)`) with the page's own `console.warn`, so the line is not recorded as a log of the app.
 
 Uncaught errors and unhandled promise rejections outside Vue are captured by the SDK's own global handlers, see [Auto-Capture Behavior](/client/js-sdk/initialization#auto-capture-behavior).
 
-Vue has a single `app.config.errorHandler` slot, and the plugin assigns it. A handler assigned before `app.use(createTracewayPlugin(...))` keeps being called after Traceway has captured the error. During server-side rendering the plugin leaves the slot alone. If your app assigns its own handler after `app.use(createTracewayPlugin(...))`, it replaces Traceway's and component errors stop reaching the dashboard. To keep both, capture the error yourself inside your handler:
+Vue has a single `app.config.errorHandler` slot, and the plugin assigns it. A handler assigned before `app.use(createTracewayPlugin(...))` keeps being called after Traceway has captured the error. Without one, Vue's own handling stays as it is without Traceway: after the capture the error goes back to Vue, which logs it with `console.error` in production and rethrows it in development. During server-side rendering the plugin leaves the slot alone. If your app assigns its own handler after `app.use(createTracewayPlugin(...))`, it replaces Traceway's and component errors stop reaching the dashboard. To keep both, capture the error yourself inside your handler:
 
 ```javascript
 import { captureException, captureMessage } from "@tracewayapp/vue";
 
-app.use(createTracewayPlugin({
-  connectionString: "your-token@https://traceway.example.com/api/report",
-}));
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  }),
+);
 
 app.config.errorHandler = (err, instance, info) => {
   if (err instanceof Error) {
@@ -129,9 +143,9 @@ app.config.errorHandler = (err, instance, info) => {
 
 ## Route Names
 
-Performance metrics are grouped by page, and a page is named by its matched route pattern (`/orders/:id`), not by its URL. With a browser SDK version 2.0.1 or later there is nothing to set up: the plugin takes Vue Router from the app it is installed in, whichever of the two is installed first, and Nuxt works the same way. Nuxt writes the patterns of its file routes with a trailing `()` (`pages/orders/[id].vue` is `/orders/:id()`, a catch-all is `/docs/:slug(.*)*`), and that is the name the page gets.
+Performance metrics are grouped by page, and a page is named by its matched route pattern (`/orders/:id`), not by its URL; the same pattern names the screen (`app.screen.name`) on exceptions, log lines and clicks. There is nothing to set up: the plugin takes Vue Router from the app it is installed in, whichever of the two is installed first, and Nuxt works the same way. Nuxt writes the patterns of its file routes with a trailing `()` (`pages/orders/[id].vue` is `/orders/:id()`, a catch-all is `/docs/:slug(.*)*`), and that is the name the page gets.
 
-On 2.0.0, or for a router that is not installed in the app, pass your `vue-router` instance to `trackRouter` once, after creating it:
+For a router that is not installed in the app, pass your `vue-router` instance to `trackRouter` once, after creating it:
 
 ```javascript
 import { createApp } from "vue";
@@ -145,30 +159,62 @@ trackRouter(router);
 
 const app = createApp(App);
 
-app.use(createTracewayPlugin({
-  connectionString: "your-token@https://traceway.example.com/api/report",
-}));
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  }),
+);
 app.use(router);
 
 app.mount("#app");
 ```
 
-Without it the SDK replaces id-like path segments itself (`/orders/8841` becomes `/orders/:id`). See [Client Metrics](/learn/client-metrics).
+This `trackRouter` is the Vue package's own: it calls `setRoute` after each navigation (`router.afterEach`), and ignores anything that is not a router. Without a router the SDK replaces id-like path segments itself (`/orders/8841` becomes `/orders/:id`). For navigation the address does not show (a modal, a wizard step, a memory history), report it with `recordNavigation(path, action, from, route)`; see [Screens and navigation](/client/js-sdk#screens-and-navigation). See [Client Metrics](/learn/client-metrics).
 
 ## Environment-Specific Configuration
 
-```javascript
-const connectionString = import.meta.env.PROD
-  ? import.meta.env.VITE_TRACEWAY_PROD
-  : import.meta.env.VITE_TRACEWAY_DEV;
+Give each environment its own project, and so its own token, through Vite's environment files:
 
-app.use(createTracewayPlugin({
-  connectionString,
-  options: {
-    debug: import.meta.env.DEV,
-  },
-}));
+```bash
+# .env.production
+VITE_TRACEWAY_TOKEN=YOUR_PRODUCTION_TOKEN
+
+# .env.development
+VITE_TRACEWAY_TOKEN=YOUR_DEVELOPMENT_TOKEN
+
+# Only for a self-hosted server: its address
+# VITE_TRACEWAY_URL=
 ```
+
+```javascript
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+    baseUrl: import.meta.env.VITE_TRACEWAY_URL,
+    options: {
+      debug: import.meta.env.DEV,
+      environment: import.meta.env.MODE,
+    },
+  }),
+);
+```
+
+An unset `VITE_TRACEWAY_URL` leaves the default, Traceway Cloud.
+
+## Send telemetry to another OpenTelemetry provider
+
+The `telemetry` option sends logs, traces and metrics to any OTLP/HTTP endpoint, while errors, replay, captures and remote config stay on Traceway:
+
+```javascript
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+    options: { telemetry: { url: "https://collector.example.com" } },
+  }),
+);
+```
+
+The collector host is an example: use your own. Without a `token` the SDK runs standalone and sends only there. See [Send telemetry to another OpenTelemetry provider](/client/js-sdk/initialization#send-telemetry-to-another-opentelemetry-provider) for per-signal destinations, headers and CORS.
 
 ## Custom Attributes
 
@@ -183,7 +229,7 @@ const { user, org } = useUser();
 useTracewayAttributes(() =>
   user.value && org.value
     ? { "user.id": String(user.value.id), tenant: String(org.value.id) }
-    : null
+    : null,
 );
 </script>
 ```
@@ -221,7 +267,10 @@ import { useUser } from "./auth";
 const { user, org } = useUser();
 watchEffect(() => {
   if (user.value && org.value) {
-    setAttributes({ "user.id": String(user.value.id), tenant: String(org.value.id) });
+    setAttributes({
+      "user.id": String(user.value.id),
+      tenant: String(org.value.id),
+    });
   } else {
     removeAttribute("user.id");
     removeAttribute("tenant");
@@ -248,22 +297,24 @@ traceway.captureException(new Error("Manual capture"));
 </script>
 ```
 
-However, the `useTraceway` composable is preferred for most use cases.
+However, the `useTraceway` composable is preferred for most use cases. It never throws: without the plugin (an app that calls `init()` itself) it returns the same capture functions, which report once the SDK runs.
 
 ## Vite Configuration
 
-Add your connection string to `.env`:
+Add the token to `.env`:
 
-```
-VITE_TRACEWAY_CONNECTION=your-token@https://traceway.example.com/api/report
+```bash
+VITE_TRACEWAY_TOKEN=YOUR_TOKEN
 ```
 
-Use in your app:
+Use it in your app:
 
 ```javascript
-app.use(createTracewayPlugin({
-  connectionString: import.meta.env.VITE_TRACEWAY_CONNECTION,
-}));
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  }),
+);
 ```
 
 ## Nuxt Integration
@@ -275,13 +326,18 @@ For Nuxt 3, create a plugin:
 import { createTracewayPlugin } from "@tracewayapp/vue";
 
 export default defineNuxtPlugin((nuxtApp) => {
-  nuxtApp.vueApp.use(createTracewayPlugin({
-    connectionString: useRuntimeConfig().public.tracewayConnection,
-  }));
+  const { tracewayToken, tracewayUrl } = useRuntimeConfig().public;
+
+  nuxtApp.vueApp.use(
+    createTracewayPlugin({
+      token: tracewayToken,
+      baseUrl: tracewayUrl || undefined,
+    }),
+  );
 });
 ```
 
-Name the file `traceway.ts`, not `traceway.client.ts`. A `.client` plugin never runs during SSR, so the injection key is missing on the server and the first component calling `useTraceway()` fails the render with `useTraceway must be used within a Vue app that has installed the Traceway plugin` (HTTP 500). The plugin is safe to run universally: it only installs the browser handlers and the recorder when `window` exists, so the server pass just provides the injection key.
+Name the file `traceway.ts`, not `traceway.client.ts`, so it runs on both passes. The plugin is safe to run universally: on the server pass it only provides the injection key that `useTraceway()` reads and leaves Vue's error handling alone, and the SDK starts only where `window` exists, so server-side errors are not reported by it.
 
 Add to `nuxt.config.ts`:
 
@@ -289,8 +345,11 @@ Add to `nuxt.config.ts`:
 export default defineNuxtConfig({
   runtimeConfig: {
     public: {
-      tracewayConnection: process.env.TRACEWAY_CONNECTION,
+      tracewayToken: "", // set by NUXT_PUBLIC_TRACEWAY_TOKEN
+      tracewayUrl: "", // set by NUXT_PUBLIC_TRACEWAY_URL, only for a self-hosted server
     },
   },
 });
 ```
+
+Nuxt fills `runtimeConfig.public` from the `NUXT_PUBLIC_TRACEWAY_TOKEN` and `NUXT_PUBLIC_TRACEWAY_URL` environment variables.

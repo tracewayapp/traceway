@@ -1,6 +1,6 @@
 # Record the journeys that matter
 
-Build an ordered sequence of clicks, hovers, navigations and log messages in **Data Collection → New Rule → Add recording trigger**. When a browser completes the sequence, it requests a replay capture. Sessions show the trigger name and a readable sequence, so you can find the visits that followed that journey.
+Build an ordered sequence of clicks, hovers, navigations and log messages in **Data Collection → New Rule → Triggers → Add recording trigger**. When a browser completes the sequence, it requests a replay capture. Sessions show the trigger name and a readable sequence, so you can find the visits that followed that journey.
 
 Recording triggers need browser SDK 2.0 or later (`@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version) or the Flutter SDK 2.x, where click and hover steps match widgets and navigation steps match routes (see [Recording triggers](/client/flutter#recording-triggers)), or the Android SDK 2.x, where they match views and Compose nodes and navigation steps match screens (see [Recording triggers](/client/android#recording-triggers)), or the iOS SDK 2.x, where click steps match views and navigation steps match screens (see [Recording triggers](/client/ios#recording-triggers)). The SDK advertises `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client the rule matches gets it. An SDK that cannot read one of these event matchers drops the whole trigger, and the legacy 1.x SDK never polls for rules, so [upgrade](/client/js-sdk/migration) the browser integration before relying on one; the Flutter, iOS and Android SDKs 1.x never poll either. The builder is shown for browser projects (React, Vue, Svelte, jQuery), Flutter, iOS and Android projects.
 
@@ -8,7 +8,7 @@ Recording triggers need browser SDK 2.0 or later (`@tracewayapp/frontend`, or th
 
 1. Select the browser, Flutter, iOS or Android project and open **Data Collection** in its sidebar.
 2. Create a Rule. Use the rule's targeting controls to choose the release, environment or cohort that should receive it.
-3. Add a recording trigger and give it a recognizable name, such as **Open user journey**.
+3. On the **Triggers** tab, click **Add recording trigger** and give it a recognizable name, such as **Open user journey**.
 4. Add **Click** with `#open-user`, **Navigation** with `/users/{id}`, and **Log** with `User loaded`. Choose exact or contains matching for the log.
 5. Set the time allowed between steps, replay lookback, capture duration, cooldown and maximum fires per session. Save the Rule.
 
@@ -22,7 +22,7 @@ The form supports up to five ordered steps. You can reorder or remove them; no e
 | --- | --- |
 | Click | A trusted browser click whose target or an ancestor matches the selector. Clicking a button's nested icon or span still matches the button. |
 | Hover | A trusted pointer entry into a matching element. Moving between its children does not count again. Touch pointer entries do not count as hover. |
-| Navigation | A case-sensitive pathname match. `/users/{id}` matches one nonempty segment, such as `/users/42`. Queries and fragments are ignored; `/users/42/edit` does not match. SPA navigation and same-tab full-page navigation are supported. |
+| Navigation | A case-sensitive pathname match. `/users/{id}` matches one nonempty segment, such as `/users/42`. Queries and fragments are ignored; `/users/42/edit` does not match. SPA navigation, same-tab full-page navigation and a navigation the app reports with `recordNavigation(path, action, from, route)` are supported. |
 | Log | A log line: a console call, a record of the OpenTelemetry logs API, or a Traceway message. Exact matching is the default; contains matching is case-sensitive. Matching examines at most the first 4 KB of the message. |
 
 Use stable IDs, classes or data attributes such as `[data-action="open-user"]`. Quote an attribute value that is not a plain name: `[data-step="2"]`, not `[data-step=2]`, which browsers reject. Selectors support tags, IDs, classes, attributes and descendant/child/sibling combinators. Pseudo-selectors, comma lists and escaped selectors are intentionally unsupported. Avoid dynamic user-specific selectors or text containing personal information.
@@ -35,7 +35,7 @@ The same four steps work in a Flutter project, where the builder labels them **T
 | --- | --- | --- |
 | Click (Tap) | The clicked element or an ancestor matches the CSS selector | The widget under the finger or a widget above it matches the selector |
 | Hover | A pointer enters a matching element | A mouse pointer enters a matching widget (desktop) |
-| Navigation | The pathname of the page's URL | The path of the route on top: its name, else `/` and the page widget's type |
+| Navigation | The pathname of the page's URL, or the path the app reports with `recordNavigation` | The path of the route on top: its name, else `/` and the page widget's type |
 | Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `Traceway.log` line or a `package:logging` record at its level, a `print` or `debugPrint` line (info), or a `captureMessage` |
 
 A widget selector uses the same syntax, read against widgets instead of elements:
@@ -59,8 +59,8 @@ An Android project's builder also labels the steps **Tap**, **Hover**, **Navigat
 | --- | --- | --- |
 | Click (Tap) | The clicked element or an ancestor matches the CSS selector | The view or Compose node under the finger, or one of its parents, matches the selector |
 | Hover | A pointer enters a matching element | A mouse or trackpad pointer enters a matching view (ChromeOS, tablets with a mouse); fingers and styluses do not hover |
-| Navigation | The pathname of the page's URL | The screen on top: `/` and the activity's or AndroidX fragment's class, such as `/CheckoutActivity`, or the path the app reports with `Traceway.recordNavigation` |
-| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `System.out` (info) or `System.err` (error) line, a `Traceway.log` line at its level, or a `captureMessage` |
+| Navigation | The pathname of the page's URL, or the path the app reports with `recordNavigation` | The screen on top: `/` and the activity's or AndroidX fragment's class, such as `/CheckoutActivity`, or the path the app reports with `Traceway.recordNavigation` |
+| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `System.out` (info) or `System.err` (error) line, an `android.util.Log` call at its level when the Gradle plugin captures logcat, a `Traceway.log` line at its level, or a `captureMessage` |
 
 A view selector uses the same syntax, read against views and Compose semantics nodes:
 
@@ -80,8 +80,8 @@ An iOS project's builder labels the steps **Tap**, **Navigation** and **Log**. I
 | Event | Browser | iOS |
 | --- | --- | --- |
 | Click (Tap) | The clicked element or an ancestor matches the CSS selector | The view under the finger, or one of its superviews, matches the selector |
-| Navigation | The pathname of the page's URL | The screen: `/` and the class of the view controller that appeared, such as `/CheckoutViewController`, or the path the app reports with `.tracewayScreen` or `Traceway.recordNavigation` |
-| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `Traceway.log` line at its level, or a `Traceway.captureMessage` |
+| Navigation | The pathname of the page's URL, or the path the app reports with `recordNavigation` | The screen: `/` and the class of the view controller that appeared, such as `/CheckoutViewController`, or the path the app reports with `.tracewayScreen` or `Traceway.recordNavigation` |
+| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `Traceway.log` line at its level, an `NSLog`, `os_log` or `Logger` line (iOS 15 and later), a `print` line with `captureStdout`, or a `Traceway.captureMessage` |
 
 A view selector uses the same syntax, read against the view hierarchy:
 
@@ -92,7 +92,7 @@ A view selector uses the same syntax, read against the view hierarchy:
 | `.button` | Class | A role from the view's accessibility traits or class: `button`, `link`, `header`, `image`, `textField`, `slider`, `toggle`, `selected` |
 | `[name="value"]` | Any attribute, such as `data-action` | One of `key` (the view's `tag`), `identifier` and `id` (`accessibilityIdentifier`), `label` (`accessibilityLabel`), `text` (the text a label or button shows) and `type` (a class name) |
 
-SwiftUI draws its controls without views of their own, so a selector can name a SwiftUI screen's hosting view but not one SwiftUI button. Copy selectors from a session's **Actions** list, where each tap shows the one the SDK recorded, such as `UIButton#pay`. The full rules, with Swift examples, are in the iOS guide: [element selectors](/client/ios#naming-views) and [navigation](/client/ios#naming-screens).
+SwiftUI draws its controls without views of their own, and its `.accessibilityIdentifier` cannot be read: the app names a SwiftUI control with `.tracewayIdentifier("pay")`, and a tap on it is recorded as `#pay`. Without one, a selector can name a SwiftUI screen's hosting view but not one SwiftUI button. Copy selectors from a session's **Actions** list, where each tap shows the one the SDK recorded, such as `UIButton#pay`. The full rules, with Swift examples, are in the iOS guide: [element selectors](/client/ios#naming-views) and [navigation](/client/ios#naming-screens).
 
 One event advances at most one step. Unrelated events do not complete the next step, and they do not undo progress either: when the first step happens again in the middle of a sequence (the user hovers the menu a second time, an error storm continues), the sequence already under way keeps going and a second one starts beside it. Each later step has a timeout measured from the step before it; progress older than that is dropped. A path is matched as it reads, so `/café` matches the address the browser reports as `/caf%C3%A9`. A new trigger defaults to a 60-second lookback, 30-second capture, 60-second cooldown and three fires per session. The lookback can include only replay already present in the bounded local buffer.
 

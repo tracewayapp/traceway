@@ -1,0 +1,15 @@
+Add a class to the markup; no code is needed. The browser SDK has no mask API: these two classes are all there is.
+
+| Class            | What the replay shows                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `traceway-mask`  | The element and its layout. Its text is recorded with every character except whitespace replaced by `*`, and so are the attribute values that carry text (`title`, `alt`, `aria-*`, `data-*`, `placeholder`, `label`, `href`, `value`) and what is typed into its fields, even with `maskAllInputs` off. Its `img`, `picture`, `video`, `canvas` and `svg` elements are empty boxes of their size, without a source URL, and pictures in a `style` attribute become `none` |
+| `traceway-blank` | An empty box of the element's size. Nothing inside it is recorded: no text, no images, no input values and no input events                                                                                                                                                                                                                                                                                                                                                 |
+
+{props.children}
+
+The mask reaches into shadow roots and same-origin iframes inside the element, also for text they render or change after recording started. It does not hide:
+
+- pictures that a stylesheet sets (a class with `background-image`), which the replay loads by their URL. Put such an element inside `traceway-blank`;
+- what the element showed before it got the class, until the next full snapshot, at most 30 seconds later. Put the class in the markup from the start.
+
+Masked `data-*` and `aria-*` values can change how the masked area looks in the replay when the page's CSS selects on them. rrweb's own classes keep working: `rr-mask` masks text like `traceway-mask` but leaves images as they are, `rr-block` records an empty box like `traceway-blank`, and `rr-ignore` stops recording an input's events.

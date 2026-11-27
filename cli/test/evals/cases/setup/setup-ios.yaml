@@ -1,0 +1,122 @@
+id: setup-ios
+suite: setup
+title: Add the Traceway iOS SDK 2.1 to a SwiftUI app's Xcode project, with a masked checkout screen (files only)
+tags: [mobile, ios, files-only]
+seed: setup/ios
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: shop-ios-plain}
+# iOS cannot build on Linux and the sandbox has no Swift toolchain: the
+# files are graded, the Xcode project included. There is no verify step.
+setup:
+  path: fast
+  token: ingest
+  env:
+    TRACEWAY_TOKEN: "@token:shop-ios"
+    TRACEWAY_URL: "@url"
+prompt: |
+  Please add Traceway to the Shop iOS app: crashes and errors, with a wireframe replay of what led to them. We self-host Traceway at {{env.url}} and the "shop-ios" project (iOS) is already there. On this machine its token is in TRACEWAY_TOKEN and the server URL in TRACEWAY_URL; in GitHub Actions they are the secret TRACEWAY_TOKEN and the repository variable TRACEWAY_URL. The saved card on the checkout screen must never show up in a replay. There is no Xcode here, so edit the project files directly; I'll open the project in Xcode afterwards.
+budget: {max_turns: 40, max_tool_calls: 35, max_output_tokens: 20000, timeout: 15m}
+user:
+  - match: "(?i)dsym|symbol"
+    reply: "Not in this change; we'll add the dSYM upload later."
+  - match: "(?i)uikit|appdelegate"
+    reply: "It's all SwiftUI."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    # First, so a run on the 2.0 start reads as that in the summary.
+    - kind: file
+      path: "**/*.swift"
+      not_contains: ["\\bconnectionString:", "/api/report", "Traceway\\.start\\(", "tracewayPrivacyMask"]
+      note: "the 2.0 connectionString start (and Traceway.start, tracewayPrivacyMask) still work in 2.1 but are deprecated; 2.1 starts with initialize(token:baseUrl:options:) and masks with .tracewayMask"
+    # The Swift package is in the Xcode project and linked into the app.
+    - kind: file
+      path: Shop.xcodeproj/project.pbxproj
+      contains:
+        - "repositoryURL\\s*=\\s*\"?https://github\\.com/tracewayapp/traceway-ios(\\.git)?\"?\\s*;"
+        - "(?s)requirement\\s*=\\s*\\{[^}]*\\b(minimumVersion|version)\\s*=\\s*\"?2\\.([1-9]|[1-9][0-9])\\.[0-9]+\"?\\s*;"
+        - "productName\\s*=\\s*\"?Traceway\"?\\s*;"
+        - "packageReferences\\s*=\\s*\\(\\s*\\w+"
+        - "packageProductDependencies\\s*=\\s*\\(\\s*\\w+"
+        - "productRef\\s*=\\s*\\w+"
+    # The SDK starts in the App initializer (or the delegate's
+    # didFinishLaunching), with token and baseUrl.
+    - kind: file
+      path: "**/*.swift"
+      same_file: true
+      contains:
+        - "import\\s+Traceway\\b"
+        - "(?s)(\\binit\\s*\\(\\s*\\)\\s*\\{|didFinishLaunchingWithOptions[^{]*\\{).{0,1000}?Traceway\\.initialize\\(\\s*token:"
+        - "(?s)Traceway\\.initialize\\(\\s*token:.{0,600}?\\bbaseUrl:"
+        - "screenCapture:\\s*true"
+    # The token reaches the app through a build setting and Info.plist, not
+    # a scheme's environment variable (which a release build does not have).
+    - kind: file
+      path: "**/*.swift"
+      same_file: true
+      contains: ["forInfoDictionaryKey|infoDictionary", "\"[^\"]*(Token|TOKEN)[^\"]*\""]
+      not_contains: ["ProcessInfo\\.processInfo\\.environment\\[\\s*\"[^\"]*TOKEN"]
+    - kind: file
+      path: "**/Info.plist"
+      contains: ["\\$\\(\\s*TRACEWAY_\\w*TOKEN\\s*\\)", "\\$\\(\\s*TRACEWAY_\\w*URL\\s*\\)"]
+    # SwiftUI cannot read accessibilityIdentifier("traceway-mask"): the
+    # view that shows the card uses the modifier.
+    - kind: file
+      path: "**/*.swift"
+      same_file: true
+      contains: ["last4", "\\.tracewayMask\\("]
+    - kind: file
+      path: ".github/workflows/*"
+      contains:
+        - "secrets\\.TRACEWAY_TOKEN"
+        - "vars\\.TRACEWAY_URL"
+        - "(?s)TRACEWAY_TOKEN\\s*=.{0,300}?\\.xcconfig|\\.xcconfig.{0,300}?TRACEWAY_TOKEN"
+    - kind: no_token_literal
+    - kind: no_token_printed
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: >-
+    The agent adds the traceway-ios Swift package (https://github.com/tracewayapp/traceway-ios.git, from
+    2.1.0) to Shop.xcodeproj and links its Traceway product into the Shop target (package reference, product
+    dependency, a build file in the Frameworks phase). ShopApp's init() calls
+    Traceway.initialize(token:baseUrl:options:) with TracewayOptions(screenCapture: true), reading the token
+    and URL from Info.plist keys set to $(TRACEWAY_TOKEN) and $(TRACEWAY_URL), which come from a gitignored
+    .xcconfig (Config/Secrets.xcconfig, or an untracked Traceway.xcconfig included from the target's
+    configuration) where a URL is written https:/$()/host because // starts a comment. The view showing the
+    saved card gets .tracewayMask(...), since SwiftUI cannot read the traceway-mask accessibility identifier.
+    The release workflow writes the token and the escaped URL from the secret and the variable into that
+    .xcconfig before archiving. No connection string, /api/report or token in a committed file.
+  rubric:
+    - Adds the SPM package at 2.1.0 to the Xcode project correctly (reference, product dependency, Frameworks build file), not only instructions.
+    - Uses the 2.1 start, Traceway.initialize(token:baseUrl:options:), in the App initializer with values from Info.plist and a gitignored .xcconfig.
+    - Masks the saved card with the SwiftUI .tracewayMask modifier.
+    - Writes the token and the URL (with // escaped as /$()/) into the .xcconfig in CI and keeps every secret out of committed files.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: README.md
+  - read_file: Shop.xcodeproj/project.pbxproj
+  - read_file: Config/Shop.xcconfig
+  - read_file: Shop/ShopApp.swift
+  - read_file: Shop/Checkout/CheckoutView.swift
+  - read_file: .github/workflows/release.yml
+  - write_file: {path: Shop.xcodeproj/project.pbxproj, from: oracle/setup-ios/project.pbxproj}
+  - write_file: {path: Shop/ShopApp.swift, from: oracle/setup-ios/ShopApp.swift}
+  - write_file: {path: Shop/Checkout/CheckoutView.swift, from: oracle/setup-ios/CheckoutView.swift}
+  - write_file: {path: Shop/Info.plist, from: oracle/setup-ios/Info.plist}
+  - write_file: {path: .github/workflows/release.yml, from: oracle/setup-ios/release.yml}
+  - shell: |
+      printf 'TRACEWAY_TOKEN = %s\nTRACEWAY_URL = %s\n' "$TRACEWAY_TOKEN" "$(printf '%s' "$TRACEWAY_URL" | sed 's#//#/$()/#')" >> Config/Secrets.xcconfig && git status --short --ignored Config Shop
+  - finish:
+      summary: |
+        The Shop app now reports to the shop-ios project. Shop.xcodeproj depends on the traceway-ios package (https://github.com/tracewayapp/traceway-ios.git, up to the next major from 2.1.0) and links its Traceway library into the Shop target. ShopApp's init() starts the SDK with Traceway.initialize(token:baseUrl:options:) and screenCapture: true; the token and URL come from the TracewayToken and TracewayURL Info.plist keys, which are $(TRACEWAY_TOKEN) and $(TRACEWAY_URL) from the gitignored Config/Secrets.xcconfig (I wrote both there for this machine, the URL as https:/$()/host because // starts a comment in an .xcconfig). The saved-card row on the checkout screen has .tracewayMask(.blank()), so replays show an empty box there. The release workflow adds TRACEWAY_TOKEN and the escaped TRACEWAY_URL to Secrets.xcconfig before archiving. Open the project in Xcode once so it resolves the package, then run the app, trigger an error, and open /issues in shop-ios.
+      changes:
+        - {action: add the traceway-ios package and link Traceway into the app target, target: Shop.xcodeproj/project.pbxproj}
+        - {action: start the SDK in the App initializer, target: Shop/ShopApp.swift}
+        - {action: mask the saved card in replays, target: Shop/Checkout/CheckoutView.swift}
+        - {action: add the TracewayToken and TracewayURL keys, target: Shop/Info.plist}
+        - {action: write the Traceway settings into Secrets.xcconfig before archiving, target: .github/workflows/release.yml}

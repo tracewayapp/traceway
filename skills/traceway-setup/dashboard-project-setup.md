@@ -10,7 +10,7 @@ Ask whether the user uses Traceway Cloud or a self-hosted instance only if the r
 - Traceway Cloud registration: https://cloud.tracewayapp.com/register
 - Self-hosted dashboard: `https://<their-instance>`
 
-If the user does not have an account, direct them to registration and wait. Registration has two steps: step 1 creates the account and organization; step 2 offers "AI" and "Manual" project setup. For this manual path, tell the user to pick **Manual** on step 2 and enter the confirmed project rows right there (name plus framework per row, "Add another project" for more); each created project's token is shown for saving under the planned variable name. A user who already registered and skipped step 2 gets the same editor on `<their-instance>/setup` under the Manual tab. Do not ask for dashboard credentials.
+If the user does not have an account, direct them to registration and wait. Registration has two steps: step 1 creates the account and organization; step 2 offers "AI" and "Manual" project setup. For this manual path, tell the user to pick **Manual** on step 2 and enter the confirmed project rows right there (name plus framework per row, "Add another project" for more); each created project's token is shown for saving under the planned variable name. A user who already registered and skipped step 2 gets the same editor on `<their-instance>/setup` under the Manual tab; an account that already has projects opens it at `<their-instance>/setup?mode=add` (a plain `/setup` redirects such an account to the dashboard unless a proposal is pending). Do not ask for dashboard credentials.
 
 ## 2. Present the Creation Checklist
 
@@ -32,7 +32,7 @@ Explain the boundary in one paragraph: the backend project intentionally combine
 
 Two equivalent UI paths; pick whichever matches where the user is:
 
-**During onboarding** (registration step 2, or `<instance>/setup`): select the **Manual** tab, enter one row per checklist entry (project name plus framework), use "Add another project" for more rows, then select **New Projects**. Save each project's token under the planned environment-variable name.
+**During onboarding** (registration step 2, or `<instance>/setup`; an account that already has projects: `<instance>/setup?mode=add`, also the **Add Projects with Your Agent** button on the organization's Projects page): select the **Manual** tab, enter one row per checklist entry (project name plus framework), use "Add another project" for more rows, then select **New Projects**. Save each project's token under the planned environment-variable name.
 
 **From the running dashboard**, for each checklist row:
 
@@ -54,7 +54,7 @@ Framework selection rules:
 - Select **Flutter**, **React Native**, **Android**, or **iOS** for a mobile project.
 - A full-stack JS application with a production server gets an OpenTelemetry backend project and a separate browser project.
 
-The backend enforces that last split; it is not just a recommendation. A project whose framework is React, Svelte, Vue.js, jQuery, or React Native discards every endpoint, task, AI trace, and span that arrives over OTLP. The request still answers `200`, so a server exporter pointed at a browser project's token looks healthy while its Endpoints page stays empty forever. Server telemetry must use the OpenTelemetry project's token.
+The backend enforces that last split; it is not just a recommendation. A project whose framework is React, Svelte, Vue.js, jQuery, Flutter, Android, iOS, or React Native creates no endpoint, task, or AI trace from spans that arrive over OTLP; it keeps them only as plain spans (and their exceptions as Issues). The request still answers `200`, so a server exporter pointed at a browser or mobile project's token looks healthy while its Endpoints page stays empty forever. Server telemetry must use the OpenTelemetry project's token.
 
 ## 4. Plan Credentials Without Exposing Them
 
@@ -62,30 +62,31 @@ Do not ask the user to paste tokens into chat. Ask them to set the values in the
 
 | Credential | Used by | Handling |
 |---|---|---|
-| Project/runtime token | Backend OTLP exporter | Secret; store in the backend deployment environment. |
-| Browser connection string | Browser SDK | Build-time public configuration; never reuse the backend token. Follow the framework's public environment-variable prefix. |
-| Mobile connection string | Mobile SDK | Build configuration; never reuse the backend or browser token. |
-| Upload token | Frontend source maps and mobile symbols/mappings | CI secret; generate per project from **Connection** -> **Source Maps** or **Symbol Upload**. Never embed it in the application. |
+| Backend project token | Backend OTLP exporter | Secret; store in the backend deployment environment. |
+| Browser project token | Browser SDK (`token`) | Build-time public configuration; never reuse the backend token. Follow the framework's public environment-variable prefix. |
+| Mobile project token | Mobile SDK (`token`) | Build configuration (`.env` with `--dart-define-from-file`, `local.properties`, an untracked `.xcconfig`); never reuse the backend or browser token. |
+| Server URL | Every SDK (`baseUrl`) and every uploader | Only for a self-hosted server; Traceway Cloud is the SDK default. Not a secret. |
+| Upload token | Frontend source maps and mobile symbols/mappings | CI secret. Every browser, Flutter, Android and iOS project has one from the start, on **Connection** (Source Map Upload or Symbol Upload card). Never embed it in the application. |
 
 Runtime credentials take explicit component names. Adapt these to the repository's conventions:
 
 ```text
-TRACEWAY_URL
-TRACEWAY_BACKEND_TOKEN
-PUBLIC_TRACEWAY_WEB_CONNECTION_STRING
-TRACEWAY_MOBILE_CONNECTION_STRING
+TRACEWAY_BACKEND_TOKEN          # backend .env, read by the OTLP exporter
+VITE_TRACEWAY_TOKEN             # browser .env (SvelteKit PUBLIC_, Next.js NEXT_PUBLIC_ in .env.local)
+TRACEWAY_TOKEN                  # Flutter .env, Android local.properties, iOS Traceway.xcconfig
+TRACEWAY_URL                    # with the same prefix; only for a self-hosted server
 ```
 
-For Vite use a `VITE_` public prefix, for SvelteKit use `PUBLIC_`, and for Next.js use `NEXT_PUBLIC_`.
+These are the names the project's Connection page shows in its start snippet, so a value copied from there matches. The platform files (`frontend-js.md`, `flutter.md`, `android.md`, `ios.md`) show how each app reads them.
 
 **Upload tokens do not get invented names.** Each uploader reads one fixed variable, so a component-specific name only works when it is passed through explicitly:
 
 | Uploader | Reads | Also reads |
 |---|---|---|
-| `traceway-sourcemaps` (JS source maps) | `TRACEWAY_SOURCEMAP_TOKEN` | `TRACEWAY_URL` |
-| `dart run traceway:upload_symbols` (Flutter) | `TRACEWAY_UPLOAD_TOKEN` | `TRACEWAY_URL` |
-| iOS dSYM upload script | `TRACEWAY_UPLOAD_TOKEN` | `TRACEWAY_URL` |
-| `com.tracewayapp.symbols` Gradle plugin (Android R8) | nothing, the plugin has no environment lookup | nothing. Wire both in the `traceway { }` block: `uploadToken = System.getenv("TRACEWAY_UPLOAD_TOKEN") ?: ""` and `url = "https://<instance>"` |
+| `traceway-sourcemaps` (JS source maps) | `TRACEWAY_SOURCEMAP_TOKEN` | `TRACEWAY_URL`, only for a self-hosted server |
+| `dart run traceway:upload_symbols` (Flutter) | `TRACEWAY_UPLOAD_TOKEN` | `TRACEWAY_URL` (or `traceway: url:` in `pubspec.yaml`), only for a self-hosted server |
+| iOS dSYM upload script | `TRACEWAY_UPLOAD_TOKEN` | `TRACEWAY_URL`, only for a self-hosted server |
+| `com.tracewayapp.symbols` Gradle plugin (Android R8) | nothing, the plugin has no environment lookup | nothing. Wire both in the `traceway { }` block: `uploadToken = System.getenv("TRACEWAY_UPLOAD_TOKEN") ?: localProperties.getProperty("TRACEWAY_UPLOAD_TOKEN", "")` and, only for a self-hosted server, `url = "https://<instance>"` |
 
 Name the CI secret exactly what the uploader reads, or keep a per-component secret and pass it on the command line (`--token "$TRACEWAY_WEB_UPLOAD_TOKEN"`, or `uploadToken = System.getenv("...")` in Gradle). A mismatch here fails at release time, not at setup time. Upload tokens never use a public prefix and never ship inside the application.
 

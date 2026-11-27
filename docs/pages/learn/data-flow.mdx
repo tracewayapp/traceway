@@ -32,7 +32,20 @@ Here's how the concepts connect in a typical scheduled or queued job:
 
 Traces, metrics and logs arrive over OTLP/HTTP at `/api/otel/v1/traces`, `/api/otel/v1/metrics` and `/api/otel/v1/logs`. Each request authenticates with the project token. Stack traces are symbolicated at ingest, and everything lands in the same telemetry store.
 
-Browser and mobile apps use the Traceway SDK for their platform, which adds session replay and on-device crash capture. The 2.x browser SDK and the Flutter, Android and iOS SDKs 2.x send OTLP/HTTP to the same three endpoints, upload replay to `/api/recordings` and poll `/api/otel/v1/opamp` for [remote config](/learn/remote-config). The legacy 1.x browser SDK, the mobile SDKs 1.x and the React Native SDK send the native JSON collection-frame format to `/api/report`; Traceway builds canonical spans from those frames and keeps the API’s native UUID identities; OTLP export maps span and parent IDs to eight bytes and includes the available attributes and service metadata. Pick yours under [Docs](/client).
+Browser and mobile apps use the Traceway SDK for their platform, which adds session replay and on-device crash capture. The 2.x browser SDK and the Flutter, Android and iOS SDKs 2.x send OTLP/HTTP to the same three endpoints, upload replay to `/api/recordings` and poll `/api/otel/v1/opamp` for [remote config](/learn/remote-config). The legacy 1.x browser SDK, the mobile SDKs 1.x and the React Native SDK send Traceway's older native format; Traceway builds canonical spans from its frames and keeps the API’s native UUID identities; OTLP export maps span and parent IDs to eight bytes and includes the available attributes and service metadata. Pick yours under [Docs](/client).
+
+### Telemetry to another OpenTelemetry provider
+
+The 2.x browser, Flutter, Android and iOS SDKs can send their logs, traces and metrics to any OTLP/HTTP receiver as well, such as an OpenTelemetry Collector, Grafana or Honeycomb, with the `telemetry` option. With a project token, exceptions, messages, replay, captures and remote config stay on Traceway, and both destinations carry `session.id`:
+
+```ts
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  telemetry: { url: "https://collector.example.com", headers: { "x-api-key": "…" } },
+});
+```
+
+`url` gets `/v1/logs`, `/v1/traces` and `/v1/metrics` appended, and `logs`, `traces` and `metrics` can each name a URL of their own. Without a token the SDK runs standalone and sends everything to that receiver, with no replay and no remote config. The apps take the same option in `TracewayOptions`; see the [JS SDK](/client/js-sdk/initialization), [Flutter](/client/flutter), [Android](/client/android) and [iOS](/client/ios) guides.
 
 ## After the data collection
 

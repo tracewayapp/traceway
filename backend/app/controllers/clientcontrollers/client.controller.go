@@ -528,6 +528,10 @@ func ComputeExceptionHash(stackTrace string, isMessage bool) string {
 	normalized := stackTrace
 
 	if !isMessage {
+		if typ, ok := frameGroupedIssueType(stackTrace); ok {
+			hash := sha256.Sum256([]byte(appIssueFingerprint(typ, stackTrace)))
+			return hex.EncodeToString(hash[:])[:16]
+		}
 		normalized = causedByRe.ReplaceAllString(normalized, "$1")
 		normalized = errorMessageRe.ReplaceAllString(normalized, "$1")
 		normalized = jsFuncLineRe.ReplaceAllString(normalized, "${1}<fn>${3}")

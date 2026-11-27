@@ -1,8 +1,8 @@
 # Svelte Quick Start
 
-Integrate Traceway into your Svelte or SvelteKit application with the `@tracewayapp/svelte` package.
+Integrate Traceway into your Svelte or SvelteKit application with the `@tracewayapp/svelte` package. The examples use Svelte 5.
 
-Upgrading from 1.x? See the [migration guide](/client/js-sdk/migration).
+Upgrading from 2.0 or 1.x? See [Upgrading](/client/js-sdk/migration).
 
 ## Installation
 
@@ -12,24 +12,38 @@ npm install @tracewayapp/svelte
 
 ## Setup
 
-Call `setupTraceway` in your root layout. Do not wrap it in an `if (browser)` guard. `setupTraceway` is what puts the capture functions into Svelte's context, so if it is skipped during SSR, every child component that calls `getTraceway()` throws and the page returns a 500. The call is safe on the server: without `window` the SDK never starts, so it installs no instrumentation, opens no session and sends nothing, and the capture functions do nothing there. Errors thrown on the server are not reported by this package.
-
-In the browser, session replay is on by default and buffered on the device: a captured error uploads a 30-second replay clip and up to 10 minutes of breadcrumbs (console, network, navigation, clicks). Set `recordAllSessions: true` to stream every session instead.
+Call `setupTraceway` in your root layout with the project token:
 
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
+  import { PUBLIC_TRACEWAY_TOKEN } from "$env/static/public";
   import { setupTraceway } from "@tracewayapp/svelte";
 
+  let { children } = $props();
+
   setupTraceway({
-    connectionString: "your-token@https://traceway.example.com/api/report",
+    token: PUBLIC_TRACEWAY_TOKEN,
   });
 </script>
 
-<slot />
+{@render children()}
 ```
 
-The same layout works in a non-SvelteKit Svelte app. On Svelte 5, write `{@render children()}` instead of `<slot />` and `onclick` instead of `on:click`. The legacy forms below still compile, with a deprecation warning.
+```bash
+# .env
+PUBLIC_TRACEWAY_TOKEN=YOUR_TOKEN
+```
+
+The project's **Connection** page in Traceway shows the token. The SDK sends to Traceway Cloud; for a self-hosted server, also pass its address as `baseUrl` (`PUBLIC_TRACEWAY_URL` from `$env/static/public`). Outside SvelteKit, call `setupTraceway` in the root component with `import.meta.env.VITE_TRACEWAY_TOKEN`.
+
+`setupTraceway` runs `init()` synchronously, which installs the handlers for uncaught errors and unhandled rejections, instruments `console.*`, `fetch` / XHR, the History API and clicks, and starts the replay recorder. It never throws: a build without its token renders the app as usual, with the SDK off and one console warning that says what is missing.
+
+Do not wrap it in an `if (browser)` guard. `setupTraceway` is what puts the capture functions into Svelte's context; if it is skipped during SSR, `getTraceway()` falls back to the module's own capture functions, which do nothing on the server. The call is safe there: without `window` the SDK never starts, so it installs no instrumentation, opens no session and sends nothing. Errors thrown on the server are not reported by this package.
+
+## Session capture
+
+Errors and messages are sent as they happen, and session start and end are reported for every visit. Console output, requests, navigation, clicks and the session replay stay on the device until they are needed: a captured error uploads a 30-second replay clip and up to 10 minutes of those breadcrumbs. [Configure Session Capture](/client/svelte/session-capture) shows how to hide private content, record whole sessions or journeys, and capture one user from the dashboard.
 
 ## Capture Errors in Components
 
@@ -50,17 +64,45 @@ Use `getTraceway` in child components:
   }
 </script>
 
-<button on:click={handleSubmit}>Submit</button>
+<button onclick={handleSubmit}>Submit</button>
 ```
 
-## With Options
+Every other function of the browser SDK (`log`, `track`, `recordNavigation`, `startInteraction`, `tracer`, `flush`, …) is exported from `@tracewayapp/svelte` too; see [Events, Metrics and Lifecycle](/client/svelte/context#events-metrics-and-lifecycle).
+
+## Render Errors
+
+A component that throws while it renders does not reach the global error handlers. Svelte 5's `<svelte:boundary>` catches it; pass its error to `captureSvelteError`:
 
 ```svelte
 <script>
+  import { captureSvelteError } from "@tracewayapp/svelte";
+  import Widget from "$lib/components/Widget.svelte";
+</script>
+
+<svelte:boundary onerror={(error) => captureSvelteError(error)}>
+  <Widget />
+  {#snippet failed(error, reset)}
+    <p>Something went wrong.</p>
+    <button onclick={reset}>Try again</button>
+  {/snippet}
+</svelte:boundary>
+```
+
+In SvelteKit, errors from a failed `load` or a render crash during client-side navigation reach `handleError` in `src/hooks.client.js`; see [SvelteKit Error Handling](/client/svelte/context#sveltekit-error-handling).
+
+## With Options
+
+Every option of the browser SDK goes in `options`:
+
+```svelte
+<script>
+  import { PUBLIC_TRACEWAY_TOKEN } from "$env/static/public";
   import { setupTraceway } from "@tracewayapp/svelte";
 
+  let { children } = $props();
+
   setupTraceway({
-    connectionString: "your-token@https://traceway.example.com/api/report",
+    token: PUBLIC_TRACEWAY_TOKEN,
     options: {
       debug: true,
       version: "1.0.0",
@@ -68,10 +110,10 @@ Use `getTraceway` in child components:
   });
 </script>
 
-<slot />
+{@render children()}
 ```
 
-`options` takes every option of the browser SDK. The most used ones are listed under [SDK Options](/client/svelte/context#sdk-options), the full list under [Initialization](/client/js-sdk/initialization#options-reference).
+The most used options are listed under [SDK Options](/client/svelte/context#sdk-options), the full list under [Initialization](/client/js-sdk/initialization#options-reference).
 
 ## Test Your Integration
 
@@ -86,17 +128,28 @@ Use `getTraceway` in child components:
   }
 </script>
 
-<button on:click={sendTestError}>Send Test Error</button>
+<button onclick={sendTestError}>Send Test Error</button>
 ```
 
-Click the button and check your Traceway dashboard to verify the error appears.
+Click the button and check your Traceway dashboard to verify the error appears. With `debug: true` in `options`, the browser console shows `Traceway: started (https://cloud.tracewayapp.com/api/otel/v1/logs), session …` when the SDK starts.
 
 ## Distributed Tracing
 
 The SDK records `fetch` and `XMLHttpRequest` calls as CLIENT spans and adds the W3C `traceparent` header to same-origin requests. A backend instrumented with OpenTelemetry picks it up with no extra middleware, so a browser request and the backend work it caused show up as one trace. For an API on another origin, list it in `propagateTraceHeaderCorsUrls`. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
+## Platform Support
+
+| Environment                    | Error Tracking                                                                                    | Session Replay |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- | -------------- |
+| Svelte 5 in any modern browser | Yes                                                                                               | Yes            |
+| SvelteKit (browser)            | Yes                                                                                               | Yes            |
+| SvelteKit SSR                  | No: `setupTraceway` still runs on the server to set the context, but the SDK does not start there | No             |
+
+The package also works with Svelte 4. There, write `<slot />` instead of `{@render children()}`, `on:click` instead of `onclick`, and wrap risky code in `try`/`catch` with `captureSvelteError(err)`, since Svelte 4 has no `<svelte:boundary>`.
+
 ## Next Steps
 
+- [Configure Session Capture](/client/svelte/session-capture) - Masks, images, which sessions upload, captures and rules
 - [Context Setup](/client/svelte/context) - Configuration, route names, custom attributes, SvelteKit error handling
 - [Initialization](/client/js-sdk/initialization) - Every SDK option
 - [Session Replay](/client/js-sdk/session-replay) - What is recorded and when it is uploaded

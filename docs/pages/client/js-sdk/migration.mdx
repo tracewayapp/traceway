@@ -1,8 +1,6 @@
-# Migrating from 1.x to 2.x
+# Upgrading
 
-The 2.x browser SDK uses OpenTelemetry for logs, request spans and [performance metrics](/learn/client-metrics). Traceway can manage what each browser collects [remotely](/learn/remote-config), and session replay is stored separately from the rest of the telemetry.
-
-This guide applies to `@tracewayapp/frontend` and its React, Vue, Svelte and jQuery wrappers. `@tracewayapp/react-native` shares the version number but keeps its own transport and API, so a React Native app has nothing to migrate.
+This page brings a browser app to the current SDK, 2.1.0: from 2.0 first, then from 1.x. It applies to `@tracewayapp/frontend` and its React, Vue, Svelte and jQuery wrappers. `@tracewayapp/react-native` shares the version number but keeps its own transport and API, so a React Native app has nothing to change.
 
 ## Upgrade the packages
 
@@ -13,49 +11,115 @@ npm install @tracewayapp/frontend@2
 # or @tracewayapp/react@2, @tracewayapp/vue@2, @tracewayapp/svelte@2, @tracewayapp/jquery@2
 ```
 
-With a CDN script, change the pinned major from `@1` to `@2`:
+With a CDN script, the URL pins the major, `@2`, and so loads the newest 2.x release:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2/dist/traceway.iife.global.js"></script>
 ```
 
-Your project token and connection string stay the same, including a URL that ends in `/api/report`.
+## Upgrading from 2.0
 
-## What to change
+### Start with a token
 
-| If your 1.x app uses… | What to do in 2.x |
-| --- | --- |
-| `init(connectionString, options)` or a framework provider | Keep the existing connection string. Initialize once per page: a second `init()` is ignored. To initialize again with different options, call `await shutdown()` first. |
-| `captureException`, `captureMessage`, `recordAction` or session attributes (`setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes`) | Keep these calls. Pass per-error string attributes as the second argument to `captureException(error, attributes)` or `captureExceptionWithAttributes(error, attributes)`. Remove the `distributedTraceId` option from both calls. To tie several steps of one user action together, use `startInteraction(name)` and its `run`, `captureException` and `end` methods. |
-| `traceway-trace-id`, `DISTRIBUTED_TRACE_HEADER`, `getActiveDistributedTraceId()` or `createAxiosInterceptor()` | Remove the custom header and the interceptor. The SDK records `fetch` and XHR (including Axios) as spans and sends the W3C `traceparent` header on same-origin requests. For a cross-origin API, add its URL pattern to `propagateTraceHeaderCorsUrls` and allow `traceparent` in the API's CORS policy. See [Distributed Tracing](/client/js-sdk/distributed-tracing). |
-| `installGlobalHandlers`, `installConsoleInstrumentation`, `installNavigationInstrumentation` or `formatBrowserStackTrace` | Let `init()` install the handlers and pass the original error to `captureException()`. Import report types such as `CollectionFrame` from `@tracewayapp/core` if you still consume that format. |
-| A `beforeCapture` callback that reads `stackTrace` | Read `type`, `message`, `stack` and `attributes` from the callback argument. Return `false` to drop the event. `ignoreErrors` matches the error type and message. |
-| `eventsWindowMs`, `eventsMaxCount`, `debounceMs` or `retryDelayMs` | Set retention with `collection.buffer.maxAgeSeconds` (seconds) and `collection.buffer.maxBytes` (bytes). Use `exportDelayMs` for log and span batching. The SDK manages retries of failed exports itself. |
-| `recordAllSessions` or error-triggered replay | Keep `recordAllSessions: true` to stream every session's replay. Without it, errors and messages are sent right away, most breadcrumbs and the replay stay on the device, and an error uploads up to ten minutes of breadcrumbs and a 30-second clip. |
-| `flush()` before a redirect or after an error | Keep it. In 2.x `flush()` only sends what is queued and no longer stops the recorder or ends the session. See [Flush & Lifecycle](/client/js-sdk/flush). |
-| A self-hosted server that only accepts 1.x reports | Nothing by default: the SDK probes the server and falls back to the 1.x report protocol when it finds no remote-config endpoint. For a server you know is older, set `transport: "legacy"` to skip the probe. Remote rules, performance metrics and the session timeline need a current Traceway server. |
+2.0 started with a connection string, the project token and the server's address joined by `@`. 2.1.0 takes the token, and the server only when it is self-hosted:
+
+```javascript
+// 2.0
+init("YOUR_TOKEN@https://cloud.tracewayapp.com/api/report", {
+  version: "1.4.2",
+});
+
+// 2.1.0, on Traceway Cloud
+init({ token: "YOUR_TOKEN", version: "1.4.2" });
+
+// 2.1.0, on a self-hosted server: baseUrl is the part after "@", without /api/report
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  baseUrl: import.meta.env.VITE_TRACEWAY_URL,
+});
+```
+
+Every other option moves into the same object. The wrappers change the same way:
+
+- **React**: the `connectionString` prop of `<TracewayProvider>` becomes `token`, plus `baseUrl` for a self-hosted server; `options` stays.
+- **Vue** and **Svelte**: the `connectionString` field of `createTracewayPlugin({ … })` and `setupTraceway({ … })` becomes `token`, plus `baseUrl`; `options` stays.
+- **jQuery**: `init("…", options)` becomes `init({ token, ...options })`. A bundled jQuery is passed as the new `jQuery` option, `init({ token, jQuery: $ })`, instead of being published on `window` first.
+- **CDN**: `Traceway.init("…")` and `TracewayJQuery.init("…")` become `Traceway.init({ token: "YOUR_TOKEN" })` and `TracewayJQuery.init({ token: "YOUR_TOKEN" })`.
+- **Standalone** (no Traceway server): leave out the token and keep `telemetry`; the wrappers take `telemetry` in `options`. The `StandaloneOptions` type is deprecated.
+
+Rename the environment variable too: it now holds only the token, `VITE_TRACEWAY_TOKEN` (`NEXT_PUBLIC_TRACEWAY_TOKEN` in Next.js, `PUBLIC_TRACEWAY_TOKEN` in SvelteKit), and a self-hosted server's address goes in `VITE_TRACEWAY_URL` with the same prefix. [Token and server](/client/js-sdk#token-and-server) lists them.
+
+### Connection strings still work
+
+The 2.0 forms keep working, deprecated: `init(connectionString, options)`, the `connectionString` prop or field of the React, Vue and Svelte packages, and the jQuery package's `init(connectionString, options)`. Each logs one warning that names the new form and never the token, such as `Traceway: connection strings are deprecated: use init({ token: "…" })`.
+
+Every variation of the old string is read the same way:
+
+- A trailing `/api/report` or `/api` is dropped, with or without a trailing slash, so `YOUR_TOKEN@https://cloud.tracewayapp.com/api/report` and `YOUR_TOKEN@https://cloud.tracewayapp.com` both become `{ token: "YOUR_TOKEN" }`.
+- Spaces around the string, a query string and a fragment are dropped.
+- A string without a scheme gets `https://`, so `YOUR_TOKEN@cloud.tracewayapp.com` works. For `localhost`, `127.0.0.1`, `10.0.2.2` and `[::1]` it gets `http://`: `YOUR_TOKEN@localhost:8082` becomes `baseUrl: "http://localhost:8082"`.
+- Any other path is kept, so a server under a sub-path stays reachable.
+- The token is everything before the first `@`. A string without a token or without a server (`@https://cloud.tracewayapp.com`, `YOUR_TOKEN`, `YOUR_TOKEN@`), or with a scheme other than HTTP(S), logs one warning and leaves the SDK off. It never throws.
+
+A `baseUrl` passed on its own is read by the same rules, so `baseUrl: "https://cloud.tracewayapp.com/api/report"` also works.
+
+### The SDK no longer calls /api/report
+
+2.0 could fall back to the 1.x report endpoint (`transport: "auto"` or `"legacy"`) when a server had no remote config. 2.1.0 removes that transport: the SDK always sends OTLP. The `transport` option is accepted and ignored, with one deprecation warning. A server without remote config (it answers 404, 405 or 501) still receives everything, and the local settings apply. A self-hosted Traceway server from before OTLP support receives nothing: upgrade the server first.
+
+### Other changes
+
+- **`init()` never throws.** What it cannot use is one warning, and the SDK stays off. `useTraceway()` (React, Vue) and `getTraceway()` (Svelte) no longer throw outside the provider or plugin; they return the same capture functions, which report once the SDK runs. A failure of the SDK's own code never reaches the page, see [The SDK never breaks the page](/client/js-sdk#the-sdk-never-breaks-the-page).
+- **`beforeCapture` gets a `TracewayCapturedError`**: `{ error, type, message, isMessage, stack, attributes }`, where `error` is the value thrown or passed to `captureException`. `CapturedException` stays as a deprecated alias.
+- **`startInteraction(name, attributes?)` always returns a `TracewayInteraction`**, also before `init()`, where it only runs the work. It gained `spanId`, `isEnded`, `setAttribute(key, value)` and `end(failed?)`. See [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly).
+- **No OpenTelemetry globals are registered.** An app whose own spans got W3C `traceparent` propagation from Traceway's global propagator registers its own. `tracer()` gives you the SDK's tracer for spans of your own.
+- **Request spans end when the response headers arrive**, so request durations get shorter, and resource timing is no longer linked to fetch spans.
+- **Vue**: with no `errorHandler` of the app, the plugin hands the error back to Vue after capturing it, so development builds show it as Vue does without Traceway.
+- **jQuery**: requests the app aborted (`jqXHR.abort()`) are not reported. The package no longer declares global `$` and `jQuery` types, so it works next to `@types/jquery`, and it now exports `recordAction`, `DEFAULT_IGNORE_PATTERNS`, `trackRouter` and `routeFromParams`.
+- **Web vitals regroup once.** Their element is named with a stable selector (`data-testid`, `data-slot`, `name`, `role`, plain classes), so web vitals attributed to an element start new groups once after the upgrade.
+
+New in 2.1.0: [`log()`](/client/js-sdk#logs), the [screen keys and `recordNavigation`](/client/js-sdk#screens-and-navigation), [`tracer()`](/client/js-sdk/distributed-tracing#spans-of-your-own), the `traceway-mask` and `traceway-blank` classes and `replay.images` ([Configure Session Capture](/client/js-sdk/session-capture)), and a [`debug`](/client/js-sdk/initialization#debug-mode) that says why an event was dropped.
+
+## Migrating from 1.x
+
+The 2.x browser SDK uses OpenTelemetry for logs, request spans and [performance metrics](/learn/client-metrics). Traceway can manage what each browser collects [remotely](/learn/remote-config), and session replay is stored separately from the rest of the telemetry.
+
+### What to change
+
+| If your 1.x app uses…                                                                                                                              | What to do in 2.x                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init(connectionString, options)` or a framework provider                                                                                          | Start with `init({ token, ...options })`, or the `token` prop or field of the provider or plugin, with the project token you already have. Add `baseUrl` only for a self-hosted server ([Start with a token](#start-with-a-token) shows how the old string maps). Initialize once per page: a second `init()` is ignored. To initialize again with different options, call `await shutdown()` first. |
+| `captureException`, `captureMessage`, `recordAction` or session attributes (`setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes`) | Keep these calls. Pass per-error string attributes as the second argument to `captureException(error, attributes)` or `captureExceptionWithAttributes(error, attributes)`. Remove the `distributedTraceId` option from both calls. To tie several steps of one user action together, use `startInteraction(name)` and its `run`, `captureException` and `end` methods.                               |
+| `traceway-trace-id`, `DISTRIBUTED_TRACE_HEADER`, `getActiveDistributedTraceId()` or `createAxiosInterceptor()`                                     | Remove the custom header and the interceptor. The SDK records `fetch` and XHR (including Axios) as spans and sends the W3C `traceparent` header on same-origin requests. For a cross-origin API, add its URL pattern to `propagateTraceHeaderCorsUrls` and allow `traceparent` in the API's CORS policy. See [Distributed Tracing](/client/js-sdk/distributed-tracing).                              |
+| `installGlobalHandlers`, `installConsoleInstrumentation`, `installNavigationInstrumentation` or `formatBrowserStackTrace`                          | Let `init()` install the handlers and pass the original error to `captureException()`. Import report types such as `CollectionFrame` from `@tracewayapp/core` if you still consume that format.                                                                                                                                                                                                      |
+| A `beforeCapture` callback that reads `stackTrace`                                                                                                 | Read `error`, `type`, `message`, `isMessage`, `stack` and `attributes` from the callback argument (`TracewayCapturedError`). Return `false` to drop the event. `ignoreErrors` matches the error type and message.                                                                                                                                                                                    |
+| `eventsWindowMs`, `eventsMaxCount`, `debounceMs` or `retryDelayMs`                                                                                 | Set retention with `collection.buffer.maxAgeSeconds` (seconds) and `collection.buffer.maxBytes` (bytes). Use `exportDelayMs` for log and span batching. The SDK manages retries of failed exports itself.                                                                                                                                                                                            |
+| `recordAllSessions` or error-triggered replay                                                                                                      | Keep `recordAllSessions: true` to stream every session's replay. Without it, errors and messages are sent right away, most breadcrumbs and the replay stay on the device, and an error uploads up to ten minutes of breadcrumbs and a 30-second clip.                                                                                                                                                |
+| `flush()` before a redirect or after an error                                                                                                      | Keep it. In 2.x `flush()` only sends what is queued and no longer stops the recorder or ends the session. See [Flush & Lifecycle](/client/js-sdk/flush).                                                                                                                                                                                                                                             |
+| A self-hosted server that only accepts 1.x reports                                                                                                 | Upgrade the server first: the SDK sends OTLP only, so a server without the OTLP endpoints receives nothing. A server without remote config (it answers 404, 405 or 501) still receives everything; remote config is then off and the local settings apply.                                                                                                                                           |
 
 All options are listed on [Initialization](/client/js-sdk/initialization).
 
-## What behaves differently
+### What behaves differently
 
 - **Collection has modes.** Each signal either streams, stays buffered on the device, or is switched off. A trigger or a capture releases buffered history. You set the modes in `init()` with `collection`, or from the dashboard's **Data Collection** page, which is on by default (`remoteConfig: true`). See [Remote SDK Config](/learn/remote-config).
 - **Sessions are reported for every visit.** 1.x reported a session only with `recordAllSessions`. 2.x reports session start and end unless you set `sessions: false`; the replay still stays on the device until something asks for it.
 - **Performance metrics are new.** Web vitals, route changes and requests are aggregated on the device and uploaded every five minutes and when the page is hidden, whatever the mode of the detailed events. `flush()` sends pending metrics too. Use `track()` for a named event, `count()` for a counter and `metric()` for a distribution. See [Client Metrics](/learn/client-metrics).
 - **Requests join backend traces.** `fetch` and XHR calls are OpenTelemetry spans that carry `traceparent`, so a backend instrumented with OpenTelemetry continues the same trace.
+- **Input values are masked.** 1.x masked only password fields; 2.x records the value of every input as `*` (`replay.maskAllInputs`).
 - **Issues regroup once.** 2.x sends the browser's raw stack, which Traceway normalizes differently from the text 1.x formatted on the device. Existing issues from a 1.x app start new groups after the upgrade.
 
-## Choose a setup
+### Choose a setup
 
-2.x can run in three ways. Most apps keep the first one, which needs no option beyond the connection string.
+2.x can run in three ways. Most apps keep the first one, which needs no option beyond the token.
 
-1. **Everything on one Traceway server.** `init("token@https://traceway.example.com/api/report", { serviceName, environment })`. The browser polls Traceway for collection rules and sends telemetry and replay to the same host.
-2. **Issues and replay on Traceway, other telemetry elsewhere.** Add `telemetry: { url }` to send ordinary logs, request spans and metrics to your own OTLP/HTTP receiver, while exceptions, messages, sessions and replay keep going to Traceway.
-3. **No Traceway server.** Pass a single options object, `init({ serviceName, telemetry, collection })`, to export everything over OTLP with a local collection policy and no remote config.
+1. **Everything on Traceway.** `init({ token, serviceName, environment })`. The browser polls Traceway for collection rules and sends telemetry and replay to the same server.
+2. **Issues and replay on Traceway, other telemetry elsewhere.** Add `telemetry: { url }` to send ordinary logs, request spans and metrics to another OpenTelemetry provider, while exceptions, messages, sessions and replay keep going to Traceway.
+3. **No Traceway server.** Leave out the token, `init({ serviceName, telemetry, collection })`, to export everything over OTLP with a local collection policy and no remote config.
 
-[Initialization](/client/js-sdk/initialization) has the options for each.
+[Initialization](/client/js-sdk/initialization#setups) has the options for each.
 
-## Staying on 1.x
+### Staying on 1.x
 
 1.x keeps working against current Traceway servers. Because `latest` on npm is now 2.x, pin the major to stay on it:
 

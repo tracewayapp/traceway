@@ -1,39 +1,69 @@
 # Android Quick Start
 
-Integrate Traceway into your native Android application with the [`com.tracewayapp:traceway`](https://central.sonatype.com/artifact/com.tracewayapp/traceway) library from Maven Central. The SDK is built on the official [OpenTelemetry Java SDK](https://github.com/open-telemetry/opentelemetry-java): exceptions, logs and request spans leave as OTLP/HTTP, performance metrics as OTLP metrics, and the SDK polls Traceway over [OpAMP](https://opentelemetry.io/docs/specs/opamp/) for its collection settings, like the [browser SDK](/client/js-sdk) 2.x, the [Flutter SDK](/client/flutter) 2.x and the [iOS SDK](/client/ios) 2.x. Session replay records the app's views and Jetpack Compose screens as a wireframe that the dashboard plays with its rrweb player.
+Integrate Traceway into your native Android application with the [`com.tracewayapp:traceway`](https://central.sonatype.com/artifact/com.tracewayapp/traceway) library from Maven Central. The SDK is built on the official [OpenTelemetry Java SDK](https://github.com/open-telemetry/opentelemetry-java): exceptions, logs and request spans leave as OTLP/HTTP, performance metrics as OTLP metrics, and the SDK polls Traceway over [OpAMP](https://opentelemetry.io/docs/specs/opamp/) for its collection settings, like the [browser SDK](/client/js-sdk), the [Flutter SDK](/client/flutter) and the [iOS SDK](/client/ios). Session replay records the app's views and Jetpack Compose screens as a wireframe that the dashboard plays with its rrweb player.
 
-> **2.0 is a beta.** It needs a Traceway server that accepts Android projects on its OTLP and OpAMP endpoints; there is no fallback to the 1.x `/api/report` protocol. On an older server stay on `com.tracewayapp:traceway:1.0.1`. See [Migrating from 1.x](#migrating-from-1x).
+These pages describe version 2.1.0. It needs a Traceway server that accepts Android projects on its OTLP and OpAMP endpoints, as Traceway Cloud does; on an older self-hosted server stay on `com.tracewayapp:traceway:1.0.1` (see [Migrating from 1.x](#migrating-from-1x)).
 
 ## Features
 
 - Uncaught exceptions on every thread, written to disk before the process ends and sent at once or at the next start; deobfuscated on the server for R8 builds
+- Native crashes and ANRs from Android's own record of how the process ended (`ApplicationExitInfo`, Android 11+), reported at the next start, and low-memory kills as a count
+- App hangs: a main thread blocked for 2 s or more is an `AppHang` issue with the stack it was stuck in
+- Logcat lines: with the Gradle plugin, the app's and its libraries' `android.util.Log` calls (Timber's too) are log lines on the session timeline
 - OpenTelemetry inside: every record is a log record or span of the official OpenTelemetry Java SDK and leaves as OTLP/HTTP protobuf
 - A ring buffer on the device: logs, requests, screens, taps and custom events are uploaded only when something goes wrong
 - Remote config over OpAMP: signal modes, sample rates, triggers and captures from the project's **Data Collection** page, or the same settings in the app with `collection`
 - Captures on demand, from the dashboard or from a recording trigger on the device (a journey of taps, screens and log lines)
 - Wireframe session replay of views and Jetpack Compose screens, with pictures of image views when the image policy allows them
 - Taps that name the view: every tap is recorded with a CSS-like selector (`MaterialButton#pay`, `ImageButton[label="Delete"]`) that click steps of recording triggers match
-- App performance metrics: start, screen display times, slow and frozen frames, hangs, crashes, sessions, users, memory and requests, aggregated on the device; they fill the project's **Mobile Performance** dashboard
+- Interactions with `Traceway.startInteraction`, and `Traceway.tracer` for spans of your own
+- App performance metrics: start, screen display times, slow and frozen frames, hangs, crashes, ANRs, low-memory kills, sessions, users, memory and requests, aggregated on the device; they fill the project's **Mobile Performance** dashboard
 - Network requests as client spans, with W3C `traceparent` propagation to your backend
 - Any OpenTelemetry backend: logs, spans and metrics to an OTLP/HTTP receiver, next to Traceway or without it
+- Crash safe: nothing the SDK does can take the app down
 
 ## Requirements
 
-- Android 5.0 (API 21) or later: `minSdk` 21.
+- Android 5.0 (API 21) or later: `minSdk` 21, and `compileSdk` 35 or newer to build against the published artifact.
 - Core library desugaring when the app's `minSdk` is below 26 (see [Installation](#installation)).
-- A Traceway server that accepts Android projects on its OTLP and OpAMP endpoints, or an OTLP/HTTP receiver for [standalone](#standalone-without-a-traceway-server) use.
+- `opentelemetry-api` 1.68 comes with the SDK on the app's compile classpath, since `Traceway.tracer` is an OpenTelemetry `Tracer`. The SDK itself stays private to Traceway.
+- For the Gradle plugin: the Android Gradle Plugin 8.0 or newer and JDK 17.
+- Traceway Cloud, a self-hosted Traceway server that accepts Android projects on its OTLP and OpAMP endpoints, or an OTLP/HTTP receiver for [standalone](#standalone-without-a-traceway-server) use.
 
 ## Installation
 
-Add the dependency to your app module's `build.gradle.kts`:
+**1. The SDK**, in your app module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.tracewayapp:traceway:2.0.0-beta.1")
+    implementation("com.tracewayapp:traceway:2.1.0")
 }
 ```
 
-OpenTelemetry Java uses `java.util.function` and `java.time`, so **an app whose `minSdk` is below 26 must enable core library desugaring**, as every app using OpenTelemetry on Android does:
+**2. The Gradle plugin** (recommended). It records `android.util.Log` lines (Timber's too) and makes release crashes readable: it uploads R8's `mapping.txt` and tells the SDK which build it is. The SDK and the plugin share one version, and the plugin is on Maven Central:
+
+```kotlin
+// settings.gradle.kts
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()   // resolves com.tracewayapp.symbols
+    }
+}
+```
+
+```kotlin
+// app/build.gradle.kts
+plugins {
+    id("com.android.application")
+    id("com.tracewayapp.symbols") version "2.1.0"
+}
+```
+
+Applied, it rewrites `Log` calls for [Logcat capture](#automatic-log-capture) and puts the build's ProGuard UUID where the SDK finds it. Uploading the mapping needs an upload token; see [Crashes and symbolication](#crashes-and-symbolication).
+
+**3. Desugaring.** OpenTelemetry Java uses `java.util.function` and `java.time`, so **an app whose `minSdk` is below 26 must enable core library desugaring**, as every app using OpenTelemetry on Android does:
 
 ```kotlin
 android {
@@ -47,11 +77,11 @@ dependencies {
 }
 ```
 
-The library's manifest declares `INTERNET` and `ACCESS_NETWORK_STATE`; the manifest merger adds both to your app. Its consumer R8 rules ship with it, so a minified build needs no rules of its own.
+The library's manifest declares `INTERNET` and `ACCESS_NETWORK_STATE` (which the `wifi` replay image policy reads); the manifest merger adds both to your app. Its consumer R8 rules ship with it, so a minified build needs no rules of its own.
 
 ## Quick start
 
-Initialize the SDK from your `Application.onCreate()`. Every uncaught exception, on every thread, is then captured with the breadcrumbs and the replay of the seconds before it:
+Initialize the SDK from your `Application.onCreate()` with your project's token, from the project's **Connection** page. Every uncaught exception, on every thread, is then captured with the breadcrumbs and the replay of the seconds before it:
 
 ```kotlin
 import android.app.Application
@@ -62,13 +92,37 @@ class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Traceway.init(
-            application = this,
-            connectionString = "your-token@https://traceway.example.com",
-            options = TracewayOptions(
-                version = BuildConfig.VERSION_NAME,
+            this,
+            TracewayOptions(
+                token = BuildConfig.TRACEWAY_TOKEN,
                 screenCapture = true, // wireframe session replay
             ),
         )
+    }
+}
+```
+
+Keep the token out of the source: put it in `local.properties` at the project root, which Android Studio keeps out of version control (or set the `TRACEWAY_TOKEN` environment variable on CI):
+
+```properties
+TRACEWAY_TOKEN=YOUR_TOKEN
+```
+
+and hand it to the app as a `BuildConfig` field:
+
+```kotlin
+// app/build.gradle.kts
+import java.util.Properties
+
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val tracewayToken = System.getenv("TRACEWAY_TOKEN") ?: localProperties.getProperty("TRACEWAY_TOKEN") ?: ""
+
+android {
+    buildFeatures { buildConfig = true }
+    defaultConfig {
+        buildConfigField("String", "TRACEWAY_TOKEN", "\"$tracewayToken\"")
     }
 }
 ```
@@ -83,11 +137,31 @@ Register the application class in `AndroidManifest.xml`, or `onCreate()` never r
 </manifest>
 ```
 
-The connection string is the project token and the server URL, as the project's **Connection** page shows it; the 1.x form ending in `/api/report` works too. An invalid connection string or `telemetry` setting does not take the app down: `Traceway.init` logs the error (tag `Traceway`) and returns `null`, and the app runs without the SDK. To send telemetry to another OpenTelemetry backend as well, or only there, see [Setups](#setups).
+That's it. Activities and fragments are named as screens with no code; for a Jetpack Compose app, also [track its `NavController`](#naming-screens). To choose what replay records and hides, see [Configure Session Capture](/client/android/session-capture).
+
+- The data goes to Traceway Cloud (`https://cloud.tracewayapp.com`). For a self-hosted server, pass its URL too: `baseUrl = BuildConfig.TRACEWAY_URL`, from a `TRACEWAY_URL` line in `local.properties` and a second `buildConfigField`. The app version is the app's `versionName`; set `version` to report another.
+- An invalid server URL or `telemetry` setting, or no token and no `telemetry`, does not take the app down: `Traceway.init` logs a warning (tag `Traceway`) and returns `null`, and the app runs without the SDK. Every `Traceway` method is a no-op before `init`.
+- The SDK runs in the app's main process. In another process (a `:sync` service, a `:remote` widget) `Traceway.init` returns `null`; set `allProcesses = true` to run it there too, each process with its own state.
+- To send logs, traces and metrics to another OpenTelemetry provider as well, or only there, see [Send telemetry to another OpenTelemetry provider](#send-telemetry-to-another-opentelemetry-provider).
+
+From Java, build the options with `TracewayOptions.builder()`: one setter per option, and `null` means the default.
+
+```java
+public class MyApp extends Application {
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        Traceway.init(this, TracewayOptions.builder()
+                .token(BuildConfig.TRACEWAY_TOKEN)
+                .screenCapture(true)
+                .build());
+    }
+}
+```
 
 ## Manual capture
 
-Every method is a static on `Traceway` and does nothing before `Traceway.init`. From Java they read the same: `Traceway.captureException(e)`, `Traceway.setAttribute("user.id", id)`.
+Every method is a static on `Traceway` and does nothing before `Traceway.init`. From Java they read the same: `Traceway.captureException(e)`, `Traceway.setAttribute("user.id", id)`. The running client is `Traceway.client`.
 
 ### Errors and messages
 
@@ -102,31 +176,64 @@ try {
 // A message, reported as an issue
 Traceway.captureMessage("User completed checkout")
 
-// Send what is ready now (blocks; call it off the main thread)
+// Send what is ready now. It blocks: on the main thread it waits 2 s at most
+// (an ANR comes at 5 s), off it up to the timeout (10 s by default).
 Traceway.flush()
 ```
 
 Every exception and message also says where the app was when it happened: `app.screen.name` (the screen on top), `app.screen.route` when a [route template](#naming-screens) is set, `app.screen.previous`, `app.screen.duration_ms` (how long the screen had been shown) and `viewport` (the window's size in dp, `<width>x<height>`). Attributes you pass to `captureException` win over these.
 
-By default, network failures are not reported: `UnknownHostException`, `SocketTimeoutException`, `ConnectException`, `SSLHandshakeException`, `NoRouteToHostException`, `Connection reset`, a timeout (`/timeout/i`) or a 4xx status (`/status code (of )?4\d{2}/`, `/failed: 4\d{2}/`). `ignoreErrors` replaces that list (`null`, the default, keeps it). A `String` matches if it occurs in the first line of the error's `Type: message`, and a `Regex` (or a `java.util.regex.Pattern` from Java) if it finds a match in that line; the stack is never matched. An empty list reports everything. `beforeCapture` sees every exception and message that is not ignored and returns `false` to drop it; a callback that throws is logged in debug and the record is kept. Crashes (uncaught exceptions that end the process) pass through neither and are always reported:
+A burst of the same error is collapsed: identical errors within a second count as one, and at most 60 errors leave per minute; the next one reported carries `traceway.error.suppressed_count`.
+
+Before an exception or a message is recorded, `ignoreErrors` and `beforeCapture` may drop it:
 
 ```kotlin
 TracewayOptions(
-    ignoreErrors = listOf("PaymentDeclinedException", Regex("timeout", RegexOption.IGNORE_CASE)),
-    beforeCapture = { captured -> captured.error !is CardDeclinedException },
+    token = BuildConfig.TRACEWAY_TOKEN,
+    // Matched against the first line "Type: message"; a String is a substring, a Regex finds a match.
+    ignoreErrors = TracewayOptions.DEFAULT_IGNORE_ERRORS + listOf("PaymentDeclinedException", Regex("^java\\.io\\.")),
+    beforeCapture = { captured -> captured.attributes["checkout.step"] != "probe" },
 )
 ```
 
-`TracewayCapturedError` carries `error`, `type`, `message`, `isMessage`, `attributes` and `stackTrace` (`null` for a message).
+- `ignoreErrors = null` (the default) uses `DEFAULT_IGNORE_ERRORS`: `UnknownHostException`, `SocketTimeoutException`, `ConnectException`, `SSLHandshakeException`, `NoRouteToHostException`, `Connection reset`, `/timeout/i`, `/status code (of )?4\d{2}/` and `/failed: 4\d{2}/`. A phone losing its connection, a request timing out or a server saying no is the network's doing, not a bug in the app. A list replaces the defaults, so add to them as above; an empty list reports everything. From Java a `java.util.regex.Pattern` works like a `Regex`. Stack frames are never matched.
+- `beforeCapture` sees a `TracewayCapturedError` (`error`, `type`, `message`, `isMessage`, `attributes`, `stackTrace`) and returns `false` to drop it. A callback that throws keeps the record and logs the throwable in debug.
+- With `debug = true` the SDK logs why an exception or a message was dropped.
+- Crashes (uncaught exceptions that end the process) are always reported and pass through neither.
 
 ### Logs
 
 ```kotlin
 Traceway.log("Cart loaded")
-Traceway.log("Payment retried", TracewayLogLevel.WARN, mapOf("attempt" to "2"))
+Traceway.log("Payment declined", TracewayLogLevel.WARN, mapOf("order.id" to order.id))
 ```
 
-A log line has the level's severity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`; `INFO` by default), the attributes you pass and `log.source` `api`. Every `System.out` and `System.err` line (`println`, `printStackTrace`) is recorded too, as info and error. Calls to `android.util.Log` do not pass through `System.out`: forward them with `Traceway.log`, for example from a Timber tree:
+A log line has no event name (the `console` signal), its level as severity (`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`; `INFO` by default), `log.source: api` and your attributes. The console's minimum severity (`signals.console.minSeverity`) is `info` by default, so `TRACE` and `DEBUG` lines are dropped unless a rule or `collection` lowers it. Log lines wait in the ring buffer and go up with an exception, a trigger or a capture. `Traceway.recordLog(message, severity)` still works and is deprecated.
+
+#### Automatic log capture
+
+Every `System.out` and `System.err` line (`println`, `printStackTrace`) is a log line too, with `log.source` `stdout` or `stderr`.
+
+Calls to `android.util.Log` do not pass through `System.out`. With the [Gradle plugin](#installation), they are log lines as well: the plugin rewrites the calls to `Log.v/d/i/w/e/wtf/println` in your classes and your dependencies' (Timber logs through `Log.println`, so it is covered) to `TracewayLogcat`, which calls the real `Log` first, with the same arguments and result, then records the line with `log.source: logcat` and the tag as `log.tag`. Logcat levels: `v` trace, `d` debug, `i` info, `w` warn, `e` error, `wtf` fatal; a throwable's stack follows the message, as Logcat prints it. Configure it in the plugin's `traceway { }` block:
+
+```kotlin
+// app/build.gradle.kts, with the com.tracewayapp.symbols plugin
+traceway {
+    logcat {
+        enabled = true                // default true
+        minLevel = "info"             // default "info": verbose, debug, info, warn, error or assert
+        includeDependencies = true    // default true: libraries' calls too (Timber lives in one)
+        disabledFor("benchmark")      // variants or build types left as they are
+    }
+}
+```
+
+- It needs the SDK 2.1.0 or newer on the variant's runtime classpath. With an older SDK the plugin leaves `Log` calls alone and logs one build warning per variant; the SDK's own classes are never rewritten.
+- Calls below `minLevel` stay plain `Log` calls, so they cost nothing. `Log.println`'s level is only known when it runs, so `TracewayLogcat` checks it then.
+- `includeDependencies = false` rewrites your module's classes only (quicker first builds, no Play services or ad SDK lines), but then Timber, which logs from its own library, is not covered.
+- Apps that strip `Log` calls from release builds with R8 (`-assumenosideeffects class android.util.Log { … }`) keep them stripped: the plugin reads the variant's ProGuard files and adds the same rule for `TracewayLogcat`, so the lines you removed are not recorded either.
+
+Without the plugin, forward Logcat lines yourself, for example from a Timber tree:
 
 ```kotlin
 import android.util.Log
@@ -149,7 +256,7 @@ class TracewayTree : Timber.Tree() {
 }
 ```
 
-`captureLogs = false` turns both off. Log lines are the `console` signal: they wait in the ring buffer and go up with an exception, a trigger or a capture. The console's minimum severity (`signals.console.minSeverity`) is `info` by default, so `TRACE` and `DEBUG` lines are dropped unless a rule or `collection` lowers it.
+The console's mode, minimum severity and sample rate in the collection settings apply to all of these lines; `captureLogs = false` turns them all off.
 
 ### Actions and events
 
@@ -172,39 +279,58 @@ Traceway.removeAttribute("tenant")
 Traceway.clearAttributes()
 ```
 
-There is no `setUser`: `user.id` is an attribute like any other. Attributes go on every later record (at most 64 keys), and the server matches rules and captures against them; a change is sent with a config poll about 2 seconds later, so a rule that targets it applies soon. `Traceway.currentSessionId` is the session's ID and `Traceway.getInstanceId()` the installation's (`service.instance.id`), the one the dashboard's Capture button targets.
+There is no `setUser`: `user.id` is an attribute like any other. Attributes go on every later record (at most 64 keys), and the server matches rules and captures against them; a change is sent with a config poll about 2 seconds later, so a rule that targets it applies soon. `Traceway.currentSessionId` is the session's ID and `Traceway.getInstanceId()` the installation's (`service.instance.id`), the one the dashboard's Capture button targets; it is `null` for a moment right after `init`, until the SDK has read it.
 
 ### Interactions
 
-An interaction traces one user action from start to end: a span named after it (`traceway.interaction: true`). Requests made inside its `run`, on the thread that runs it, are its child spans (an OkHttp `enqueue` or a coroutine that moves to another thread is not part of it), and exceptions, messages and logs recorded there carry its trace ID. A failed interaction is sent with its exception, so the issue links to its trace; one that succeeds waits in the buffer like other spans.
+An interaction traces one user action from start to end:
 
 ```kotlin
-val checkout = Traceway.startInteraction("checkout", mapOf("plan" to "pro"))
+val checkout = Traceway.startInteraction("checkout", mapOf("cart.items" to 3))
 try {
-    checkout.run { api.placeOrder(cart) }
-} catch (e: Exception) {
-    checkout.captureException(e)
+    checkout.run { api.placeOrder(cart) }   // requests made here are its child spans
+} catch (e: IOException) {
+    checkout.captureException(e)            // carries its trace, marks it failed
 } finally {
     checkout.end()
 }
 ```
 
-`captureException` reports the exception with the interaction's trace and marks the interaction failed; `end(failed = true)` marks it failed without one. `traceId` and `spanId` name its span, and `setAttribute` adds an attribute to it.
+- It is a span named after the action with `traceway.interaction: true` and the attributes you pass; `checkout.traceId` and `checkout.spanId` name it, and `checkout.setAttribute(key, value)` adds to it.
+- `run { }` makes it current on the calling thread while the block runs: requests recorded there are its child spans, and exceptions, messages and logs recorded there carry its trace. A request made on another thread (an OkHttp `enqueue`, a coroutine that moved to another dispatcher) is not part of it. An interaction started inside another's `run` is its child.
+- `end(failed = false)` ends it; only the first call counts. A failed one (after `captureException`, or `end(failed = true)`) is sent at once with its exception, so the issue links to its trace; others follow the `network` signal like request spans.
+- Before `Traceway.init`, in the first moments after it (while the SDK starts on its own thread), or after `shutdown`, an interaction records nothing and `run` still runs its block.
+- From Java, `try (TracewayScope scope = checkout.makeCurrent()) { … }` makes it current like `run`, in a block that may throw checked exceptions.
+
+### Your own spans
+
+`Traceway.tracer` (Java: `Traceway.getTracer()`) is Traceway's OpenTelemetry `Tracer`. Spans you make with it are sent with Traceway's other spans (the `network` signal decides when), carry the session ID (`session.id`), and are children of the interaction whose `run` they start in:
+
+```kotlin
+val span = Traceway.tracer?.spanBuilder("decode-image")?.startSpan()
+try {
+    decode(bytes)
+} finally {
+    span?.end()
+}
+```
+
+It is `null` before `Traceway.init` (until the SDK has started, just after it) and after `shutdown`. Traceway never registers itself as the global OpenTelemetry (`GlobalOpenTelemetry`): an app with its own OpenTelemetry setup keeps it, untouched.
 
 ## How collection works
 
-Every record is an OpenTelemetry log record or span and belongs to a *signal*. Each signal is in one of three modes: `stream` sends it as soon as it is produced, `buffer` keeps it in a ring buffer on the device (2 MiB / 10 minutes by default) until a trigger or a capture uploads it, and `off` drops it.
+Every record is an OpenTelemetry log record or span and belongs to a _signal_. Each signal is in one of three modes: `stream` sends it as soon as it is produced, `buffer` keeps it in a ring buffer on the device (2 MiB / 10 minutes by default) until a trigger or a capture uploads it, and `off` drops it.
 
-| Signal | Source | Default |
-|--------|--------|---------|
-| `errors` | uncaught exceptions, `captureException` | stream |
-| `messages` | `captureMessage` | stream |
-| `console` | `System.out` (info) and `System.err` (error) lines, `Traceway.log` | buffer |
-| `network` | HTTP requests, as client spans; interactions | buffer |
-| `navigation` | activities, AndroidX fragments, `Traceway.recordNavigation` | buffer |
-| `userActions` | taps (`browser.user_action.click`) | buffer |
-| `custom` | `Traceway.recordAction`, `Traceway.track` | buffer |
-| replay | the [wireframe session replay](#session-replay) | buffer |
+| Signal        | Source                                                                           | Default |
+| ------------- | -------------------------------------------------------------------------------- | ------- |
+| `errors`      | uncaught exceptions, `captureException`, native crashes, ANRs, app hangs         | stream  |
+| `messages`    | `captureMessage`                                                                 | stream  |
+| `console`     | `System.out` / `System.err` lines, Logcat with the Gradle plugin, `Traceway.log` | buffer  |
+| `network`     | HTTP requests, as client spans; interactions; your own spans                     | buffer  |
+| `navigation`  | activities, AndroidX fragments, Compose Navigation, `Traceway.recordNavigation`  | buffer  |
+| `userActions` | taps (`browser.user_action.click`)                                               | buffer  |
+| `custom`      | `Traceway.recordAction`, `Traceway.track`                                        | buffer  |
+| replay        | the [wireframe session replay](#session-replay)                                  | buffer  |
 
 The built-in trigger fires on every exception: it uploads the buffered breadcrumbs of the last 10 minutes and the replay of the last 30 seconds, at most the frames the replay ring holds (`maxBufferFrames`). An app that never throws sends only its session and control records (`session.start`, `session.end`, `traceway.session.update`, `traceway.config.applied`) and its metrics. Clips are rationed to one per 5 seconds and 20 per session; breadcrumbs are still sent for the exceptions in between.
 
@@ -212,15 +338,19 @@ The built-in trigger fires on every exception: it uploads the buffered breadcrum
 
 The ring buffer is saved to disk when the app goes to the background, so a session that goes on after the system killed the app still has its breadcrumbs. Telemetry that failed to send is kept on disk and retried.
 
+Replay uploads are bounded per session (50 MiB and 10,000 rrweb events). When data is dropped this way, or replay uploads are given up, or errors were collapsed, the SDK sends a `traceway.collection.health` record a second later (then after 2, 4, … up to 300 seconds) with the session's collection counters, `traceway.error.suppressed_total`, `traceway.context.evicted` and `traceway.replay.failed_segments`, and updates the session once.
+
+The SDK builds its own `SdkLoggerProvider` and `SdkTracerProvider` from the OpenTelemetry Java SDK; the app's own OpenTelemetry setup (`GlobalOpenTelemetry`, its exporters) is left untouched. Records are posted by the SDK's own HTTP sender, so no HTTP library (OkHttp) is pulled into the app.
+
 The signal names, modes, triggers and limits are the browser, Flutter and iOS SDKs', so one rule can target all of them. See the [settings reference](/learn/remote-config/reference#the-settings-document).
 
 ## Remote config
 
-The SDK polls the server over OpAMP (plain HTTP): at start, at the interval the server sets (5 minutes by default, 60 seconds while a capture targets the device), when the app returns to the foreground, and about 2 seconds after `Traceway.setAttribute` or a new session, so a rule targeting an attribute applies soon. It applies the collection settings you define under **Data Collection** in the project's sidebar: signal modes and sample rates, buffer sizes, replay and image settings, metrics settings, extra triggers (for example "flush when `checkout_failed` happens twice in a minute") and on-demand captures of one user or device. See [Remote SDK Config](/learn/remote-config/setup) for a walkthrough.
+The SDK polls the server over OpAMP (plain HTTP): at start, at the interval the server sets (5 minutes by default, 60 seconds while a capture targets the device), when the app returns to the foreground, and about 2 seconds after `Traceway.setAttribute` or a new session, so a rule targeting an attribute applies soon. It applies the collection settings you define under **Data Collection** in the project's sidebar: signal modes and sample rates, buffer sizes, replay settings (`replay.mode`, `replay.sessionSampleRate`, `replay.maskAllInputs`, `replay.images`), metrics settings, extra triggers (for example "flush when `checkout_failed` happens twice in a minute") and on-demand captures of one user or device. [Configure Session Capture](/client/android/session-capture) walks through the rule dialog; [Remote SDK Config](/learn/remote-config/setup) explains the whole feature.
 
 - The `capture*` options, `screenCapture`, `replayImages` and `sessions` are **ceilings**. Remote settings can lower what is collected but never raise it: with `captureNetwork = false` no rule can turn network capture on, and without `screenCapture = true` nothing is recorded. `sampleRate`, `baselineSampleRate` and `recordAllSessions` are defaults that a rule can change in either direction.
 - The last applied settings are cached, so they are in effect from the start of the next launch.
-- `remoteConfig = false` never polls. Standalone (no connection string) the SDK never polls either.
+- `remoteConfig = false` never polls. Standalone (no token) the SDK never polls either.
 - `Traceway.refreshConfig()` polls now.
 
 ### Local config
@@ -229,6 +359,7 @@ The SDK polls the server over OpAMP (plain HTTP): at start, at the interval the 
 
 ```kotlin
 TracewayOptions(
+    token = BuildConfig.TRACEWAY_TOKEN,
     screenCapture = true,
     remoteConfig = false,
     collection = mapOf(
@@ -258,23 +389,23 @@ A document with an unsupported `schemaVersion` is ignored with a Logcat warning,
 
 ## Captures
 
-A capture uploads what the device holds from its lookback window and then streams the selected signals, and the replay when it asks for it, until it ends. Records sent under a capture carry its ID (`traceway.capture.ids`), so the dashboard shows when it is collecting.
+A capture uploads what the device holds from its lookback window and then streams the selected signals, and the replay when it asks for it, until it ends. Records sent under a dashboard capture carry its ID (`traceway.capture.ids`), so the dashboard shows when it is collecting. Captures a trigger started are not stamped.
 
 - **From the dashboard**: the Capture button on a session or an issue targets one installation (`service.instance.id`), user (`user.id`) or session. The device starts it at its next poll; cancelling it stops the streaming at the poll after that. Each capture's lookback is uploaded once per installation.
 - **From a trigger** (a `capture` action): started on the device the moment the trigger fires. It survives app restarts until it ends; firing again only extends it.
 
-A capture that streams replay sends it as consecutive segments; see [Session replay](#session-replay).
+A capture that streams replay sends it as consecutive segments; see [Session replay](#session-replay). [Configure Session Capture](/client/android/session-capture#step-5-capture-one-user-or-device-from-the-dashboard) shows the capture dialog.
 
 ### Recording triggers
 
 The dashboard's [recording trigger](/learn/remote-config/trigger-sequences) steps work on Android. The builder labels them **Tap**, **Hover**, **Navigation** and **Log**:
 
-| Step | Matches |
-|------|---------|
-| `{"event": {"type": "click", "value": "<selector>"}}` | a tap on a view the selector matches, or inside one |
-| `{"event": {"type": "hover", "value": "<selector>"}}` | a mouse pointer entering a matching view (ChromeOS, a tablet with a mouse; never a finger or a stylus) |
-| `{"event": {"type": "navigation", "value": "/orders/{id}"}}` | arriving at a screen; `{id}` is one non-empty segment |
-| `{"event": {"type": "log", "value": "Profile loaded", "mode": "contains"}}` | a console line or a `captureMessage` (`exact` by default) |
+| Step                                                                        | Matches                                                                                                        |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `{"event": {"type": "click", "value": "<selector>"}}`                       | a tap on a view the selector matches, or inside one                                                            |
+| `{"event": {"type": "hover", "value": "<selector>"}}`                       | a mouse pointer entering a matching view (ChromeOS, a tablet with a mouse; never a finger or a stylus)         |
+| `{"event": {"type": "navigation", "value": "/orders/{id}"}}`                | arriving at a screen; `{id}` is one non-empty segment                                                          |
+| `{"event": {"type": "log", "value": "Profile loaded", "mode": "contains"}}` | a console line (printed, Logcat with the plugin, or `Traceway.log`) or a `captureMessage` (`exact` by default) |
 
 Steps match in order, each within its `withinSeconds` of the previous one; progress is kept on disk, so it survives an app restart within the session. When a trigger that asks for replay fires, the session lists it as a recording reason with its sequence.
 
@@ -286,16 +417,16 @@ A click or hover step takes a selector in CSS syntax. When a finger lifts, the S
 
 Each part of the syntax reads one property of a view or Compose node:
 
-| Selector | Browser equivalent | Matches an element that |
-|----------|--------------------|-------------------------|
-| `MaterialButton` | tag name | is of that class or a subclass of it, by simple name in any case: `Button` matches a `MaterialButton`, `TextView` matches every button. A Compose node's type is its role (`Button`, `Checkbox`, `Switch`, `RadioButton`, `Tab`, `Image`, `DropdownList`) or what it is (`Text`, `TextField`, `Slider`, `ProgressIndicator`). `*` is any element |
-| `#pay` | `id` attribute | has `android:id="@+id/pay"` (the id's resource entry name), or `Modifier.testTag("pay")` |
-| `.button` | class | has that role: `button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected`. A role comes from the view's class (a `Button` is a button, an `EditText` a textField, a `CheckBox` a checkbox, a `Switch` a toggle), its accessibility heading and selected state, a clickable span in its text (`link`), or a Compose node's role and semantics |
-| `[key="42"]` | attribute | has the string tag `42` (`android:tag="42"`), or that id or test tag |
-| `[identifier="..."]` | attribute | the same values as `key` |
-| `[label="Delete"]` | attribute | has that content description or tooltip: its own, else the first one below it along single children (an `ImageButton`'s `contentDescription`, an `Icon`'s in Compose) |
-| `[text="Pay"]` | none | shows that text: a `TextView`'s own text (an `EditText` offers its hint, never what was typed), else the texts of up to three views under it joined by a space |
-| `[type="com.example.PayButton"]` | none | is of that class, by full or simple name, for a class that cannot be written as a tag |
+| Selector                         | Browser equivalent | Matches an element that                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MaterialButton`                 | tag name           | is of that class or a subclass of it, by simple name in any case: `Button` matches a `MaterialButton`, `TextView` matches every button. A Compose node's type is its role (`Button`, `Checkbox`, `Switch`, `RadioButton`, `Tab`, `Image`, `DropdownList`) or what it is (`Text`, `TextField`, `Slider`, `ProgressIndicator`). `*` is any element                               |
+| `#pay`                           | `id` attribute     | has `android:id="@+id/pay"` (the id's resource entry name), or `Modifier.testTag("pay")`                                                                                                                                                                                                                                                                                       |
+| `.button`                        | class              | has that role: `button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected`. A role comes from the view's class (a `Button` is a button, an `EditText` a textField, a `CheckBox` a checkbox, a `Switch` a toggle), its accessibility heading and selected state, a clickable span in its text (`link`), or a Compose node's role and semantics |
+| `[key="42"]`                     | attribute          | has the string tag `42` (`android:tag="42"`), or that id or test tag                                                                                                                                                                                                                                                                                                           |
+| `[identifier="..."]`             | attribute          | the same values as `key`                                                                                                                                                                                                                                                                                                                                                       |
+| `[label="Delete"]`               | attribute          | has that content description or tooltip: its own, else the first one below it along single children (an `ImageButton`'s `contentDescription`, an `Icon`'s in Compose)                                                                                                                                                                                                          |
+| `[text="Pay"]`                   | none               | shows that text: a `TextView`'s own text (an `EditText` offers its hint, never what was typed), else the texts of up to three views under it joined by a space                                                                                                                                                                                                                 |
+| `[type="com.example.PayButton"]` | none               | is of that class, by full or simple name, for a class that cannot be written as a tag                                                                                                                                                                                                                                                                                          |
 
 Only these five attribute names exist. A view has no `data-*` attributes; give it an id, a test tag or a string tag instead.
 
@@ -337,28 +468,43 @@ A navigation step is compared with the path of the screen the user arrives at:
 
 - an activity is `/` and its class name (`/CheckoutActivity`), reported when it resumes;
 - an AndroidX fragment that shows a screen is `/` and its class name (`/CartFragment`); `NavHostFragment` and fragments without a view are not screens;
-- anything else reports its path itself with `Traceway.recordNavigation(path, action = "push", from = null, route = null)`, where `route` is the route template the path is an instance of, when the router knows it. With Compose Navigation:
+- a Compose Navigation destination, once you hand its `NavController` to `Traceway.trackNavigation`, is its route with the arguments filled in (`/orders/8841`), with the route template as its route (`/orders/:id`).
+
+**Compose screens.** A single-activity Compose app is one `/MainActivity` screen to Android. Track its `NavController` where you create it, and every destination is a screen of its own, for issues, screen metrics and navigation trigger steps:
 
 ```kotlin
-navController.addOnDestinationChangedListener { _, destination, arguments ->
-    val route = destination.route ?: return@addOnDestinationChangedListener   // "orders/{id}"
-    val path = Regex("\\{(\\w+)\\}").replace(route) { m -> arguments?.getString(m.groupValues[1]) ?: m.value }
-    Traceway.recordNavigation("/$path", route = "/" + route.replace(Regex("\\{(\\w+)\\}"), ":$1"))
-    // path "/orders/8841", route "/orders/:id"
+import com.tracewayapp.traceway.navigation.trackNavigation
+
+val nav = rememberNavController()
+LaunchedEffect(nav) { Traceway.trackNavigation(nav) }   // Java: TracewayNavigation.track(nav)
+NavHost(nav, startDestination = "orders") {
+    composable("orders") { Orders() }
+    composable("orders/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { OrderDetail() }
 }
+// "orders/8841" is the screen /orders/8841 with the route /orders/:id; going back reports a pop
 ```
 
-Matching is case-sensitive and by segment: `/orders/{id}` matches `/orders/42` and not `/orders/42/edit`, and a query string is ignored. Going back arrives at the screen it returns to, so a step for `/HomeActivity` also matches coming back to it. Recorded navigations are `browser.navigation` records whose `url.full` is the path; the **Actions** list of a session shows them. In a minified build activity and fragment classes keep their names when they are declared in the manifest or inflated from a layout; report a stable path yourself for a screen a trigger must match. `captureNavigation = false` turns screens off.
+Arguments of any type fill the path; query arguments (`search?query={q}`) are left out; a type-safe route (`@Serializable data class OrderDetail(val id: Long)`) is named by its class's simple name (`/OrderDetail/8841`). Calling it again for the same controller does nothing. A screen that no `NavController` shows (a pager page, a sheet you treat as a screen) names itself with a modifier on its root:
 
-A route template (`/orders/:id`) names a screen the way metrics group it. `Traceway.recordNavigation(path, route = "/orders/:id")`, or `Traceway.setRoute("/orders/:id")` after the navigation, names the current screen's template until the next screen; navigation records then carry it as `app.screen.route`, and so do the exceptions on that screen. Without one, IDs in the path are folded for the metrics (`/orders/8841` becomes `/orders/:id`).
+```kotlin
+import com.tracewayapp.traceway.compose.tracewayScreen
+
+Column(Modifier.fillMaxSize().tracewayScreen("/orders/$id", route = "/orders/:id")) { … }
+```
+
+Any other router reports its screens itself with `Traceway.recordNavigation(path, action = "push", from = null, route = null)`, with the route template the path is an instance of as `route`, e.g. `Traceway.recordNavigation("/orders/8841", route = "/orders/:id")`.
+
+Matching is case-sensitive and by segment: `/orders/{id}` matches `/orders/42` and not `/orders/42/edit`, and a query string is ignored. Going back arrives at the screen it returns to, so a step for `/HomeActivity` also matches coming back to it. Recorded navigations are `browser.navigation` records with `url.full`, `navigation.action` and `browser.navigation.type` (`push`, `pop`, `replace`, or `remove` for a screen taken away without arriving anywhere), `navigation.from`, `navigation.to` and `app.screen.name`; the **Actions** list of a session shows them. In a minified build activity and fragment classes keep their names when they are declared in the manifest or inflated from a layout; report a stable path yourself for a screen a trigger must match. `captureNavigation = false` turns screens off.
+
+A route template (`/orders/:id`) names a screen the way metrics group it. `Traceway.recordNavigation(path, route = "/orders/:id")`, or `Traceway.setRoute("/orders/:id")` after the navigation, names the current screen's template until the user navigates to another screen; `setRoute(null)` removes it. It is trimmed, gets a leading `/` and is cut at 64 characters. Navigation records then carry it as `app.screen.route`, and so do the exceptions on that screen. Without one, IDs in the path are folded for the metrics (`/orders/8841` becomes `/orders/:id`).
 
 ## Session replay
 
 ```kotlin
-TracewayOptions(screenCapture = true)
+TracewayOptions(token = BuildConfig.TRACEWAY_TOKEN, screenCapture = true)
 ```
 
-Session replay on Android is always a wireframe: the SDK records the view tree, never the screen's pixels, and the dashboard plays it with the same rrweb player as a browser session, taps and swipes included. A rule's `replay.captureMode` is for the Flutter SDK and does not apply.
+[Configure Session Capture](/client/android/session-capture) walks through turning replay on, masks, images, which sessions upload replay and the dashboard settings. This section is the reference. Session replay on Android is always a wireframe: the SDK records the view tree, never the screen's pixels, and the dashboard plays it with the same rrweb player as a browser session, taps and swipes included. A rule's `replay.captureMode` is for the Flutter SDK and does not apply.
 
 - **Error clip.** An exception uploads the replay of the last 30 seconds (the replay `lookbackSeconds` of the built-in trigger), cut to the `maxBufferFrames` frames the device holds, and links it to the exception. A frame is kept only when the screen changed, so the default 150 frames at the default 10 fps cover at least 15 seconds, and the whole 30 seconds unless the screen changes on every frame.
 - **Streaming.** While a capture or a rule streams replay, the session leaves as consecutive segments of up to 10 seconds, each starting with a full snapshot; the session player plays them back to back. An exception during a streaming capture still gets a clip of its own.
@@ -372,21 +518,27 @@ After a frame the app drew (at most `fps` times a second, 10 by default, and not
 - **Small and cheap.** A clip is tens of kilobytes of JSON, a segment often less. An unchanged view costs no allocation: its node from the previous frame is reused, and the diff skips it. A view whose own code throws while it is read is left out of that frame; the rest of the screen is recorded.
 - **Views.** Checkboxes, radio buttons, switches (framework, AppCompat and Material), progress bars, seek bars and rating bars are drawn from their state. Material components (buttons, chips, cards, text fields with their floating labels) keep their shapes and colors, read by drawing a few pixels of their backgrounds.
 - **Jetpack Compose.** Compose screens are recorded from their semantics tree: text with its style, buttons, text fields, checkboxes, switches, radio buttons, sliders, progress indicators, selected tabs, icons and images, lists as they scroll, and Compose dialogs and menus, which are windows of their own. Compose does not expose its surface colors: a button with light text (a filled one) takes the theme's primary color, other buttons and fields have a neutral look over the view's own background.
-- **Not pixel-exact.** The browser draws text in its own font. Solid colors and shapes are drawn as such and small vector icons as their shape (drawn once, as a mask the icon's color fills); pictures follow the [image policy](#images). `WebView`, `SurfaceView`, `TextureView` and map views are labelled placeholders, and views that draw themselves (charts, custom `onDraw`) a dashed outline.
-- **Keyboard.** The on-screen keyboard is a plain box where the keyboard is, never its keys.
+- **Not pixel-exact.** The browser draws text in its own font (the screen names Android's stack, `Roboto,"Segoe UI","Helvetica Neue",Arial,sans-serif`). Solid colors and shapes are drawn as such and small vector icons as their shape (drawn once, as a mask the icon's color fills); pictures follow the [image policy](#images). `WebView`, `SurfaceView`, `TextureView`, video and map views are labelled placeholders, and views that draw themselves (charts, custom `onDraw`) a dashed outline.
+- **Keyboard.** The soft keyboard is another app's window: while it shows, the replay draws a neutral box labelled "Keyboard" where it covers the app (the window's IME inset on Android 11+, the visible frame below that), light or dark as the app's theme is. Its keys are never recorded.
 - **Typed text.** Text typed into fields is replaced with `*` unless a rule sets `replay.maskAllInputs: false`; password fields always show dots. Hints and labels are not typed text and stay readable.
 
 ### Images
 
-Whether the replay shows the pictures of image views is decided by the image policy: the `replay.images` setting of the [collection settings](/learn/remote-config/reference#replay) (`off`, `wifi` or `always`; `wifi` by default) under the `replayImages` option, a ceiling (`TracewayImagePolicy.ALWAYS` by default). The lower of the two applies, in the order `off`, `wifi`, `always`, so `replayImages = TracewayImagePolicy.OFF` keeps every image a placeholder whatever a rule says.
+The pictures image views show can be recorded into the wireframe instead of placeholders. The `replay.images` setting of the [collection settings](/learn/remote-config/reference#replay) chooses when, and `TracewayOptions.replayImages` caps it:
 
-- `wifi` records pictures only on an unmetered network: `ConnectivityManager.isActiveNetworkMetered()` is false, followed live by a network callback. The network is checked when a frame is captured, so a picture captured on Wi‑Fi stays in its clip.
-- What is recorded is the bitmap an image view shows (an `ImageView` with a `BitmapDrawable`, a bitmap background), never a screenshot of the window. Jetpack Compose images stay placeholders, because Compose semantics expose no pixels. An image inside a [privacy mask](#privacy-masks) is never recorded.
-- A picture is scaled to 1.5 times its displayed size in dp, at most 512 px on its longest side, and encoded as JPEG at quality 0.6 (PNG when it has transparency and is at most 128 px). One still larger than 96 KiB after a second try at half the size is left out. Encoding runs off the main thread, so the first frame shows a placeholder and a later one the picture.
-- A session records at most 4 MiB of pictures; after that, placeholders. The bytes count against the session's replay budget like the rest of a segment.
-- When the policy does not allow pictures, an image is a placeholder box.
+| `replay.images`  | Pictures                                                                                           |
+| ---------------- | -------------------------------------------------------------------------------------------------- |
+| `off`            | never: placeholders                                                                                |
+| `wifi` (default) | on an unmetered connection (`ConnectivityManager.isActiveNetworkMetered()` false: Wi‑Fi, Ethernet) |
+| `always`         | on any connection                                                                                  |
 
-Session records carry `traceway.replay.images` (the policy in effect when the session started) and `traceway.replay.image_bytes`.
+- The lower of the setting and `replayImages` (`TracewayImagePolicy.ALWAYS` by default) applies, in the order `off`, `wifi`, `always`, so `replayImages = TracewayImagePolicy.OFF` keeps every image a placeholder whatever a rule says. Without `screenCapture`, or when the plan's limits turn replay off, there are no pictures.
+- The connection is checked when a frame is captured, following the default network as it changes (Android 7+): a picture recorded on Wi‑Fi stays in its clip.
+- What is recorded: the bitmap of an `ImageView`'s `BitmapDrawable` (the top bitmap of a layer drawable, as a Glide crossfade shows it) and bitmap backgrounds. Never a screenshot of the window, never anything under a [mask](#privacy-masks). Vector drawables, shapes and animated images keep their usual look, and Jetpack Compose images stay placeholders: the semantics tree holds no pixels.
+- Each picture is copied at the size it shows (one pixel per dp, at most 384 pixels on its longest side) and encoded off the main thread as JPEG at quality 0.45. A picture with transparency is always PNG, at most 192 pixels on its longest side, so it never replays as a black box. One larger than 48 KiB at half that size is left out. The first frame shows the placeholder, a later one the picture.
+- The same bitmap at the same size is one picture however many views show it. At most 128 pictures are kept per recorder: past that, the one shown longest ago makes room (shown again, it is recorded again). At most 4 MiB of encoded pictures per session, counted with the replay budget; past it, new pictures are placeholders. A picture's style stays in the recording 30 seconds after its view left the screen.
+
+Session records carry `traceway.replay.images` (the policy in effect when the session started) and `traceway.replay.image_bytes` (the encoded bytes used).
 
 ### Privacy masks
 
@@ -417,11 +569,11 @@ Text(address, Modifier.tracewayMask())
 Box(Modifier.tracewayMask(TracewayMaskMode.blank())) { ... }
 ```
 
-`Modifier.testTag("traceway-mask")` and `"traceway-blank"` work too. A mask covers everything inside the view or composable, and a masked view's text and label are also left out of tap records.
+`Modifier.testTag("traceway-mask")` and `"traceway-blank"` work too. A mask covers everything inside the view or composable, and a masked view's text and label are also left out of tap records. Text typed into fields is replaced with `*` unless remote settings set `replay.maskAllInputs: false`; password fields always are, as dots.
 
 ## Network requests
 
-Every OkHttp call through `TracewayOkHttpInterceptor` is recorded as a client span (method, URL, status, duration, byte counts). Add it as an *application* interceptor:
+Every OkHttp call through `TracewayOkHttpInterceptor` is recorded as a client span (`http.request.method`, `url.full`, `server.address`, `http.response.status_code`, request and response body sizes, `error.type` for a failure or a status of 400 and above). Add it as an _application_ interceptor:
 
 ```kotlin
 import com.tracewayapp.traceway.network.TracewayOkHttpInterceptor
@@ -431,7 +583,7 @@ val client = OkHttpClient.Builder()
     .build()
 ```
 
-The SDK's own requests are never recorded.
+The SDK's own requests are never recorded. A request made on the thread running an [interaction](#interactions)'s `run` is its child span; any other starts a trace of its own.
 
 ### Other HTTP clients
 
@@ -440,10 +592,10 @@ Other HTTP stacks record a request with the client's `startRequest(method, url)`
 ```kotlin
 val handle = Traceway.client?.startRequest("GET", url)
 // send the request, adding handle?.traceparent as a `traceparent` header when it is not null
-handle?.let { Traceway.client?.endRequest(it, statusCode = 200, requestBytes = null, responseBytes = 512, error = null) }
+Traceway.client?.endRequest(handle, statusCode = 200, requestBytes = null, responseBytes = 512, error = null)
 ```
 
-`startRequest` returns `null` when the request is not recorded (network capture off, a request of the SDK's own); `error` names a failure when no response came.
+`startRequest` returns `null` when the request is not recorded (network capture off, a request of the SDK's own); `endRequest` ignores a `null` handle, and `error` names a failure when no response came.
 
 ### Connect requests to backend traces
 
@@ -460,21 +612,23 @@ It is empty by default, because a header a server does not expect can break a st
 
 ## App performance metrics
 
-The SDK measures the app on the device and uploads the numbers as OTLP metrics: base-2 exponential histograms and counters (delta temporality), one small payload every five minutes and when the app goes to the background. Nothing is sent per observation, and no user, device or session ID is a dimension. The project's **Mobile Performance** dashboard charts them; its ANR and out-of-memory series stay empty for Android, which sends no `app.anr` or `app.oom`.
+The SDK measures the app on the device and uploads the numbers as OTLP [client metrics](/learn/client-metrics): base-2 exponential histograms and counters (delta temporality), one small payload every five minutes and when the app goes to the background. Nothing is sent per observation, and no user, device or session ID is a dimension. The project's **Mobile Performance** dashboard charts them.
 
-| Metric | What it measures |
-|--------|------------------|
-| `app.start.duration` (`start_type` `cold` / `warm` / `hot`) | Cold: from the process start (`Process.getStartElapsedRealtime()`, API 24+; earlier, from SDK init) to the first frame, only when the process was started for an activity. Warm and hot: from the return to the foreground to the next frame; warm when an activity had to be created |
-| `app.screen.ttid` (`screen`) | Time to initial display: from the navigation to the first frame of the screen |
-| `app.screen.ttfd` (`screen`) | Time to full display: from the navigation until the app calls `Traceway.reportFullyDisplayed()` |
-| `app.frames.slow`, `app.frames.frozen` (with `.total`, by `screen`) | `FrameMetrics` on API 24+ (Choreographer below): slow when a frame missed its deadline at the display's refresh rate, frozen at 700 ms or more |
-| `app.hang`, `app.hang.duration` (by `screen`) | The main thread ran nothing for 2 s or more while the app was in the foreground |
-| `app.crash` | Uncaught exceptions |
-| `app.session`, `app.user`, `app.user.affected` (`issue`: `crash`, `hang`, `slow_start`, `frozen_frames`, `failed_request`) | Sessions; users counted once a day per installation, and once a day per problem they met, so no ID leaves the device |
-| `app.memory.peak` | The process's peak RSS, once per session |
-| `app.request.duration`, `app.request.bytes`, `app.request.failed` (`host`) | Every HTTP request the SDK records |
+| Metric                                                                     | What it measures                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.start.duration` (`start_type` `cold` / `warm` / `hot`)                | Cold: from the process start (`Process.getStartElapsedRealtime()`, API 24+; earlier, from SDK init) to the first frame, only when the process was started for an activity. Warm: an activity recreated on return. Hot: from the return to the foreground to the next frame |
+| `app.screen.ttid` (`screen`)                                               | Time to initial display: from the navigation to the first frame of the screen                                                                                                                                                                                              |
+| `app.screen.ttfd` (`screen`)                                               | Time to full display: from the navigation until the app calls `Traceway.reportFullyDisplayed()`                                                                                                                                                                            |
+| `app.frames.slow`, `app.frames.frozen` (with `.total`, by `screen`)        | `FrameMetrics` on API 24+ (Choreographer below): slow when a frame missed its deadline at the display's refresh rate, frozen at 700 ms or more                                                                                                                             |
+| `app.hang`, `app.hang.duration` (by `screen`)                              | The main thread ran nothing for 2 s or more while the app was in the foreground (not under a debugger); see [App hangs](#app-hangs)                                                                                                                                        |
+| `app.crash`                                                                | Uncaught exceptions, and native crashes of earlier runs (Android 11+)                                                                                                                                                                                                      |
+| `app.anr`                                                                  | Earlier runs Android killed as not responding (Android 11+, read at the next start)                                                                                                                                                                                        |
+| `app.oom`                                                                  | Earlier runs Android killed for want of memory (`REASON_LOW_MEMORY`, Android 11+, read at the next start)                                                                                                                                                                  |
+| `app.session`, `app.user`, `app.user.affected` (`issue`)                   | Sessions; users counted once a day per installation, and once a day per problem they met, so no ID leaves the device                                                                                                                                                       |
+| `app.memory.peak`                                                          | The process's peak RSS, once per session                                                                                                                                                                                                                                   |
+| `app.request.duration`, `app.request.bytes`, `app.request.failed` (`host`) | Every HTTP request the SDK records                                                                                                                                                                                                                                         |
 
-Screens are route names with IDs folded (`/orders/8841` becomes `/orders/:id`), or the [route template](#naming-screens) when one is set. Resource dimensions are the app version, environment, OS and its major version, form factor (`phone`, `tablet`, `desktop`) and a coarse device class from the RAM.
+Screens are route templates when the app [names them](#naming-screens), else paths with IDs folded (`/orders/8841` becomes `/orders/:id`). Resource dimensions are the app version, environment, OS and its major version, form factor (`phone`, `tablet`, `desktop`) and a coarse device class from the RAM.
 
 ```kotlin
 // The screen has what it loads: ends its time to full display.
@@ -490,28 +644,28 @@ An app-defined metric name is lowercase (`[a-z][a-z0-9_.]`, at most 63 character
 
 `captureMetrics = false` turns it all off. A rule's `metrics` section switches metrics off (`enabled`), samples sessions (`sampleRate`; counts are weighted back by the server) or changes the upload interval (`flushSeconds`, 30 to 3600).
 
-## Setups
+## Send telemetry to another OpenTelemetry provider
 
-The connection string and `telemetry` decide where each kind of data goes. The first setup needs nothing beyond the connection string.
+The token and `telemetry` decide where each kind of data goes. The first setup needs nothing beyond the token.
 
 ### Everything on Traceway
 
 ```kotlin
 Traceway.init(
-    application = this,
-    connectionString = "your-token@https://traceway.example.com",
-    options = TracewayOptions(serviceName = "shop-app", environment = "production"),
+    this,
+    TracewayOptions(token = BuildConfig.TRACEWAY_TOKEN, serviceName = "shop-app", environment = "production"),
 )
 ```
 
-The app polls Traceway for its collection settings, sends logs, request spans and metrics to Traceway's OTLP endpoints (`/api/otel/v1/logs`, `/api/otel/v1/traces`, `/api/otel/v1/metrics`) and uploads replays to `/api/recordings` on the same host. What it collects is changed on the project's **Data Collection** page; see [Remote config](#remote-config).
+The app polls Traceway for its collection settings, sends logs, request spans and metrics to Traceway's OTLP endpoints (`/api/otel/v1/logs`, `/api/otel/v1/traces`, `/api/otel/v1/metrics`) and uploads replays to `/api/recordings` on the same server. What it collects is changed on the project's **Data Collection** page; see [Remote config](#remote-config). A self-hosted server adds `baseUrl = "https://traceway.mycompany.com"`.
 
 ### Issues and replays on Traceway, other telemetry elsewhere
 
-Add `telemetry` to send ordinary logs, request spans and metrics to another OTLP/HTTP receiver, such as an OpenTelemetry Collector in front of a Grafana stack:
+Add `telemetry` to send ordinary logs, request spans and metrics to another OpenTelemetry provider (any OTLP/HTTP receiver: an OpenTelemetry Collector in front of a Grafana stack, Honeycomb, Datadog's or New Relic's OTLP intake):
 
 ```kotlin
 TracewayOptions(
+    token = BuildConfig.TRACEWAY_TOKEN,
     serviceName = "shop-app",
     telemetry = TracewayTelemetry(
         url = "https://collector.example.com/otlp",
@@ -525,18 +679,20 @@ TracewayOptions(
 )
 ```
 
-The shared `url` gets `/v1/logs`, `/v1/traces` and `/v1/metrics` appended. Each signal (`logs`, `traces`, `metrics`) can override it with a `TracewayTelemetryEndpoint(url, headers)` whose URL is used as given. Without a shared `url`, the signals you do not list keep their Traceway destination. URLs must use HTTP(S), without embedded credentials, a query or a fragment. Signal headers override the shared `headers` key by key; the Traceway token is never sent to these receivers.
+The shared `url` gets `/v1/logs`, `/v1/traces` and `/v1/metrics` appended. Each signal (`logs`, `traces`, `metrics`) can override it with a `TracewayTelemetryEndpoint(url, headers)` whose URL is used as given. Without a shared `url`, the signals you do not list keep their Traceway destination. URLs must use HTTP(S), without embedded credentials, a query or a fragment. Signal headers override the shared `headers` key by key; the Traceway token is never sent to these receivers. From Java, `TracewayTelemetry.builder()` builds one.
 
-When logs are redirected, exceptions, `captureMessage` issues and the SDK's session and control records still go to Traceway, and only there. Ordinary logs (console lines, `Traceway.log`, screens, taps, `recordAction`, `track`) go to the logs receiver; request spans and metrics use their own destinations. Remote config and replays keep using the connection string. Both destinations carry `session.id` for correlation. Failed batches are queued on disk per destination.
+When logs are redirected, exceptions, `captureMessage` issues and the SDK's session and control records still go to Traceway, and only there. Ordinary logs (console lines, `Traceway.log`, screens, taps, `recordAction`, `track`) go to the logs receiver; request spans and metrics use their own destinations. Remote config (OpAMP) and replays stay on Traceway. Both destinations carry `session.id` for correlation. Failed batches are queued on disk per destination, so a changed receiver is never sent what was meant for the previous one.
 
 The receiver must accept OTLP/HTTP with protobuf bodies (`application/x-protobuf`, gzip). Any key built into the app can be read out of it: use an ingestion key that can only write, or a collector that holds the backend credentials.
 
 ### Standalone, without a Traceway server
 
+Leave out the token:
+
 ```kotlin
 Traceway.init(
-    application = this,
-    options = TracewayOptions(
+    this,
+    TracewayOptions(
         serviceName = "shop-app",
         telemetry = TracewayTelemetry(url = "https://collector.example.com/otlp"),
         collection = mapOf("signals" to mapOf("console" to mapOf("mode" to "stream"))),
@@ -548,71 +704,124 @@ No Traceway server, account or token is required. `telemetry` must have a shared
 
 ## Options
 
-`TracewayOptions` accepts the following parameters. The `capture*` options, `screenCapture`, `replayImages` and `sessions` are ceilings: remote settings can lower what is collected but never raise it.
+`TracewayOptions` accepts the following parameters: the ones shared with the Flutter and iOS SDKs first, in their order, then Android's own. Pass them by name. The `capture*` options, `screenCapture`, `replayImages` and `sessions` are ceilings: remote settings can lower what is collected but never raise it.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `sampleRate` | `Double` | `1.0` | Share of exceptions and messages that are reported (0.0 to 1.0) |
-| `debug` | `Boolean` | `false` | Log what the SDK does to Logcat (tag `Traceway`) |
-| `version` | `String` | `""` | App version, sent as `service.version` (`unknown` when empty) |
-| `serviceName` | `String?` | application id | Sent as `service.name` |
-| `environment` | `String?` | none | Sent as `deployment.environment.name` |
-| `attributes` | `Map<String, String>` | `{}` | Attributes attached to every record, also used for remote-config targeting |
-| `screenCapture` | `Boolean` | `false` | Record a [wireframe session replay](#session-replay): the last seconds go up with an exception, and captures can stream it |
-| `replayImages` | `TracewayImagePolicy` | `ALWAYS` | Most the replay records of image views: `OFF`, `WIFI` (unmetered networks only) or `ALWAYS`; the `replay.images` setting (`wifi` by default) can lower it (see [Images](#images)) |
-| `fps` | `Int` | `10` | Most wireframe frames captured per second (1 to 30); frames are taken only after the app drew |
-| `maxBufferFrames` | `Int` | `150` | Wireframe frames held on the device (at least 2); the upper bound of every clip |
-| `persistToDisk` | `Boolean` | `true` | Keep SDK state and undelivered telemetry on disk across restarts |
-| `captureLogs` | `Boolean` | `true` | Capture `System.out` / `System.err` and `Traceway.log` |
-| `captureNetwork` | `Boolean` | `true` | Record HTTP calls made through `TracewayOkHttpInterceptor` (or `startRequest` / `endRequest`) |
-| `captureNavigation` | `Boolean` | `true` | Record activity and fragment screens and `Traceway.recordNavigation` |
-| `captureUserActions` | `Boolean` | `true` | Record taps with the selector of the view, and feed taps and hovers to recording triggers |
-| `captureMetrics` | `Boolean` | `true` | Measure [app performance](#app-performance-metrics) and upload it as metrics |
-| `metricDimensions` | `Map<String, String>` | `{}` | Up to two app-defined dimensions on every metric (`custom.<key>`) |
-| `recordAllSessions` | `Boolean` | `false` | Stream breadcrumbs and the replay all the time instead of keeping them for errors |
-| `collection` | `Map<String, Any?>?` | none | Local collection settings, the same document as a remote-config rule (see [Local config](#local-config)) |
-| `sessions` | `Boolean` | `true` | Send session records (`session.start` / `session.end`); the session ID exists either way |
-| `baselineSampleRate` | `Double` | `0.0` | Share of sessions whose breadcrumbs are sent continuously, not only around errors |
-| `remoteConfig` | `Boolean` | `true` | Poll the server for collection settings over OpAMP |
-| `exportDelayMs` | `Long` | `1000` | How long finished records wait to be sent as one batch (at least 50 ms) |
-| `telemetry` | `TracewayTelemetry?` | none | Send logs, spans and metrics to another OTLP/HTTP receiver (see [Setups](#setups)) |
-| `propagateTraceHeaderUrls` | `List<String>` | `[]` | URL prefixes whose requests carry a W3C `traceparent` header (see [Connect requests to backend traces](#connect-requests-to-backend-traces)) |
-| `ignoreErrors` | `List<Any>?` | `null` (the network-noise defaults) | `String`s and `Regex`es matched against the first line `Type: message`; a list replaces the defaults (see [Errors and messages](#errors-and-messages)) |
-| `beforeCapture` | `((TracewayCapturedError) -> Boolean)?` | none | Return `false` to drop an exception or message |
-| `legacyConnectionString` | `String?` | none | The connection string a 1.x build used, to deliver its unsent reports (see [Migrating from 1.x](#migrating-from-1x)) |
-| `proguardUuid` | `String?` | none | The R8 build UUID, `BuildConfig.TRACEWAY_PROGUARD_UUID` from the [symbols plugin](/symbolicator/android) |
-| `propagateTraceHeaderUrlPatterns` | `List<Regex>` | `[]` | Like `propagateTraceHeaderUrls`, as regular expressions |
+| Option                            | Type                                    | Default                          | Description                                                                                                                                                                                                         |
+| --------------------------------- | --------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `token`                           | `String?`                               | none                             | The project token, from the project's Connection page; without one the SDK runs [standalone](#standalone-without-a-traceway-server)                                                                                 |
+| `baseUrl`                         | `String?`                               | `https://cloud.tracewayapp.com`  | The Traceway server; set it for a self-hosted one (`https://` is added when there is no scheme)                                                                                                                     |
+| `sampleRate`                      | `Double`                                | `1.0`                            | Share of exceptions and messages that are reported (0.0 to 1.0)                                                                                                                                                     |
+| `debug`                           | `Boolean`                               | `false`                          | Log what the SDK does to Logcat (tag `Traceway`), including why a record was dropped and contained SDK failures                                                                                                     |
+| `version`                         | `String?`                               | the app's `versionName`          | App version, sent as `service.version`                                                                                                                                                                              |
+| `serviceName`                     | `String?`                               | application id                   | Sent as `service.name`                                                                                                                                                                                              |
+| `environment`                     | `String?`                               | none                             | Sent as `deployment.environment.name`                                                                                                                                                                               |
+| `attributes`                      | `Map<String, String>`                   | `{}`                             | Attributes attached to every record, also used for remote-config targeting                                                                                                                                          |
+| `screenCapture`                   | `Boolean`                               | `false`                          | Record a [wireframe session replay](#session-replay): the last seconds go up with an exception, and captures can stream it                                                                                          |
+| `replayImages`                    | `TracewayImagePolicy`                   | `ALWAYS`                         | The most `replay.images` may allow: `OFF`, `WIFI` (unmetered networks only) or `ALWAYS` (see [Images](#images))                                                                                                     |
+| `fps`                             | `Int`                                   | `10`                             | Most wireframe frames captured per second (1 to 30); frames are taken only after the app drew                                                                                                                       |
+| `maxBufferFrames`                 | `Int`                                   | `150`                            | Wireframe frames held on the device (at least 2); the upper bound of every clip                                                                                                                                     |
+| `persistToDisk`                   | `Boolean`                               | `true`                           | Keep SDK state and undelivered telemetry on disk across restarts (`noBackupFilesDir/traceway_v2`)                                                                                                                   |
+| `captureLogs`                     | `Boolean`                               | `true`                           | Capture `System.out` / `System.err`, `Traceway.log` and Logcat lines from the Gradle plugin                                                                                                                         |
+| `captureNetwork`                  | `Boolean`                               | `true`                           | Record HTTP calls made through `TracewayOkHttpInterceptor` (or `startRequest` / `endRequest`)                                                                                                                       |
+| `captureNavigation`               | `Boolean`                               | `true`                           | Record activity, fragment and Compose Navigation screens and `Traceway.recordNavigation`                                                                                                                            |
+| `captureUserActions`              | `Boolean`                               | `true`                           | Record taps with the selector of the view, and feed taps and hovers to recording triggers                                                                                                                           |
+| `captureMetrics`                  | `Boolean`                               | `true`                           | Measure [app performance](#app-performance-metrics) and upload it as metrics                                                                                                                                        |
+| `metricDimensions`                | `Map<String, String>`                   | `{}`                             | Up to two app-defined dimensions on every metric (`custom.<key>`)                                                                                                                                                   |
+| `recordAllSessions`               | `Boolean`                               | `false`                          | Stream breadcrumbs and the replay all the time instead of keeping them for errors                                                                                                                                   |
+| `collection`                      | `Map<String, Any?>?`                    | none                             | Local collection settings, the same document as a remote-config rule (see [Local config](#local-config))                                                                                                            |
+| `sessions`                        | `Boolean`                               | `true`                           | Send session records (`session.start` / `session.end`); the session ID exists either way                                                                                                                            |
+| `baselineSampleRate`              | `Double`                                | `0.0`                            | Share of sessions whose breadcrumbs are sent continuously, not only around errors                                                                                                                                   |
+| `remoteConfig`                    | `Boolean`                               | `true`                           | Poll the server for collection settings over OpAMP                                                                                                                                                                  |
+| `exportDelayMs`                   | `Long`                                  | `1000`                           | How long finished records wait to be sent as one batch (at least 50 ms)                                                                                                                                             |
+| `telemetry`                       | `TracewayTelemetry?`                    | none                             | Send logs, spans and metrics to another OTLP/HTTP receiver (see [Send telemetry to another OpenTelemetry provider](#send-telemetry-to-another-opentelemetry-provider))                                              |
+| `propagateTraceHeaderUrls`        | `List<String>`                          | `[]`                             | URL prefixes whose requests carry a W3C `traceparent` header (see [Connect requests to backend traces](#connect-requests-to-backend-traces))                                                                        |
+| `ignoreErrors`                    | `List<Any>?`                            | `null` (`DEFAULT_IGNORE_ERRORS`) | `String`s, `Regex`es and `java.util.regex.Pattern`s matched against the first line `Type: message`; a list replaces the defaults (see [Errors and messages](#errors-and-messages))                                  |
+| `beforeCapture`                   | `((TracewayCapturedError) -> Boolean)?` | none                             | Return `false` to drop an exception or message                                                                                                                                                                      |
+| `proguardUuid`                    | `String?`                               | the Gradle plugin's              | The R8 build UUID; the plugin's is read from the app's assets, so set it only to pin your own (see [Crashes and symbolication](#crashes-and-symbolication))                                                         |
+| `propagateTraceHeaderUrlPatterns` | `List<Regex>`                           | `[]`                             | Like `propagateTraceHeaderUrls`, as regular expressions                                                                                                                                                             |
+| `captureExitReasons`              | `Boolean`                               | `true`                           | Report how earlier runs ended, from `ApplicationExitInfo` (Android 11+): native crashes and ANRs as issues, low-memory kills as `app.oom` (see [Exit reasons and native crashes](#exit-reasons-and-native-crashes)) |
+| `captureAppHangs`                 | `Boolean`                               | `true`                           | Report a main thread blocked for `appHangThresholdMs` in the foreground as an `AppHang` issue with its stack                                                                                                        |
+| `appHangThresholdMs`              | `Long`                                  | `2000`                           | How long the main thread must be blocked for an `AppHang` issue (at least 250 ms)                                                                                                                                   |
+| `reportHangsInDebug`              | `Boolean`                               | `false`                          | Report hangs (`app.hang` and `AppHang` issues) while a debugger is attached too, to try them from Android Studio's Debug run                                                                                        |
+| `allProcesses`                    | `Boolean`                               | `false`                          | Run in every process of the app, not only the main one; each keeps its own state                                                                                                                                    |
 
 ## Crashes and symbolication
 
-Every uncaught exception, on every thread, reaches the SDK through the default `UncaughtExceptionHandler`. The exception, its breadcrumbs and its replay clip are written to disk before the handler that was installed before (normally the platform's) ends the process. On any thread but the main one the SDK then tries to send them, holding the crashing thread for at most 2.5 seconds in all; a crash on the main thread is not sent then, so the frozen screen does not wait. What is left goes at the next start. The crash is never swallowed.
+Every uncaught exception, on every thread, reaches the SDK through the default `UncaughtExceptionHandler`. The exception (`exception.unhandled = true`, with its thread and screen), its breadcrumbs and its replay clip are written to disk before the handler that was installed before (normally the platform's) ends the process. On any thread but the main one the SDK then tries to send them, holding the crashing thread for at most 2.5 seconds in all; a crash on the main thread is not sent then, so the frozen screen does not wait. What is left goes at the next start. The crash is never swallowed. A crash before the SDK finished starting is kept on disk and reported at the next start (`traceway.crash.before_start = true`).
 
-Release builds run R8, which renames classes and methods and rewrites line numbers. Traceway reverses a crash with the build's `mapping.txt`, matched by the ProGuard UUID the SDK sends as the `app.debug.proguard_uuid` resource attribute of every record. The `com.tracewayapp.symbols` Gradle plugin injects a UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and uploads the mapping (`upload<Variant>TracewaySymbols`, or after `assemble<Variant>` with `autoUpload = true`). The UUID is derived from the module path, the variant, `versionName` and `versionCode` unless you set `proguardUuid` in the plugin's `traceway { }` block, so bump the version for each release. Pass the UUID to the SDK:
+Release builds run R8, which renames classes and methods and rewrites line numbers, so crashes arrive obfuscated. Traceway reverses them with the build's `mapping.txt`, matched to the crashing build by a ProGuard UUID that the SDK sends as the `app.debug.proguard_uuid` resource attribute of every record.
+
+The `com.tracewayapp.symbols` Gradle plugin (see [Installation](#installation)) does both halves: it makes a UUID per variant and app version, puts it into the app's assets where the SDK reads it (and into `BuildConfig.TRACEWAY_PROGUARD_UUID` when the module builds a `BuildConfig`), and uploads `mapping.txt` to Traceway. Applying it is all the app needs; configure the upload on your app module:
 
 ```kotlin
-Traceway.init(
-    application = this,
-    connectionString = "your-token@https://traceway.example.com",
-    options = TracewayOptions(
-        version = BuildConfig.VERSION_NAME,
-        proguardUuid = BuildConfig.TRACEWAY_PROGUARD_UUID,
-    ),
-)
+plugins {
+    id("com.android.application")
+    id("com.tracewayapp.symbols") version "2.1.0"
+}
+
+android {
+    buildTypes {
+        release { isMinifyEnabled = true }
+    }
+}
+
+traceway {
+    // The project's upload token, not the SDK's token: from the environment on CI, else local.properties
+    // (`localProperties` as in the Quick start).
+    uploadToken = System.getenv("TRACEWAY_UPLOAD_TOKEN") ?: localProperties.getProperty("TRACEWAY_UPLOAD_TOKEN")
+    // A self-hosted server; blank or unset is Traceway Cloud.
+    url = System.getenv("TRACEWAY_URL") ?: localProperties.getProperty("TRACEWAY_URL", "")
+    autoUpload = true                           // upload after assembleRelease; default false
+    // proguardUuid = "..."                     // optional: pin the build UUID yourself
+}
 ```
 
-Exceptions sent as log events and as span events are both retraced, and the issue shows the original classes, methods and lines. Plugin setup and the upload API are in [Android symbolication](/symbolicator/android). Symbolication happens on Traceway, so exceptions sent only to another backend in [standalone mode](#standalone-without-a-traceway-server) keep their obfuscated traces.
+Put `TRACEWAY_UPLOAD_TOKEN=YOUR_UPLOAD_TOKEN` in `local.properties` next to `TRACEWAY_TOKEN`, or set the `TRACEWAY_UPLOAD_TOKEN` environment variable on CI. Never write the token into `build.gradle.kts`, which is committed.
+
+- `uploadToken` is the project's **upload token** from the dashboard (the same token used for JavaScript source maps and iOS dSYMs), **not** the SDK's project token. The wrong token is rejected with a 401.
+- The UUID is derived from the module path, the variant and the app version (`versionName` + `versionCode`), so **bump the version for each release**; otherwise a new upload overwrites the previous release's mapping under the same UUID.
+- `autoUpload` defaults to `false`, so a release build never depends on the server. With it off, run the upload explicitly (recommended for CI): `./gradlew :app:assembleRelease :app:uploadReleaseTracewaySymbols`.
+- A minified build without a UUID (no plugin, no `proguardUuid`) logs one warning at start: its crashes arrive obfuscated.
+- The same `traceway { }` block configures [Logcat capture](#automatic-log-capture) (`logcat { enabled; minLevel; includeDependencies; disabledFor(…) }`).
+
+Exceptions sent as log events and as span events are both retraced, and the issue shows the original classes, methods and lines. Manual uploads and the upload API are in [Android symbolication](/symbolicator/android). Symbolication happens on Traceway, so exceptions sent only to another backend in [standalone mode](#standalone-without-a-traceway-server) keep their obfuscated traces.
+
+### Exit reasons and native crashes
+
+Android keeps a record of how each process of the app ended (`ApplicationExitInfo`, Android 11 / API 30+). Once per start, on its own threads, the SDK reads the records newer than the last one it saw (`captureExitReasons`, on by default; the first start only notes where Android's history ends):
+
+| How the process ended | Reported as                                                                                                                                                                                                                                                    |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REASON_CRASH_NATIVE` | issue `NativeCrash`: on Android 12+ the signal, abort message, cause and the crashing thread's frames from the tombstone (`#00 pc 000000000001a2b4  /data/app/…/libshop.so (decode+20) (BuildId: …)`), else Android's description; also counted in `app.crash` |
+| `REASON_ANR`          | issue `ApplicationNotResponding` with the main thread's stack from the ANR dump (Java `at …` and `native: #00 pc …` frames) and why the system found it not responding, plus an `app.anr` count                                                                |
+| `REASON_LOW_MEMORY`   | an `app.oom` count, no issue                                                                                                                                                                                                                                   |
+| `REASON_CRASH`        | nothing: the uncaught-exception handler already reported it                                                                                                                                                                                                    |
+
+These issues carry `exception.unhandled = true`, `app.exit.reason` (`crash_native`, `anr`), the time the process died and the session it was in (`session.id`, kept per process id). `traceway.previous_run = true` marks them: this run's breadcrumbs and replay are not their context. They need `persistToDisk`.
+
+There is no in-process native signal handler: it would compete with the other native crash reporters an app may have and needs native builds of the SDK. **Below Android 11, native crashes and ANRs are not reported.**
+
+### App hangs
+
+The watchdog behind `app.hang` posts a probe to the main thread every 500 ms. When one has waited `appHangThresholdMs` (2 s) in the foreground, not under a debugger, the watchdog's thread takes the main thread's stack while it is still blocked, and keeps the hang on disk. When the main thread runs again the hang is an issue of type `AppHang`, message `Main thread blocked for 3.2 s`, with that stack, the screen it happened on, `app.hang.duration_ms` and `app.hang.fatal = false`; `ignoreErrors` and `beforeCapture` see it like an exception. A hang the process does not survive (the system or the user kills it) is reported at the next start with `app.hang.fatal = true`, unless Android recorded that run's end as an ANR: then the ANR is the issue, with the hang's stack when its dump has none. `captureAppHangs = false` turns hang issues off (the metric stays); `reportHangsInDebug = true` reports them under a debugger too.
+
+### Crash safety
+
+The SDK itself never takes the app down. Every public method of `Traceway`, `TracewayClient` and `TracewayInteraction` contains the SDK's own failures and takes Java nulls. `Traceway.init` never throws: any failure is logged and it returns `null`, leaving no hook, thread or crash handler behind, and a hook that cannot be installed is skipped while the rest runs. Every hook the SDK installs (activity, frame and draw callbacks, the hang probe, network callbacks, the OkHttp interceptor, the Logcat bridge, image encoders, its timers) contains its own failures and logs one line per place with `debug`. The app's own exceptions still reach it unchanged (an interaction's `run` block, an OkHttp call), and crashes still go to the handler that was there before.
 
 ## What gets captured automatically
 
 After `Traceway.init`, with no further code:
 
 - **Uncaught exceptions** on every thread (see [Crashes and symbolication](#crashes-and-symbolication)).
-- **Sessions**: a new one after 15 minutes without activity, and at the latest after an hour.
-- **Logs**: every `System.out` / `System.err` line.
-- **Screens**: activities and AndroidX fragments; other routers through `Traceway.recordNavigation`.
-- **Taps**: every tap in the app's activity windows, with the selector, class, ID, shown text and label of the view, and the screen. Dialogs and popups (Compose ones included) have windows of their own, and taps there are not recorded.
+- **Native crashes, ANRs and low-memory kills** of earlier runs, Android 11+, and **app hangs** (see [Exit reasons and native crashes](#exit-reasons-and-native-crashes) and [App hangs](#app-hangs)).
+- **Sessions**: `session.start`, `session.end` and `traceway.session.update`, with the session's collection counters. A new one after 15 minutes without activity, and at the latest after an hour.
+- **Logs**: every `System.out` / `System.err` line, and `android.util.Log` calls with the Gradle plugin.
+- **Screens**: activities and AndroidX fragments, as `browser.navigation`; Compose Navigation with `Traceway.trackNavigation`.
+- **Taps**: every tap in the app's activity windows, with the selector, class, ID, shown text and label of the view, and the screen (`browser.user_action.click`, with `app.widget.*` and `app.screen.*` attributes). Taps in dialogs, bottom sheets and menus are not recorded yet (their screens are in the replay).
 - **Network**: OkHttp requests through `TracewayOkHttpInterceptor`.
 - **App performance metrics**.
+- **Replay**, with `screenCapture = true`.
 
 Breadcrumbs (logs, screens, taps, requests, actions) wait in the ring buffer and show on the session timeline next to the exception that flushed them.
 
@@ -622,7 +831,8 @@ Each channel can be turned off in `TracewayOptions`. No remote setting can turn 
 
 ```kotlin
 TracewayOptions(
-    captureLogs = false,        // System.out / System.err, Traceway.log
+    token = BuildConfig.TRACEWAY_TOKEN,
+    captureLogs = false,        // System.out / System.err, Logcat, Traceway.log
     captureNetwork = false,     // OkHttp interceptor, startRequest / endRequest
     captureNavigation = false,  // screens
     captureUserActions = false, // taps
@@ -632,9 +842,9 @@ TracewayOptions(
 
 ## Platform support
 
-| Platform | Error Tracking | Session Replay | Metrics |
-|----------|---------------|----------------|---------|
-| Android (API 21+) | Yes | Wireframe (views and Jetpack Compose) | Yes |
+| Platform          | Error Tracking                              | Session Replay                                                          | Metrics |
+| ----------------- | ------------------------------------------- | ----------------------------------------------------------------------- | ------- |
+| Android (API 21+) | Yes; native crashes and ANRs on Android 11+ | Wireframe (views and Jetpack Compose), with the pictures of image views | Yes     |
 
 Below API 26, enable core library desugaring (see [Installation](#installation)). For Flutter apps, use the [Flutter SDK](/client/flutter) instead.
 
@@ -642,43 +852,55 @@ Below API 26, enable core library desugaring (see [Installation](#installation))
 
 The API has the names of the [browser](/client/js-sdk), [Flutter](/client/flutter) and [iOS](/client/ios) SDKs. Where Android differs, it is for these reasons:
 
-- **Start**: `Traceway.init(application, connectionString, options)` takes the `Application`, which the SDK needs to follow activities and fragments, record taps and the wireframe, keep its files and read the network state. It returns the `TracewayClient`, or `null` when the settings are invalid (logged, not thrown); `Traceway.init(application, options)` starts standalone. Flutter starts with `Traceway.run`, iOS with `Traceway.initialize`.
+- **Start**: `Traceway.init(application, TracewayOptions(token = …, baseUrl = …))` takes the `Application`, which the SDK needs to follow activities and fragments, record taps and the wireframe, keep its files and read the network state, and the token and server inside the options (Flutter and iOS take them as parameters of `Traceway.run` and `Traceway.initialize`). It returns the `TracewayClient`, or `null` when the settings are invalid (logged, not thrown).
 - **Masks** belong to views: `view.tracewayMask` in Kotlin, `Traceway.mask(view, mode)` / `Traceway.unmask(view)` from Java (an extension property reads poorly there), `Modifier.tracewayMask(mode)` in Compose. The markers that need no code are `android:tag` and Compose `testTag` values (`traceway-mask`, `traceway-blank`), where the browser uses CSS classes and Flutter a `ValueKey`. `TracewayMaskMode.blank(color)` takes an ARGB `Int`.
-- **Blocking, in milliseconds**: `flush(timeoutMs)` and `shutdown(timeoutMs)` (10 s by default) block the calling thread instead of returning a promise or future: call them off the main thread. iOS takes seconds (`flush(timeout:)`).
+- **Blocking, in milliseconds**: `flush(timeoutMs)` and `shutdown(timeoutMs)` (10 s by default) block the calling thread instead of returning a promise or future. On the main thread `flush` waits 2 s at most whatever it is asked (an ANR comes at 5 s), and what is not sent by then goes later; off it, the whole timeout. iOS takes seconds (`flush(timeout:)`).
+- **Exit reasons** come from Android's `ApplicationExitInfo` (API 30+; tombstones from API 31), read at the next start; iOS reads MetricKit. There is no native signal handler, so native crashes before Android 11 are not reported (iOS has one, on an alternate stack).
+- **Logcat** needs the Gradle plugin, which rewrites `android.util.Log` calls at build time (iOS reads the unified log; the browser wraps `console`, Flutter `print`). Without it, `System.out` and `System.err` only.
+- **The tracer** is never registered as the global OpenTelemetry: in OpenTelemetry Java `GlobalOpenTelemetry.set` works once per process, so registering would make an app's own later `buildAndRegisterGlobal()` throw. Use `Traceway.tracer`. No Traceway SDK registers itself as the global provider.
 - **Properties and Java**: `Traceway.currentSessionId` is a property, as in Flutter and iOS (`getCurrentSessionId()` from Java, a function in the browser); `getInstanceId()` is a method, as in the browser and Flutter (iOS: `instanceId`). Every method is a `@JvmStatic` on `Traceway`, with Java overloads for the optional parameters.
 - **Enum constants in Kotlin case**: `TracewayLogLevel.WARN` (`"warn"` in the browser, `.warn` in Flutter and iOS), `TracewayImagePolicy.WIFI` for the setting `replay.images: "wifi"`.
 - **Throwables carry their stack**: `captureException(error, attributes)` has no stack trace parameter (Flutter's has one), and `log(message, level, attributes)` takes no error.
-- **Navigation**: activities and AndroidX fragments are reported without code; Compose Navigation and other routers call `recordNavigation(path, action, from, route)`, positional in that order from Java (Flutter takes them by name).
+- **Navigation**: activities and AndroidX fragments are reported without code; Compose Navigation through `Traceway.trackNavigation(navController)` (Flutter has `Traceway.navigatorObserver`, iOS `.tracewayScreen`, which `Modifier.tracewayScreen` mirrors); other routers call `recordNavigation(path, action, from, route)`, positional in that order from Java (Flutter takes them by name).
 - **Requests** are recorded by `TracewayOkHttpInterceptor` on the app's `OkHttpClient`, or with `Traceway.client?.startRequest` / `endRequest` for another HTTP stack; nothing is patched.
-- **Options**: `TracewayOptions` is a Kotlin constructor; pass its parameters by name. `proguardUuid` and `propagateTraceHeaderUrlPatterns` exist only on Android.
+- **Options**: `TracewayOptions` is a Kotlin constructor; pass its parameters by name, or from Java build them with `TracewayOptions.builder()` (a `null` means the default). `proguardUuid`, `propagateTraceHeaderUrlPatterns` and `allProcesses` exist only on Android; `appHangThresholdMs` is in milliseconds.
+
+## Upgrading from 2.0
+
+- **Start with a token in the options**: `Traceway.init(this, TracewayOptions(token = BuildConfig.TRACEWAY_TOKEN))`, with `baseUrl = "https://traceway.mycompany.com"` only for a self-hosted server; Traceway Cloud (`https://cloud.tracewayapp.com`) is the default. Keep the token in `local.properties`, as in [Quick start](#quick-start).
+- **Connection strings still work**: `Traceway.init(application, "YOUR_TOKEN@https://cloud.tracewayapp.com/api/report", options)` is deprecated and logs one warning naming the new form. Every form works the same way: `token@url`, with or without a trailing `/api` or `/api/report`, trailing slashes, surrounding spaces, no scheme (`https://` is added; `http://` for `localhost` and `10.0.2.2`), or a server under a sub-path. One the SDK cannot read logs one warning and leaves the SDK off; it never throws.
+- **`TracewayOptions` starts with `token` and `baseUrl`**, in the order the other SDKs use: pass its parameters by name (positional Java callers move to `TracewayOptions.builder()`).
+- **`legacyConnectionString` is gone**: exceptions and messages 1.x left on the device (at most 12 hours old, the 1.x limit) are reported once, at the first start, to the token's project, with `traceway.previous_run = true`, and deleted. Nothing is sent to the 1.x report endpoint any more.
+- **Apply the Gradle plugin** for Logcat lines and readable release crashes (see [Installation](#installation)); the plugin's UUID is now read from the app's assets, so `proguardUuid = BuildConfig.TRACEWAY_PROGUARD_UUID` is no longer needed.
+- **New in 2.1.0**: native crashes, ANRs and low-memory kills from `ApplicationExitInfo` (`captureExitReasons`), `AppHang` issues (`captureAppHangs`, `appHangThresholdMs`), Logcat capture, `Traceway.tracer`, `Traceway.trackNavigation`, `Modifier.tracewayScreen`, `TracewayOptions.builder()`, `allProcesses`, smaller replay pictures (PNG for transparency), and the crash-safety guard.
 
 ## Migrating from 1.x
 
-- **Server**: 2.0 sends OTLP to `/api/otel/v1/logs`, `/api/otel/v1/traces` and `/api/otel/v1/metrics`, polls `/api/otel/v1/opamp` and uploads replays to `/api/recordings`. There is no fallback to the 1.x `/api/report` protocol.
-- **Connection string**: unchanged. `token@https://host/api/report` still works, as does `token@https://host`. It is optional now: without it the SDK runs [standalone](#standalone-without-a-traceway-server).
-- **Unsent 1.x reports**: set `TracewayOptions(legacyConnectionString = previousConnectionString)` to the connection string the old build used. Reports 1.x left on the device are delivered to that project's `/api/report` and expire after 12 hours, the 1.x default. Without it they expire on the device.
+- **Server**: 2.x sends OTLP to `/api/otel/v1/logs`, `/api/otel/v1/traces` and `/api/otel/v1/metrics`, polls `/api/otel/v1/opamp` and uploads replays to `/api/recordings`. It never uses the 1.x report protocol.
+- **Start**: start with the project token, as in [Upgrading from 2.0](#upgrading-from-20). Without a token the SDK runs [standalone](#standalone-without-a-traceway-server).
+- **Unsent 1.x reports** are delivered at the first start, as above.
 - **Desugaring**: an app with `minSdk` below 26 must enable core library desugaring.
-- **Behaviour**: logs and actions are no longer limited to the last 10 seconds and no longer travel inside the report. They are buffered for up to 10 minutes and sent as their own records with an exception. `screenCapture = true` now records a wireframe session replay.
+- **Behaviour**: logs and actions are no longer limited to the last 10 seconds and no longer travel inside the report. They are buffered for up to 10 minutes and sent as their own records with an exception. `screenCapture = true` now records a wireframe session replay. Network errors (`UnknownHostException`, timeouts, 4xx) are no longer reported unless `ignoreErrors` says so.
 - **Removed options**: `debounceMs`, `retryDelayMs`, `maxPendingExceptions`, `maxLocalFiles`, `localFileMaxAgeHours`, `eventsWindowMs`, `eventsMaxCount`, `capturePixelRatio`. `fps` and `maxBufferFrames` now apply to the wireframe replay.
 - **Removed API**: `TracewayClient.addException`, `loadPendingFromDisk`, `setDeviceAttributes`, `bufferedLogs`, `bufferedActions`, `pendingExceptionCount` and the other test accessors, `recordNetworkEvent`, `recordNavigationEvent`, the `ReportSender` interface and the 1.x event and report models. Use `captureException`, `Traceway.setAttribute`, `startRequest` / `endRequest`, `recordNavigation` and `flush()`.
-- **Changed API**: `Traceway.init` returns `TracewayClient?` (null when the settings are invalid). `TracewayClient.flush(timeoutMs)` takes a non-null timeout (10 s by default). `TracewayOptions` lists its parameters in the order the other SDKs do: pass them by name.
-- **Renamed during the 2.0 beta**: `Traceway.recordLog(message, severity)` is `Traceway.log(message, level, attributes)` with `TracewayLogLevel`. The old name still works and is deprecated.
-- **New API**: `Traceway.log`, `track`, `setAttribute(s)`, `removeAttribute`, `clearAttributes`, `recordNavigation`, `setRoute`, `startInteraction`, `reportFullyDisplayed`, `metric`, `count`, `setMetricDimension`, `mask` / `unmask`, `refreshConfig`, `shutdown`, `getInstanceId`, `currentSessionId`; `View.tracewayMask`, `Modifier.tracewayMask()`; `TracewayLogLevel`, `TracewayInteraction`, `TracewayCapturedError`, `TracewayImagePolicy`, `TracewayTelemetry`, `TracewayTelemetryEndpoint`, `TracewayMaskMode`; the options `replayImages`, `ignoreErrors` and `beforeCapture`.
-- **Issues regroup once**: the stack trace now reaches the server as the OpenTelemetry `exception.*` attributes, so the first 2.0 occurrence of an issue may start a new group.
+- **Changed API**: `Traceway.init` returns `TracewayClient?` (null when the settings are invalid). `TracewayClient.flush(timeoutMs)` takes a non-null timeout (10 s by default).
+- **New API**: `TracewayOptions.token` and `baseUrl`, `TracewayOptions.builder()`, `Traceway.trackNavigation`, `Modifier.tracewayScreen`, `Traceway.log`, `track`, `setAttribute(s)`, `removeAttribute`, `clearAttributes`, `recordNavigation`, `setRoute`, `startInteraction`, `reportFullyDisplayed`, `metric`, `count`, `setMetricDimension`, `mask` / `unmask`, `refreshConfig`, `shutdown`, `getInstanceId`, `currentSessionId`, `tracer`; `View.tracewayMask`, `Modifier.tracewayMask()`; `TracewayLogLevel`, `TracewayInteraction`, `TracewayCapturedError`, `TracewayImagePolicy`, `TracewayTelemetry`, `TracewayTelemetryEndpoint`, `TracewayMaskMode`; the options `replayImages`, `ignoreErrors` and `beforeCapture`. `recordLog` remains as a deprecated name.
+- **Issues regroup once**: the stack trace now reaches the server as the OpenTelemetry `exception.*` attributes, so the first 2.x occurrence of an issue may start a new group.
 
 ## Testing
 
 ```kotlin
 // Send a test error
 Traceway.captureException(RuntimeException("Test error from Traceway integration"))
-Traceway.flush()
+thread { Traceway.flush() } // kotlin.concurrent.thread: flush blocks, so call it off the main thread
 ```
 
-Or throw one (`throw RuntimeException("Test error")`) and open the app again: the crash is sent at once or at the next start. The issue shows its stack trace, the breadcrumbs before it and, with `screenCapture = true`, the replay of the last seconds. `debug = true` logs every upload to Logcat under the tag `Traceway`.
+Or throw one (`throw RuntimeException("Test error")`) and open the app again: the crash is sent at once or at the next start. The issue shows its stack trace, the breadcrumbs before it and, with `screenCapture = true`, the replay of the last seconds. `debug = true` logs every upload to Logcat under the tag `Traceway`. [Configure Session Capture](/client/android/session-capture#check-that-it-works) lists what to look at for replay.
 
 ## Links
 
-- [Android SDK source](https://github.com/tracewayapp/traceway-android), with an example app in `example/` (views, a Jetpack Compose screen, masks and an OkHttp request with trace propagation)
+- [Configure Session Capture](/client/android/session-capture)
+- [Android SDK source](https://github.com/tracewayapp/traceway-android), with an example app in `example/` (views, a Jetpack Compose screen with Compose Navigation, masks, Logcat through the Gradle plugin and an OkHttp request with trace propagation)
 - [`com.tracewayapp:traceway` on Maven Central](https://central.sonatype.com/artifact/com.tracewayapp/traceway)
 - [Android symbolication](/symbolicator/android)
 - [Remote SDK Config](/learn/remote-config) and the [settings reference](/learn/remote-config/reference)

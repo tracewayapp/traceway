@@ -1,0 +1,264 @@
+import ReplayCeilings from "../../../components/mobile-docs/replay-ceilings.mdx";
+import ReplayBuffer from "../../../components/mobile-docs/replay-buffer.mdx";
+import KeyboardBox from "../../../components/mobile-docs/keyboard-box.mdx";
+import CheckMask from "../../../components/mobile-docs/check-mask.mdx";
+import ImagePolicy from "../../../components/mobile-docs/image-policy.mdx";
+import ImageLimits from "../../../components/mobile-docs/image-limits.mdx";
+import DefaultUpload from "../../../components/mobile-docs/default-upload.mdx";
+import Sampling from "../../../components/mobile-docs/sampling.mdx";
+import TriggerRule from "../../../components/mobile-docs/trigger-rule.mdx";
+import DashboardCapture from "../../../components/mobile-docs/dashboard-capture.mdx";
+import DataCollectionRules from "../../../components/mobile-docs/data-collection-rules.mdx";
+import CheckItWorks from "../../../components/mobile-docs/check-it-works.mdx";
+import ReplayBudget from "../../../components/mobile-docs/replay-budget.mdx";
+
+# Configure Session Capture
+
+Session replay shows what the user saw before an error, or along a journey you care about. This page sets it up in an iOS app: turn it on, hide what is private, decide which sessions upload replay, and then change all of it from the dashboard without a release. It assumes the SDK is installed and started as in the [Quick Start](/client/ios).
+
+| Step                                                               | What you do                         | Where                    |
+| ------------------------------------------------------------------ | ----------------------------------- | ------------------------ |
+| [1](#step-1-turn-on-replay-and-set-the-limits-in-the-app)          | Turn on replay and set its limits   | App code                 |
+| [2](#step-2-hide-private-content)                                  | Hide private content                | App code and storyboards |
+| [3](#step-3-choose-whether-replays-show-images)                    | Choose whether replays show images  | Dashboard or app code    |
+| [4](#step-4-choose-which-sessions-upload-replay)                   | Choose which sessions upload replay | Dashboard or app code    |
+| [5](#step-5-capture-one-user-or-device-from-the-dashboard)         | Capture one user or device          | Dashboard                |
+| [6](#step-6-change-collection-remotely-with-data-collection-rules) | Change collection with rules        | Dashboard                |
+
+## Step 1: Turn on replay and set the limits in the app
+
+An iOS app records a **wireframe**: up to `fps` times a second, the SDK walks the app's windows and records what the UIKit views and SwiftUI layers show as HTML, which the dashboard replays with the same rrweb player as a browser session. No screen pixels are read and no video is encoded: a segment is a few kilobytes.
+
+Replay is off until you turn it on with `screenCapture`:
+
+```swift
+let info = Bundle.main.infoDictionary
+Traceway.initialize(
+    token: info?["TracewayToken"] as? String ?? "",
+    options: TracewayOptions(
+        screenCapture: true,
+        fps: 4,              // the default; at most 15
+        maxBufferFrames: 150 // the default; the longest clip
+    )
+)
+```
+
+<ReplayCeilings />
+
+<ReplayBuffer />
+
+A frame is kept only when the screen changed, so 150 frames at 4 fps cover at least 37 seconds: an error clip holds the whole 30 seconds. Streamed segments last up to 10 seconds. While the app is in the background, the replay shows a blank "App in the background" screen.
+
+## Step 2: Hide private content
+
+Masks change the recording only: the user sees no difference in the live app.
+
+### Inputs are masked by default
+
+Text typed into a text field or text view is replaced with `*`, and a secure text field always shows bullets. Only a rule that sets `replay.maskAllInputs` to `false` turns this off.
+
+<KeyboardBox />
+
+### Mark views with a mask
+
+A blur mask keeps the layout and replaces its text with `*` and its images with placeholders. A blank mask is a box of one color, and nothing inside it is recorded. A mask covers the view and everything inside it.
+
+```swift
+// UIKit
+cardNumberLabel.tracewayMask = .blank()                 // a black box
+balanceView.tracewayMask = .blank(color: .systemGray5)  // a box of another color
+profileView.tracewayMask = .blur                        // layout kept, text as *
+cardNumberLabel.tracewayMask = nil                      // no mask
+
+// UIKit, without code (Interface Builder's Identity inspector sets it too)
+balanceView.accessibilityIdentifier = "traceway-mask"   // as .blur
+pinView.accessibilityIdentifier = "traceway-blank"      // as .blank()
+
+// SwiftUI
+Text(card.number).tracewayMask(.blank(color: .gray))
+ProfileView().tracewayMask()                            // .blur
+```
+
+- SwiftUI's `.accessibilityIdentifier` cannot be read from the view hierarchy, so a SwiftUI view is masked with the `.tracewayMask(_:)` modifier. A SwiftUI mask covers whatever is drawn under its frame, also content that has no view of its own.
+- A masked view's text and label are left out of tap records too, and a mask identifier never names a view in a selector.
+- `tracewayPrivacyMask`, the property and modifier of earlier builds, is a deprecated alias of `tracewayMask`.
+
+### Check the mask before you ship
+
+<CheckMask />
+
+SwiftUI text shows as neutral bars unless an assistive technology such as VoiceOver runs (see [What replay does not record](#what-replay-does-not-record)). Turn VoiceOver on while you check, so you see the text a user's replay could show.
+
+## Step 3: Choose whether replays show images
+
+<ImagePolicy />
+
+The ceiling in the app:
+
+```swift
+TracewayOptions(
+    screenCapture: true,
+    replayImages: .wifi // never more than Wi‑Fi only, whatever a rule says
+)
+```
+
+**What Wi‑Fi only means on iOS.** The SDK asks `NWPathMonitor`: a path that is satisfied and neither expensive nor constrained is unmetered. Cellular, a personal hotspot and Low Data Mode count as metered.
+
+The size limits, the same on iOS, Android and Flutter:
+
+<ImageLimits />
+
+What is recorded on iOS:
+
+- The image a `UIImageView` shows, and the photo contents of image layers, which is how SwiftUI draws its images.
+- SF Symbols and template images keep their shape whatever the policy: monochrome symbols in their tint, palette and multicolor symbols in their own colors.
+
+## Step 4: Choose which sessions upload replay
+
+### What uploads by default
+
+<DefaultUpload />
+
+### Record every session or a sample
+
+<Sampling />
+
+In the app:
+
+```swift
+TracewayOptions(
+    screenCapture: true,
+    recordAllSessions: true // stream every session; for a debug build or a test group
+)
+```
+
+### Record a journey with a trigger
+
+<TriggerRule />
+
+On iOS the **Event** of a step is **Tap**, **Navigation** or **Log** (a `Traceway.log` line or a `captureMessage`). There is no hover on a touch screen. A trigger can also live in the app, in the `collection` document, with the same fields the dashboard writes:
+
+```swift
+TracewayOptions(
+    screenCapture: true,
+    collection: [
+        "triggers": [[
+            "id": "checkout-abandoned",
+            "name": "Opened checkout, then went back",
+            "steps": [
+                ["match": ["event": ["type": "navigation", "value": "/checkout"]]],
+                ["match": ["event": ["type": "click", "value": "#back"]], "withinSeconds": 60],
+            ],
+            "actions": [[
+                "type": "capture", "replay": true, "lookbackSeconds": 30, "durationSeconds": 120,
+            ]],
+            "cooldownSeconds": 60,
+            "maxPerSession": 3,
+        ]],
+    ]
+)
+```
+
+The [trigger reference](/learn/remote-config/reference#triggers) has every field, and [Recording triggers](/learn/remote-config/trigger-sequences) walks through the builder.
+
+### Name the views a trigger can match
+
+A tap step matches a view by a CSS-like selector. Give the views a journey goes through a stable name:
+
+```swift
+payButton.accessibilityIdentifier = "pay"   // #pay, UIButton#pay
+deleteButton.accessibilityLabel = "Delete"  // UIButton[label="Delete"]
+cartView.accessibilityIdentifier = "cart"   // #cart UIButton: a button inside it
+
+// SwiftUI
+Button("Pay now") { pay() }
+    .tracewayIdentifier("pay")              // #pay
+```
+
+You rarely write a selector by hand: every tap is recorded with the selector of the view that handled it, and the session's **Actions** list shows it, ready to paste into a step. `accessibilityIdentifier`s, the handles UI tests already use, survive copy changes and translations.
+
+SwiftUI controls have no views of their own, and SwiftUI's `.accessibilityIdentifier` cannot be read: name them with `.tracewayIdentifier(_:)`. A tap inside a view named so is recorded as `#pay` (the innermost named view under the finger wins); without it, a tap on a SwiftUI control names the hosting view. The whole syntax is in [Naming views](/client/ios#naming-views).
+
+### Name your screens
+
+A navigation step matches the path of the screen on top, and so do the screen names on issues and taps. A UIKit view controller that appears is a screen with no code (`/CheckoutViewController`; a `UIHostingController` the app creates itself is its SwiftUI root view, `/ContentView`). A SwiftUI app records no screens by itself (its window, `NavigationStack` and sheets use SwiftUI's own controllers), so its views report theirs:
+
+```swift
+CheckoutView()
+    .tracewayScreen("/checkout")
+
+OrderView(order: order)
+    .tracewayScreen("/orders/\(order.id)", route: "/orders/:id")
+
+// Or from a router, with the route template it knows:
+Traceway.recordNavigation("/orders/\(order.id)", route: "/orders/:id")
+
+// The route template of the current screen, until the next screen:
+Traceway.setRoute("/orders/:id")
+```
+
+The details are in [Naming screens](/client/ios#naming-screens).
+
+## Step 5: Capture one user or device from the dashboard
+
+```swift
+// After sign-in: captures can now target this user.
+Traceway.setAttribute("user.id", user.id)
+
+// This installation, for a capture of one device (service.instance.id).
+let instanceId = Traceway.instanceId
+
+// Ask for settings now instead of at the next poll.
+Traceway.refreshConfig()
+```
+
+<DashboardCapture />
+
+**When the app picks it up.** An iOS app polls at start, every 5 minutes (every 60 seconds while a capture targets it), every time it returns to the foreground, and about 2 seconds after `setAttribute`. To start a capture on your own test device at once, send the app to the background and bring it back.
+
+## Step 6: Change collection remotely with Data Collection rules
+
+<DataCollectionRules />
+
+**Replay type** (`replay.captureMode`) is a Flutter setting: an iOS app always records a wireframe.
+
+## Check that it works
+
+Start the app with `debug: true`, so the console shows what the SDK does (its first line is `[Traceway] started (2.1.0) for https://…`, and in a SwiftUI app that names no screen it says so once), and send a test error from a button:
+
+```swift
+struct TestError: Error {}
+
+Button("Send Test Error") {
+    Traceway.captureException(TestError())
+    Traceway.flush(timeout: 5) // on the main thread it waits 2 s at most
+}
+```
+
+<CheckItWorks />
+
+To check crash reporting as well, run the app without the debugger, because lldb catches the signal first: install from Xcode, stop, launch the app from the home screen, crash it, and launch it again. The crash is reported at that launch.
+
+## What replay does not record
+
+- **SwiftUI text** is readable only through accessibility, which iOS fills in while an assistive technology (VoiceOver, Voice Control, Switch Control) runs. Otherwise each `Text` is a neutral bar where its lines are. Its colors, shapes, gradients and symbols are recorded from its layers either way.
+- **Views that draw themselves** in `draw(_:)` are dashed outlines, and web views, maps, `AVPlayer` views, camera previews and Metal views are labelled placeholders.
+- **SwiftUI controls without a name.** A tap on a SwiftUI control without `.tracewayIdentifier` is recorded on its hosting view, so tap steps cannot tell two such buttons apart.
+- **Hover.** A touch screen has none; an iPad trackpad pointer is replayed as a mouse, but hover steps never match.
+- **Video.** iOS records wireframes only.
+
+<ReplayBudget />
+
+## When it fails
+
+| Symptom                         | Cause                                                                                                                                | Fix                                                                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Nothing arrives at all          | The token is empty: `TracewayToken` is missing from `Info.plist` or `TRACEWAY_TOKEN` from the `.xcconfig`, or the server rejected it | The console says `[Traceway] not started: …` or that the token was rejected, also without `debug`; check the build settings |
+| An issue has no replay          | `screenCapture` is off, the clip ration (one per 5 seconds, 20 per session) was used up, or the session's replay budget is spent     | Turn `screenCapture` on; check **Failed replay uploads** on the session's **Overview**                                      |
+| SwiftUI text shows as grey bars | No assistive technology was running on the device                                                                                    | Expected; mask SwiftUI text that must never show                                                                            |
+| A SwiftUI view is not masked    | `accessibilityIdentifier` is not readable from SwiftUI                                                                               | Use `.tracewayMask(_:)`                                                                                                     |
+| Images are grey boxes           | The effective policy is `off`, or `wifi` on cellular, a hotspot or Low Data Mode, or the image is masked                             | Check **Replay images** in your rules and `replayImages`                                                                    |
+| A trigger never fires           | The step names a SwiftUI control that has no `.tracewayIdentifier`, or a hover                                                       | Add `.tracewayIdentifier("…")` to the SwiftUI control; copy selectors from the session's **Actions**                        |
+| Sessions show no screens        | A SwiftUI app records no screens by itself                                                                                           | Add `.tracewayScreen("/path")` to each screen's root view; with `debug`, the console says so once                           |
+| A capture never starts          | The device has not polled since, or the target value is wrong                                                                        | Bring the app back to the foreground, or call `refreshConfig()`; check `Traceway.instanceId`                                |
+| The poll is answered 403        | The token belongs to a backend or React Native project                                                                               | Use the token of the project you created for this app                                                                       |

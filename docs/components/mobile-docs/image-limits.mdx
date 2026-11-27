@@ -1,0 +1,8 @@
+- A picture is made from the pixels the app shows in that place, never from a screenshot of the window. It is copied at its displayed size (one pixel per dp on Android, per point on iOS, per logical pixel in Flutter), at most 384 pixels on its longest side, and encoded as JPEG at quality 0.45.
+- A picture with see-through pixels is never a JPEG, which would replay it as a black or white box. It is a PNG, at most 192 pixels on its longest side.
+- A picture larger than 48 KiB is tried once more at half the size, then left out.
+- The same image at the same size is one picture, however many places show it. A recorder keeps at most 128 pictures; past that, the one shown longest ago makes room, and it is recorded again when it comes back.
+- A session uploads at most 4 MiB of pictures, counted in its replay budget. Past that, new images are placeholders.
+- Pictures are encoded off the main thread, so the first frame that shows an image has its placeholder and a later frame the picture.
+- An image inside a mask is never captured: nothing of it is read or encoded.
+- Each session reports the policy it started with (`traceway.replay.images`) and the picture bytes it uploaded (`traceway.replay.image_bytes`).

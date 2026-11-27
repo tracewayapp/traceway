@@ -14,7 +14,7 @@ import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 metricReaders: [
   new PeriodicExportingMetricReader({
     exporter: new OTLPMetricExporter({
-      url: "https://your-traceway-instance.com/api/otel/v1/metrics",
+      url: "https://cloud.tracewayapp.com/api/otel/v1/metrics",
       headers: { Authorization: "Bearer your-project-token" },
     }),
     exportIntervalMillis: 30_000,

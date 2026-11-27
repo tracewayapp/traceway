@@ -8,7 +8,7 @@ Dashboards visualize your metrics as tabs of chart widgets. A dashboard belongs 
 
 React, Vue, Svelte and jQuery projects receive **Web Performance** immediately when created. It includes LCP, INP and CLS, rating shares, page and release breakdowns, route timings, blocking time, request metrics and user-impact counts. Existing browser projects receive missing defaults through a one-time migration; custom dashboards remain intact. See the [RUM walkthrough](/learn/rum) for the workflow and fresh screenshots.
 
-Flutter projects receive **Flutter Performance** when created, and Android and iOS projects **Mobile Performance**. Both chart the `app.*` [client metrics](/learn/client-metrics) of the 2.x SDKs: app start, screen display times, slow and frozen frames, hangs, crashes, sessions, users, peak memory and requests. Mobile Performance also has ANR and out-of-memory series, which stay empty because no SDK measures them yet. React Native projects have no Dashboards page.
+Flutter projects receive **Flutter Performance** when created, and Android and iOS projects **Mobile Performance**. Both chart the `app.*` [client metrics](/learn/client-metrics) of the 2.x SDKs: app start, screen display times, slow and frozen frames, hangs, crashes, sessions, users, peak memory and requests. Mobile Performance also charts ANRs and out-of-memory kills (`app.anr`, `app.oom`), which the Android and iOS SDKs report. React Native projects have no Dashboards page.
 
 Client projects filter by release, OS and country, rather than backend instance. Use a **Rating Bar** for experience quality and a **Breakdown Table** for whole-window comparisons; line charts show the trend. Show observation counts beside percentiles.
 

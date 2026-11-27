@@ -1,10 +1,6 @@
 # Flush & Lifecycle
 
-import BrowserSdkV1 from "../../../components/BrowserSdkV1";
-
-<BrowserSdkV1 href="/client/js-sdk/v1/flush" />
-
-The 2.x browser SDK sends streamed telemetry through OpenTelemetry batch processors. `exportDelayMs` sets the usual delay, defaulting to 1000 ms. Performance metrics upload on their own interval, five minutes by default, and when the page is hidden. Buffered telemetry stays on the device until a trigger or capture asks for it.
+The browser SDK sends streamed telemetry through OpenTelemetry batch processors. `exportDelayMs` sets the usual delay, defaulting to 1000 ms. Performance metrics upload on their own interval, five minutes by default, and when the page is hidden. Buffered telemetry stays on the device until a trigger or capture asks for it.
 
 ## Flush queued telemetry
 
@@ -21,13 +17,13 @@ try {
 
 `flush()` sends queued logs, spans and replay uploads and the pending performance metrics, and checkpoints the telemetry buffer. It does not release buffered telemetry or force an in-progress replay segment to complete, and it does not end the session. A captured exception normally fires the built-in error trigger, which selects the lookback and replay clip before this flush.
 
-`flush(timeoutMs)` bounds how long the caller waits; it does not cancel outstanding requests. Its completion is not a guarantee that every record reached the server: exporters can reject or retry data. Before `init()`, `flush()` resolves at once.
+`flush(timeoutMs)` bounds how long the caller waits; it does not cancel outstanding requests. Its completion is not a guarantee that every record reached the server: exporters can reject or retry data. Before `init()` and after `shutdown()`, `flush()` resolves at once, and it never rejects.
 
 ## Navigation and connectivity
 
 The SDK handles `visibilitychange` and `pagehide`. It closes a streaming replay segment, uploads the pending performance metrics, sends what is queued while the page can still send it, and checkpoints telemetry for the next page of the same session. Browser termination, blocked storage, storage quotas, and the browser's keepalive body limit can still cause data loss.
 
-With `buffer.persist: true`, the default, failed OTLP batches wait in IndexedDB and retry with backoff while the page remains open, on connectivity recovery, and on later pages. Replay uploads have a separate bounded retry queue in memory. See the [buffer reference](/learn/remote-config/reference#buffer) for retention limits.
+With `buffer.persist: true`, the default, failed OTLP batches wait in IndexedDB and retry with backoff while the page remains open, on connectivity recovery, and on later pages. Replay uploads have a separate retry queue in memory of at most 20 batches; the oldest are dropped and counted in `traceway.replay.failed_segments`. The navigation checkpoint goes to session storage, and a checkpoint larger than 512 KiB to IndexedDB only. See the [buffer reference](/learn/remote-config/reference#buffer) for retention limits.
 
 For an application-controlled redirect, await `flush()` before changing location:
 
@@ -51,7 +47,7 @@ Initialize once in a single-page application. In a server-rendered application t
 ## Timing options
 
 ```javascript
-init(connectionString, { exportDelayMs: 500 });
+init({ token: import.meta.env.VITE_TRACEWAY_TOKEN, exportDelayMs: 500 });
 ```
 
 SDK 1.x's `debounceMs` and `retryDelayMs` options were removed in 2.x. The exporter delay is separate from buffering, capture duration, the metric upload interval (`collection.metrics.flushSeconds`), and the OpAMP polling interval.

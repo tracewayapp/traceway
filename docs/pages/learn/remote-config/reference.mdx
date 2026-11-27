@@ -57,19 +57,23 @@ A rule stores a **partial** document: only what it changes. The server merges th
 | `sessionSampleRate` | 0 to 1 | Share of sessions that may stream replay, decided per session id, so a session is all or nothing |
 | `maskAllInputs` | boolean | Mask every input field in the recording (default `true`) |
 | `captureMode` | `video`, `wireframe` | Flutter SDK only, see below; browser SDKs ignore it, and the iOS and Android SDKs always record a wireframe |
-| `images` | `off`, `wifi`, `always` | When a wireframe replay may carry pictures (default `wifi`); Flutter, iOS and Android SDKs, see below. The browser SDK ignores it |
+| `images` | `off`, `wifi`, `always` | What a replay shows of pictures (default `wifi`); every SDK, see below |
 
-`captureMode` picks how a Flutter app records replay, overriding its `TracewayOptions.screenCaptureMode`: `video` is MP4 clips from the device's hardware encoder, `wireframe` the widget tree recorded as rrweb HTML and mutations. Leaving it unset keeps the app's choice. Video needs a hardware encoder (Android, iOS, macOS); on Linux and Windows the SDK records a wireframe whatever the setting says. A change applies at once unless the current session already uploaded replay in the other mode; then it applies from the next session, so one session's replay is all video or all wireframe. On an app's first launch the session starts in the app's mode, because the rule only arrives with the first poll; see [Wireframe](/client/flutter#wireframe).
+`captureMode` picks how a Flutter app records replay, overriding its `TracewayOptions.screenCaptureMode` (default `wireframe`): `wireframe` is the widget tree recorded as rrweb HTML and mutations, `video` MP4 clips from the device's hardware encoder. Leaving it unset keeps the app's choice. Video needs the `traceway_video` add-on package and a hardware encoder (Android, iOS, macOS); without them the SDK records a wireframe whatever the setting says. A change applies at once unless the current session already uploaded replay in the other mode; then it applies from the next session, so one session's replay is all video or all wireframe. On an app's first launch the session starts in the app's mode, because the rule only arrives with the first poll; see [Wireframe](/client/flutter#wireframe).
 
-`images` sets when a wireframe replay may show pictures instead of grey placeholders. The SDK default is `wifi`, and the app's `replayImages` option (`off`, `wifi` or `always`, default `always`) is a ceiling: the SDK applies the lower of the two, in the order `off` < `wifi` < `always`. A rule merges it like `maskAllInputs`, and a plan without replay switches replay off and images with it.
+`images` sets what a replay shows of the pictures on screen. The SDK default is `wifi`. In every SDK the app's `replayImages` option (`off`, `wifi` or `always`, default `always`) is a ceiling: the SDK applies the lower of the two, in the order `off` < `wifi` < `always`. A rule merges `images` like `maskAllInputs`, and a plan without replay switches replay off and images with it.
 
-| Value | Android and iOS | Flutter |
-|---|---|---|
-| `off` | Image views are placeholders | Network images are placeholders |
-| `wifi` | Pictures only on an unmetered connection, decided when the frame is captured. Android checks that the active network is not metered; iOS treats cellular, a personal hotspot and Low Data Mode as metered | Network images are referenced by URL, as with `always`; the SDK has no network type to check |
-| `always` | Pictures on any connection | Network images are referenced by URL |
+| Value | Browser | Android and iOS | Flutter |
+|---|---|---|---|
+| `off` | Every `img`, `picture`, SVG `image` and `<input type="image">` is an empty box of its size, without its URL | Image views are placeholders | Images are placeholders, without a URL |
+| `wifi` | Pictures load from their URLs when the replay plays; no pixels are uploaded. The browser has no network type to check | Pictures only on an unmetered connection, decided when the frame is captured. Android checks that the active network is not metered; iOS treats cellular, a personal hotspot and Low Data Mode as metered. Otherwise placeholders | Pictures on an unmetered connection (the app's `isUnmeteredNetwork` callback, else a guess from the network interfaces). On a metered or unknown one, network images are referenced by URL and others are placeholders |
+| `always` | URL references plus a small copy of each picture the page may read (its own origin, or another one that serves it with CORS) | Pictures on any connection | Pictures on any connection |
 
-On Android and iOS a picture is the bitmap an image view shows, never a screenshot of the window: downscaled to 1.5 times its displayed size and at most 512 px on its longest side, encoded as JPEG at quality 0.6 (PNG for a small image with transparency), dropped if it is still over 96 KiB at half size, and at most 4 MiB of pictures per session; past that the replay shows placeholders. An image under a blur or blank privacy mask is never captured, and Jetpack Compose images are always placeholders, since Compose exposes no pixels. The first frame that shows an image has its placeholder, a later frame the picture. The Flutter SDK uploads no pixels at all: the replay loads a network image from its URL when it plays, and memory and asset images are placeholders. Video replay is not affected. Each session event reports the policy the session started with as `traceway.replay.images`; on Android and iOS it also carries the bytes of pictures uploaded so far as `traceway.replay.image_bytes`.
+A picture is made from the image's own pixels, never a screenshot of the window or the page: at its displayed size (one pixel per CSS pixel, dp or point), at most 384 px on its longest side, as JPEG at quality 0.45. A picture with transparency is never JPEG, which would replay it as a black or white box: it is PNG, at most 192 px on its longest side. One larger than 48 KiB is tried once at half the size and otherwise left out: the browser keeps its URL, Flutter its URL or the placeholder, Android and iOS the placeholder. The same picture at the same size is stored once; at most 128 are kept per recorder (the one shown longest ago makes room), and a session's recording carries at most 4 MiB of pictures; past that the replay shows URLs or placeholders. The first frame that shows an image has its placeholder or URL, a later frame the picture.
+
+What stays a placeholder: anything under a privacy mask (`traceway-mask` and `traceway-blank` in the browser, blur and blank masks in the apps), Jetpack Compose images (Compose exposes no pixels), Flutter `DecorationImage`s such as `CircleAvatar.backgroundImage` (their URL or a placeholder), and in the browser the pictures of other origins that the page may not read (their URL) and pictures a stylesheet sets. Flutter's video replay is not affected. A change of `images` in the browser restarts the recorder and discards the replay buffered so far.
+
+Each session event reports the policy the session started with as `traceway.replay.images` and the bytes of pictures added so far as `traceway.replay.image_bytes`.
 
 ### Buffer
 
@@ -84,7 +88,7 @@ The rest of this section describes the browser SDK. Persistence is best effort w
 
 Failed OTLP batches retry in the current page with increasing delays, on `online`, on visibility changes, and after startup. The outbox prunes batches after 8 attempts or 24 hours and keeps the newest 200 on a drain. `buffer.persist: false` stops durable retries and removes stored telemetry and navigation checkpoints for this project token. It does not disable collection or the configuration cache.
 
-Changing input masking restarts rrweb and discards incompatible buffered or queued replay. Newly restricted signals are purged from the ring and checked again before queued and persisted exports. Requests already in flight cannot be recalled.
+Changing input masking or `replay.images` restarts rrweb and discards incompatible buffered or queued replay. Newly restricted signals are purged from the ring and checked again before queued and persisted exports. Requests already in flight cannot be recalled.
 
 ## Defaults
 
@@ -272,7 +276,7 @@ These stream unless the kill switch is on; session events additionally respect `
 | `traceway.config.applied` | `traceway.config.hash`: the hash of the applied document |
 | `traceway.trigger.fired` | `traceway.trigger.id`, `traceway.trigger.name` |
 | `traceway.capture.started` | `traceway.capture.id`; for a trigger's capture also `traceway.capture.source: trigger`, `traceway.trigger.id`, `traceway.capture.until` |
-| `session.start`, `traceway.session.update`, `session.end` | `session.id`, `traceway.session.started_at` and the session's attributes |
+| `session.start`, `traceway.session.update`, `session.end` | `session.id`, `traceway.session.started_at`, the session's attributes and its collection counters, among them `traceway.replay.images` and `traceway.replay.image_bytes` |
 | `traceway.collection.health` | `traceway.collection.bytes`, `.events`, `.dropped`, `.max_bytes`, `.max_events`, `traceway.error.suppressed_total`, `traceway.context.evicted`, `traceway.replay.failed_segments`. Sent after the SDK dropped or suppressed data: 1 second after the first drop, then with the delay doubling up to 5 minutes |
 
 ## The OpAMP endpoint
@@ -296,7 +300,7 @@ These stream unless the kill switch is on; session events additionally respect `
 
 Errors back off from 30 seconds to 30 minutes. The heartbeat is never shorter than 30 seconds.
 
-A server that predates remote config has no such route and answers 404 (the SDK treats 405 and 501 the same way). The SDK then stops polling. The Flutter, Android and iOS SDKs keep the settings they have and still send OTLP. The browser SDK, unless `init()` sets `transport: "otlp"`, goes back to its defaults and sends its data through the legacy protocol that server understands. While the endpoint cannot be reached at all and no poll has succeeded yet, the browser SDK also sends through the legacy protocol; it keeps polling and switches back once a poll is answered. `transport: "legacy"` skips polling altogether.
+A server that predates remote config has no such route and answers 404 (the SDK treats 405 and 501 the same way). The SDK then stops polling and keeps sending OTLP: the Flutter, Android and iOS SDKs with the settings they have, the browser SDK with its local settings (`collection` and the defaults). While the endpoint cannot be reached at all, the SDK keeps the settings it applied last and retries with backoff. No 2.1 SDK sends anything to the 1.x report endpoint: a self-hosted server from before OTLP support receives nothing from it and needs an upgrade first.
 
 <Callout type="info">
   The endpoint uses the protobuf types of [opamp-go](https://github.com/open-telemetry/opamp-go) and is tested against opamp-go's own HTTP client, so other OpAMP clients can poll it too.

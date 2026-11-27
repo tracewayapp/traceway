@@ -1,0 +1,34 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.4"
+      - name: Write Config/Secrets.xcconfig
+        env:
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+          TRACEWAY_TOKEN: ${{ secrets.TRACEWAY_TOKEN }}
+          TRACEWAY_URL: ${{ vars.TRACEWAY_URL }}
+        run: |
+          {
+            printf 'STRIPE_PUBLISHABLE_KEY = %s\n' "$STRIPE_PUBLISHABLE_KEY"
+            printf 'TRACEWAY_TOKEN = %s\n' "$TRACEWAY_TOKEN"
+            # In an .xcconfig // starts a comment, so https://host is written https:/$()/host.
+            printf 'TRACEWAY_URL = %s\n' "${TRACEWAY_URL/:\/\//:/\$()/}"
+          } > Config/Secrets.xcconfig
+      - name: Archive
+        run: >
+          xcodebuild archive -project Shop.xcodeproj -scheme Shop -configuration Release
+          -destination 'generic/platform=iOS' -archivePath build/Shop.xcarchive
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shop-archive
+          path: build/Shop.xcarchive

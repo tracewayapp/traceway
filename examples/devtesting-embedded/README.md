@@ -46,8 +46,8 @@ The example's own `frontend/` dev server (`npm run dev:serve`, port 5180) still 
 | iOS App | ios | `ios-dev-token` | `ios-upload-token` |
 | Android App | android | `android-dev-token` | `android-upload-token` |
 
-The mobile SDKs connect with `<token>@http://<host>:8082` (for example `ios-dev-token@http://192.168.1.20:8082`
-from a phone on the same network). The SDK wireframe galleries upload their recordings into the Flutter, iOS and
+The mobile SDKs start with the project token and `http://<host>:8082` as their `baseUrl` (for example
+`ios-dev-token` and `http://192.168.1.20:8082` from a phone on the same network). The SDK wireframe galleries upload their recordings into the Flutter, iOS and
 Android projects as sessions in their checkers' dashboard mode (`CI/wireframe/run.py --dashboard …` in
 traceway-ios, `tools/wireframe/run.py --dashboard …` in traceway-android).
 

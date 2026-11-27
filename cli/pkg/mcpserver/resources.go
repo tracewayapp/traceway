@@ -88,7 +88,7 @@ var knowledgeResources = []struct {
 	},
 	{
 		uri: "traceway://knowledge/learn/data-collection", file: "learn/data-collection.md", name: "Learn: remote SDK config (Data Collection)",
-		description: "Remote SDK config for browser and Flutter projects on the 2.x SDKs: stream, buffer and off per signal, the defaults, ordered rules with targeting and rollout, init() and plan ceilings, triggers, recording trigger steps (CSS selectors and URL paths in a browser, widget selectors and route names in Flutter), captures and their status, preview, and how to verify on a device.",
+		description: "Remote SDK config for browser, Flutter, Android and iOS projects on the 2.x SDKs: stream, buffer and off per signal, the defaults, ordered rules with targeting and rollout, init() and plan ceilings, triggers, recording trigger steps (CSS selectors and URL paths in a browser, widget selectors and route names in Flutter, view selectors and screen paths on Android and iOS), captures and their status, preview, and how to verify on a device.",
 	},
 	{
 		uri: "traceway://knowledge/learn/organization", file: "learn/organization.md", name: "Learn: organization, access and settings",

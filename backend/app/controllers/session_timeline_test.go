@@ -162,3 +162,67 @@ func TestTimelineSurvivesMalformedRecords(t *testing.T) {
 		t.Errorf("timeline = %+v", timeline)
 	}
 }
+
+// Navigations carry the route template, on the browser as in the apps, and the first navigation of
+// a window says where it came from. The screen context every record carries is not an event's own data.
+func TestTimelineShowsTheScreenContext(t *testing.T) {
+	at := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	nav := func(seconds int, attrs map[string]string) models.LogRecord {
+		attrs["event.name"] = "browser.navigation"
+		return models.LogRecord{Timestamp: at.Add(time.Duration(seconds) * time.Second), LogAttributes: attrs}
+	}
+	timeline := BuildSessionTimeline([]models.LogRecord{
+		nav(0, map[string]string{"url.full": "/orders/42", "browser.navigation.type": "push", "navigation.from": "/orders",
+			"app.screen.name": "/orders/:id", "app.screen.route": "/orders/:id"}),
+		nav(1, map[string]string{"url.full": "/orders/42/pay", "browser.navigation.type": "push", "navigation.from": "/somewhere-else"}),
+		{Timestamp: at.Add(2 * time.Second), LogAttributes: map[string]string{"event.name": "cart.updated", "cart.items": "3",
+			"app.screen.name": "/orders/:id", "app.screen.route": "/orders/:id", "app.screen.previous": "/orders",
+			"app.screen.duration_ms": "1520", "viewport": "1440x900"}},
+	}, nil)
+	if len(timeline.Actions) != 3 {
+		t.Fatalf("actions = %+v", timeline.Actions)
+	}
+	first, second, event := timeline.Actions[0], timeline.Actions[1], timeline.Actions[2]
+	if first.From != "/orders" || first.To != "/orders/42" || first.Route != "/orders/:id" {
+		t.Errorf("first navigation = %+v", first)
+	}
+	if second.From != "/orders/42" || second.Route != "" {
+		t.Errorf("second navigation = %+v", second)
+	}
+	if !maps.Equal(event.Data, map[string]any{"cart.items": "3"}) {
+		t.Errorf("event data = %v", event.Data)
+	}
+}
+
+// The new issue types read as one line each, and a hang the app did not survive says so.
+func TestTimelineNamesAppIssues(t *testing.T) {
+	at := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	exception := func(attrs map[string]string) models.LogRecord {
+		attrs["event.name"] = "exception"
+		return models.LogRecord{Timestamp: at, LogAttributes: attrs}
+	}
+	timeline := BuildSessionTimeline([]models.LogRecord{
+		exception(map[string]string{"exception.type": "AppHang", "exception.message": "Main thread blocked for 3.2 s"}),
+		exception(map[string]string{"exception.type": "AppHang", "exception.message": "Main thread blocked for 7.8 s", "app.hang.fatal": "true"}),
+		exception(map[string]string{"exception.type": "NativeCrash", "exception.message": "SIGSEGV (SEGV_MAPERR), fault addr 0x0"}),
+		exception(map[string]string{"exception.type": "WatchdogTermination"}),
+		exception(map[string]string{"exception.type": "ApplicationNotResponding", "exception.message": " Input dispatching timed out "}),
+		exception(map[string]string{}),
+	}, nil)
+	want := []string{
+		"AppHang: Main thread blocked for 3.2 s",
+		"AppHang: Main thread blocked for 7.8 s (fatal, the app was terminated)",
+		"NativeCrash: SIGSEGV (SEGV_MAPERR), fault addr 0x0",
+		"WatchdogTermination",
+		"ApplicationNotResponding: Input dispatching timed out",
+		"",
+	}
+	if len(timeline.Logs) != len(want) {
+		t.Fatalf("logs = %+v", timeline.Logs)
+	}
+	for i, log := range timeline.Logs {
+		if log.Message != want[i] || log.Level != "error" {
+			t.Errorf("log %d = %+v, want %q", i, log, want[i])
+		}
+	}
+}

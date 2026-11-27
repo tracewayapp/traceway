@@ -1,0 +1,6 @@
+Two settings decide it, and the lower one wins, in the order `off`, `wifi`, `always`:
+
+- **`replay.images`**, the collection setting: `off`, `wifi` (the default) or `always`. Set it in a Data Collection rule (**Signals** tab, **Replay images**: **Off**, **Wi‑Fi only** or **Always**), or in the app's own `collection` document. A device picks up a change at its next poll, so you can turn images off for everyone without a release.
+- **`replayImages`**, the app's ceiling (`always` by default). Set to `off`, every image stays a placeholder whatever a rule says.
+
+With the defaults, replays carry the app's pictures on Wi‑Fi and none on a mobile network. The network is checked when a frame is captured, so a picture recorded on Wi‑Fi stays in its clip.

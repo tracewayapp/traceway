@@ -23,6 +23,29 @@ type setupController struct{}
 
 var envVarNameRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// A Gradle local.properties or other .properties file also takes dotted keys (traceway.token).
+var propertiesKeyRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)*$`)
+
+// Bundlers put variables with these prefixes into the shipped app, so an upload token never gets one.
+var publicEnvPrefixes = []string{"VITE_", "NEXT_PUBLIC_", "PUBLIC_", "REACT_APP_", "EXPO_PUBLIC_", "NUXT_PUBLIC_", "VUE_APP_", "GATSBY_"}
+
+func validEnvVarName(name, file string) bool {
+	if strings.HasSuffix(strings.ToLower(file), ".properties") {
+		return propertiesKeyRegex.MatchString(name)
+	}
+	return envVarNameRegex.MatchString(name)
+}
+
+func hasPublicEnvPrefix(name string) bool {
+	upper := strings.ToUpper(name)
+	for _, prefix := range publicEnvPrefixes {
+		if strings.HasPrefix(upper, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 const (
 	setupEnvFormatToken            = "token"
 	setupEnvFormatConnectionString = "connectionString"
@@ -71,7 +94,7 @@ func (s setupController) GetSession(ctx *gin.Context) {
 		OrganizationId:   orgId,
 		OrganizationName: org.Name,
 		Email:            middleware.GetUserEmail(ctx),
-		BackendUrl:       models.GetBackendUrl(),
+		BackendUrl:       instanceUrl(ctx),
 		Projects:         items,
 	})
 }
@@ -98,13 +121,32 @@ func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
 		if !validFrameworks[p.Framework] {
 			return invalidFrameworkMessage
 		}
-		if utf8.RuneCountInString(p.EnvFile) > 300 {
+		if utf8.RuneCountInString(p.EnvFile) > 300 || utf8.RuneCountInString(p.UploadTokenEnvFile) > 300 {
 			return "envFile must be 300 characters or fewer"
 		}
-		if p.EnvVar != "" && !envVarNameRegex.MatchString(p.EnvVar) {
+		if p.EnvVar != "" && !validEnvVarName(p.EnvVar, p.EnvFile) {
 			return "envVar must be a valid environment variable name"
 		}
-		if utf8.RuneCountInString(p.EnvVar) > 100 {
+		if p.UrlEnvVar != "" && !validEnvVarName(p.UrlEnvVar, p.EnvFile) {
+			return "urlEnvVar must be a valid environment variable name"
+		}
+		uploadFile := p.UploadTokenEnvFile
+		if uploadFile == "" {
+			uploadFile = p.EnvFile
+		}
+		if p.UploadTokenEnvVar != "" && !validEnvVarName(p.UploadTokenEnvVar, uploadFile) {
+			return "uploadTokenEnvVar must be a valid environment variable name"
+		}
+		if hasPublicEnvPrefix(p.UploadTokenEnvVar) {
+			return "uploadTokenEnvVar must not have a public prefix such as VITE_ or NEXT_PUBLIC_: the upload token is a secret"
+		}
+		if p.UrlEnvVar != "" && p.UrlEnvVar == p.EnvVar {
+			return "urlEnvVar must differ from envVar"
+		}
+		if p.UploadTokenEnvVar != "" && p.EnvFile != "" && uploadFile == p.EnvFile && (p.UploadTokenEnvVar == p.EnvVar || p.UploadTokenEnvVar == p.UrlEnvVar) {
+			return "uploadTokenEnvVar must differ from envVar and urlEnvVar when they are written to the same file"
+		}
+		if utf8.RuneCountInString(p.EnvVar) > 100 || utf8.RuneCountInString(p.UrlEnvVar) > 100 || utf8.RuneCountInString(p.UploadTokenEnvVar) > 100 {
 			return "envVar must be 100 characters or fewer"
 		}
 		switch p.EnvFormat {
@@ -184,7 +226,7 @@ func resolvePlanResultProjects(ctx *gin.Context, plan *transactional.SetupPlanRo
 			Framework:      project.Framework,
 			Token:          project.Token,
 			SourceMapToken: project.SourceMapToken,
-			BackendUrl:     models.GetBackendUrl(),
+			BackendUrl:     instanceUrl(ctx),
 			Status:         r.Status,
 		})
 	}
@@ -219,13 +261,16 @@ func (s setupController) GetPlan(ctx *gin.Context) {
 }
 
 type SetupDraftResponse struct {
-	Id               string                     `json:"id"`
-	Status           string                     `json:"status"`
-	Payload          models.SetupPlanPayload    `json:"payload"`
-	CreatedAt        time.Time                  `json:"createdAt"`
-	RequestedByEmail string                     `json:"requestedByEmail"`
-	RejectReason     string                     `json:"rejectReason,omitempty"`
-	Projects         []BatchProjectResponseItem `json:"projects,omitempty"`
+	Id               string                  `json:"id"`
+	Status           string                  `json:"status"`
+	Payload          models.SetupPlanPayload `json:"payload"`
+	CreatedAt        time.Time               `json:"createdAt"`
+	RequestedByEmail string                  `json:"requestedByEmail"`
+	RejectReason     string                  `json:"rejectReason,omitempty"`
+	// BackendUrl lets the review name the server URL variable the plan writes off Traceway Cloud, before any
+	// project exists to carry it.
+	BackendUrl string                     `json:"backendUrl"`
+	Projects   []BatchProjectResponseItem `json:"projects,omitempty"`
 }
 
 func (s setupController) draftResponse(ctx *gin.Context, plan *transactional.SetupPlanRow) (*SetupDraftResponse, bool) {
@@ -242,6 +287,7 @@ func (s setupController) draftResponse(ctx *gin.Context, plan *transactional.Set
 		CreatedAt:        plan.CreatedAt,
 		RequestedByEmail: plan.RequestedByEmail,
 		RejectReason:     plan.RejectReason,
+		BackendUrl:       instanceUrl(ctx),
 	}
 	if plan.Status == "approved" {
 		projects, ok := resolvePlanResultProjects(ctx, plan)
@@ -351,7 +397,7 @@ func (s setupController) ApproveDraft(ctx *gin.Context) {
 	}
 
 	cacheCreatedProjectsOnCommit(ctx, results)
-	ctx.JSON(http.StatusOK, gin.H{"projects": toBatchProjectResponse(results)})
+	ctx.JSON(http.StatusOK, gin.H{"projects": toBatchProjectResponse(ctx, results)})
 }
 
 type RejectDraftRequest struct {

@@ -1,0 +1,289 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		8E4C1F132D7A9B0C3E5F6A1B /* Traceway in Frameworks */ = {isa = PBXBuildFile; productRef = 8E4C1F152D7A9B0C3E5F6A1B /* Traceway */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		8E4C1F012D7A9B0C3E5F6A1B /* Shop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8E4C1F022D7A9B0C3E5F6A1B /* Shop.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shop.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8E4C1F032D7A9B0C3E5F6A1B /* Exceptions for "Shop" folder in "Shop" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8E4C1F082D7A9B0C3E5F6A1B /* Shop */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		8E4C1F042D7A9B0C3E5F6A1B /* Shop */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8E4C1F032D7A9B0C3E5F6A1B /* Exceptions for "Shop" folder in "Shop" target */,
+			);
+			path = Shop;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8E4C1F052D7A9B0C3E5F6A1B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8E4C1F132D7A9B0C3E5F6A1B /* Traceway in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		8E4C1F092D7A9B0C3E5F6A1B = {
+			isa = PBXGroup;
+			children = (
+				8E4C1F0B2D7A9B0C3E5F6A1B /* Config */,
+				8E4C1F042D7A9B0C3E5F6A1B /* Shop */,
+				8E4C1F0A2D7A9B0C3E5F6A1B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8E4C1F0A2D7A9B0C3E5F6A1B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8E4C1F012D7A9B0C3E5F6A1B /* Shop.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8E4C1F0B2D7A9B0C3E5F6A1B /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				8E4C1F022D7A9B0C3E5F6A1B /* Shop.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8E4C1F082D7A9B0C3E5F6A1B /* Shop */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8E4C1F0E2D7A9B0C3E5F6A1B /* Build configuration list for PBXNativeTarget "Shop" */;
+			buildPhases = (
+				8E4C1F062D7A9B0C3E5F6A1B /* Sources */,
+				8E4C1F052D7A9B0C3E5F6A1B /* Frameworks */,
+				8E4C1F072D7A9B0C3E5F6A1B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				8E4C1F042D7A9B0C3E5F6A1B /* Shop */,
+			);
+			name = Shop;
+			packageProductDependencies = (
+				8E4C1F152D7A9B0C3E5F6A1B /* Traceway */,
+			);
+			productName = Shop;
+			productReference = 8E4C1F012D7A9B0C3E5F6A1B /* Shop.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8E4C1F0C2D7A9B0C3E5F6A1B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					8E4C1F082D7A9B0C3E5F6A1B = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 8E4C1F0D2D7A9B0C3E5F6A1B /* Build configuration list for PBXProject "Shop" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 8E4C1F092D7A9B0C3E5F6A1B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				8E4C1F142D7A9B0C3E5F6A1B /* XCRemoteSwiftPackageReference "traceway-ios" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 8E4C1F0A2D7A9B0C3E5F6A1B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8E4C1F082D7A9B0C3E5F6A1B /* Shop */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8E4C1F072D7A9B0C3E5F6A1B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8E4C1F062D7A9B0C3E5F6A1B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		8E4C1F0F2D7A9B0C3E5F6A1B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		8E4C1F102D7A9B0C3E5F6A1B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8E4C1F112D7A9B0C3E5F6A1B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8E4C1F022D7A9B0C3E5F6A1B /* Shop.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 312;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shop/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shop;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 3.12.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.shop;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8E4C1F122D7A9B0C3E5F6A1B /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8E4C1F022D7A9B0C3E5F6A1B /* Shop.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 312;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shop/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shop;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 3.12.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.shop;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8E4C1F0D2D7A9B0C3E5F6A1B /* Build configuration list for PBXProject "Shop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8E4C1F0F2D7A9B0C3E5F6A1B /* Debug */,
+				8E4C1F102D7A9B0C3E5F6A1B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8E4C1F0E2D7A9B0C3E5F6A1B /* Build configuration list for PBXNativeTarget "Shop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8E4C1F112D7A9B0C3E5F6A1B /* Debug */,
+				8E4C1F122D7A9B0C3E5F6A1B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8E4C1F142D7A9B0C3E5F6A1B /* XCRemoteSwiftPackageReference "traceway-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tracewayapp/traceway-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8E4C1F152D7A9B0C3E5F6A1B /* Traceway */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8E4C1F142D7A9B0C3E5F6A1B /* XCRemoteSwiftPackageReference "traceway-ios" */;
+			productName = Traceway;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 8E4C1F0C2D7A9B0C3E5F6A1B /* Project object */;
+}

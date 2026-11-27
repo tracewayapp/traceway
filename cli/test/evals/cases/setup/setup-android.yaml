@@ -1,0 +1,118 @@
+id: setup-android
+suite: setup
+title: Add the Traceway Android SDK 2.1 and its Gradle plugin to a minified Kotlin app (files only)
+tags: [mobile, android, files-only]
+seed: setup/android
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: feed-android-plain}
+# The sandbox has no JDK or Android SDK: nothing is built,
+# the files are graded. There is no verify step.
+setup:
+  path: fast
+  token: ingest
+  env:
+    TRACEWAY_TOKEN: "@token:pinboard-android"
+    TRACEWAY_URL: "@url"
+prompt: |
+  Please add Traceway crash reporting with session replay to the Pinboard Android app. We self-host Traceway at {{env.url}} and the "pinboard-android" project (Android) is already there. On this machine its token is in TRACEWAY_TOKEN and the server URL in TRACEWAY_URL; in GitHub Actions they are the secret TRACEWAY_TOKEN and the repository variable TRACEWAY_URL. Release builds are minified with R8, so crashes have to arrive readable: CI also has the project's upload token as the secret TRACEWAY_UPLOAD_TOKEN. There is no JDK or Android SDK in this environment, so edit the files; I'll build it myself.
+budget: {max_turns: 40, max_tool_calls: 35, max_output_tokens: 16000, timeout: 15m}
+user:
+  - match: "(?i)minsdk|api level|android 7|desugar"
+    reply: "minSdk stays 24: we still support Android 7."
+  - match: "(?i)compose"
+    reply: "No Compose, it's all views."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    # First, so a run on the 2.0 start reads as that in the summary.
+    - kind: file
+      path: "**/*.{kt,java}"
+      not_contains:
+        - "\\bconnectionString\\s*="
+        - "/api/report"
+        - "Traceway\\.init\\(\\s*(application\\s*=\\s*)?[\\w.@]+\\s*,\\s*(connectionString\\s*=\\s*)?(BuildConfig\\.|\"|getString\\()"
+      note: "the 2.0 connection-string start still works in 2.1 but is deprecated; 2.1 starts with TracewayOptions(token = ..., baseUrl = ...)"
+    - kind: file
+      path: "**/*.gradle.kts"
+      contains:
+        - "com\\.tracewayapp:traceway:2\\.([1-9]|[1-9][0-9])\\.[0-9]+"
+        - "\"com\\.tracewayapp\\.symbols\"\\s*\\)\\s*version\\s*\"2\\.([1-9]|[1-9][0-9])\\.[0-9]+\""
+    # The app module applies the plugin, uploads the mapping with the
+    # upload token to this server, and keeps minSdk 24 through desugaring.
+    - kind: file
+      path: app/build.gradle.kts
+      contains:
+        - "id\\(\\s*\"com\\.tracewayapp\\.symbols\"\\s*\\)"
+        - "(?ms)\\btraceway\\s*\\{.{0,1000}?^\\s*uploadToken\\s*(=|\\.set\\()"
+        - "(?ms)\\btraceway\\s*\\{.{0,1000}?^\\s*url\\s*(=|\\.set\\()"
+        - "TRACEWAY_UPLOAD_TOKEN"
+        - "isCoreLibraryDesugaringEnabled\\s*=\\s*true"
+        - "coreLibraryDesugaring\\(\\s*\"com\\.android\\.tools:desugar_jdk_libs:"
+        - "minSdk\\s*=\\s*24\\b"
+        - "buildConfigField\\(\\s*\"String\"\\s*,\\s*\"\\w*TOKEN\\w*\""
+        - "buildConfigField\\(\\s*\"String\"\\s*,\\s*\"\\w*TRACEWAY\\w*URL\\w*\""
+        - "System\\.getenv|providers\\.(environmentVariable|gradleProperty)|local\\.properties|findProperty"
+    - kind: file
+      path: "{app/build.gradle.kts,.github/workflows/*}"
+      contains: ["autoUpload\\s*(=\\s*true|\\.set\\(\\s*true\\s*\\))|upload\\w*TracewaySymbols"]
+    # An Application subclass starts the SDK in onCreate, and the manifest
+    # names it.
+    - kind: file
+      path: app/src/main/AndroidManifest.xml
+      contains: ["<application\\b[^>]*\\bandroid:name\\s*=\\s*\"[^\"$]+\""]
+    - kind: file
+      path: "**/*.{kt,java}"
+      same_file: true
+      contains:
+        - "(:\\s*(android\\.app\\.)?Application\\(\\)|extends\\s+(android\\.app\\.)?Application\\b)"
+        - "(?s)onCreate\\(\\).{0,800}?Traceway\\.init\\("
+        - "(?s)TracewayOptions.{0,800}?(\\btoken\\s*=|\\.token\\()"
+        - "(?s)TracewayOptions.{0,800}?(\\bbaseUrl\\s*=|\\.baseUrl\\()"
+        - "(?i:token)\\s*(=\\s*|\\(\\s*)(BuildConfig\\.\\w+|(\\w+\\.)?getString\\(\\s*R\\.string\\.\\w+)"
+    - kind: file
+      path: ".github/workflows/*"
+      contains: ["secrets\\.TRACEWAY_TOKEN", "vars\\.TRACEWAY_URL", "secrets\\.TRACEWAY_UPLOAD_TOKEN"]
+    - kind: no_token_literal
+    - kind: no_token_printed
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: >-
+    The agent adds com.tracewayapp:traceway:2.1.0 and the com.tracewayapp.symbols plugin at version 2.1.0 to
+    the app module, enables core library desugaring (minSdk stays 24) with desugar_jdk_libs, and creates an
+    Application subclass, registered with android:name in AndroidManifest.xml, whose onCreate calls
+    Traceway.init(this, TracewayOptions(token = BuildConfig.TRACEWAY_TOKEN, baseUrl =
+    BuildConfig.TRACEWAY_URL, screenCapture = true)). The BuildConfig fields read TRACEWAY_TOKEN and
+    TRACEWAY_URL from the environment or the gitignored local.properties, never a literal. The plugin's
+    traceway { } block takes uploadToken from TRACEWAY_UPLOAD_TOKEN and url from TRACEWAY_URL (the server is
+    self-hosted), and the release workflow passes the secrets and the variable and runs
+    uploadReleaseTracewaySymbols (or sets autoUpload). No connection string, /api/report or token in the repo.
+  rubric:
+    - Uses the 2.1 start in an Application class registered in the manifest, with token and baseUrl from BuildConfig fields fed by the environment or local.properties.
+    - Adds the SDK and the Gradle plugin at 2.1.0 and enables core library desugaring instead of raising minSdk.
+    - Uploads the R8 mapping from CI with the upload token to the self-hosted server's URL.
+    - Keeps every secret out of committed files and passes TRACEWAY_TOKEN, TRACEWAY_URL and TRACEWAY_UPLOAD_TOKEN to the CI build.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: app/build.gradle.kts
+  - read_file: settings.gradle.kts
+  - read_file: app/src/main/AndroidManifest.xml
+  - read_file: .github/workflows/release.yml
+  - write_file: {path: app/build.gradle.kts, from: oracle/setup-android/app-build.gradle.kts}
+  - write_file: {path: app/src/main/java/com/example/pinboard/PinboardApp.kt, from: oracle/setup-android/PinboardApp.kt}
+  - write_file: {path: app/src/main/AndroidManifest.xml, from: oracle/setup-android/AndroidManifest.xml}
+  - write_file: {path: .github/workflows/release.yml, from: oracle/setup-android/release.yml}
+  - shell: |
+      printf 'TRACEWAY_TOKEN=%s\nTRACEWAY_URL=%s\n' "$TRACEWAY_TOKEN" "$TRACEWAY_URL" >> local.properties && git status --short --ignored local.properties app
+  - finish:
+      summary: |
+        Pinboard now reports to the pinboard-android project. app/build.gradle.kts adds com.tracewayapp:traceway:2.1.0 and the com.tracewayapp.symbols plugin 2.1.0, enables core library desugaring (desugar_jdk_libs 2.1.5) so minSdk stays 24, and adds BuildConfig.TRACEWAY_TOKEN and BuildConfig.TRACEWAY_URL, read from the environment or the gitignored local.properties (I wrote both there for this machine). The new PinboardApp, registered as android:name in the manifest, starts the SDK in onCreate with TracewayOptions(token, baseUrl, screenCapture = true). The plugin's traceway { } block uploads R8's mapping.txt with TRACEWAY_UPLOAD_TOKEN to TRACEWAY_URL, and the release workflow passes the two secrets and the variable and runs :app:uploadReleaseTracewaySymbols after the bundle, so release crashes arrive deobfuscated. The plugin also records android.util.Log lines. To check it: build a debug app, throw a test exception, and open /issues in pinboard-android.
+      changes:
+        - {action: "add the SDK, the Gradle plugin, desugaring and the Traceway BuildConfig fields", target: app/build.gradle.kts}
+        - {action: start the SDK in Application.onCreate, target: app/src/main/java/com/example/pinboard/PinboardApp.kt}
+        - {action: register the application class, target: app/src/main/AndroidManifest.xml}
+        - {action: pass the Traceway secrets and upload the mapping, target: .github/workflows/release.yml}

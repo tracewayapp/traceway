@@ -14,15 +14,15 @@ Analyze the application first, agree on its Traceway project structure with the 
 - Present the proposed project map, or the one-line plan for a scoped run, and wait for the user to confirm it before implementation.
 - There are two classes of credentials, treated differently:
   - **Setup tokens** (prefix `tws_`) are org-scoped, expire in 6 hours, and can only propose a setup plan; nothing is created until the user approves the plan on the Traceway website. They are designed to transit chat, and asking the user to paste one is expected.
-  - **Project ingest tokens and upload tokens** are long-lived. Never print their values, never ask the user to paste them into chat, and never commit them. When Step 3's apply script (or the `traceway` CLI) writes an approved plan's ingest tokens into env files, read only the variable names and statuses from its output, never the values.
+  - **Project tokens and upload tokens** are long-lived. Never print their values, never ask the user to paste them into chat, and never commit them. When Step 3's apply script (or the `traceway` CLI) writes an approved plan's tokens into env files, read only the variable names and statuses from its output, never the values.
 - Never print token values found in files or the environment. Report only that a value exists and the variable name that carries it.
-- Never commit tokens or filled connection strings.
+- Never commit tokens, and never commit an env or build-config file that holds one.
 
 ## Invocation Forms
 
 | Invocation carries | Path |
 |---|---|
-| A project ingest token + url | Fast Path for a single component, otherwise Steps 1-2, then integrate against the existing project |
+| A project token + url, sometimes with the framework and a source map or symbol upload token (the prompt a project's Connection page copies) | Fast Path for a single component, otherwise Steps 1-2, then integrate against the existing project. The user chose to paste these values: write each one straight into its untracked env file or tell the user which CI secret to create, under the names in "Where the token comes from" of the platform file, and never repeat a value back |
 | A setup token (`tws_`) + url | Steps 1-2, then Step 3 from "Write the plan file" (3b) |
 | No token | Steps 1-2, then Step 3 from the top |
 | Words naming one part of the codebase (`track ai use`, `instrument the background jobs`, `only apps/worker`), with or without a token | "Scoped Runs" below; the token rows above still decide how the credential is obtained |
@@ -34,7 +34,7 @@ Analyze the application first, agree on its Traceway project structure with the 
 When all of the following hold, skip Steps 2 and 3 and go straight to the integration steps:
 
 - the repository has exactly one deployable component, and
-- the user supplied (or the environment already carries) an instance URL and a project ingest token (not a `tws_` setup token, which exists to create projects), and
+- the user supplied (or the environment already carries) an instance URL and a project token (not a `tws_` setup token, which exists to create projects), and
 - the token's project already matches that component.
 
 Still run Step 1, because it decides *how* to instrument. Collapse "Propose and Confirm the Project Map" to a single confirmation line ("This is a Go API; it reports to your existing `<name>` project over OpenTelemetry") and skip the project-creation step entirely. The full map-and-creation ceremony exists for repositories with more than one deployable component, or where no project exists yet. Do not make a user who handed you a token sit through a project-map review for a single service.
@@ -75,7 +75,7 @@ The Operating Contract applies unchanged: the same credential rules, and no code
 
 Before changing anything, build a picture of what is deployed and what is already instrumented:
 
-1. **Frameworks and languages**: detect them from `package.json`, `go.mod`, `composer.json`, `requirements.txt`/`pyproject.toml`, `pubspec.yaml`, `build.gradle`(`.kts`), `Package.swift`, `*.xcodeproj`/`*.xcworkspace`, `Podfile`, and source extensions. For iOS/Apple targets, note whether the sources are Swift or Objective-C. That choice picks the path in "Frontend and Mobile" (Swift gets the native SDK; Objective-C-only has none and falls back to OTel).
+1. **Frameworks and languages**: detect them from `package.json`, `go.mod`, `composer.json`, `requirements.txt`/`pyproject.toml`, `pubspec.yaml`, `build.gradle`(`.kts`), `Package.swift`, `*.xcodeproj`/`*.xcworkspace`, `Podfile`, and source extensions. For iOS/Apple targets, note whether the sources are Swift or Objective-C. That choice picks the path in "Frontend and Mobile" (Swift gets the native SDK, and so does an Objective-C app through one small Swift bridge file; only a stack with no Traceway mobile SDK falls back to OTel).
 2. **Deployable components and entry points**: inventory APIs, SSR servers, browser apps, workers, schedulers, CLIs, and mobile applications. Treat code organization as evidence, not proof that something is deployed. Note the deployment target while you are here: Kubernetes manifests, a Helm chart, Kustomize overlays, `Dockerfile` plus a compose file, or cloud-init / Ansible / Terraform. It decides the host-metrics path in Step 8.
 3. **Existing observability**: find OpenTelemetry configuration, Traceway SDKs, Sentry, Datadog, New Relic, Honeycomb, logging exporters, tracing middleware, source map or symbol upload steps, and observability environment-variable names. Explain whether Traceway will replace, coexist with, or extend each integration. Never display discovered credential values.
 4. **Production role of JS meta-frameworks** (Next.js, SvelteKit, Remix, Nuxt): never assume full-stack.
@@ -107,10 +107,10 @@ Explain these default boundaries:
 |---|---|---|
 | **Backend system** | One project with framework **OpenTelemetry** | API endpoints, child spans, issues, background tasks, AI traces, logs, host metrics, and the app's own custom metrics when it has some (Step 4, "Metrics"). APIs, workers, schedulers, and the host agent share the project token; distinguish them with stable `service.name` values. |
 | **Browser frontend** | One separate project per deployed browser application, using **React**, **Svelte**, **Vue.js**, or **jQuery** | Browser errors, web vitals, session replay, distributed-trace linkage, source maps, and browser release metadata. |
-| **Mobile app** | One separate project per independently released application, using **Flutter**, **React Native**, **Android**, or **iOS** | Mobile errors/crashes, replay where supported, and build symbols or mappings. A single Flutter product targeting Android and iOS normally uses one project; separate native apps use separate projects. |
+| **Mobile app** | One separate project per independently released application, using **Flutter**, **React Native**, **Android**, or **iOS** | Mobile errors, crashes and hangs, sessions, wireframe replay, logs, app performance metrics, and build symbols or mappings. A single Flutter product targeting Android and iOS normally uses one project; separate native apps use separate projects. |
 | **Full-stack JS app** | Two projects when its server runs in production | Server-side work goes to the OpenTelemetry backend project; browser-side work goes to the browser project. |
 
-The dashboard's framework picker offers exactly these nine options: OpenTelemetry for every backend, React / Svelte / Vue.js / jQuery for browsers, and Flutter / React Native / Android / iOS for mobile. There is no Gin, Django, Laravel, Next.js, or Remix entry, and none is needed. A Next.js or Remix browser project selects **React**, and its server side selects **OpenTelemetry** like any other backend. The framework-specific setup for a backend lives on the project's Connection page, which asks for the language and web framework after the project exists.
+The dashboard's framework picker offers exactly these nine options: OpenTelemetry for every backend, React / Svelte / Vue.js / jQuery for browsers, and Flutter / React Native / Android / iOS for mobile. There is no Gin, Django, Laravel, Next.js, Remix, or plain-JavaScript entry, and none is needed. A Next.js or Remix browser project selects **React**, and its server side selects **OpenTelemetry** like any other backend. A plain-JavaScript browser app (`@tracewayapp/frontend` with no wrapper) selects the closest browser option; the four behave the same in Traceway and differ only in the Connection page snippet. The framework-specific setup for a backend lives on the project's Connection page, which asks for the language and web framework after the project exists.
 
 Do not create one project per backend process by default. Keeping the API, workers, AI calls, and server metrics together preserves their operational context and distributed traces. Split backend projects only for a real product, ownership, access-control, compliance, or data-isolation boundary.
 
@@ -125,27 +125,40 @@ Ask the user to confirm only what the repository cannot establish safely:
 Each confirmed row must also settle what Step 3's plan file needs:
 
 - The **framework value**, one of the nine: `opentelemetry`, `react`, `svelte`, `vuejs`, `jquery`, `flutter`, `react-native`, `android`, `ios`.
-- The **env wiring**: which untracked env file holds the credential (`envFile`) and under which name (`envVar`), following the credential-naming rules above (public prefixes like `VITE_`/`PUBLIC_`/`NEXT_PUBLIC_` for browser values). `envFormat` is `token` when the code composes the connection string itself or the value feeds an OTLP Authorization header, and `connectionString` when the SDK init reads the full `<token>@<instance>/api/report` string straight from the variable.
-- The **deployment placement**, from Step 1's deployment analysis: when the credential cannot be hardcoded into the repository because of how the component is deployed (Vercel/Fly/K8s/CI-injected env, secret managers), add a `deployment` block with the platform name and the exact command or UI path, using the literal placeholder `<token>` for the value. The website substitutes the real value after approval; never put real tokens in the plan. A mobile project whose credential lives in build config usually gets a `deployment` block and no `envFile`.
+- The **env wiring**: which untracked file holds the project token (`envFile`) and under which name (`envVar`). Every SDK and the OTLP exporter take the bare token; there is no connection string to compose. Use the names the dashboard's Connection page uses, so a value copied from there matches:
+
+  | Project | `envFile` | `envVar` | The app reads it through |
+  |---|---|---|---|
+  | Backend (OpenTelemetry) | the service's `.env` | any name, e.g. `TRACEWAY_BACKEND_TOKEN` | the OTLP `Authorization: Bearer` header |
+  | Browser, Vite | `.env` | `VITE_TRACEWAY_TOKEN` | `import.meta.env` |
+  | Browser, SvelteKit | `.env` | `PUBLIC_TRACEWAY_TOKEN` | `$env/static/public` |
+  | Browser, Next.js | `.env.local` | `NEXT_PUBLIC_TRACEWAY_TOKEN` | `process.env` |
+  | Flutter | `.env` at the app root | `TRACEWAY_TOKEN` | `--dart-define-from-file=.env` and `String.fromEnvironment` |
+  | Android | `local.properties` | `TRACEWAY_TOKEN` | `buildConfigField` and `BuildConfig` |
+  | iOS | `Traceway.xcconfig` (untracked) | `TRACEWAY_TOKEN` | an `Info.plist` key and `Bundle.main` |
+
+  On a server other than Traceway Cloud the apply step also writes the server URL into the same file, under `urlEnvVar` (default: `envVar` with `TOKEN` replaced by `URL`, so `VITE_TRACEWAY_TOKEN` gets `VITE_TRACEWAY_URL`); on Cloud the SDKs need no URL. Leave `envFormat` out: `"connectionString"` is the deprecated 1.x form, kept only so old plans still validate.
+- The **upload token**, for projects whose release build uploads source maps, Flutter symbols, Android mappings or iOS dSYMs. Traceway creates one for every React, Svelte, Vue.js, jQuery, Flutter, Android and iOS project (none for OpenTelemetry or React Native). Add `uploadTokenEnvFile` and/or `uploadTokenEnvVar` only when a local build step will read it from a file; otherwise leave both out and the user copies it from the project's Connection page into the CI secret store. The file must be untracked and must not reach the shipped app: browsers a separate file such as `web/.env.sourcemaps`; Flutter a separate `.env.symbols`, never the `.env` the build passes to `--dart-define-from-file`; Android `local.properties` (the Gradle plugin reads it there); iOS the untracked `Traceway.xcconfig` itself (Xcode hands its settings to the dSYM upload script, and `Info.plist` does not reference the token), never a committed `.xcconfig`. The default variable is `TRACEWAY_SOURCEMAP_TOKEN` for browsers and `TRACEWAY_UPLOAD_TOKEN` for Flutter, Android and iOS, the names the upload tools read; a public prefix such as `VITE_` is refused. The platform files say how each upload step reads it.
+- The **deployment placement**, from Step 1's deployment analysis: when the credential cannot be hardcoded into the repository because of how the component is deployed (Vercel/Fly/K8s/CI-injected env, secret managers), add a `deployment` block with the platform name and the exact command or UI path, using the literal placeholder `<token>` for the value (and `<url>` for the server URL). The website substitutes the real values after approval; never put real tokens in the plan. A mobile app built in CI usually gets both: an `envFile` for local builds and a `deployment` block for the CI secret.
 
 Do not modify code until the user confirms this map.
 
 ## Step 3: Create the Projects
 
-The default path: submit the confirmed map as a setup plan, the user approves it visually on the Traceway website, and a short curl script writes the resulting ingest tokens into env files. Nothing needs to be installed beyond `curl` and `jq`. Existing correctly mapped Traceway projects may be reused (the plan matches projects by name, so listing an existing name reuses it instead of duplicating).
+The default path: submit the confirmed map as a setup plan, the user approves it visually on the Traceway website, and a short curl script writes the resulting project tokens (and the upload tokens the plan asks for) into env files. Nothing needs to be installed beyond `curl` and `jq`. Existing correctly mapped Traceway projects may be reused (the plan matches projects by name, so listing an existing name reuses it instead of duplicating).
 
 ### 3a. Get a setup token (skip when the invocation carried one)
 
 Branch on account state; ask only if the repository and conversation do not establish it:
 
-- **Has a Traceway account**: "Open `<instance>/setup` (Traceway Cloud: https://cloud.tracewayapp.com/setup). Log in if prompted; the page shows a setup token starting with `tws_`. Paste it here and keep the page open." The token expires in 6 hours; the page has a Generate New Token button.
+- **Has a Traceway account** (with or without projects): "Open `<instance>/setup?mode=add` (Traceway Cloud: https://cloud.tracewayapp.com/setup?mode=add). Log in if prompted; you come back to the same page. It shows a setup token starting with `tws_` (if your organization had a setup proposal before, press **Generate New Token**; with several organizations, pick the one the projects belong to). Paste it here and keep the page open." The token expires in 6 hours; generating a new one revokes the previous one. In the dashboard the same page is the **Add Projects with Your Agent** button on the organization's Projects page. Never send an account that has projects to a plain `<instance>/setup`: without a pending proposal it redirects to the dashboard.
 - **No account yet**: "Open `<instance>/register` (Traceway Cloud: https://cloud.tracewayapp.com/register). Step 1 creates your account and organization. On step 2, keep 'AI' selected; it shows a setup token starting with `tws_`. Paste it here and leave that page open: my proposal will appear there for your approval, and the projects show up live once you approve."
 
 Do not have the user create projects in the web UI on this path, and do not proceed without the token.
 
 ### 3b. Write the plan file
 
-Write `traceway-setup-plan.json` from the confirmed map, one entry per project:
+Write `traceway-setup-plan.json` from the confirmed map, one entry per project, with the env wiring from Step 2:
 
 ```json
 {
@@ -153,19 +166,27 @@ Write `traceway-setup-plan.json` from the confirmed map, one entry per project:
     {"name": "Product Backend", "framework": "opentelemetry",
      "envFile": "backend/.env", "envVar": "TRACEWAY_BACKEND_TOKEN"},
     {"name": "Product Web", "framework": "svelte",
-     "envFile": "frontend/.env", "envVar": "PUBLIC_TRACEWAY_WEB_CONNECTION_STRING",
-     "envFormat": "connectionString",
+     "envFile": "web/.env", "envVar": "PUBLIC_TRACEWAY_TOKEN",
      "deployment": {"platform": "Vercel",
-       "instructions": "vercel env add PUBLIC_TRACEWAY_WEB_CONNECTION_STRING production\n# paste: <token>"}}
+       "instructions": "vercel env add PUBLIC_TRACEWAY_TOKEN production\n# paste: <token>"}},
+    {"name": "Product iOS", "framework": "ios",
+     "envFile": "ios/Traceway.xcconfig", "envVar": "TRACEWAY_TOKEN",
+     "uploadTokenEnvVar": "TRACEWAY_UPLOAD_TOKEN"}
   ]
 }
 ```
 
-Rules: `framework` is one of the nine values from Step 2; every `envFile` must be untracked (create it and confirm it is gitignored first); `envVar` follows the credential-naming rules; `deployment.instructions` uses the literal `<token>` placeholder, never a real value.
+What the apply step writes for each entry:
+
+- `envVar` gets the project token. On a server other than Traceway Cloud the same file also gets the server URL under `urlEnvVar` (default: `envVar` with `TOKEN` replaced by `URL`, `PUBLIC_TRACEWAY_TOKEN` gets `PUBLIC_TRACEWAY_URL`, `traceway.token` gets `traceway.url`). On Cloud no URL is written: the SDKs default to it.
+- The upload token only when the entry names `uploadTokenEnvFile` or `uploadTokenEnvVar` (without a file it goes into `envFile`). Its variable defaults to `TRACEWAY_SOURCEMAP_TOKEN` for browsers and `TRACEWAY_UPLOAD_TOKEN` for Flutter, Android and iOS; off Cloud the same file also gets `TRACEWAY_URL` for the upload tools. Without these fields the token stays on the project's Connection page and the setup page lists it under "Next Steps: Upload Tokens".
+- An `.xcconfig` value stores `//` as `/$()/` (a bare `//` starts a comment there); a `.properties` file also takes dotted keys such as `traceway.token`; missing directories are created.
+
+Rules: `framework` is one of the nine values from Step 2; every `envFile` and `uploadTokenEnvFile` must be untracked (create it and confirm it is gitignored first); `envVar` follows the naming rules of Step 2; an upload token never goes into a file the app bundles or a committed one, and never gets a public prefix (the server refuses `VITE_`, `NEXT_PUBLIC_`, `PUBLIC_` and the like); `deployment.instructions` uses the literal `<token>` (and `<url>`) placeholders, never a real value. Do not set `envFormat`.
 
 ### 3c. Submit the plan and wait for approval (curl)
 
-Use `curl` and `jq` directly for this step. Do NOT install the `traceway` CLI for it; nothing gets installed on this path. (Only if a CLI new enough to have `setup apply` is already present is `printf '%s' "$TRACEWAY_SETUP_TOKEN" | traceway setup apply --url "$TRACEWAY_URL" --plan traceway-setup-plan.json --token-stdin` an equivalent one-step alternative.) If `jq` is unavailable and cannot be installed, use the manual fallback (3e).
+Use `curl` and `jq` directly for this step. Do NOT install the `traceway` CLI for it; nothing gets installed on this path. (Only if a `traceway` CLI is already installed whose `traceway setup apply --help` mentions `uploadTokenEnvFile` is `printf '%s' "$TRACEWAY_SETUP_TOKEN" | traceway setup apply --url "$TRACEWAY_URL" --plan traceway-setup-plan.json --token-stdin` an equivalent one-step alternative; an older CLI writes the wrong form.) If `jq` is unavailable and cannot be installed, use the manual fallback (3e).
 
 Export the credentials first; setup tokens may transit chat, so this is fine:
 
@@ -174,7 +195,7 @@ export TRACEWAY_URL="<instance>"          # no trailing slash
 export TRACEWAY_SETUP_TOKEN="tws_..."
 ```
 
-Validate the token and show the organization (this response carries project names only, safe to display):
+Validate the token and show the organization (this response carries project names only, safe to display); keep its `organizationId` for the review link:
 
 ```bash
 curl -s -w '\nHTTP %{http_code}\n' -H "Authorization: Bearer $TRACEWAY_SETUP_TOKEN" \
@@ -189,18 +210,21 @@ curl -s -w '\nHTTP %{http_code}\n' -X PUT \
   --data-binary @traceway-setup-plan.json "$TRACEWAY_URL/api/setup/plan"
 ```
 
-`200 {"status":"pending"}` means the draft is up; tell the user: "Review the proposal on the Traceway page you have open and press **Approve Setup**." A `422` is a validation message: fix the plan and resubmit. A `401` means the token is invalid or expired: ask the user for a fresh one from `<instance>/setup`.
+`200 {"status":"pending"}` means the draft is up; tell the user: "Review the proposal on the Traceway page you have open (or `<instance>/setup?mode=add&organizationId=<organizationId>`) and press **Approve Setup**." A `422` is a validation message: fix the plan and resubmit. A `401` means the token is invalid or expired: ask the user for a fresh one from `<instance>/setup?mode=add` (**Generate New Token**).
 
-Then wait for the decision with the script below. The script exists because the decision response carries the ingest tokens: values must flow API to env file without ever reaching stdout, your context, or the chat. Write it to `traceway-setup-wait.sh` exactly as given and run `sh traceway-setup-wait.sh`. Never fetch `GET /api/setup/plan` directly, and never read the env files it writes.
+Then wait for the decision with the script below. The script exists because the decision response carries the project and upload tokens: values must flow API to env file without ever reaching stdout, your context, or the chat. Write it to `traceway-setup-wait.sh` exactly as given and run `sh traceway-setup-wait.sh`. Never fetch `GET /api/setup/plan` directly, and never read the env files it writes.
 
 ```sh
 #!/bin/sh
-# Waits for the setup decision, then writes each ingest token into the env
-# file named by the plan. Prints statuses and variable names only.
+# Waits for the setup decision, then writes each project's token (and, off
+# Traceway Cloud, the server URL) into the env file named by the plan, plus the
+# upload token where the plan asks for it. Prints statuses and names only.
 set -eu
 PLAN=${1:-traceway-setup-plan.json}
 AUTH="Authorization: Bearer ${TRACEWAY_SETUP_TOKEN:?}"
 URL=${TRACEWAY_URL:?}
+URL=${URL%/}
+CLOUD=https://cloud.tracewayapp.com
 deadline=$(($(date +%s) + 1800))
 while :; do
   resp=$(curl -s -H "$AUTH" "$URL/api/setup/plan")
@@ -219,62 +243,115 @@ while :; do
   fi
   sleep 3
 done
+
+# write_var FILE KEY VALUE: replaces KEY=... (or "export KEY=...") in place or
+# appends it; the value travels through the environment, never argv or stdout.
+write_var() {
+  case "$1" in *.xcconfig) v=$(printf '%s' "$3" | sed 's#//#/$()/#g') ;; *) v=$3 ;; esac
+  case "$1" in *.properties) sep='=:' ;; *) sep='=' ;; esac
+  dir=$(dirname "$1"); mkdir -p "$dir"
+  tmp=$(mktemp "$dir/.tmp-env-XXXXXX")
+  touch "$1"
+  K=$2 V=$v S=$sep awk '
+    { line = $0; sub(/\r$/, "", line); rest = line
+      sub(/^[ \t]*/, "", rest); sub(/^export[ \t]+/, "", rest)
+      if (index(rest, ENVIRON["K"]) == 1) {
+        tail = substr(rest, length(ENVIRON["K"]) + 1); sub(/^[ \t]*/, "", tail)
+        if (tail != "" && index(ENVIRON["S"], substr(tail, 1, 1)) > 0) {
+          print substr(line, 1, length(line) - length(rest)) ENVIRON["K"] "=" ENVIRON["V"]; done = 1; next
+        }
+      }
+      print }
+    END { if (!done) print ENVIRON["K"] "=" ENVIRON["V"] }' "$1" > "$tmp"
+  mv "$tmp" "$1"
+}
+url_var_for() {
+  case "$1" in
+    *TOKEN) printf '%sURL' "${1%TOKEN}" ;;
+    *token) printf '%surl' "${1%token}" ;;
+    *.*) printf '%s.url' "$1" ;;
+    *) printf '%s_URL' "$1" ;;
+  esac
+}
+
 i=0
 n=$(jq '.projects | length' "$PLAN")
 while [ "$i" -lt "$n" ]; do
-  name=$(jq -r ".projects[$i].name" "$PLAN")
-  envfile=$(jq -r ".projects[$i].envFile // empty" "$PLAN")
-  envvar=$(jq -r ".projects[$i].envVar // empty" "$PLAN")
-  format=$(jq -r ".projects[$i].envFormat // \"token\"" "$PLAN")
-  pstatus=$(printf '%s' "$resp" | jq -r --arg n "$name" \
-    '[.projects[] | select(.name == $n)][0].status // "missing"')
-  if [ "$pstatus" = missing ]; then
+  field() { jq -r ".projects[$i].$1 // empty" "$PLAN"; }
+  name=$(field name); framework=$(field framework)
+  envfile=$(field envFile); envvar=$(field envVar); format=$(field envFormat)
+  urlvar=$(field urlEnvVar); ufile=$(field uploadTokenEnvFile); uvar=$(field uploadTokenEnvVar)
+  project=$(printf '%s' "$resp" | jq -c --arg n "$name" '[.projects[] | select(.name == $n)][0] // empty')
+  if [ -z "$project" ]; then
     echo "$name: missing from the approved plan"
     i=$((i + 1)); continue
   fi
+  pstatus=$(printf '%s' "$project" | jq -r '.status')
+  inst=$(printf '%s' "$project" | jq -r '.backendUrl // empty'); inst=${inst%/}
+  if [ -z "$inst" ] || { [ "$inst" = "$CLOUD" ] && [ "$URL" != "$CLOUD" ]; }; then inst=$URL; fi
+  [ -n "$urlvar" ] || urlvar=$(url_var_for "$envvar")
+  wroteurl=
+  msg="$name: $pstatus"
   if [ -n "$envfile" ] && [ -n "$envvar" ]; then
-    value=$(printf '%s' "$resp" | jq -r --arg n "$name" --arg f "$format" \
-      '[.projects[] | select(.name == $n)][0]
-       | if $f == "connectionString"
-         then .token + "@" + (.backendUrl | sub("/+$"; "")) + "/api/report"
-         else .token end')
-    dir=$(dirname "$envfile"); mkdir -p "$dir"
-    tmp=$(mktemp "$dir/.tmp-env-XXXXXX")
-    { [ -f "$envfile" ] && grep -v "^${envvar}=" "$envfile" > "$tmp"; } || true
-    printf '%s=%s\n' "$envvar" "$value" >> "$tmp"
-    mv "$tmp" "$envfile"
-    echo "$name: $pstatus, wrote $envvar to $envfile"
-  else
-    echo "$name: $pstatus"
+    token=$(printf '%s' "$project" | jq -r '.token')
+    if [ "$format" = connectionString ]; then
+      write_var "$envfile" "$envvar" "$token@$inst"
+    else
+      write_var "$envfile" "$envvar" "$token"
+      if [ "$inst" != "$CLOUD" ]; then write_var "$envfile" "$urlvar" "$inst"; wroteurl=1; fi
+    fi
+    msg="$msg, wrote $envvar${wroteurl:+ and $urlvar} to $envfile"
   fi
+  utoken=$(printf '%s' "$project" | jq -r '.sourceMapToken // empty')
+  if [ -z "$ufile" ] && [ -n "$uvar" ]; then ufile=$envfile; fi
+  if [ -n "$utoken" ] && [ -n "$ufile" ]; then
+    if [ -z "$uvar" ]; then
+      case "$framework" in
+        react|svelte|vuejs|jquery|nextjs) uvar=TRACEWAY_SOURCEMAP_TOKEN ;;
+        *) uvar=TRACEWAY_UPLOAD_TOKEN ;;
+      esac
+    fi
+    write_var "$ufile" "$uvar" "$utoken"
+    msg="$msg, wrote $uvar to $ufile"
+    if [ "$inst" != "$CLOUD" ]; then
+      ukey=TRACEWAY_URL
+      case "$ufile" in *.properties) case "$envvar" in *.*) ukey=$urlvar ;; esac ;; esac
+      if [ -z "$wroteurl" ] || [ "$ufile" != "$envfile" ] || [ "$ukey" != "$urlvar" ]; then
+        write_var "$ufile" "$ukey" "$inst"
+      fi
+    fi
+  elif [ -n "$utoken" ]; then
+    msg="$msg, upload token on the Connection page"
+  fi
+  echo "$msg"
   i=$((i + 1))
 done
-echo "done: deployment credentials, if any, are shown on the Traceway page the user has open"
+echo "done: deployment credentials and unwritten upload tokens are on the Traceway page the user has open ($URL/setup?mode=add)"
 ```
 
-Env files come out mode 0600 via mktemp. Failure handling:
+Env files the script creates come out mode 0600 via mktemp. Failure handling:
 
 - **Rejected (exit 2)**: the script prints the user's rejection reason. Revise the map with the user, update the plan file, submit again (a new PUT replaces the pending draft), and rerun the wait script. Already-approved projects are matched by name, never duplicated.
-- **Expired or invalid token (401 / exit 1)**: ask the user for a fresh token from `<instance>/setup`, re-export it, resubmit, rerun.
+- **Expired or invalid token (401 / exit 1)**: ask the user for a fresh token from `<instance>/setup?mode=add` (**Generate New Token**), re-export it, resubmit, rerun.
 - **Timeout (exit 3)**: resubmit and rerun when the user is ready; it is safe.
 
 Delete the plan file and `traceway-setup-wait.sh` after a successful apply; they hold no secrets but they are setup litter.
 
 ### 3d. Confirm and handle deployment credentials
 
-On approval the Traceway page celebrates and lands the user on the new project's dashboard, which doubles as the confirmation that the projects exist. For every project with a `deployment` block, the page first shows a **Next Steps** panel with the exact command and the real credential value; walk the user through completing it there before they continue, because the setup page is not reachable again once the account has projects. Never relay those values through chat; if a value is needed later, each project's Connection page in the dashboard carries its token.
+On approval the Traceway page celebrates and lands the user on the new project's dashboard, which doubles as the confirmation that the projects exist. Before that, the page shows **Next Steps** panels: "Deployment Credentials" for every project with a `deployment` block (the exact command with the real values), and "Upload Tokens" for every upload token the plan did not ask to have written (with the variable the release build reads). Walk the user through both before they continue. The panels stay reachable at `<instance>/setup?mode=add&organizationId=<organizationId>` (the link `traceway setup apply` prints) until the next proposal is submitted in that organization. Never relay those values through chat; later, each project's Connection page carries its project token and upload token.
 
 ### 3e. Manual fallback
 
-When the user prefers clicking, `curl` or `jq` is unavailable, or apply keeps failing, follow `dashboard-project-setup.md`: the user creates each project in the dashboard UI and puts the tokens straight into their env files or secret store. On this path the old rule applies in full: ingest tokens never transit chat.
+When the user prefers clicking, `curl` or `jq` is unavailable, or apply keeps failing, follow `dashboard-project-setup.md`: the user creates each project in the dashboard UI and puts the tokens straight into their env files or secret store. On this path the old rule applies in full: project tokens never transit chat.
 
-**Upload tokens stay manual on every path: the uploaders read fixed variable names.** `traceway-sourcemaps` reads `TRACEWAY_SOURCEMAP_TOKEN`, and `dart run traceway:upload_symbols` and the iOS dSYM script read `TRACEWAY_UPLOAD_TOKEN` (all three also read `TRACEWAY_URL`). Either name the CI secret exactly that, or keep a component-specific secret and pass it explicitly:
+**Upload tokens: the uploaders read fixed variable names.** `traceway-sourcemaps` reads `TRACEWAY_SOURCEMAP_TOKEN`, `dart run traceway:upload_symbols` and the iOS dSYM script read `TRACEWAY_UPLOAD_TOKEN`, and the Android Gradle plugin takes `uploadToken` (and `url`) from the build script, which reads `TRACEWAY_UPLOAD_TOKEN` (and `TRACEWAY_URL`; see `android.md`). Every uploader sends to Traceway Cloud unless `TRACEWAY_URL` (or `--url`) names a self-hosted server; a blank value counts as unset. Either name the CI secret exactly that, or keep a component-specific secret and pass it explicitly:
 
 ```bash
-traceway-sourcemaps --url "$TRACEWAY_URL" --token "$TRACEWAY_WEB_UPLOAD_TOKEN" --directory ./dist
+traceway-sourcemaps --token "$TRACEWAY_WEB_UPLOAD_TOKEN" --directory ./dist   # + --url "$TRACEWAY_URL" for a self-hosted server
 ```
 
-Inventing a name like `TRACEWAY_WEB_UPLOAD_TOKEN` and then calling the uploader with no `--token` fails at release time, not at setup time, so make the choice explicit in the CI step. Upload tokens are generated per project from **Connection** -> **Source Maps** or **Symbol Upload** in the dashboard.
+Inventing a name like `TRACEWAY_WEB_UPLOAD_TOKEN` and then calling the uploader with no `--token` fails at release time, not at setup time, so make the choice explicit in the CI step. Every React, Svelte, Vue.js, jQuery, Flutter, Android and iOS project has an upload token from the start; it is on the project's **Connection** page (Source Map Upload or Symbol Upload card), which can also regenerate it.
 
 ## Integration Paths
 
@@ -285,7 +362,7 @@ Pick the path by project type, and pick the project type from the "Analyze the A
 | **Backend** (any language) | OpenTelemetry, exporting OTLP/HTTP to `<instance>/api/otel/v1/*`. Always, including Go. |
 | **Frontend** (browser SPA, or a JS meta-framework running frontend-only in production) | Traceway `@tracewayapp/<framework>` SDK + bundler plugin + source map upload (see "Frontend and Mobile" below). |
 | **Full-stack JS** (Next.js, SvelteKit, Remix, actually serving its API/SSR in production per "Analyze the Architecture") | BOTH sides, each under its own Traceway project: server side via OpenTelemetry AND browser side via the frontend SDK. |
-| **Mobile** (Flutter, React Native, Android, native Swift iOS) | The Traceway platform SDK. Never OTel. Sole exception: a non-Swift iOS/Apple app has no native SDK, so it uses an OTel library (e.g. Honeycomb) exporting to Traceway like a backend (see "Frontend and Mobile"). |
+| **Mobile** (Flutter, React Native, Android, native iOS in Swift or Objective-C) | The Traceway platform SDK. Never OTel. Sole exception: an iOS/Apple app on a stack with no Traceway SDK has no native SDK, so it uses an OTel library (e.g. Honeycomb) exporting to Traceway like a backend (see "Frontend and Mobile"). An Objective-C app uses the iOS SDK through a Swift bridge file. |
 
 The rules every backend integration must satisfy, and the table of what each span becomes, are in Step 4 where they are applied.
 
@@ -293,7 +370,7 @@ The rules every backend integration must satisfy, and the table of what each spa
 
 This is a separate integration from sending telemetry, and it needs no setup token. When the user wants a Traceway dashboard shown inside their own product, such as each customer's KPIs in an admin panel, read [dashboard-embedding.md](dashboard-embedding.md) and follow it: their backend asks Traceway for a short-lived signed link per authorized viewer, and their frontend shows it in an iframe.
 
-- It uses a **Read and write** personal access token (`tww_`) that the user creates and stores in their backend's secrets. Treat it like an ingest token: never print it, never ask for it in chat, never commit it. A project ingest token cannot issue links.
+- It uses a **Read and write** personal access token (`tww_`) that the user creates and stores in their backend's secrets. Treat it like a project token: never print it, never ask for it in chat, never commit it. A project ingest token cannot issue links.
 - Per-customer embeds filter on a tag the metrics already carry, such as `account_id`. When you instrument the backend in Step 4 and the user plans to embed, put that attribute on the metrics the dashboard will chart, and keep its values bounded (an account or tenant id, never a user or request id).
 - The account in the filter comes from the viewer's server-side session, never from a browser parameter.
 - The dashboard itself is built in the Traceway UI or with the `traceway-write` skill; this skill only wires the embed into the application.
@@ -311,7 +388,7 @@ The same shape in every language:
 
 1. **Endpoints MUST arrive parametrized.** `http.route` must be the route pattern (`/api/users/:id`), never the concrete URL. Traceway uses the value as-is, but only when it starts with `/`: a route *name* like `app_user_show` is discarded exactly like a missing value. With no usable route it falls back to `url.path`, and the Endpoints page explodes into one row per unique URL.
 2. **Background work MUST use `SpanKind.CONSUMER`.** A root span with the default `INTERNAL` kind and no HTTP attributes is silently dropped (exceptions recorded on it still reach Issues, but the task run itself is lost).
-3. **The exporter MUST use an OpenTelemetry project's token.** If OTLP arrives with a browser project's token (framework React, Svelte, Vue.js, jQuery, or React Native), Traceway keeps only the Issues and discards every endpoint, task, child span, and AI trace. The symptom is "errors appear but the Endpoints page is empty", and the cause is almost always two projects whose tokens got swapped.
+3. **The exporter MUST use an OpenTelemetry project's token.** If OTLP arrives with a browser or mobile project's token (framework React, Svelte, Vue.js, jQuery, Flutter, Android, iOS, or React Native), Traceway keeps the Issues and stores the spans as plain spans, but creates no endpoint, task, or AI trace from them. The symptom is "errors appear but the Endpoints page is empty", and the cause is almost always two projects whose tokens got swapped.
 
 ### How Traceway classifies spans
 
@@ -358,7 +435,7 @@ Two of those lines are load-bearing in a way that fails silently:
 
 SDKs append `/v1/traces`, `/v1/metrics`, `/v1/logs` to the endpoint automatically, so set the **base** URL only. A full signal path in `OTEL_EXPORTER_OTLP_ENDPOINT` produces `/v1/traces/v1/traces`, and the signal-specific variables (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) are used verbatim with nothing appended. When configuring in code instead, the full URLs are `https://<instance>/api/otel/v1/traces` (and `/v1/metrics`, `/v1/logs`) with header `Authorization: Bearer <project-token>`.
 
-When Step 3's apply script wrote the env files, the plan's variables already hold real values locally, so wire the exporter to exactly those names (e.g. `Authorization=Bearer ${TRACEWAY_BACKEND_TOKEN}`) and run live verification immediately. The script writes only each project's one plan variable: companion variables the integration reads, like `TRACEWAY_URL` for the instance URL, are yours to add to the same env file now. On the manual fallback the user populates the variables first.
+When Step 3's apply script wrote the env files, the plan's variables already hold real values locally, so wire the exporter to exactly those names (e.g. `Authorization=Bearer ${TRACEWAY_BACKEND_TOKEN}`) and run live verification immediately. Off Traceway Cloud the script also wrote the server URL under the plan's `urlEnvVar` (default `TRACEWAY_BACKEND_URL` for `TRACEWAY_BACKEND_TOKEN`; set `urlEnvVar: "TRACEWAY_URL"` in the plan when the exporter code reads that name). On Cloud it writes no URL, so add `TRACEWAY_URL=https://cloud.tracewayapp.com` yourself where the exporter code reads one; it is not a secret. On the manual fallback the user populates the variables first.
 
 Constraints: OTLP/HTTP only (protobuf or JSON). OTLP/gRPC is not supported, there is no listener on port 4317. `Content-Encoding: gzip` is fine. The body is capped at 10 MB after decompression, and an oversized batch is rejected outright with `413` and `{"error":"request body exceeds the 10MB limit"}`. Nothing is ingested partially. A wrong or missing token answers `401`, and any other path answers `404`. All three are invisible from the application: most SDKs log exporter failures at debug level only, so when nothing arrives, turn the SDK's own diagnostic logging on first.
 
@@ -700,38 +777,48 @@ Zero-code path for OpenRouter users: in OpenRouter Settings -> Observability, ad
 
 ## Step 7: Frontend and Mobile
 
-For browser RUM setup, read [rum.md](rum.md): version capabilities, release/environment/route dimensions, production collection policy and verification. Full device-aggregated RUM needs a compatible server and stable browser SDK 2.0.0 or later; browser SDK 1.x and a browser `2.0.0-beta.N` prerelease do not satisfy that requirement. If the app cannot run such a release, report the limitation and integrate only available features.
+Browser and mobile apps use the Traceway SDKs, version **2.1.0** on every platform. They all start the same way: the project token as `token`, and `baseUrl` only for a self-hosted server (the default is `https://cloud.tracewayapp.com`). There is no connection string to build. The start code and the env files are exactly what the project's Connection page shows, so a value copied from there matches; the platform files have them.
 
-Browser and mobile integrations use the Traceway SDKs. Choose the browser SDK generation from the app's installed packages and the live npm registry, not from SDK versions seen in a source checkout or an assumption about where `latest` points:
+Every 2.1.0 SDK is built on OpenTelemetry: it exports logs, request spans and device-aggregated performance metrics over OTLP, uploads replay to `/api/recordings`, and polls OpAMP for the project's **Data Collection** rules (browser, Flutter, Android and iOS projects all have that page). Keep production defaults: errors stream, breadcrumbs and replay stay on the device until an error uploads them. Do not turn on `recordAllSessions` merely to prove setup works. Every SDK is built so that it never takes the host app down: a failure inside it is contained, and the app's own crashes still reach the app's previous handlers.
 
-- **Read the dist-tags first**: `npm view @tracewayapp/frontend dist-tags --json`, and the same for the selected wrapper (`@tracewayapp/react`, `vue`, `svelte` or `jquery`). It lists every dist-tag, for example `{"latest": "2.0.0", "beta": "2.0.2-beta.2"}`. Only `latest` decides: a `beta` tag can still name a prerelease older than the stable release, so do not install `@beta` unless the user asks for a prerelease.
-- **`latest` is 2.x on every package you need** (the public registry since 2.0.0): a new integration installs stable v2 (`npm install @tracewayapp/react`, or `@2` to pin the major) and reads [frontend-js-v2.md](frontend-js-v2.md).
-- **An existing integration keeps its major**: a v2 app stays on v2 (update within `@2`; propose moving a `2.0.0-beta.N` pin to stable 2.x, which RUM metrics need). A v1 app stays on v1 and follows [frontend-js.md](frontend-js.md); add or update its packages with `@1` (`npm install @tracewayapp/react@1`), because the plain package name now installs 2.x. Move a v1 app to v2 only when the user asked for the upgrade or for something only v2 has (RUM metrics, remote SDK config (Data Collection, OpAMP), `traceparent` trace linking). That is a migration, not a version bump: follow https://docs.tracewayapp.com/client/js-sdk/migration and [frontend-js-v2.md](frontend-js-v2.md). Never mix v1 and v2 packages, never substitute a local checkout, and never add v2-only options to v1.
-- **`latest` is still 1.x, or differs between the packages you need** (a registry mirror or proxy that lags): that is an answer from the registry, not a failure. Check whether stable v2 resolves there with `npm view @tracewayapp/frontend@2 version` and the same for the wrapper; `E404` means that registry has no stable 2.x. When every package resolves, install `@2`. Otherwise tell the user; a new integration then installs v1 with `@1` and follows [frontend-js.md](frontend-js.md), unless the user asked for v2 or a v2-only feature, which waits for the registry.
-- **The command itself fails** (network, proxy or authentication error, not an answer from the registry): retry once. If it still fails, say that the SDK version could not be verified, keep an existing integration on its current major, and for a new integration ask the user before choosing.
-- v2 exports logs, spans and device-aggregated performance metrics through OTLP, replay through `/api/recordings`, and receives its remote collection configuration through OpAMP, as the Flutter 2.x SDK does. Keep production defaults; do not turn on `recordAllSessions` merely to prove setup works.
-- **Mobile** SDKs retain their own versioning. React Native keeps the `/api/report` transport, and the browser-v2 branch and OpAMP controls do not apply to it; `@tracewayapp/react-native` is published as 2.x in step with the browser packages but is still that native SDK. **Flutter** has two generations: 1.x uses `/api/report`; 2.x (the 2.x prerelease, installed with `flutter pub add 'traceway:^2.0.0-beta.1'`) is built on OpenTelemetry like browser v2: it exports logs, spans and `app.*` performance metrics through OTLP, uploads screen recordings to `/api/recordings`, and polls OpAMP for the Flutter project's Data Collection rules. Read `pubspec.lock` and keep an existing app on its major; move a 1.x app to 2.x only when the user asks for it or for a 2.x-only feature (remote config, performance metrics, captures, trace propagation, sending telemetry to another OpenTelemetry backend). A new integration installs the 2.x prerelease, the command the Connection page shows, on a server that accepts Flutter projects on OTLP and OpAMP, and 1.x (`flutter pub add traceway`) on an older server. Details are in `flutter.md`. **iOS** has two generations the same way: 0.1.x uses `/api/report`; 2.x (the 2.x prerelease, `.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "2.0.0-beta.1")`, Xcode 26.4 or later) is built on the official OpenTelemetry Swift SDK: it exports logs, spans and `app.*` performance metrics through OTLP, uploads wireframe replays to `/api/recordings`, and polls OpAMP for the iOS project's Data Collection rules. Read `Package.resolved` and keep an existing app on its major; a new integration installs 2.x on a server that accepts iOS projects on OTLP and OpAMP. Details are in `ios.md`. **Android** has two generations too: 1.x (`com.tracewayapp:traceway:1.0.1`) uses `/api/report`; 2.x (the 2.x prerelease, `implementation("com.tracewayapp:traceway:2.0.0-beta.1")`, core library desugaring below `minSdk` 26) is built on the official OpenTelemetry Java SDK: it exports logs, spans and `app.*` performance metrics through OTLP, uploads wireframe replays of views and Jetpack Compose screens to `/api/recordings`, and polls OpAMP for the Android project's Data Collection rules. Read the app's Gradle files and keep an existing app on its major; a new integration installs 2.x on a server that accepts Android projects on OTLP and OpAMP. Details are in `android.md`.
+For browser RUM, read [rum.md](rum.md): version capabilities, release/environment/route dimensions, production collection policy and verification.
 
-The `<project-token>@https://<instance>/api/report` connection string, the form the Connection page shows, is accepted by both browser generations and both Flutter generations; browser v2 and Flutter 2.x also accept the server base URL.
+### Choose the browser SDK version
 
-**Browser** (React / Vue / Svelte / jQuery / plain JS), three pieces, all expected:
+Choose from the app's installed packages and the live npm registry, not from SDK versions seen in a source checkout or an assumption about where `latest` points:
 
-1. **SDK**: install the registry-verified version of `@tracewayapp/react` (or `vue`, `svelte`, `jquery`, `frontend` for plain JS) and initialize with the connection string (React: wrap the app in `<TracewayProvider connectionString="...">`). Captures errors and session replay; v2 adds request spans, breadcrumbs, web vitals and other performance metrics.
+- **Read the dist-tags first**: `npm view @tracewayapp/frontend dist-tags --json`, and the same for the selected wrapper (`@tracewayapp/react`, `vue`, `svelte` or `jquery`). Only `latest` decides: a `beta` tag can still name a prerelease older than the stable release, so do not install `@beta` unless the user asks for a prerelease.
+- **New integration**: install `2.1.0` (`npm install @tracewayapp/react@2.1.0`, the line the dashboard shows) when the registry has it. `token` and `baseUrl` need 2.1.0 or later. If `latest` is an older 2.x, tell the user; a 2.0.x install starts with the connection string described under "Upgrading from 2.0" in [frontend-js.md](frontend-js.md).
+- **An existing integration keeps its major**: a 2.x app updates within `@2` (move a `2.0.0-beta.N` pin to stable 2.x, which RUM metrics need). A 1.x app stays on 1.x (add or update packages with `@1`, because the plain package name installs 2.x) unless the user asks for the upgrade or for something only 2.x has (RUM metrics, Data Collection rules, `traceparent` trace linking, replay images and masks). That is a migration, not a version bump: https://docs.tracewayapp.com/client/js-sdk/migration. Never mix 1.x and 2.x packages, never substitute a local checkout.
+- **`latest` is still 1.x, or differs between the packages you need** (a registry mirror or proxy that lags): that is an answer from the registry, not a failure. Check `npm view @tracewayapp/frontend@2 version` and the same for the wrapper; `E404` means that registry has no stable 2.x. Tell the user; a new integration then waits for the registry or, if the user agrees, installs 1.x with `@1`.
+- **The command itself fails** (network, proxy or authentication error): retry once. If it still fails, say that the SDK version could not be verified, keep an existing integration on its current major, and for a new integration ask the user before choosing.
+
+### Browser
+
+React / Vue / Svelte / jQuery / plain JS, three pieces, all expected:
+
+1. **SDK**: install the registry-verified version of `@tracewayapp/react` (or `vue`, `svelte`, `jquery`, `frontend` for plain JS) and start it with the token from the env file: React `<TracewayProvider token={import.meta.env.VITE_TRACEWAY_TOKEN}>`, Vue `createTracewayPlugin({ token })`, SvelteKit `setupTraceway({ token: PUBLIC_TRACEWAY_TOKEN })`, jQuery and plain JS `init({ token })`. It captures errors, sessions, breadcrumbs, request spans with `traceparent`, web vitals and other performance metrics, screen context, and error-triggered session replay.
 2. **Bundler plugin**: `npm install -D @tracewayapp/bundler-plugin`, then add `tracewayDebugIds()` from `@tracewayapp/bundler-plugin/vite` (or `/rollup`, or `TracewayDebugIdsWebpackPlugin` from `/webpack`) to the bundler config, with source maps enabled (`build.sourcemap: true` / `devtool: "source-map"`).
-3. **Source map upload**: `npm install -D @tracewayapp/sourcemap-upload`, then run `traceway-sourcemaps --url <instance> --token <source-map-upload-token> --directory ./dist` as a postbuild or CI step (env vars: `TRACEWAY_URL`, `TRACEWAY_SOURCEMAP_TOKEN`). The upload token comes from the browser project and is a CI secret, never committed.
+3. **Source map upload**: `npm install -D @tracewayapp/sourcemap-upload`, then run `traceway-sourcemaps --token "$TRACEWAY_SOURCEMAP_TOKEN" --directory ./dist` as a postbuild or CI step (add `--url <instance>` for a self-hosted server; Traceway Cloud is the default since 2.1.0). A postbuild that reads the token from the file the setup wrote loads it first (`frontend-js.md` has the line). The upload token is the browser project's, a CI secret, never committed and never given a public prefix.
 
-For the per-framework init code (plain JS, React, Vue, Svelte/SvelteKit, jQuery), the shared SDK options, error filtering, custom attributes, distributed tracing, and the full debug-ID + source map pipeline, read the version-specific reference selected above (`frontend-js-v2.md` or `frontend-js.md`). Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`); they describe 2.x, and the 1.x reference is https://docs.tracewayapp.com/client/js-sdk/v1.
+For the per-framework start code, env files, options, masks and replay images, sending telemetry to another OpenTelemetry provider, and the full debug-ID and source map pipeline, read [frontend-js.md](frontend-js.md). Online docs: https://docs.tracewayapp.com/client/react (or `vue`, `svelte`, `jquery`, `js-sdk`).
 
 **Full-stack JS** (Next.js, SvelteKit, Remix): only when "Analyze the Architecture" confirmed the framework's server actually serves the app in production. A frontend-only deployment gets just the browser pieces above; a separate backend follows "Backend OTel Setup". When it is genuinely full-stack, integrate both sides under the two confirmed projects: server side follows "Backend OTel Setup" with the backend project's token, and browser side follows the three pieces above with the frontend project's token. For Next.js specifically, use the `instrumentation.ts` framework hook in the "Next.js server exception" above; never apply the generic Node preload to it.
 
 For the Next.js **browser** build, `@tracewayapp/bundler-plugin` currently has a webpack entry point, not a Turbopack one. Set `productionBrowserSourceMaps: true`, add `TracewayDebugIdsWebpackPlugin` only when `!isServer && !dev` (the plugin is production-only and must not replace Next's development source-map mode), and make the production build run `next build --webpack` (Next.js 16 defaults to Turbopack, which otherwise ignores this plugin). After building, confirm client `.js` files contain `//# debugId=` and their `.js.map` siblings contain `debugId`, then upload `.next/static/chunks` with the React project's source-map upload token.
 
-**Mobile**, always the platform SDK, never OTel:
+### Mobile
 
-- **Flutter**: `flutter pub add 'traceway:^2.0.0-beta.1'` (the 2.x prerelease; `flutter pub add traceway` installs 1.x for an older server or an existing 1.x app, as above), then `Traceway.run(connectionString: '<token>@https://<instance>/api/report', child: MyApp())`. In 2.x, `TracewayOptions(telemetry: TracewayTelemetry(url: ...))` also sends ordinary logs, request spans and metrics to another OTLP/HTTP receiver, and leaving out the connection string runs it standalone against that receiver only. Then check whether the release build is obfuscated (`--obfuscate --split-debug-info`): if it is, production crash stack traces arrive obfuscated and stay unreadable until the build's `.symbols` files are uploaded, so use the mobile project's upload token and wire up the symbol upload. For the version choice, options of both majors, the 2.x collection model and other-backend setups, platform permissions, the navigator observer, screen recording, privacy masking, the obfuscation check and symbol upload, and the Flutter web caveat, read `flutter.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/flutter
-- **React Native**: `npm install @tracewayapp/react-native`, wrap the app in `TracewayProvider`. Docs: https://docs.tracewayapp.com/client/react-native
-- **Android** (native Kotlin/Java): add `implementation("com.tracewayapp:traceway:2.0.0-beta.1")` from Maven Central (enable core library desugaring when `minSdk` is below 26) and call `Traceway.init(application = this, connectionString = "<token>@https://<instance>", options = TracewayOptions(version = BuildConfig.VERSION_NAME, screenCapture = true))` from `Application.onCreate()` (register the `Application` class in the manifest; no permission entry is needed, the AAR's own manifest declares `INTERNET` and `ACCESS_NETWORK_STATE` and the merger folds them in). It captures every uncaught Java/Kotlin exception on every thread plus manual `Traceway.captureException(...)`, with sessions, the breadcrumbs before each error (console lines, OkHttp calls through `TracewayOkHttpInterceptor`, screens, taps with a view selector) and, with `screenCapture = true`, a wireframe replay; collection follows the project's Data Collection rules. An existing 1.x app (`1.0.1`, `/api/report`) stays on 1.x unless the user asks to move. Release builds run R8, so production crashes arrive with renamed classes and rewritten line numbers and stay unreadable until the build's `mapping.txt` is uploaded: apply the `com.tracewayapp.symbols` Gradle plugin (`version "1.0.1"`, resolved from `mavenCentral()`), which injects `BuildConfig.TRACEWAY_PROGUARD_UUID` and uploads the mapping with the mobile project's upload token; pass that UUID into `TracewayOptions(proguardUuid = ...)` so each crash matches its mapping. For init code, options, the manifest, and the full Gradle plugin setup, read `android.md` in this skill directory. Docs: https://docs.tracewayapp.com/client/android
-- **iOS / Swift** (native SwiftUI or UIKit): add the Traceway iOS SDK via Swift Package Manager (`https://github.com/tracewayapp/traceway-ios.git`, `from: "2.0.0-beta.1"` for the 2.x prerelease, 0.1.x for a server that does not accept iOS projects on OTLP and OpAMP) and call `Traceway.initialize(connectionString: "<token>@https://<instance>", options: TracewayOptions(version: "1.0.0", screenCapture: true))` as early as possible (0.1.x: `Traceway.start`, which 2.x keeps as a deprecated alias). It captures uncaught `NSException`s and fatal signals (hard crashes upload on the next launch) plus manual `Traceway.captureException(...)`; 2.x adds sessions, breadcrumbs, app performance metrics and, with `screenCapture: true`, a wireframe replay, and follows the project's Data Collection rules, while 0.1.x reports errors and crashes only. Release crashes arrive as bare addresses until the build's dSYMs are uploaded, so set up dSYM upload with the mobile project's upload token. For init code, options, the debugger caveat, and dSYM upload, read `ios.md` in this skill directory. **If the app is NOT a Swift app** (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a team standardized on OpenTelemetry), there is no native SDK: use an OTel distribution like Honeycomb with its exporter pointed at `<instance>/api/otel` and a `Authorization: Bearer <project-token>` header, exactly like a backend (see "Backend OTel Setup"). The non-Swift path is also in `ios.md`.
+Always the platform SDK, never OTel. Read the lockfile or build files for the installed version first; an existing app keeps its major unless the user asks to move.
+
+- **Flutter**: `flutter pub add 'traceway:^2.1.0'`, then `Traceway.run(token: const String.fromEnvironment('TRACEWAY_TOKEN'), options: TracewayOptions(...), child: MyApp())`, built with `flutter run --dart-define-from-file=.env`. Add `Traceway.navigatorObserver` to `MaterialApp(navigatorObservers: …)` (or go_router's `observers`) for screen names. It captures Dart errors (native crashes need the native Android or iOS SDK in the host apps), logs from `print`, `package:logging` and `Traceway.log`, request spans, sessions, `app.*` performance metrics (the project gets the **Flutter Performance** dashboard) and wireframe replay on every platform; video replay is the separate `traceway_video` add-on. Obfuscated release builds (`--obfuscate --split-debug-info`) need their `.symbols` uploaded with `dart run traceway:upload_symbols`. The older 1.x generation stays on 1.x unless the user asks. Read [flutter.md](flutter.md). Docs: https://docs.tracewayapp.com/client/flutter
+- **Android** (native Kotlin/Java): `implementation("com.tracewayapp:traceway:2.1.0")` from Maven Central (core library desugaring when `minSdk` is below 26), then `Traceway.init(this, TracewayOptions(token = BuildConfig.TRACEWAY_TOKEN, screenCapture = true))` in `Application.onCreate()`, with the token in `local.properties` and a `buildConfigField`. It captures uncaught exceptions, ANRs (`ApplicationNotResponding`) and native crashes (`NativeCrash`, API 30+) from the exit reasons, app hangs (`AppHang`), `System.out`/`System.err` and `Traceway.log` lines, OkHttp requests through `TracewayOkHttpInterceptor`, screens and taps, sessions, `app.*` performance metrics (the **Mobile Performance** dashboard) and a wireframe replay of views and Jetpack Compose screens. Apply the `com.tracewayapp.symbols` Gradle plugin (`version "2.1.0"`): it uploads the R8 `mapping.txt` of release builds with the upload token and captures `android.util.Log` (and Timber) lines. Read [android.md](android.md). Docs: https://docs.tracewayapp.com/client/android
+- **iOS / Swift** (native SwiftUI or UIKit): add `https://github.com/tracewayapp/traceway-ios.git` with Swift Package Manager, `from: "2.1.0"` (Xcode 26.4 or later), then `Traceway.initialize(token: …, options: TracewayOptions(version: "1.0.0", screenCapture: true))` as early as possible, with the token from an untracked `Traceway.xcconfig` (or the app's existing gitignored secrets `.xcconfig`) through an `Info.plist` key. An `.xcodeproj` app without Xcode at hand gets the package through its project generator or the `project.pbxproj` entries in `ios.md`. A SwiftUI app names its screens with `.tracewayScreen("/path")` (it records none by itself) and its tappable controls with `.tracewayIdentifier("pay")`. It captures uncaught `NSException`s and fatal signals (uploaded on the next launch), MetricKit crashes and watchdog terminations, app hangs (`AppHang`), `NSLog`/`os_log`/`Logger` lines (and `print` with `captureStdout`), requests, screens, taps, sessions, `app.*` performance metrics (the **Mobile Performance** dashboard) and a wireframe replay. Release crashes arrive as bare addresses until the build's dSYMs are uploaded with the upload token. The older 0.1.x generation (`Traceway.start`) stays as it is unless the user asks. Read [ios.md](ios.md). An Objective-C app uses the same SDK through one Swift bridge file (`ios.md`, "Objective-C apps"). **If the app is not a native Swift or Objective-C app** (a cross-platform stack with no Traceway mobile SDK, or a team standardized on OpenTelemetry), there is no native SDK: use an OpenTelemetry library exporting to `<instance>/api/otel` with an `Authorization: Bearer <project-token>` header, exactly like a backend; `ios.md` has that path too. Docs: https://docs.tracewayapp.com/client/ios
+- **React Native**: `npm install @tracewayapp/react-native`, wrap the app in `TracewayProvider`. It keeps its own API and the older report transport (no OTLP, no Data Collection rules, no replay); its Connection page shows its own snippet. Docs: https://docs.tracewayapp.com/client/react-native
+
+**A local or plain-HTTP server while testing a mobile app**: `traceway setup` writes the server's own address (for a local server often `http://localhost:8082`; `traceway setup apply` then prints a `Note:` about it on stderr, and the curl path does not, so check the URL yourself), which the host-side upload tools (Gradle plugin, dSYM script, `traceway:upload_symbols`) need as it is. The app needs an address its device can reach: the iOS Simulator reaches the Mac's `localhost` directly; an Android emulator or a USB device does too after `adb reverse tcp:8082 tcp:8082` (otherwise the emulator reaches the host as `10.0.2.2`); a phone on Wi-Fi needs the host's LAN address. Plain `http://` is blocked by default: Android 9+ needs a debug network security config that permits cleartext to that host (`android.md`), and iOS needs `NSAppTransportSecurity` › `NSAllowsLocalNetworking` in the app's `Info.plist` (`ios.md`). Keep those exceptions to debug builds, change only the app's value when it must differ, and tell the user. Traceway Cloud and an HTTPS self-hosted server need none of this.
+
+Every mobile file has "Send telemetry to another OpenTelemetry provider": the `telemetry` option sends logs, traces and metrics to any OTLP/HTTP receiver while errors, replay and Data Collection stay on Traceway. Set it up only when the user asks.
 
 ## Step 8: Deployment and Server Metrics
 
@@ -768,7 +855,7 @@ Metrics arrive within ~60s under their hostmetrics names (`system.cpu.utilizatio
 
 ## Step 9: Verify
 
-Every dashboard page named below is at `<instance>/<page>`: `/endpoints`, `/issues`, `/tasks`, `/ai-traces`, `/logs`, `/dashboards`. Set the time picker to the last 15 minutes before reading any of them. Verify each project independently and finish with a project-to-component summary.
+Every dashboard page named below is at `<instance>/<page>`: `/endpoints`, `/issues`, `/tasks`, `/ai-traces`, `/logs`, `/sessions`, `/dashboards`. Set the time picker to the last 15 minutes before reading any of them. Verify each project independently and finish with a project-to-component summary.
 
 When the CLI applied the plan, the local env files hold real values, so run local verification now rather than deferring it. Deployment environments are verified only after the user completes the website's Next Steps panel; re-state which variables must exist there before that verification can pass.
 
@@ -788,9 +875,13 @@ When the CLI applied the plan, the local env files hold real values, so run loca
    - Trigger a test browser error and confirm it appears in this project, not the backend project.
    - Confirm the stack resolves to original source files and lines after the matching source maps and bundles are uploaded.
    - If distributed tracing was configured, confirm a browser issue or request links to its backend trace.
+   - Open the error's session on `/sessions`: it has the log lines, request spans and a replay clip. A healthy session has metadata and no replay upload.
 3. **Each mobile project**
-   - Trigger the platform's safe test error or crash flow and confirm it appears only in the matching mobile project.
+   - Trigger the platform's safe test error or crash flow and confirm it appears only in the matching mobile project. A crash (Android, iOS) is sent on the next launch, and iOS crash tests must run without the debugger attached.
+   - Open its session on `/sessions`: the error has its breadcrumbs, and with `screenCapture` on, a wireframe replay clip.
+   - Use the app for a minute, send it to the background, then open the **Flutter Performance** (Flutter) or **Mobile Performance** (Android, iOS) dashboard: app start and screen times arrive.
    - For obfuscated Flutter, minified Android, or Release iOS builds, confirm the matching symbols, R8 mapping, or dSYM resolves the production stack.
+   - Optional: a temporary Data Collection rule takes effect when the app next polls (at start, on return to the foreground, every 5 minutes); remove the test rule afterwards.
 4. **Credential and topology audit**
    - Confirm browser and mobile integrations do not use the backend token, and that the OTLP exporter does not use a browser project's token (rule 3 in Step 4).
    - Confirm APIs, workers, schedulers, AI calls, and host metrics use the backend project unless the user approved an isolation boundary.

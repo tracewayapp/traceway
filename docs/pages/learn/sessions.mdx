@@ -24,7 +24,7 @@ Both can coexist: an exception fired during a session gets its inline clip on th
 
 ## What a Session Records
 
-The recording uses [rrweb](https://github.com/rrweb-io/rrweb) to capture DOM mutations, input events, mouse movement, and viewport changes. Replay is a faithful reconstruction: text, layout, scrolling, hover states, even mouse trails. Privacy classes work the same way they do for exception clips: `traceway-mask` replays an element's text as `*` and its images as empty boxes, and `traceway-blank` replays an empty box of the element's size (browser SDK releases after 2.0.3); rrweb's `rr-mask`, `rr-block` and `rr-ignore` keep working in 2.x and 1.x. See [Session Replay](/client/js-sdk/session-replay#privacy) for the classes and input masking in 2.x.
+The recording uses [rrweb](https://github.com/rrweb-io/rrweb) to capture DOM mutations, input events, mouse movement, and viewport changes. Replay is a faithful reconstruction: text, layout, scrolling, hover states, even mouse trails. Privacy classes work the same way they do for exception clips: `traceway-mask` replays an element's text as `*` and its images as empty boxes, and `traceway-blank` replays an empty box of the element's size (browser SDK 2.1.0 and later); rrweb's `rr-mask`, `rr-block` and `rr-ignore` keep working in 2.x and 1.x. See [Session Replay](/client/js-sdk/session-replay#privacy) for the classes and input masking in 2.x. Pictures outside a mask load from their URLs when the replay plays; the `replay.images` setting turns them into empty boxes (`off`) or adds small copies of the page's own pictures to the recording (`always`), see [`images`](/learn/remote-config/reference#replay).
 
 With the 2.x SDK, segments carry the recording only. Console lines, `log()` lines, navigation, clicks and app events (`track(...)`, `recordAction(...)`) are stored as log records and `fetch` / `XMLHttpRequest` calls as spans, tagged with the session id, and the session page reads them from there; which of them leave the browser is set per signal by [Remote SDK Config](/learn/remote-config).
 
@@ -37,9 +37,9 @@ Either way, the dashboard's session detail page renders them as **Logs** and **A
 
 ### Replay in apps
 
-The iOS and Android SDKs record the screen as a **wireframe**: the view hierarchy (UIKit and SwiftUI on iOS, views and Jetpack Compose on Android) is converted to HTML boxes, text and placeholders and recorded as rrweb events, so the same player as a browser session replays it. The Flutter SDK records a wireframe of the widget tree the same way when `screenCaptureMode` is `wireframe` or a rule sets `replay.captureMode: "wireframe"`, and always on Linux and Windows. The player's header shows the platform's icon and **Wireframe replay** instead of a page address. Pictures appear only when the `replay.images` setting and the app's `replayImages` option allow them; otherwise image views are grey placeholders (see [`images`](/learn/remote-config/reference#replay)). Text typed into fields is masked unless a rule sets `replay.maskAllInputs: false`, and a mask in the app blanks or blurs a view: `TracewayMask` or a `ValueKey('traceway-mask')` in Flutter, `view.tracewayMask`, `Modifier.tracewayMask()` or an `android:tag` / `testTag` of `traceway-mask` on Android, `tracewayMask` or an `accessibilityIdentifier` of `traceway-mask` on iOS (`traceway-blank` for the blank mode).
+The iOS and Android SDKs record the screen as a **wireframe**: the view hierarchy (UIKit and SwiftUI on iOS, views and Jetpack Compose on Android) is converted to HTML boxes, text and placeholders and recorded as rrweb events, so the same player as a browser session replays it. The Flutter SDK records a wireframe of the widget tree the same way, by default. The player's header shows the platform's icon and **Wireframe replay** instead of a page address. A wireframe carries small pictures of the images on screen when the `replay.images` setting and the app's `replayImages` option allow them (on Wi-Fi by default), never a screenshot; otherwise images are grey placeholders (see [`images`](/learn/remote-config/reference#replay)). While the soft keyboard is up, all three draw a neutral **Keyboard** box where it covers the app; its keys are never recorded. Text typed into fields is masked unless a rule sets `replay.maskAllInputs: false`, and a mask in the app blanks or blurs a view: `TracewayMask` or a `ValueKey('traceway-mask')` in Flutter, `view.tracewayMask`, `Modifier.tracewayMask()` or an `android:tag` / `testTag` of `traceway-mask` on Android, `tracewayMask` or an `accessibilityIdentifier` of `traceway-mask` on iOS (`traceway-blank` for the blank mode).
 
-Video is Flutter only, and its default: the Flutter SDK records MP4 clips from the device's hardware encoder (Android, iOS, macOS), and the player shows **Flutter Screen Recording**. One session's replay is all video or all wireframe. The iOS and Android SDKs always record a wireframe and ignore `replay.captureMode`. Every app SDK uploads a clip before each exception, and consecutive segments while a capture or a rule streams replay.
+Video is Flutter only: with the `traceway_video` add-on package and `screenCaptureMode: video` (or a rule's `replay.captureMode: "video"`), the Flutter SDK records MP4 clips from the device's hardware encoder (Android, iOS, macOS), and the player shows **Flutter Screen Recording**. One session's replay is all video or all wireframe. The iOS and Android SDKs always record a wireframe and ignore `replay.captureMode`. Every app SDK uploads a clip before each exception, and consecutive segments while a capture or a rule streams replay.
 
 In an app, a click row of the **Actions** tab is a tap and reads as the control that handled it, what it shows and the screen it was on, for example `Tap MaterialButton#pay “Pay now” on /CheckoutActivity`. The selector is the one the SDK recorded, so it can be copied into a [recording trigger](/learn/remote-config/trigger-sequences) step as it is, and a trigger's click steps show as `tap(…)` on the session's recording-reason tags.
 
@@ -63,7 +63,7 @@ The closing payload is not guaranteed to arrive: the browser can be force-quit b
 
 Every session ships with a context map. Three layers contribute:
 
-1. **Auto-collected defaults**: the browser SDK stamps `url`, `path`, `referrer`, `userAgent`, `language`, `platform`, `viewport`, `screen`, and `timezone` from `window` / `navigator`. The Flutter, Android and iOS SDKs send their resource attributes instead (`os.*`, `device.*` and the others listed in each SDK's guide), and the session takes them over. The backend additionally stamps `client.ip` from the request.
+1. **Auto-collected defaults**: the browser SDK stamps `url`, `path`, `referrer`, `userAgent`, `language`, `platform`, `viewport`, `screen`, and `timezone` from `window` / `navigator`; exceptions, messages, log lines and actions also carry the screen they happened on (`app.screen.name`, `app.screen.route`, `app.screen.previous`, `app.screen.duration_ms`, see [Screen Context](/learn/issues#screen-context)). The Flutter, Android and iOS SDKs send their resource attributes instead (`os.*`, `device.*` and the others listed in each SDK's guide), and the session takes them over. The backend additionally stamps `client.ip` from the request.
 2. **Global scope**: anything set via `setAttribute("user.id", "u_42")` / `setAttributes({ tenant: "acme" })` on the SDK. These refresh the open session and flow through subsequent sessions and exceptions. You can also pass `attributes` at initialization.
 3. **Per-call attributes**: `captureExceptionWithAttributes(err, { … })` for exceptions only.
 
@@ -90,7 +90,8 @@ For example, attach identity in your browser app:
 ```javascript
 import { init, setAttributes, clearAttributes } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   attributes: { tenant: "acme" },
 });
 
@@ -126,7 +127,8 @@ For most apps, recording a sample of sessions (or only premium-tier users, etc.)
 
 ## Next Steps
 
-- [Session Replay in the JS SDK](/client/js-sdk/session-replay): options, remote control, privacy and the collection budget. The legacy 1.x SDK is on [Session Replay (SDK 1.x)](/client/js-sdk/v1/session-replay).
+- [Session Replay in the JS SDK](/client/js-sdk/session-replay): options, remote control, privacy and the collection budget. An app still on the legacy 1.x SDK: see [Migrating from 1.x](/client/js-sdk/migration#migrating-from-1x).
+- **Configure Session Capture**, step by step for [JavaScript](/client/js-sdk/session-capture), [React](/client/react/session-capture), [Vue](/client/vue/session-capture), [Svelte](/client/svelte/session-capture), [jQuery](/client/jquery/session-capture), [Flutter](/client/flutter/session-capture), [Android](/client/android/session-capture) and [iOS](/client/ios/session-capture): turn replay on, hide private content, choose images and which sessions upload, and capture one user from the dashboard.
 - [Issues](/learn/issues): how exceptions are grouped and what an issue page shows.
 - [Attributes](/learn/attributes): the broader attribute model that backs sessions, exceptions, traces, and tasks.
 

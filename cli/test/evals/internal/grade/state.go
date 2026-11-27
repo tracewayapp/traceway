@@ -33,15 +33,22 @@ import (
 //	page_count      status, count
 //	projects        projects (names that must exist), frameworks (name ->
 //	                framework), count
-//	file            path (glob), exists, contains, not_contains
+//	file            path (glob; {a,b} alternatives), exists, contains,
+//	                not_contains, same_file (every contains in one file)
 //	no_token_literal  no project ingest token appears in any workspace file
 //	                  (env files excepted)
 //	no_token_printed  no project ingest token appears in any tool output
 //	                  the model saw, or in its report
+//
+// An assertion's note is appended to its failure.
 func State(ctx context.Context, in *Input) *Verdict {
 	v := newVerdict("state", true)
 	for i, a := range in.Case.Expect.State {
 		if err := checkState(ctx, in, a); err != nil {
+			if a.Note != "" {
+				v.fail("state[%d] %s: %v (%s)", i, a.Kind, err, a.Note)
+				continue
+			}
 			v.fail("state[%d] %s: %v", i, a.Kind, err)
 		}
 	}
@@ -476,6 +483,7 @@ var generatedDirs = map[string]bool{".venv": true, "venv": true, "__pycache__": 
 
 func checkFiles(root string, a catalog.StateAssert) error {
 	var matched []string
+	globs := expandBraces(a.Path)
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -488,8 +496,11 @@ func checkFiles(root string, a catalog.StateAssert) error {
 		}
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
-		if ok, _ := path.Match(a.Path, rel); ok || rel == a.Path || globAny(a.Path, rel) {
-			matched = append(matched, p)
+		for _, g := range globs {
+			if ok, _ := path.Match(g, rel); ok || rel == g || globAny(g, rel) {
+				matched = append(matched, p)
+				break
+			}
 		}
 		return nil
 	})
@@ -500,12 +511,41 @@ func checkFiles(root string, a catalog.StateAssert) error {
 		return fmt.Errorf("no file matches %s", a.Path)
 	}
 	var all strings.Builder
+	texts := make([]string, 0, len(matched))
 	for _, m := range matched {
 		raw, _ := readRegular(m)
+		texts = append(texts, string(raw))
 		all.Write(raw)
 		all.WriteByte('\n')
 	}
 	text := all.String()
+	if a.SameFile && len(a.Contains) > 0 {
+		var res []*regexp.Regexp
+		for _, c := range a.Contains {
+			re, err := regexp.Compile("(?m)" + c)
+			if err != nil {
+				return fmt.Errorf("bad regexp /%s/: %v", c, err)
+			}
+			res = append(res, re)
+		}
+		found := false
+		for _, t := range texts {
+			every := true
+			for _, re := range res {
+				if !re.MatchString(t) {
+					every = false
+					break
+				}
+			}
+			if every {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("no single file matching %s matches all of /%s/", a.Path, strings.Join(a.Contains, "/, /"))
+		}
+	}
 	for _, c := range a.Contains {
 		if re, err := regexp.Compile("(?m)" + c); err != nil || !re.MatchString(text) {
 			return fmt.Errorf("%s does not match /%s/", a.Path, c)
@@ -517,6 +557,26 @@ func checkFiles(root string, a catalog.StateAssert) error {
 		}
 	}
 	return nil
+}
+
+// expandBraces turns {a,b} alternatives into one glob each:
+// "{app/build.gradle.kts,.github/workflows/*}" is two globs, and
+// "**/*.{kt,java}" is "**/*.kt" and "**/*.java".
+func expandBraces(glob string) []string {
+	open := strings.IndexByte(glob, '{')
+	if open < 0 {
+		return []string{glob}
+	}
+	end := strings.IndexByte(glob[open:], '}')
+	if end < 0 {
+		return []string{glob}
+	}
+	end += open
+	var out []string
+	for _, alt := range strings.Split(glob[open+1:end], ",") {
+		out = append(out, expandBraces(glob[:open]+alt+glob[end+1:])...)
+	}
+	return out
 }
 
 // globAny supports a leading **/ in file globs.

@@ -115,6 +115,28 @@ func TestSeededDashboardTemplatesAreValid(t *testing.T) {
 		}
 		assertClientMetricTemplate(t, flutter)
 	}
+
+	// The Android and iOS SDKs count ANRs (and watchdog kills) as app.anr and out-of-memory kills as
+	// app.oom; the Mobile Performance dashboard charts them as the counters they are.
+	if mobile := byKey["mobile-performance"]; mobile != nil {
+		assertClientMetricTemplate(t, mobile)
+		charted := map[string]string{}
+		def, _ := dashboardsvc.ParseDefinition(mobile.Definition)
+		for _, w := range def.Widgets {
+			var cfg struct {
+				Sources []struct{ Name, Aggregation string } `json:"sources"`
+			}
+			_ = json.Unmarshal(w.Config, &cfg)
+			for _, src := range cfg.Sources {
+				charted[src.Name] = src.Aggregation
+			}
+		}
+		for _, name := range []string{"app.anr", "app.oom", "app.hang", "app.crash"} {
+			if charted[name] != "sum" {
+				t.Errorf("mobile-performance charts %s as %q, want a sum", name, charted[name])
+			}
+		}
+	}
 }
 
 // clientMetricCommonDimensions are kept on every client metric whatever its catalog

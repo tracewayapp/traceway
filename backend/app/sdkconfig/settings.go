@@ -105,10 +105,11 @@ type ReplaySettings struct {
 	// TracewayOptions.screenCaptureMode; the browser SDKs ignore it. A change waits for the next session when the
 	// current one already uploaded replay in the other mode, so one session's replay is all one or the other.
 	CaptureMode *string `json:"captureMode,omitempty"`
-	// Images is when a wireframe replay may carry pictures: "off", "wifi" (only on an unmetered connection,
-	// decided when the frame is captured) or "always". The Android and iOS SDKs then inline the bitmap of image
-	// views; the Flutter SDK keeps or drops its network-image URL references and uploads no pixels. The app's
-	// replayImages option is a ceiling: the SDK applies the lower of the two. SDKs default to "wifi".
+	// Images is when a replay may carry pictures: "off", "wifi" or "always". The Android, iOS and Flutter SDKs
+	// inline small copies of the app's images, for "wifi" only on an unmetered connection (decided when the frame
+	// is captured; Flutter on a metered one keeps the URLs of network images and uploads no pixels). The browser
+	// SDK replays pictures by their URLs for "wifi" and adds small copies for "always". The app's replayImages
+	// option is a ceiling: the SDK applies the lower of the two. SDKs default to "wifi".
 	Images *string `json:"images,omitempty"`
 }
 

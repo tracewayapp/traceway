@@ -1,0 +1,219 @@
+import Intro from "../../../components/client-docs/session-capture/intro.mdx";
+import Step1 from "../../../components/client-docs/session-capture/step-1.mdx";
+import Inputs from "../../../components/client-docs/session-capture/step-2-inputs.mdx";
+import Mask from "../../../components/client-docs/session-capture/step-2-mask.mdx";
+import MaskCheck from "../../../components/client-docs/session-capture/step-2-check.mdx";
+import Step3 from "../../../components/client-docs/session-capture/step-3.mdx";
+import Defaults from "../../../components/client-docs/session-capture/step-4-default.mdx";
+import Sample from "../../../components/client-docs/session-capture/step-4-sample.mdx";
+import Trigger from "../../../components/client-docs/session-capture/step-4-trigger.mdx";
+import Elements from "../../../components/client-docs/session-capture/step-4-elements.mdx";
+import Pages from "../../../components/client-docs/session-capture/step-4-pages.mdx";
+import Step5 from "../../../components/client-docs/session-capture/step-5.mdx";
+import Step6 from "../../../components/client-docs/session-capture/step-6.mdx";
+import Check from "../../../components/client-docs/session-capture/check.mdx";
+import Limits from "../../../components/client-docs/session-capture/limits.mdx";
+import WhenItFails from "../../../components/client-docs/session-capture/when-it-fails.mdx";
+
+# Configure Session Capture
+
+<Intro />
+
+This page uses `@tracewayapp/svelte` with Svelte 5 and SvelteKit. [Session Replay](/client/js-sdk/session-replay) is the reference.
+
+## Step 1: Turn on replay and set the limits in the app
+
+<Step1>
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script>
+  import { PUBLIC_TRACEWAY_TOKEN } from "$env/static/public";
+  import { setupTraceway } from "@tracewayapp/svelte";
+
+  let { children } = $props();
+
+  setupTraceway({
+    token: PUBLIC_TRACEWAY_TOKEN,
+    options: {
+      version: "1.4.2",
+      sessionRecording: true, // the default; false means no replay, whatever a rule says
+      collection: {
+        replay: { maskAllInputs: true, images: "wifi" },
+      },
+    },
+  });
+</script>
+
+{@render children()}
+```
+
+Outside SvelteKit, call `setupTraceway` in the root component with `import.meta.env.VITE_TRACEWAY_TOKEN`.
+
+</Step1>
+
+## Step 2: Hide private content
+
+### Inputs are masked by default
+
+<Inputs />
+
+### Mark elements with a mask
+
+<Mask>
+
+```svelte
+<script>
+  import SignaturePad from "$lib/SignaturePad.svelte";
+
+  let { user, card } = $props();
+</script>
+
+<p class="traceway-mask">Card ending {card.last4}, {user.name}</p>
+<div class="traceway-mask"><img src={user.avatarUrl} alt="" /> {user.name}</div>
+<div class="traceway-blank"><SignaturePad /></div>
+```
+
+`Card ending 4242, Alice Smith` replays as `**** ****** ***** ***** *****`. Put the class in the markup itself; a `class:traceway-mask={…}` directive that turns on later leaves the element unmasked until the next full snapshot.
+
+</Mask>
+
+### Check the mask before you ship
+
+<MaskCheck />
+
+## Step 3: Choose whether replays show images
+
+<Step3 />
+
+## Step 4: Choose which sessions upload replay
+
+### What uploads by default
+
+<Defaults />
+
+### Record every session or a sample
+
+<Sample />
+
+### Record a journey with a trigger
+
+<Trigger>
+
+```javascript
+// src/lib/checkout.js
+import { log, captureMessage } from "@tracewayapp/svelte";
+
+export async function pay(order) {
+  const result = await submitPayment(order);
+  if (result.declined) {
+    log("Payment declined", "warn", { provider: "stripe" }); // matches a Log step "Payment declined"
+  }
+  if (result.abandoned) {
+    captureMessage("Checkout abandoned"); // also opens an issue
+  }
+}
+```
+
+</Trigger>
+
+### Name the elements a trigger can match
+
+<Elements />
+
+### Name your pages
+
+<Pages>
+
+In SvelteKit, pass the route id to `trackRoute` from the root layout, next to `setupTraceway`:
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script>
+  import { page } from "$app/state";
+  import { PUBLIC_TRACEWAY_TOKEN } from "$env/static/public";
+  import { setupTraceway, trackRoute } from "@tracewayapp/svelte";
+
+  let { children } = $props();
+
+  setupTraceway({ token: PUBLIC_TRACEWAY_TOKEN });
+
+  $effect(() => {
+    page.url.pathname; // run again for another URL with the same route id
+    trackRoute(page.route.id);
+  });
+</script>
+
+{@render children()}
+```
+
+The page is then named by its route id, such as `/orders/[id]`. For navigation the address does not show (a modal, a wizard step), report it; its path is what a **Navigation** step matches:
+
+```javascript
+import { recordNavigation } from "@tracewayapp/svelte";
+
+recordNavigation(
+  "/checkout/payment",
+  "push",
+  "/checkout/address",
+  "/checkout/[step]",
+);
+```
+
+See [Route Names](/client/svelte/context#route-names).
+
+</Pages>
+
+## Step 5: Capture one user or device from the dashboard
+
+<Step5>
+
+```svelte
+<script>
+  import { useTracewayAttributes, refreshConfig } from "@tracewayapp/svelte";
+
+  let { user } = $props();
+
+  const sync = useTracewayAttributes();
+
+  $effect(() => {
+    sync(user ? { "user.id": String(user.id) } : null);
+    if (user) refreshConfig();
+  });
+</script>
+```
+
+</Step5>
+
+## Step 6: Change collection remotely with Data Collection rules
+
+<Step6 />
+
+## Check that it works
+
+<Check>
+
+```svelte
+<script>
+  import { captureException, flush } from "@tracewayapp/svelte";
+
+  // +layout.svelte starts the SDK with options: { debug: true }
+
+  async function send() {
+    captureException(new Error("Traceway replay test"));
+    await flush();
+  }
+</script>
+
+<button onclick={send}>Send test error</button>
+```
+
+</Check>
+
+## What replay does not record
+
+<Limits />
+
+## When it fails
+
+<WhenItFails />

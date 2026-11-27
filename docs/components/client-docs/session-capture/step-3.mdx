@@ -1,0 +1,21 @@
+`replay.images` decides what the replay shows of pictures outside a mask. It is a collection setting, set in `collection` or with a rule's **Replay images** select:
+
+| Value              | What the replay shows                                                                                                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"off"`            | Every `img`, `picture`, SVG `image` and `<input type="image">` as an empty box of its size, without its URL                                                                                    |
+| `"wifi"` (default) | The pictures, loaded from their URLs when the replay plays. No pixels are uploaded                                                                                                             |
+| `"always"`         | The same, plus a small copy of each picture the page may read (from its own origin, or from another origin that serves it with CORS), so the replay shows it even when the URL no longer works |
+
+```json
+{ "replay": { "images": "always" } }
+```
+
+The app's `replayImages` option is its ceiling (`"always"` by default), as on the app SDKs: the lower of the two applies, in the order `off`, `wifi`, `always`. A rule's value replaces the one in `collection`, but never goes past `replayImages`: with `replayImages: "off"` every picture stays an empty box whatever a rule says, and with `"wifi"` a rule's `"always"` adds no copies. Without replay (`sessionRecording: false`) the policy is `"off"`.
+
+{props.children}
+
+A picture that must never be recorded belongs inside `traceway-mask` or `traceway-blank`, which no setting changes. `"off"` does not touch `video` and `canvas` elements either; mask those. The browser cannot tell Wi-Fi from a metered connection, so `"wifi"` behaves like the app SDKs on a metered connection: URL references only.
+
+With `"always"`, each loaded `<img>` is copied at its displayed size. A picture with transparency becomes a PNG of at most 192 px on its longest side, because JPEG would replay its transparent pixels as black; any other picture becomes a JPEG at quality 0.45 of at most 384 px. A copy over 48 KiB is tried once at half the size and otherwise left as a URL. The SDK keeps up to 128 copies for the next snapshots, adds at most 4 MiB of them to a session's recording, and spends at most 16 ms on them per recorded change. It never changes the page's own `<img>` elements, so a picture from another origin without CORS stays a URL reference.
+
+A change of `replay.images` restarts the recorder and drops the buffered replay recorded with the old value. Each session reports the value that applies, ceiling included, as `traceway.replay.images`, and the bytes of the copies added so far as `traceway.replay.image_bytes`.

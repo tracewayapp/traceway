@@ -43,7 +43,7 @@ import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentation
 import { ExpressLayerType } from "@opentelemetry/instrumentation-express";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 
-const TRACEWAY_URL = "https://your-traceway-instance.com";
+const TRACEWAY_URL = "https://cloud.tracewayapp.com";
 const TRACEWAY_TOKEN = "your-project-token";
 const headers = { Authorization: `Bearer ${TRACEWAY_TOKEN}` };
 
@@ -538,7 +538,7 @@ sdk.start();
 ```bash
 export OTEL_SERVICE_NAME="my-nestjs-app"
 export OTEL_RESOURCE_ATTRIBUTES="service.version=1.0.0"
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-traceway-instance.com/api/otel"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://cloud.tracewayapp.com/api/otel"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
 ```
 

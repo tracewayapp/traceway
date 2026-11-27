@@ -2,7 +2,7 @@
 
 Integrate Traceway into your Vue 3 application with the `@tracewayapp/vue` package.
 
-Upgrading an app from 1.x? See the [migration guide](/client/js-sdk/migration).
+Upgrading from 2.0 or 1.x? See [Upgrading](/client/js-sdk/migration).
 
 ## Installation
 
@@ -12,7 +12,7 @@ npm install @tracewayapp/vue
 
 ## Setup
 
-Install the Traceway plugin in your Vue application. Session replay is on by default and buffered on the device: a captured error uploads a 30-second replay clip and up to 10 minutes of breadcrumbs (console, network, navigation, clicks). Set `recordAllSessions: true` to stream every session instead:
+Install the Traceway plugin in your Vue application and give it the project token:
 
 ```javascript
 import { createApp } from "vue";
@@ -21,14 +21,27 @@ import App from "./App.vue";
 
 const app = createApp(App);
 
-app.use(createTracewayPlugin({
-  connectionString: "your-token@https://traceway.example.com/api/report",
-}));
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  }),
+);
 
 app.mount("#app");
 ```
 
-The plugin initializes the SDK once and installs `app.config.errorHandler`, so errors thrown in components are captured along with uncaught errors and unhandled promise rejections.
+```bash
+# .env
+VITE_TRACEWAY_TOKEN=YOUR_TOKEN
+```
+
+The project's **Connection** page in Traceway shows the token. The SDK sends to Traceway Cloud; for a self-hosted server, also pass its address as `baseUrl: import.meta.env.VITE_TRACEWAY_URL`.
+
+The plugin initializes the SDK once and installs `app.config.errorHandler`, so errors thrown in components, watchers and lifecycle hooks are captured along with uncaught errors and unhandled promise rejections. `app.use()` never throws: a build without its token mounts the app as usual, with the SDK off and one console warning that says what is missing.
+
+## Session capture
+
+Errors and messages are sent as they happen, and session start and end are reported for every visit. Console output, requests, navigation, clicks and the session replay stay on the device until they are needed: a captured error uploads a 30-second replay clip and up to 10 minutes of those breadcrumbs. [Configure Session Capture](/client/vue/session-capture) shows how to hide private content, record whole sessions or journeys, and capture one user from the dashboard.
 
 ## Capture Errors in Components
 
@@ -54,16 +67,22 @@ async function handleSubmit() {
 </template>
 ```
 
+Every other function of the browser SDK (`log`, `track`, `recordNavigation`, `startInteraction`, `tracer`, `flush`, …) is exported from `@tracewayapp/vue` too; see [Direct Imports](/client/vue/composables#direct-imports).
+
 ## With Options
 
+Every option of the browser SDK goes in `options`:
+
 ```javascript
-app.use(createTracewayPlugin({
-  connectionString: "your-token@https://traceway.example.com/api/report",
-  options: {
-    debug: true,
-    version: "1.0.0",
-  },
-}));
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+    options: {
+      debug: true,
+      version: "1.0.0",
+    },
+  }),
+);
 ```
 
 ## Test Your Integration
@@ -84,14 +103,25 @@ function sendTestError() {
 </template>
 ```
 
-Click the button and check your Traceway dashboard to verify the error appears.
+Click the button and check your Traceway dashboard to verify the error appears. With `debug: true` in `options`, the browser console shows `Traceway: started (https://cloud.tracewayapp.com/api/otel/v1/logs), session …` when the SDK starts.
 
 ## Distributed Tracing
 
 The SDK records `fetch` and `XMLHttpRequest` calls as CLIENT spans and adds the W3C `traceparent` header to same-origin requests. A backend instrumented with OpenTelemetry picks it up with no extra middleware, so a browser request and the backend work it caused show up as one trace. For an API on another origin, list it in `propagateTraceHeaderCorsUrls`. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
+## Platform Support
+
+| Environment                    | Error Tracking                                             | Session Replay |
+| ------------------------------ | ---------------------------------------------------------- | -------------- |
+| Vue 3.3+ in any modern browser | Yes                                                        | Yes            |
+| Vite, Nuxt 3 (client)          | Yes                                                        | Yes            |
+| Vue 2                          | No: use [`@tracewayapp/frontend`](/client/js-sdk) directly | No             |
+
+In Nuxt, install the plugin from a universal plugin file; see [Nuxt Integration](/client/vue/plugin#nuxt-integration).
+
 ## Next Steps
 
+- [Configure Session Capture](/client/vue/session-capture) - Masks, images, which sessions upload, captures and rules
 - [Plugin Setup](/client/vue/plugin) - Configuration options, route names, custom attributes
 - [Composables](/client/vue/composables) - Using useTraceway
 - [Session Replay](/client/js-sdk/session-replay) - What is recorded and when it is uploaded

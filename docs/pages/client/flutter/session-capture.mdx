@@ -1,0 +1,321 @@
+import ReplayCeilings from "../../../components/mobile-docs/replay-ceilings.mdx";
+import ReplayBuffer from "../../../components/mobile-docs/replay-buffer.mdx";
+import KeyboardBox from "../../../components/mobile-docs/keyboard-box.mdx";
+import CheckMask from "../../../components/mobile-docs/check-mask.mdx";
+import ImagePolicy from "../../../components/mobile-docs/image-policy.mdx";
+import ImageLimits from "../../../components/mobile-docs/image-limits.mdx";
+import DefaultUpload from "../../../components/mobile-docs/default-upload.mdx";
+import Sampling from "../../../components/mobile-docs/sampling.mdx";
+import TriggerRule from "../../../components/mobile-docs/trigger-rule.mdx";
+import DashboardCapture from "../../../components/mobile-docs/dashboard-capture.mdx";
+import DataCollectionRules from "../../../components/mobile-docs/data-collection-rules.mdx";
+import CheckItWorks from "../../../components/mobile-docs/check-it-works.mdx";
+import ReplayBudget from "../../../components/mobile-docs/replay-budget.mdx";
+
+# Configure Session Capture
+
+Session replay shows what the user saw before an error, or along a journey you care about. This page sets it up in a Flutter app: turn it on, hide what is private, decide which sessions upload replay, and then change all of it from the dashboard without a release. It assumes the SDK is installed and started as in the [Quick Start](/client/flutter).
+
+| Step                                                               | What you do                         | Where                 |
+| ------------------------------------------------------------------ | ----------------------------------- | --------------------- |
+| [1](#step-1-turn-on-replay-and-set-the-limits-in-the-app)          | Turn on replay and set its limits   | App code              |
+| [2](#step-2-hide-private-content)                                  | Hide private content                | App code              |
+| [3](#step-3-choose-whether-replays-show-images)                    | Choose whether replays show images  | Dashboard or app code |
+| [4](#step-4-choose-which-sessions-upload-replay)                   | Choose which sessions upload replay | Dashboard or app code |
+| [5](#step-5-capture-one-user-or-device-from-the-dashboard)         | Capture one user or device          | Dashboard             |
+| [6](#step-6-change-collection-remotely-with-data-collection-rules) | Change collection with rules        | Dashboard             |
+
+## Step 1: Turn on replay and set the limits in the app
+
+A Flutter app records a **wireframe** by default: after each frame that changed something, the SDK walks the widget tree and records what it paints as HTML, which the dashboard replays with the same rrweb player as a browser session. It works on every platform the SDK supports, needs no native code, and a segment is a few kilobytes.
+
+Replay is off until you turn it on with `screenCapture`:
+
+```dart
+Traceway.run(
+  token: const String.fromEnvironment('TRACEWAY_TOKEN'),
+  options: const TracewayOptions(
+    screenCapture: true,
+    fps: 15,              // the default; at most 59
+    maxBufferFrames: 150, // the default; the longest clip
+  ),
+  child: const MyApp(),
+);
+```
+
+**Video instead of a wireframe.** To record the app's pixels as MP4 (Android, iOS and macOS, with the device's hardware encoder), add the [`traceway_video`](https://pub.dev/packages/traceway_video) add-on and register it before `Traceway.run`:
+
+```bash
+flutter pub add 'traceway_video:^2.1.0'
+```
+
+```dart
+import 'package:traceway_video/traceway_video.dart';
+
+void main() {
+  TracewayVideo.register();
+  Traceway.run(
+    token: const String.fromEnvironment('TRACEWAY_TOKEN'),
+    options: const TracewayOptions(
+      screenCapture: true,
+      screenCaptureMode: TracewayScreenCaptureMode.video,
+      capturePixelRatio: 0.75, // the default resolution scale
+    ),
+    child: const MyApp(),
+  );
+}
+```
+
+Video mode without `TracewayVideo.register()`, or on Linux and Windows, which have no encoder, prints one warning and records a wireframe. The encoder plugin needs a Gradle change on Android and CocoaPods on iOS and macOS: see the [Video section](/client/flutter#video-flutter-only) of the Quick Start.
+
+<ReplayCeilings />
+
+`screenCaptureMode` is a default too: a rule's **Replay type** can switch it ([Step 6](#step-6-change-collection-remotely-with-data-collection-rules)).
+
+<ReplayBuffer />
+
+A wireframe frame is taken only when the screen changed, so 150 frames cover at least 10 seconds at 15 fps, and usually more. Video takes a frame every `1/fps` seconds whatever happens, so the default 150 frames at 15 fps are exactly the last 10 seconds. Streamed segments last 80% of the ring: 8 seconds with the defaults.
+
+## Step 2: Hide private content
+
+Masks change the recording only: the user sees no difference in the live app.
+
+### Inputs are masked by default
+
+In a wireframe, text typed into a field is replaced with `*`, and an obscured field (`obscureText: true`) always is. In a video, the text area of every field the user types into is pixelated. Only a rule that sets `replay.maskAllInputs` to `false` turns this off; turning it back on drops the frames recorded without it.
+
+<KeyboardBox />
+
+In Flutter the box is drawn while the view's bottom inset is up.
+
+### Mark widgets with a mask
+
+Wrap a widget in `TracewayMask`. The default mode blurs: in a wireframe the layout stays, its text becomes `*` and its images placeholders; in a video the region is pixelated (`ratio` from 0.0, light, to 1.0, heavy). A blank mask is a solid box, and in a wireframe nothing inside it is recorded at all:
+
+```dart
+TracewayMask(
+  child: Text(card.number),
+)
+
+TracewayMask(
+  mode: TracewayMaskMode.blur(ratio: 0.5),
+  child: const CreditCardWidget(),
+)
+
+TracewayMask(
+  mode: TracewayMaskMode.blank(color: Color(0xFF000000)),
+  child: const AccountDetails(),
+)
+```
+
+Without a wrapper, a marker key does the same: `ValueKey('traceway-mask')` masks like a blur `TracewayMask`, `ValueKey('traceway-blank')` like a black blank one, in wireframes, videos and tap records:
+
+```dart
+Text(card.number, key: const ValueKey('traceway-mask'))
+ListTile(key: const ValueKey('traceway-blank'), title: Text(account.iban))
+```
+
+- The marker takes the place of the widget's own key and is never reported as its id. Flutter requires the children of one `Row`, `Column`, `Stack` or other multi-child widget to have different keys, so mark one of them with a key and wrap the others in `TracewayMask`.
+- A mask follows its widget in every frame, while it scrolls, animates or is transformed.
+- The text, label and keys of a masked widget, and of everything inside it, are left out of tap records too.
+- `TracewayPrivacyMask`, the 1.x name, is a deprecated alias of `TracewayMask`.
+
+### Check the mask before you ship
+
+<CheckMask />
+
+## Step 3: Choose whether replays show images
+
+<ImagePolicy />
+
+The ceiling in the app:
+
+```dart
+TracewayOptions(
+  screenCapture: true,
+  replayImages: TracewayImagePolicy.wifi, // never more than Wi‑Fi only, whatever a rule says
+)
+```
+
+What a Flutter wireframe shows of an image (`Image`, `RawImage`, `FadeInImage`, the child of `Ink.image`):
+
+| Effective policy | Network                     | The image in the replay                                                                                                                                                                         |
+| ---------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `off`            | any                         | a grey placeholder; no URL, no pixels                                                                                                                                                           |
+| `wifi`           | metered or unknown          | a network image (`Image.network`, `NetworkImage`, also inside `ResizeImage`) is its URL, which the browser fetches when the replay plays; any other image is a placeholder. Nothing is uploaded |
+| `wifi`           | unmetered (Wi‑Fi, Ethernet) | a small picture of its pixels, for network, asset, memory and file images alike                                                                                                                 |
+| `always`         | any                         | the same small picture                                                                                                                                                                          |
+
+**What Wi‑Fi only means in Flutter.** Flutter has no API for the network type, so the SDK guesses from the network interfaces that are up (`wlan*` and `eth*` on Android, `en0` on iOS, Wi‑Fi and Ethernet on desktop), and treats the network as metered until it knows. The guess takes a phone's shared hotspot for Wi‑Fi. When the app knows better, it answers itself with `isUnmeteredNetwork`, for example from `connectivity_plus`:
+
+```dart
+TracewayOptions(
+  screenCapture: true,
+  isUnmeteredNetwork: () async => (await Connectivity().checkConnectivity())
+      .any((c) => c == ConnectivityResult.wifi || c == ConnectivityResult.ethernet),
+)
+```
+
+The size limits, the same on Flutter, Android and iOS:
+
+<ImageLimits />
+
+What is different in Flutter:
+
+- The picture is drawn from the image's decoded pixels on the raster thread and encoded in a background isolate: the part its `fit` and `alignment` show, tint and mirroring included. Until it is ready, the image shows its URL or the placeholder.
+- A `DecorationImage` (a `BoxDecoration` image, `CircleAvatar.backgroundImage`) keeps its URL or the placeholder: its pixels are not inlined. An animated image (a GIF) is not recorded frame by frame.
+- `off` applies as soon as the setting arrives: the frames held are dropped and the screen is taken again.
+- A video records the screen's pixels, images included, whatever the policy: hide an image there with `TracewayMask`.
+- With `debug: true` the console says when a picture was left out for its size or the session's budget.
+
+## Step 4: Choose which sessions upload replay
+
+### What uploads by default
+
+<DefaultUpload />
+
+### Record every session or a sample
+
+<Sampling />
+
+In the app:
+
+```dart
+TracewayOptions(
+  screenCapture: true,
+  recordAllSessions: true, // stream every session; for a debug build or a test group
+)
+```
+
+### Record a journey with a trigger
+
+<TriggerRule />
+
+In Flutter the **Event** of a step is **Tap**, **Hover** (a mouse entering a widget, on desktop; never a touch), **Navigation** or **Log** (a `print` or `debugPrint` line, a `package:logging` record, a `Traceway.log` line or a `captureMessage`). A trigger can also live in the app, in the `collection` document, with the same fields the dashboard writes:
+
+```dart
+TracewayOptions(
+  screenCapture: true,
+  collection: {
+    'triggers': [
+      {
+        'id': 'checkout-abandoned',
+        'name': 'Opened checkout, then went back',
+        'steps': [
+          {'match': {'event': {'type': 'navigation', 'value': '/checkout'}}},
+          {'match': {'event': {'type': 'click', 'value': '#back'}}, 'withinSeconds': 60},
+        ],
+        'actions': [
+          {'type': 'capture', 'replay': true, 'lookbackSeconds': 30, 'durationSeconds': 120},
+        ],
+        'cooldownSeconds': 60,
+        'maxPerSession': 3,
+      },
+    ],
+  },
+)
+```
+
+The [trigger reference](/learn/remote-config/reference#triggers) has every field, and [Recording triggers](/learn/remote-config/trigger-sequences) walks through the builder.
+
+### Name the widgets a trigger can match
+
+A tap step matches a widget by a CSS-like selector. Give the widgets a journey goes through a stable name:
+
+```dart
+// #pay
+ElevatedButton(key: const Key('pay'), onPressed: pay, child: const Text('Pay now'));
+
+// #checkout-form, whatever widget it wraps
+Semantics(identifier: 'checkout-form', child: const CheckoutForm());
+
+// IconButton[label="Delete"]
+IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete), onPressed: remove);
+```
+
+You rarely write a selector by hand: every tap is recorded with the selector of the widget that handled it, and the session's **Actions** list shows it, ready to paste into a step. Keys and `Semantics(identifier:)` survive copy changes, translations and `--obfuscate` builds, which minify widget type names. The whole syntax is in [Naming views](/client/flutter#naming-views).
+
+### Name your screens
+
+A navigation step matches the path of the route on top, and so do the screen names on issues and taps. Attach the navigator observer:
+
+```dart
+MaterialApp(
+  navigatorObservers: [Traceway.navigatorObserver],
+  home: const HomePage(),
+)
+```
+
+- With go_router: `GoRouter(observers: [Traceway.navigatorObserver], routes: [...])`.
+- An observer watches one `Navigator`: give a nested one (tabs, a go_router `ShellRoute`) its own, `Navigator(observers: [TracewayNavigatorObserver()], ...)`.
+- A route without a name is `/` and its page widget's type (`/CheckoutPage`). Name the routes a trigger must match: type names are minified in `--obfuscate` builds.
+- A router that does not report to an observer calls `Traceway.recordNavigation(path, route: '/orders/:id')`; `Traceway.setRoute('/orders/:id')` names the current screen's route template.
+
+The details are in [Naming screens](/client/flutter#naming-screens).
+
+## Step 5: Capture one user or device from the dashboard
+
+```dart
+// After sign-in: captures can now target this user.
+Traceway.setAttribute('user.id', user.id);
+
+// This installation, for a capture of one device (service.instance.id).
+final instanceId = Traceway.getInstanceId();
+
+// Ask for settings now instead of at the next poll.
+await Traceway.refreshConfig();
+```
+
+<DashboardCapture />
+
+**When the app picks it up.** A Flutter app polls at start, every 5 minutes (every 60 seconds while a capture targets it), when it returns to the foreground and a poll is due, and about 2 seconds after `setAttribute`. To start a capture on your own test device at once, bring the app to the foreground after the poll interval, or call `Traceway.refreshConfig()` from a debug menu.
+
+## Step 6: Change collection remotely with Data Collection rules
+
+<DataCollectionRules />
+
+**Replay type** on the **Signals** tab is the Flutter setting `replay.captureMode`: **Video** or **Wireframe** overrides the app's `screenCaptureMode` for the devices the rule applies to (video still needs the add-on). It applies as soon as the setting arrives, unless the session has already uploaded replay in the other mode; then it applies from the next session, so one session's replay is all video or all wireframe. An app's first launch starts in its own mode, because the rule arrives with the first poll.
+
+## Check that it works
+
+Start the app with `debug: true`, so the console shows what the SDK does, and send a test error from a button:
+
+```dart
+ElevatedButton(
+  onPressed: () async {
+    Traceway.captureException(StateError('Test error from Traceway'));
+    await Traceway.flush();
+  },
+  child: const Text('Send Test Error'),
+)
+```
+
+<CheckItWorks />
+
+A video replay's header says **Flutter Screen Recording** instead.
+
+## What replay does not record
+
+- **Platform views and textures.** Web views, maps, camera previews and video players are labelled placeholders in a wireframe: their pixels never pass through Flutter.
+- **Custom painting.** `CustomPaint` (charts, signatures) is a dashed outline in a wireframe.
+- **Exact fonts.** The browser draws text in Roboto's font stack, or Apple's system fonts for an app running on iOS or macOS.
+- **Video everywhere.** Video needs the `traceway_video` add-on and a hardware encoder: Android, iOS and macOS. Linux and Windows record a wireframe.
+- **Flutter web.** The SDK does not run in a browser; use the [browser SDK](/client/js-sdk) there, whose DOM recording sees little of a canvas-painted Flutter app.
+- **Long presses** are not taps, and a tap step does not match one.
+
+<ReplayBudget />
+
+## When it fails
+
+| Symptom                                  | Cause                                                                                                                            | Fix                                                                                                                      |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| An issue has no replay                   | `screenCapture` is off, the clip ration (one per 5 seconds, 20 per session) was used up, or the session's replay budget is spent | Turn `screenCapture` on; check **Failed replay uploads** on the session's **Overview**                                   |
+| A release build on Android sends nothing | The `INTERNET` permission is only in the debug manifest                                                                          | Add it to `android/app/src/main/AndroidManifest.xml` ([Platform setup](/client/flutter#platform-setup))                  |
+| A macOS build sends nothing              | The sandbox blocks the network                                                                                                   | Add the `com.apple.security.network.client` entitlement                                                                  |
+| Video mode records a wireframe           | `TracewayVideo.register()` was not called before `Traceway.run`, or the platform has no encoder                                  | Add the add-on and register it; `debug: true` prints the warning                                                         |
+| Images are grey boxes                    | The effective policy is `off`, or `wifi` on a network the SDK takes for metered, or the image is masked                          | Check **Replay images** in your rules and `replayImages`; set `isUnmeteredNetwork`                                       |
+| Network images are broken in the replay  | Under `wifi` on a metered network the replay loads images from their URLs, which may need a login or have changed                | Use `always`, or rely on Wi‑Fi sessions                                                                                  |
+| A marker key does not mask               | Two children of one multi-child widget got the same marker key, or the key is on a widget that paints nothing                    | Wrap the widget in `TracewayMask` instead                                                                                |
+| A trigger never fires                    | The selector names a type minified by `--obfuscate`, the route has no name, or no observer watches its `Navigator`               | Copy the selector from the session's **Actions**; name the route; add `TracewayNavigatorObserver()` to nested navigators |
+| A capture never starts                   | The device has not polled since, the target value is wrong, or `remoteConfig` is `false`                                         | Bring the app to the foreground after the poll interval or call `refreshConfig()`; check `getInstanceId()`               |
+| The poll is answered 403                 | The token belongs to a backend or React Native project                                                                           | Use the token of the project you created for this app                                                                    |

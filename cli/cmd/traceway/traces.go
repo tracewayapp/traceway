@@ -84,7 +84,7 @@ func runTracesShow(cmd *cobra.Command, args []string) error {
 			}
 			errCol := "-"
 			if n.Exception != nil {
-				errCol = truncateHash(n.Exception.ExceptionHash, 12)
+				errCol = n.Exception.ExceptionHash
 			}
 			graph := "-"
 			if n.SpanGraphStatus != nil {

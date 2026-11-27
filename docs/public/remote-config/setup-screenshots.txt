@@ -1,0 +1,12 @@
+The screenshots of learn/remote-config/setup.mdx (data-collection-tab, rule-dialog-form,
+rule-dialog-signals, log-trigger-builder, preview, capture-from-session, capture-dialog) were
+retaken on 27 November 2026 from the dashboard of the working tree (vite dev on :15183) against
+examples/devtesting-embedded (:18182), the parity e2e env, in the light theme, Chromium, 1440 x 900
+viewport, device scale 1.5, UTC. Project: the seeded "Shoply Storefront" (React). Its four rules
+and the capture of jane@acme.test were created through the dashboard API; the browser session
+behind capture-from-session.png is a session.start log record sent with the project token.
+Dialogs are cropped to the dialog, the Data Collection page to its content column.
+
+rule-dialog-json.png was taken on 27 November 2026 after the rule-dialog fix, with the same setup:
+the log-line builder of a new rule on "Shoply Storefront", then Add trigger, which opens the JSON
+tab with the trigger inserted.

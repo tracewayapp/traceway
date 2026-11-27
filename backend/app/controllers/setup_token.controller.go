@@ -51,7 +51,7 @@ func (s setupTokenController) Create(ctx *gin.Context) {
 		Prefix:         patPrefix(token),
 		ExpiresAt:      expiresAt,
 		OrganizationId: req.OrganizationId,
-		BackendUrl:     models.GetBackendUrl(),
+		BackendUrl:     instanceUrl(ctx),
 	})
 }
 

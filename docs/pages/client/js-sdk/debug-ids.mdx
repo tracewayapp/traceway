@@ -63,8 +63,7 @@ The upload step is unchanged; the backend detects debug IDs in the uploaded file
 
 ```bash
 npx traceway-sourcemaps \
-  --url https://your-traceway-instance.com \
-  --token your-sourcemap-token \
+  --token "$TRACEWAY_SOURCEMAP_TOKEN" \
   --directory ./dist
 ```
 

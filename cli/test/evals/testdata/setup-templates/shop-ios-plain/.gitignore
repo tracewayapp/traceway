@@ -1,0 +1,14 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+.build/
+*.ipa
+*.dSYM.zip
+.DS_Store
+
+# Local and CI secrets (see Config/Shop.xcconfig)
+Config/Secrets.xcconfig
+.env
+.env.*

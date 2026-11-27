@@ -1,0 +1,25 @@
+A capture makes one browser upload what it buffered, then stream everything, replay included, for up to 24 hours. It targets a device, a user, a session or any attribute. To capture a user, the SDK has to know who they are: set `user.id` after sign-in, then ask for the settings at once, so a capture or a rule for that user applies without waiting for the next poll:
+
+{props.children}
+
+Every browser profile also has a device id, `service.instance.id`, which `getInstanceId()` returns and every session shows among its attributes. A support page can display it for the user to read out.
+
+Then, in Traceway:
+
+1. Open the user's session and click **Capture this device**, or click **Capture device** on an issue's event. Otherwise open **Data Collection** in the project's sidebar and click **New Capture** under **Captures**.
+2. Choose the **Target**: **Device (instance id)**, **User (user.id)**, **Session** or **Attribute**, and enter its **Value**.
+3. Choose how long it runs (**For**, up to 24 hours) and what it uploads first (**Include**: nothing earlier, the last minute, the last 10 minutes or the last hour).
+4. Leave **Record session replay** on and click **New Capture**.
+
+<img
+  src="/session-capture/capture-dialog.png"
+  alt="The New Capture dialog: the target and its value, how long the capture runs, how much earlier data it includes, and the Record session replay checkbox"
+  style={{
+    maxWidth: "360px",
+    width: "100%",
+    height: "auto",
+    marginTop: "16px",
+  }}
+/>
+
+The browser picks the capture up at its next poll, within 5 minutes, or when the tab becomes visible again after its polling interval; `refreshConfig()` polls at once. While a capture runs, the browser polls every minute. Each tab uploads the lookback once per capture, then streams until the capture ends or someone cancels it in the **Captures** list. A project can have 20 captures running at once, and a capture never turns on what the app's ceilings turned off.

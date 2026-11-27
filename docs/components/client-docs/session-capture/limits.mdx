@@ -1,0 +1,7 @@
+- **Canvas drawings.** Charts, maps and games drawn on a `<canvas>` replay as an empty canvas.
+- **Cross-origin iframes.** A frame from another origin, such as a payment form or an embedded video, replays empty. A same-origin frame is recorded, and masks reach into it.
+- **What the browser draws itself**: `alert()` and other dialogs, permission prompts, the address bar and other tabs.
+- **Files by URL.** Pictures, videos and fonts are loaded again from their URLs when the replay plays, and so is a stylesheet from another origin that the page cannot read. The replay shows what the URL returns then, or nothing once it needs a login or has expired. `replay.images: "always"` keeps copies of pictures only.
+- **Earlier pages.** The replay buffer lives in the tab's memory and starts empty on every full page load, so an error clip never reaches back into the previous page. Segments uploaded before the load stay uploaded.
+- **Past the budget.** A session uploads at most 50 MiB and 10,000 events of diagnostics in all, replay included, and at most 4 MiB of picture copies. Past that, the SDK drops the rest and counts it (`traceway.collection.health`, **Diagnostic events dropped**).
+- **Other tabs.** A session belongs to one tab. It continues across page loads in that tab and ends after 15 minutes without activity or 60 minutes in total.

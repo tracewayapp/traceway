@@ -156,9 +156,103 @@ func TestUpsertConnectionStringValueRoundTrips(t *testing.T) {
 	}
 }
 
-func TestUpsertMissingParentDirErrors(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "missing", ".env")
-	if _, err := Upsert(path, "KEY", "v"); err == nil {
-		t.Fatal("expected an error for a missing parent directory")
+func TestUpsertCreatesMissingParentDirs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "apps", "web", ".env.local")
+	result, err := Upsert(path, "VITE_TRACEWAY_TOKEN", "v")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if result != ResultCreated || read(t, path) != "VITE_TRACEWAY_TOKEN=v\n" {
+		t.Errorf("result = %s, content = %q", result, read(t, path))
+	}
+}
+
+func TestUpsertFailsWhenTheParentIsAFile(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "web"), "not a directory", 0o644)
+	if _, err := Upsert(filepath.Join(dir, "web", ".env"), "KEY", "v"); err == nil {
+		t.Fatal("expected an error when the parent path is a file")
+	}
+}
+
+func TestUpsertXcconfigKeepsDoubleSlash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Traceway.xcconfig")
+	write(t, path, "// Traceway\nTRACEWAY_URL = https://old.example.com\n", 0o644)
+
+	if _, err := Upsert(path, "TRACEWAY_URL", "https://traceway.acme.test"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := Upsert(path, "TRACEWAY_TOKEN", "tok"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	want := "// Traceway\nTRACEWAY_URL=https:/$()/traceway.acme.test\nTRACEWAY_TOKEN=tok\n"
+	if got := read(t, path); got != want {
+		t.Errorf("content = %q, want %q", got, want)
+	}
+	if value, found, err := Lookup(path, "TRACEWAY_URL"); err != nil || !found || value != "https://traceway.acme.test" {
+		t.Errorf("Lookup = (%q, %v, %v), want the unescaped URL", value, found, err)
+	}
+	if result, err := Upsert(path, "TRACEWAY_URL", "https://traceway.acme.test"); err != nil || result != ResultUnchanged {
+		t.Errorf("rewriting the same URL = (%s, %v), want unchanged", result, err)
+	}
+}
+
+func TestUpsertPropertiesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "local.properties")
+	write(t, path, "sdk.dir=/opt/android\ntraceway.token: old\n", 0o644)
+
+	if _, err := Upsert(path, "traceway.token", "new"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if got := read(t, path); got != "sdk.dir=/opt/android\ntraceway.token=new\n" {
+		t.Errorf("content = %q", got)
+	}
+}
+
+func TestLookup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	write(t, path, strings.Join([]string{
+		"# VITE_TRACEWAY_CONNECTION_STRING=commented",
+		`export VITE_TRACEWAY_CONNECTION_STRING="tok@https://old.example.com/api/report"`,
+		"QUOTED='single'",
+		"SPACED =  spaced value  ",
+	}, "\n")+"\n", 0o644)
+
+	cases := map[string]struct {
+		value string
+		found bool
+	}{
+		"VITE_TRACEWAY_CONNECTION_STRING": {"tok@https://old.example.com/api/report", true},
+		"QUOTED":                          {"single", true},
+		"SPACED":                          {"spaced value", true},
+		"MISSING":                         {"", false},
+	}
+	for key, want := range cases {
+		value, found, err := Lookup(path, key)
+		if err != nil || value != want.value || found != want.found {
+			t.Errorf("Lookup(%s) = (%q, %v, %v), want (%q, %v)", key, value, found, err, want.value, want.found)
+		}
+	}
+	if _, found, err := Lookup(filepath.Join(t.TempDir(), "none.env"), "KEY"); err != nil || found {
+		t.Errorf("a missing file has no keys: found = %v, err = %v", found, err)
+	}
+}
+
+func TestUpsertEquivalentKeepsAnOlderSpelling(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	write(t, path, "CS=tok@https://cloud.tracewayapp.com/api/report\n", 0o644)
+
+	same := func(existing string) bool { return strings.HasPrefix(existing, "tok@https://cloud.tracewayapp.com") }
+	result, err := UpsertEquivalent(path, "CS", "tok@https://cloud.tracewayapp.com", same)
+	if err != nil || result != ResultUnchanged {
+		t.Fatalf("result = (%s, %v), want unchanged", result, err)
+	}
+	if got := read(t, path); got != "CS=tok@https://cloud.tracewayapp.com/api/report\n" {
+		t.Errorf("an equivalent value must be left alone: %q", got)
+	}
+
+	result, err = UpsertEquivalent(path, "CS", "other@https://cloud.tracewayapp.com", func(string) bool { return false })
+	if err != nil || result != ResultUpdated || read(t, path) != "CS=other@https://cloud.tracewayapp.com\n" {
+		t.Errorf("a different value must be written: (%s, %v) %q", result, err, read(t, path))
 	}
 }

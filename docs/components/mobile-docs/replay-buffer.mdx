@@ -1,0 +1,3 @@
+Replay waits on the device until something asks for it. The last frames stay in a ring of `maxBufferFrames` frames (150 by default). An exception uploads the replay of up to the last 30 seconds as its clip, cut to the frames the ring holds, so a clip is never longer than the ring. While a capture or a rule streams replay, the session leaves as consecutive segments that each start with a full snapshot, and the session player plays them back to back.
+
+Replay always goes to Traceway, also when `telemetry` sends logs, traces and metrics to another provider. Without a token (standalone), nothing is recorded.

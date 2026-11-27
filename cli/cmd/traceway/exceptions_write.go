@@ -61,7 +61,7 @@ func runExceptionsMutation(
 		fmt.Sprintf("About to %s %d exception group(s):", verb, len(hashes)),
 	}
 	for _, h := range hashes {
-		summary = append(summary, "  - "+truncateHash(h, 12))
+		summary = append(summary, "  - "+h)
 	}
 	if err := confirmMutation(cmd, summary); err != nil {
 		return err

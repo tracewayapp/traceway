@@ -1,17 +1,14 @@
 # Distributed Tracing
 
-import BrowserSdkV1 from "../../../components/BrowserSdkV1";
-
-<BrowserSdkV1 href="/client/js-sdk/v1/distributed-tracing" />
-
-The 2.x browser SDK records every `fetch` and XMLHttpRequest call as an OpenTelemetry CLIENT span and propagates its context in the W3C `traceparent` header. An instrumented backend extracts that header and joins the same trace, so the browser request and the server work share one trace in Traceway's trace view.
+The browser SDK records every `fetch` and XMLHttpRequest call as an OpenTelemetry CLIENT span and propagates its context in the W3C `traceparent` header. An instrumented backend extracts that header and joins the same trace, so the browser request and the server work share one trace in Traceway's trace view.
 
 ## Initialize propagation
 
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   propagateTraceHeaderCorsUrls: [/^https:\/\/api\.example\.com\//],
 });
 ```
@@ -19,6 +16,8 @@ init("your-token@https://traceway.example.com/api/report", {
 Same-origin requests receive the header automatically, with no option. Cross-origin requests receive it only when their URL matches an entry of `propagateTraceHeaderCorsUrls`. A regular expression is tested against the request URL; a string must equal the whole URL, so use a regular expression for an API host. The API's CORS policy must allow `traceparent` in request headers. Axios and jQuery AJAX are covered because they use `fetch` or XMLHttpRequest; they need no additional interceptor. With `captureNetwork: false` requests are not instrumented, so no span is recorded and no header is sent.
 
 Configure your backend's OpenTelemetry instrumentation and exporter using the [OpenTelemetry guides](/client/otel). Standard trace-context extraction is all the backend needs; it replaces the custom header middleware once written for SDK 1.x.
+
+A request's span ends when its response headers arrive. The SDK does not read the response body, so cancelling it (`response.body.cancel()`, a "stop generating" button on a streamed answer) stops the download as it would without the SDK. The app's own `Request` object is not changed: a copy of it carries `traceparent`.
 
 ## When request spans are uploaded
 
@@ -28,44 +27,69 @@ The header is sent whether or not the browser's span is uploaded, so the backend
 
 Request spans carry `session.id`. Their rows in the session timeline link to the distributed trace. An exception is associated with the active OpenTelemetry context when emitted; an arbitrary error after an `await` is not automatically assigned to whichever request happened most recently. Session breadcrumbs still show the requests surrounding the error.
 
-## Migrating from SDK 1.x
-
-Remove `createAxiosInterceptor()` and `getActiveDistributedTraceId()` calls, and the `{ distributedTraceId }` option of `captureException` and `captureExceptionWithAttributes`. The 2.x browser SDK no longer generates `traceway-trace-id`; it uses `traceparent`. Remove the backend middleware that copied `traceway-trace-id` onto the server span as `traceway.distributed_trace_id` as well: Traceway no longer reads that attribute, for 1.x clients either, so it links nothing (see [SDK 1.x](/client/js-sdk/v1/distributed-tracing)). The [migration guide](/client/js-sdk/migration) lists the other changes.
-
-See [Initialization](/client/js-sdk/initialization) for browser options and [Remote SDK Config](/learn/remote-config) for controlling whether network spans stream, buffer, or remain off.
-
 ## Trace an entire interaction explicitly
 
-Clicks remain breadcrumb events. A session groups visits; it is not a causal trace. To connect a multi-step interaction, start an interaction span and bind callbacks that continue it:
+Clicks remain breadcrumb events. A session groups visits; it is not a causal trace. To connect a multi-step interaction, start an interaction span and run each step in it:
 
 ```javascript
 import { startInteraction } from "@tracewayapp/frontend";
 
-const interaction = startInteraction("checkout");
+const checkout = startInteraction("checkout", { "cart.size": 3 });
 try {
-  const response = await interaction.run(() => fetch("/api/cart"));
+  const response = await checkout.run(() => fetch("/api/cart"));
   const cart = await response.json();
-  await interaction.run(() => fetch("/api/checkout", {
-    method: "POST",
-    body: JSON.stringify(cart),
-  }));
+  const placed = await checkout.run(() =>
+    fetch("/api/checkout", {
+      method: "POST",
+      body: JSON.stringify(cart),
+    }),
+  );
+  checkout.setAttribute("checkout.status", placed.status);
 } catch (error) {
-  interaction.captureException(error);
+  checkout.captureException(error);
 } finally {
-  interaction.end();
+  checkout.end();
 }
 ```
 
-The SDK must be initialized before starting an interaction: before `init()`, `startInteraction` returns `undefined`. The returned object has:
+`startInteraction(name, attributes?)` returns a `TracewayInteraction`, with the same names as on the mobile SDKs (`bind` exists only in the browser). Before `init()` and after `shutdown()` it only runs the work, with `traceId` and `spanId` null, so the same code works whether the SDK started or not.
 
-| Member | Purpose |
-|--------|---------|
-| `traceId` | The interaction's trace ID, for your own logs |
-| `run(callback)` | Runs `callback` with the interaction as the active context and returns its result |
-| `bind(callback)` | Returns a function that runs `callback` in the interaction's context, for a deferred callback |
-| `captureException(error, attributes?)` | Captures the error inside the interaction and marks the interaction as failed |
-| `end()` | Ends the interaction span; later calls do nothing |
+| Member                                 | Purpose                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `traceId`, `spanId`                    | The interaction's trace and span IDs, for your own logs; `null` when the SDK is not running             |
+| `isEnded`                              | `true` once `end()` was called                                                                          |
+| `run(callback)`                        | Runs `callback` with the interaction as the active context and returns its result                       |
+| `bind(callback)`                       | Returns a function that runs `callback` in the interaction's context, for a deferred callback           |
+| `setAttribute(key, value)`             | Adds an attribute (string, number or boolean) to the interaction's span                                 |
+| `captureException(error, attributes?)` | Captures the error inside the interaction and marks the interaction as failed                           |
+| `end(failed?)`                         | Ends the interaction span; `end(true)` marks it failed without an exception. Only the first call counts |
 
 `run` activates context while its callback executes; it does **not** implicitly carry context through every `await`. Use another `run` around each later operation, or `interaction.bind(callback)` for a deferred callback. `captureException` explicitly associates the error with the interaction. Always end it, including failure paths. Two concurrent interactions keep separate trace IDs, and unrelated errors are not attached to whichever interaction happened most recently.
 
 Requests started in the bound context propagate the same trace to instrumented backends. Collection settings still apply: an interaction does not override disabled tracing or automatically upload a healthy unsampled session. The span of an interaction that captured an exception is sent when it ends even while request spans are buffered. Traceway's trace explorer can show the interaction span and request children when collected.
+
+## Spans of your own
+
+`tracer()` returns the SDK's OpenTelemetry tracer, or `undefined` before `init()`:
+
+```javascript
+import { tracer } from "@tracewayapp/frontend";
+
+await tracer()?.startActiveSpan("load cart", async (span) => {
+  try {
+    await loadCart();
+  } finally {
+    span.end();
+  }
+});
+```
+
+Its spans carry the session id and go to Traceway with the SDK's request spans (signal `network`: kept on the device by default, uploaded with an error or when a rule streams them). A span started inside an interaction's `run()` is the interaction's child. It is OpenTelemetry's own tracer, so its methods behave as with any other.
+
+The SDK registers no OpenTelemetry globals, its tracer provider included. An app that sets up its own OpenTelemetry, before or after `init()`, registers its propagator and context manager as usual, and Traceway's requests and interactions then use them. While the page has none, Traceway uses W3C propagation and a synchronous context manager of its own.
+
+## Migrating from SDK 1.x
+
+Remove `createAxiosInterceptor()` and `getActiveDistributedTraceId()` calls, and the `{ distributedTraceId }` option of `captureException` and `captureExceptionWithAttributes`. The 2.x browser SDK no longer generates `traceway-trace-id`; it uses `traceparent`. Remove the backend middleware that copied `traceway-trace-id` onto the server span as `traceway.distributed_trace_id` as well: Traceway no longer reads that attribute, for 1.x clients either, so it links nothing. [Upgrading](/client/js-sdk/migration) lists the other changes.
+
+See [Initialization](/client/js-sdk/initialization) for browser options and [Remote SDK Config](/learn/remote-config) for controlling whether network spans stream, buffer, or remain off.

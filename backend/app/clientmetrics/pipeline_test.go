@@ -565,3 +565,65 @@ func BenchmarkIngestOTLP(b *testing.B) {
 	b.StopTimer()
 	b.ReportMetric(float64(p.Snapshot().Cells), "cells")
 }
+
+// appResource is what the Android and iOS SDKs put on a metrics export (METRIC_RESOURCE_KEYS).
+var appResource = map[string]any{
+	"service.name": "shop", "service.version": "4.2.0", "deployment.environment.name": "production",
+	"os.name": "Android", "os.major": "14", "device.form_factor": "phone", "device.class": "mid",
+	"traceway.sdk.name": "traceway-android", "traceway.sdk.version": "2.3.0",
+	"traceway.metrics": "aggregated", "traceway.sample_rate": 1.0,
+}
+
+// The Android SDK counts an ANR and a low-memory kill it reads from ApplicationExitInfo, and the iOS
+// SDK a watchdog kill and an abnormal exit, as the counters app.anr and app.oom: a monotonic delta sum per minute,
+// with no dimension of their own and the screen when the SDK knows it. Both go in as sent.
+func TestAppExitCountersAreTakenAsSent(t *testing.T) {
+	p, sink := newTestPipeline(Config{})
+	projectId := uuid.New()
+	now := time.Now()
+	req := sdkPayload(t, appResource,
+		dataPoint{metric: "app.anr", count: 1},
+		dataPoint{metric: "app.anr", attrs: map[string]string{"screen": "/CheckoutActivity"}, count: 2},
+		dataPoint{metric: "app.oom", count: 1},
+		dataPoint{metric: "app.user.affected", attrs: map[string]string{"issue": "anr"}, count: 1},
+		dataPoint{metric: "app.user.affected", attrs: map[string]string{"issue": "oom"}, count: 1},
+	)
+	if result := p.IngestOTLP(projectId, req, Client{IP: "10.0.0.7"}, now); result.Accepted != 5 || result.Dropped != 0 {
+		t.Fatalf("result %+v", result)
+	}
+	if err := p.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := sink.sum("app.anr"); got != 3 {
+		t.Errorf("app.anr = %v, want 3", got)
+	}
+	if got := sink.sum("app.oom"); got != 1 {
+		t.Errorf("app.oom = %v, want 1", got)
+	}
+	if got := sink.sum("app.user.affected"); got != 2 {
+		t.Errorf("app.user.affected = %v, want 2", got)
+	}
+	for _, point := range sink.points {
+		if point.Name != "app.anr" && point.Name != "app.oom" {
+			continue
+		}
+		if point.Tags["os.name"] != "Android" || point.Tags["service.version"] != "4.2.0" || point.Tags["device.class"] != "mid" {
+			t.Errorf("%s lost the device it happened on: %v", point.Name, point.Tags)
+		}
+		if screen, ok := point.Tags["screen"]; ok && screen != "/CheckoutActivity" {
+			t.Errorf("%s screen = %q", point.Name, screen)
+		}
+	}
+
+	// A count is a counter: the same name as a distribution charts nothing, so it is refused.
+	wrong := sdkPayload(t, appResource, dataPoint{metric: "app.anr", values: []float64{1}}, dataPoint{metric: "app.oom", values: []float64{1}})
+	if result := p.IngestOTLP(projectId, wrong, Client{IP: "10.0.0.7"}, now); result.Accepted != 0 || result.Dropped != 2 {
+		t.Errorf("histograms named app.anr and app.oom: %+v", result)
+	}
+	// app.anr and app.oom take no dimension the catalog does not list.
+	for _, name := range []string{"app.anr", "app.oom"} {
+		if entry, ok := Lookup(name); !ok || entry.Shape != Counter || len(entry.Dims) != 0 {
+			t.Errorf("catalog %s = %+v", name, entry)
+		}
+	}
+}

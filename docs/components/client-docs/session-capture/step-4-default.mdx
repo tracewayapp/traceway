@@ -1,0 +1,9 @@
+Without rules, the SDK keeps the replay and the breadcrumbs (console lines, requests, page changes, clicks) on the device. For each captured exception, the built-in error trigger `default-exception` uploads the last 10 minutes of breadcrumbs and a 30-second replay clip. Clips have a 5-second cooldown and a limit of 20 per session: an error inside the cooldown or past the limit still uploads its breadcrumbs, without a clip. A message from `captureMessage` uploads no clip, and an exception that `ignoreErrors`, `beforeCapture` or the error limit drops uploads nothing.
+
+The issue page plays the clip next to the error. When there is none, the error's event says why: replay off, a disabled trigger, the cooldown, the clip limit, sampling, an empty buffer or a used-up session budget.
+
+To stop the error clips, switch the trigger off:
+
+```json
+{ "triggers": [{ "id": "default-exception", "enabled": false }] }
+```

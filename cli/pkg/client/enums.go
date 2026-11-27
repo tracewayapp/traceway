@@ -12,6 +12,7 @@ var (
 	// EndpointRequestsOrderByValues sort one endpoint's requests.
 	EndpointRequestsOrderByValues = []string{"duration", "recordedAt", "statusCode"}
 	EndpointChartMetricTypes      = []string{"total_time", "p50", "p95", "p99"}
+	SessionsOrderByValues         = []string{"startedAt", "duration"}
 
 	// MetricAggregations are the values the server accepts on metrics/query and
 	// in dashboard sources. The percentiles and good_ratio read a distribution
@@ -34,6 +35,7 @@ var orderByColumns = map[string]string{
 	"firstSeen":  "first_seen",
 	"recordedAt": "recorded_at",
 	"statusCode": "status_code",
+	"startedAt":  "started_at",
 }
 
 func orderByColumn(v string) string {

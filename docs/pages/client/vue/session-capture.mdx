@@ -1,0 +1,214 @@
+import Intro from "../../../components/client-docs/session-capture/intro.mdx";
+import Step1 from "../../../components/client-docs/session-capture/step-1.mdx";
+import Inputs from "../../../components/client-docs/session-capture/step-2-inputs.mdx";
+import Mask from "../../../components/client-docs/session-capture/step-2-mask.mdx";
+import MaskCheck from "../../../components/client-docs/session-capture/step-2-check.mdx";
+import Step3 from "../../../components/client-docs/session-capture/step-3.mdx";
+import Defaults from "../../../components/client-docs/session-capture/step-4-default.mdx";
+import Sample from "../../../components/client-docs/session-capture/step-4-sample.mdx";
+import Trigger from "../../../components/client-docs/session-capture/step-4-trigger.mdx";
+import Elements from "../../../components/client-docs/session-capture/step-4-elements.mdx";
+import Pages from "../../../components/client-docs/session-capture/step-4-pages.mdx";
+import Step5 from "../../../components/client-docs/session-capture/step-5.mdx";
+import Step6 from "../../../components/client-docs/session-capture/step-6.mdx";
+import Check from "../../../components/client-docs/session-capture/check.mdx";
+import Limits from "../../../components/client-docs/session-capture/limits.mdx";
+import WhenItFails from "../../../components/client-docs/session-capture/when-it-fails.mdx";
+
+# Configure Session Capture
+
+<Intro />
+
+This page uses `@tracewayapp/vue`. [Session Replay](/client/js-sdk/session-replay) is the reference.
+
+## Step 1: Turn on replay and set the limits in the app
+
+<Step1>
+
+```javascript
+import { createApp } from "vue";
+import { createTracewayPlugin } from "@tracewayapp/vue";
+import App from "./App.vue";
+import { router } from "./router";
+
+const app = createApp(App);
+
+app.use(router);
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+    options: {
+      version: "1.4.2",
+      sessionRecording: true, // the default; false means no replay, whatever a rule says
+      collection: {
+        replay: { maskAllInputs: true, images: "wifi" },
+      },
+    },
+  }),
+);
+
+app.mount("#app");
+```
+
+In Nuxt, the same `token` and `options` go to the plugin in `plugins/traceway.ts` (see [Nuxt Integration](/client/vue/plugin#nuxt-integration)).
+
+</Step1>
+
+## Step 2: Hide private content
+
+### Inputs are masked by default
+
+<Inputs />
+
+### Mark elements with a mask
+
+<Mask>
+
+```vue
+<template>
+  <p class="traceway-mask">Card ending {{ card.last4 }}, {{ user.name }}</p>
+  <div class="traceway-mask">
+    <img :src="user.avatarUrl" alt="" /> {{ user.name }}
+  </div>
+  <div class="traceway-blank"><SignaturePad /></div>
+</template>
+```
+
+`Card ending 4242, Alice Smith` replays as `**** ****** ***** ***** *****`. Put the class in the template itself; a class bound later with `:class` leaves the element unmasked until the next full snapshot.
+
+</Mask>
+
+### Check the mask before you ship
+
+<MaskCheck />
+
+## Step 3: Choose whether replays show images
+
+<Step3 />
+
+## Step 4: Choose which sessions upload replay
+
+### What uploads by default
+
+<Defaults />
+
+### Record every session or a sample
+
+<Sample />
+
+### Record a journey with a trigger
+
+<Trigger>
+
+```javascript
+import { log, captureMessage } from "@tracewayapp/vue";
+
+export async function pay(order) {
+  const result = await submitPayment(order);
+  if (result.declined) {
+    log("Payment declined", "warn", { provider: "stripe" }); // matches a Log step "Payment declined"
+  }
+  if (result.abandoned) {
+    captureMessage("Checkout abandoned"); // also opens an issue
+  }
+}
+```
+
+</Trigger>
+
+### Name the elements a trigger can match
+
+<Elements />
+
+### Name your pages
+
+<Pages>
+
+With Vue Router or Nuxt there is nothing to add: the plugin reads the router installed in the same app and names each page by its matched route, such as `/orders/:id` (Nuxt file routes end in `()`, `/orders/:id()`). A router the app does not install is passed once with `trackRouter(router)`.
+
+For navigation the address does not show (a modal, a wizard step, a memory history), report it. Its path is what a **Navigation** step matches:
+
+```javascript
+import { recordNavigation } from "@tracewayapp/vue";
+
+recordNavigation(
+  "/checkout/payment",
+  "push",
+  "/checkout/address",
+  "/checkout/:step",
+);
+```
+
+See [Route Names](/client/vue/plugin#route-names).
+
+</Pages>
+
+## Step 5: Capture one user or device from the dashboard
+
+<Step5>
+
+```vue
+<script setup>
+import { watch } from "vue";
+import { useTracewayAttributes, refreshConfig } from "@tracewayapp/vue";
+import { useUser } from "./auth";
+
+const { user } = useUser();
+
+useTracewayAttributes(() =>
+  user.value ? { "user.id": String(user.value.id) } : null,
+);
+watch(
+  () => user.value?.id,
+  (id) => {
+    if (id) refreshConfig();
+  },
+  { immediate: true },
+);
+</script>
+```
+
+</Step5>
+
+## Step 6: Change collection remotely with Data Collection rules
+
+<Step6 />
+
+## Check that it works
+
+<Check>
+
+```javascript
+// main.js
+app.use(
+  createTracewayPlugin({
+    token: import.meta.env.VITE_TRACEWAY_TOKEN,
+    options: { debug: true },
+  }),
+);
+```
+
+```vue
+<script setup>
+import { captureException, flush } from "@tracewayapp/vue";
+
+async function send() {
+  captureException(new Error("Traceway replay test"));
+  await flush();
+}
+</script>
+
+<template>
+  <button @click="send">Send test error</button>
+</template>
+```
+
+</Check>
+
+## What replay does not record
+
+<Limits />
+
+## When it fails
+
+<WhenItFails />

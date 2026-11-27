@@ -2,7 +2,7 @@
 
 > **Deprecated since v1.1.0.** `TracewayProvider` catches render errors and reports them on its own. Use `TracewayErrorBoundary` only when you need a custom `fallback` UI for a specific subtree. It is still exported in 2.x for that purpose.
 
-The `TracewayErrorBoundary` component catches React errors in a subtree, reports them to Traceway, and renders a `fallback` in place of the crashed UI. It reports through the SDK client that `TracewayProvider` starts, so place it inside the provider.
+The `TracewayErrorBoundary` component catches React errors in a subtree, reports them to Traceway, and renders a `fallback` in place of the crashed UI. It reports through the SDK client that `TracewayProvider` starts, so place it inside the provider. Errors caught by a boundary carry the screen the page showed, like every other exception.
 
 ## Basic Usage
 
@@ -29,11 +29,11 @@ function ErrorPage() {
 
 ## Props
 
-| Prop | Type | Required | Description |
-|------|------|----------|-------------|
-| `children` | `ReactNode` | Yes | Components to wrap |
-| `fallback` | `ReactNode` | Yes | UI to show when an error occurs |
-| `onError` | `(error, errorInfo) => void` | No | Called after the error has been reported |
+| Prop       | Type                         | Required | Description                              |
+| ---------- | ---------------------------- | -------- | ---------------------------------------- |
+| `children` | `ReactNode`                  | Yes      | Components to wrap                       |
+| `fallback` | `ReactNode`                  | Yes      | UI to show when an error occurs          |
+| `onError`  | `(error, errorInfo) => void` | No       | Called after the error has been reported |
 
 ## With onError Callback
 
@@ -75,33 +75,48 @@ If `Sidebar` throws, only the sidebar shows an error; the rest of the app contin
 
 ## Fallback with Error Details
 
+`fallback` is a plain element, so it does not receive the error. To show details, keep the error that `onError` receives in state and render it in the fallback:
+
 ```jsx
+import { useState } from "react";
+import { TracewayErrorBoundary } from "@tracewayapp/react";
+
 function ErrorFallback({ error }) {
   return (
     <div className="error-container">
       <h2>Oops! Something went wrong</h2>
-      {process.env.NODE_ENV === "development" && (
-        <pre>{error.message}</pre>
-      )}
-      <button onClick={() => window.location.reload()}>
-        Reload Page
-      </button>
+      {import.meta.env.DEV && error && <pre>{error.message}</pre>}
+      <button onClick={() => window.location.reload()}>Reload Page</button>
     </div>
   );
 }
 
-// Note: To receive error in fallback, use a custom error boundary
-// that passes error to the fallback component
+function Section({ children }) {
+  const [error, setError] = useState(null);
+
+  return (
+    <TracewayErrorBoundary
+      onError={(caught) => setError(caught)}
+      fallback={<ErrorFallback error={error} />}
+    >
+      {children}
+    </TracewayErrorBoundary>
+  );
+}
 ```
+
+The boundary reports the error first, then calls `onError` and renders the fallback. If reporting fails, for example because the SDK is off, `onError` and the fallback still run as they would without Traceway; an error thrown by `onError` itself is the app's own.
 
 ## What Gets Caught
 
 Error boundaries catch:
+
 - Errors in render methods
 - Errors in lifecycle methods
 - Errors in constructors of child components
 
 Error boundaries do **not** catch:
+
 - Event handlers (use try/catch and `captureException`)
 - Async code (use try/catch and `captureException`)
 - Server-side rendering errors
@@ -146,9 +161,7 @@ function App() {
       fallback={
         <div>
           <p>Something went wrong</p>
-          <button onClick={() => setKey(k => k + 1)}>
-            Try Again
-          </button>
+          <button onClick={() => setKey((k) => k + 1)}>Try Again</button>
         </div>
       }
     >

@@ -1,0 +1,105 @@
+id: setup-flutter
+suite: setup
+title: Add the Traceway Flutter SDK 2.1 with the video replay add-on to a Flutter app (files only)
+tags: [smoke, mobile, flutter, files-only]
+seed: setup/flutter
+arms: [cli+setup-skill]
+invoke: natural
+workspace: {repo: shop-flutter-plain}
+# The sandbox has no Flutter toolchain: nothing is built or
+# run, the files are graded. There is no verify step.
+setup:
+  path: fast
+  token: ingest
+  env:
+    TRACEWAY_TOKEN: "@token:shop-app"
+    TRACEWAY_URL: "@url"
+prompt: |
+  Please add Traceway to our Flutter shop app. We self-host Traceway at {{env.url}} and the "shop-app" project (Flutter) is already set up there. On this machine its token is in TRACEWAY_TOKEN and the server URL in TRACEWAY_URL; in GitHub Actions, where .github/workflows/release.yml builds the store releases, they are the secret TRACEWAY_TOKEN and the repository variable TRACEWAY_URL. We want crashes reported with a replay of the seconds before them, recorded as video rather than wireframes, and issues should name the screen they happened on. Flutter is not installed here, so edit the files and leave `flutter pub get` and the builds to me.
+budget: {max_turns: 40, max_tool_calls: 35, max_output_tokens: 16000, timeout: 15m}
+user:
+  - match: "(?i)wireframe|video"
+    reply: "Video, please."
+  - match: "(?i)obfuscat|symbol"
+    reply: "We don't obfuscate, so no symbol upload for now."
+  - default: "Yes, go ahead."
+expect:
+  state:
+    # First, so a run on the 2.0 start reads as that in the summary.
+    - kind: file
+      path: "**/*.dart"
+      not_contains: ["\\bconnectionString\\s*:", "/api/report"]
+      note: "the 2.0 connection-string start still works in 2.1 but is deprecated; 2.1 starts with token and, for a self-hosted server, baseUrl"
+    - kind: file
+      path: pubspec.yaml
+      contains:
+        - "(?m)^\\s+traceway:\\s*['\"]?(\\^|>=\\s*)?2\\.([1-9]|[1-9][0-9])\\.[0-9]+"
+        - "(?m)^\\s+traceway_video:\\s*['\"]?(\\^|>=\\s*)?2\\.([1-9]|[1-9][0-9])\\.[0-9]+"
+    # main() registers the add-on, then starts the SDK with token and
+    # baseUrl, in video mode.
+    - kind: file
+      path: "**/*.dart"
+      same_file: true
+      contains:
+        - "(?s)TracewayVideo\\.register\\(.{0,1000}?Traceway\\.run\\("
+        - "(?s)Traceway\\.run\\(.{0,800}?\\btoken\\s*:"
+        - "(?s)Traceway\\.run\\(.{0,800}?\\bbaseUrl\\s*:"
+        - "screenCaptureMode:\\s*TracewayScreenCaptureMode\\.video"
+        - "screenCapture:\\s*true"
+    - kind: file
+      path: "**/*.dart"
+      contains:
+        - "String\\.fromEnvironment\\(\\s*['\"][A-Z0-9_]*TOKEN['\"]"
+        - "String\\.fromEnvironment\\(\\s*['\"][A-Z0-9_]*URL['\"]"
+        - "(?s)navigatorObservers:\\s*(const\\s*)?(<[^>]*>)?\\s*\\[[^\\]]*(Traceway\\.navigatorObserver|TracewayNavigatorObserver\\(\\))"
+    # Both store builds get the token and the URL (--dart-define, or
+    # --dart-define-from-file with a file written from the secret).
+    - kind: file
+      path: ".github/workflows/*"
+      contains:
+        - "secrets\\.TRACEWAY_TOKEN"
+        - "vars\\.TRACEWAY_URL"
+        - "(?is)flutter\\s+build\\s+(appbundle|apk).{0,400}?dart.define"
+        - "(?is)flutter\\s+build\\s+(ios|ipa).{0,400}?dart.define"
+    - kind: no_token_literal
+    - kind: no_token_printed
+  calls:
+    required:
+      - {op: load_skill, args: {name: traceway-setup}}
+    forbidden:
+      - {op: "*", write: true}
+judge:
+  expected: >-
+    The agent adds traceway ^2.1.0 and traceway_video ^2.1.0 to pubspec.yaml, calls TracewayVideo.register()
+    before Traceway.run, and starts Traceway.run(token: String.fromEnvironment('TRACEWAY_TOKEN'), baseUrl:
+    String.fromEnvironment('TRACEWAY_URL'), options: TracewayOptions(screenCapture: true, screenCaptureMode:
+    TracewayScreenCaptureMode.video), child: ...), with Traceway.navigatorObserver in
+    MaterialApp.navigatorObservers. Both builds in release.yml pass the token and URL from the secret and the
+    variable (--dart-define, or a gitignored .env written from them and --dart-define-from-file), and it tells
+    the user how to run locally with the same flags. Because traceway_video's encoder plugin declares
+    compileSdk 33, it raises it in android/build.gradle.kts (or tells the user to). No token, connection
+    string or /api/report appears in the repo.
+  rubric:
+    - Uses the 2.1 start (token, and baseUrl for the self-hosted server) read from compile-time defines, not a connection string or a literal token.
+    - Adds the traceway_video add-on for video replay, registered before Traceway.run, with video capture mode.
+    - Names screens with Traceway.navigatorObserver on MaterialApp.
+    - Wires the token and URL into both CI store builds and explains the local run command; mentions the encoder plugin's compileSdk requirement on Android.
+oracle:
+  - load_skill: traceway-setup
+  - read_file: pubspec.yaml
+  - read_file: lib/main.dart
+  - read_file: .github/workflows/release.yml
+  - read_file: android/build.gradle.kts
+  - write_file: {path: pubspec.yaml, from: oracle/setup-flutter/pubspec.yaml}
+  - write_file: {path: lib/main.dart, from: oracle/setup-flutter/main.dart}
+  - write_file: {path: android/build.gradle.kts, from: oracle/setup-flutter/android-build.gradle.kts}
+  - write_file: {path: .github/workflows/release.yml, from: oracle/setup-flutter/release.yml}
+  - shell: git status --short
+  - finish:
+      summary: |
+        The shop app now reports to the shop-app project. pubspec.yaml adds traceway ^2.1.0 and the video add-on traceway_video ^2.1.0. lib/main.dart registers the add-on, then starts the SDK with Traceway.run(token: String.fromEnvironment('TRACEWAY_TOKEN'), baseUrl: String.fromEnvironment('TRACEWAY_URL')) and video replay (screenCapture: true, screenCaptureMode: video), and MaterialApp gets Traceway.navigatorObserver so issues name their screen. Both store builds in release.yml pass the secret TRACEWAY_TOKEN and the variable TRACEWAY_URL with --dart-define. android/build.gradle.kts raises the compileSdk of the add-on's encoder plugin (flutter_quick_video_encoder declares 33). Locally: flutter pub get, then flutter run --dart-define=TRACEWAY_TOKEN="$TRACEWAY_TOKEN" --dart-define=TRACEWAY_URL="$TRACEWAY_URL". To check it, throw a test exception and open /issues in shop-app.
+      changes:
+        - {action: "add traceway and traceway_video 2.1.0", target: pubspec.yaml}
+        - {action: "start the SDK with token, baseUrl and video replay; attach the navigator observer", target: lib/main.dart}
+        - {action: raise the encoder plugin's compileSdk, target: android/build.gradle.kts}
+        - {action: pass the token and URL to both store builds, target: .github/workflows/release.yml}

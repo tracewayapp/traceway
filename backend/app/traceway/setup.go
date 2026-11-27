@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -247,23 +246,6 @@ func temporality(kind sdkmetric.InstrumentKind) metricdata.Temporality {
 		return metricdata.CumulativeTemporality
 	}
 	return metricdata.DeltaTemporality
-}
-
-func ParseConnectionString(s string) (token, base string, err error) {
-	s = strings.TrimSpace(s)
-	at := strings.IndexByte(s, '@')
-	if at <= 0 || at == len(s)-1 {
-		return "", "", errors.New("self-monitoring connection string must look like <project token>@<instance URL>")
-	}
-	token, base = s[:at], strings.TrimRight(s[at+1:], "/")
-	for _, suffix := range []string{"/api/report", "/api/otel"} {
-		base = strings.TrimSuffix(base, suffix)
-	}
-	u, err := url.Parse(base)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", "", fmt.Errorf("self-monitoring connection string has an invalid instance URL %q", base)
-	}
-	return token, base, nil
 }
 
 func BuildVersion() string {

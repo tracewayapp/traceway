@@ -72,7 +72,7 @@ So logs and events are context around a problem. They are not a record of everyt
 
 ### Replay: what the user saw
 
-Replay is a recording of the page itself, rebuilt in the dashboard so you can watch the visit. It follows the same rule as logs and events: it stays in the browser, and a 30 second clip is uploaded with each error. Text typed into form fields is hidden by default. See [Session Replay](/client/js-sdk/session-replay).
+Replay is a recording of the page itself, rebuilt in the dashboard so you can watch the visit. It follows the same rule as logs and events: it stays in the browser, and a 30 second clip is uploaded with each error. Text typed into form fields is hidden by default. To mask more of the page, choose which pictures it shows and which sessions upload replay, follow [Configure Session Capture](/client/js-sdk/session-capture); every option is on [Session Replay](/client/js-sdk/session-replay).
 
 ## Which one to use
 
@@ -95,13 +95,14 @@ Replay is a recording of the page itself, rebuilt in the dashboard so you can wa
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   version: "2.4.0",
   environment: "production",
 });
 ```
 
-Call `init()` before the rest of the app starts, so early errors and the page load are measured. Always set `version` to your release. Without it you cannot compare releases, get a release regression alert, or set a target per release. All options are on [Initialization](/client/js-sdk/initialization).
+Call `init()` before the rest of the app starts, so early errors and the page load are measured. The token is the project token from its **Connection** page; the SDK sends to Traceway Cloud, and a self-hosted server adds `baseUrl`. Always set `version` to your release. Without it you cannot compare releases, get a release regression alert, or set a target per release. All options are on [Initialization](/client/js-sdk/initialization).
 
 ### 2. Upload source maps on every build
 
@@ -132,7 +133,8 @@ Requests to your own origin carry the W3C `traceparent` header automatically, so
 The `capture*` options of `init()` are hard limits. What you switch off in code cannot be switched on from the dashboard.
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   captureLogs: false,       // console output never leaves the page
   sessionRecording: false,  // replay never runs
 });
@@ -146,7 +148,7 @@ Use a separate project for development and staging, so test traffic does not cha
 
 ### 10. Give the controls people use a stable name
 
-When an interaction or a layout shift is slow, the SDK names the element behind it with a short CSS selector, so a dashboard can show which button is slow. From browser SDK releases after 2.0.2 the selector leaves out ids that UI libraries generate on every render (`bits-…`, `radix-…`, React's `:r1:`) and utility classes with variants or arbitrary values. It uses a stable `id`, otherwise `data-testid`, `data-test`, `data-cy`, `data-slot`, `name` or `role`, otherwise plain class names, for the element and up to two of its parents. Give the controls that matter a `data-testid`, or keep the `data-slot` your component library already sets, and a slow click on them reads `button[data-testid="place-order"]` instead of an anonymous `button`. The SDK never uses `aria-label`, text or input values, because those can hold what the user typed or is looking at.
+When an interaction or a layout shift is slow, the SDK names the element behind it with a short CSS selector, so a dashboard can show which button is slow. From browser SDK 2.0.3 on, the selector leaves out ids that UI libraries generate on every render (`bits-…`, `radix-…`, React's `:r1:`) and utility classes with variants or arbitrary values. It uses a stable `id`, otherwise `data-testid`, `data-test`, `data-cy`, `data-slot`, `name` or `role`, otherwise plain class names, for the element and up to two of its parents. Give the controls that matter a `data-testid`, or keep the `data-slot` your component library already sets, and a slow click on them reads `button[data-testid="place-order"]` instead of an anonymous `button`. The SDK never uses `aria-label`, text or input values, because those can hold what the user typed or is looking at.
 
 ## Identify users and find their sessions
 

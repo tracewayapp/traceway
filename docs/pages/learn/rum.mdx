@@ -78,7 +78,7 @@ Three things open the buffer:
 
 Triggers run in the browser and see every record, including those of a signal that is switched off. You can trigger on a 1 second main-thread freeze on a device that otherwise uploads no long tasks at all.
 
-The buffer is bounded so a page is never harmed by its own monitoring: identical errors within a second are suppressed, a client accepts at most 60 errors a minute, error clips have a 5 second cooldown and a limit of 20 per session, and a session uploads at most 50 MiB or 10,000 diagnostic events. Failed uploads are retried from the browser's storage for up to 24 hours.
+The buffer is bounded so a page is never harmed by its own monitoring: identical errors within a second are suppressed, a client accepts at most 60 errors a minute, error clips have a 5 second cooldown and a limit of 20 per session, and a session uploads at most 50 MiB or 10,000 diagnostic events. Failed uploads are retried from the browser's storage for up to 24 hours. A failure inside the SDK itself, in one of its functions, listeners, timers, wrapped `console` and `fetch` calls or the replay recorder, is contained: the page's own call goes on as it would without the SDK, and the page's own errors still reach its handlers.
 
 The modes, triggers and captures are set from the **Data Collection** page in the sidebar of a browser project: see [Remote SDK Config](/learn/remote-config). The ring buffer, triggers and captures need browser SDK 2.0 or later.
 
@@ -127,7 +127,7 @@ Open **Slow sessions** on a distribution widget. When an exemplar was retained, 
 
 ![A slow interaction opened in its session investigation](/rum/slow-session.png)
 
-Browser SDK releases after 2.0.2 also say why an interaction was slow. An interaction has three parts: the **input delay**, while the click waited for other work on the main thread; the **processing**, while your event handlers ran; and the **presentation**, while the browser drew the result. The largest of the three is the `phase` of `browser.web_vital.attribution`, so a breakdown of poor INP by `phase` and `target` tells you whether to look at other scripts, at a handler, or at rendering. The INP event in a session's history adds the three durations and the file and function of the longest script that ran. A very long interaction is reported as it was: a paused debugger and a frozen page look the same to the browser, and the phases show which part held it.
+Browser SDK 2.0.3 and later also say why an interaction was slow. An interaction has three parts: the **input delay**, while the click waited for other work on the main thread; the **processing**, while your event handlers ran; and the **presentation**, while the browser drew the result. The largest of the three is the `phase` of `browser.web_vital.attribution`, so a breakdown of poor INP by `phase` and `target` tells you whether to look at other scripts, at a handler, or at rendering. The INP event in a session's history adds the three durations and the file and function of the longest script that ran. A very long interaction is reported as it was: a paused debugger and a frozen page look the same to the browser, and the phases show which part held it.
 
 Each request in the timeline links to its trace, where the browser's request sits above the backend work it caused: the browser SDK sends the W3C `traceparent` header, so both sides share one trace id. See [distributed tracing](/client/js-sdk/distributed-tracing).
 

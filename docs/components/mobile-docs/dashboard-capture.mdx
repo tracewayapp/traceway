@@ -1,0 +1,21 @@
+When one user reports a problem, record that user's next sessions without a release. A capture uploads what the device holds from its lookback, then streams breadcrumbs and replay until it expires.
+
+1. Make the user findable: set the `user.id` attribute once they sign in (code above). A capture can also target one installation by its instance id, or one session.
+2. Start the capture in one of three places:
+   - on a session page, **Capture this device** (or **Capture this session**);
+   - on an issue's event, **Capture device**, **Capture user** or **Capture session**;
+   - on the **Data Collection** page, **New Capture**, for any attribute value.
+3. In the **New Capture** dialog, check the **Target** and **Value**, pick how long it runs (**For**: 15 minutes to 24 hours) and how much of the past to **Include** (**Nothing earlier**, **Last minute**, **Last 10 minutes** or **Last hour**), leave **Record session replay** on, and click **New Capture**.
+
+<img
+  src="/session-capture/capture-dialog.png"
+  alt="The New Capture dialog: the target and its value, how long the capture runs, how much earlier data to include, and the Record session replay switch"
+  style={{
+    maxWidth: "360px",
+    width: "100%",
+    height: "auto",
+    marginTop: "16px",
+  }}
+/>
+
+A capture lasts at most 24 hours, and a project has at most 20 active at a time. The **Captures** list on the **Data Collection** page shows each one's progress, from delivered to the device to data received; cancel one there. Its lookback is uploaded once per installation, and the records sent while it runs carry its id (`traceway.capture.ids`). Replay uploaded for it counts in the session's replay budget, like error clips.

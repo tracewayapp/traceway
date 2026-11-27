@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -88,9 +91,9 @@ func TestExceptionsList_table(t *testing.T) {
 	if !strings.Contains(out, "7") {
 		t.Errorf("table missing count: %s", out)
 	}
-	// Hash should be truncated (first 12 chars by convention)
-	if !strings.Contains(out, "abcdef123456") {
-		t.Errorf("table missing truncated hash prefix: %s", out)
+	// The full hash, which is what exceptions show takes.
+	if !strings.Contains(out, "abcdef1234567890") {
+		t.Errorf("table missing the full hash: %s", out)
 	}
 }
 
@@ -180,5 +183,84 @@ func TestExceptionsShow_404_writesNotFoundEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), `"not_found"`) {
 		t.Errorf("expected not_found envelope, got: %s", stderr.String())
+	}
+}
+
+func prefixTestServer(t *testing.T, hashes ...string) (*httptest.Server, *[]string) {
+	t.Helper()
+	var shown []string
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/exception-stack-traces":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["includeArchived"] != true || body["orderBy"] != "last_seen" {
+				t.Errorf("prefix lookup body = %v", body)
+			}
+			data := []map[string]any{}
+			for _, h := range hashes {
+				data = append(data, map[string]any{"exceptionHash": h, "stackTrace": "Error: " + h, "count": 1,
+					"firstSeen": "2026-05-13T00:00:00Z", "lastSeen": "2026-05-13T01:00:00Z"})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": data, "pagination": map[string]any{"page": 1, "pageSize": 100, "total": len(data), "totalPages": 1}})
+		case strings.HasPrefix(r.URL.Path, "/api/exception-stack-traces/"):
+			hash := strings.TrimPrefix(r.URL.Path, "/api/exception-stack-traces/")
+			shown = append(shown, hash)
+			for _, h := range hashes {
+				if h == hash {
+					_, _ = fmt.Fprintf(w, `{"group":{"exceptionHash":%q,"stackTrace":"Error: boom","count":2,"firstSeen":"2026-05-13T00:00:00Z","lastSeen":"2026-05-13T01:00:00Z"},"occurrences":[],"pagination":{"page":1,"pageSize":20}}`, h)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &shown
+}
+
+func TestExceptionsShow_resolvesAUniqueHashPrefix(t *testing.T) {
+	srv, shown := prefixTestServer(t, "8b25da145460880a", "1234567890abcdef")
+	seedSessionFor(t, srv.URL)
+
+	stdout, stderr, err := runCmd(t, "", "exceptions", "show", "8b25da145460", "--output", "table")
+	if err != nil {
+		t.Fatalf("exceptions show <prefix>: %v\n%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "HASH:        8b25da145460880a") {
+		t.Errorf("want the full group, got: %s", stdout.String())
+	}
+	if want := []string{"8b25da145460", "8b25da145460880a"}; strings.Join(*shown, ",") != strings.Join(want, ",") {
+		t.Errorf("detail lookups = %v, want %v (exact first, then the resolved hash)", *shown, want)
+	}
+}
+
+func TestExceptionsShow_ambiguousPrefixIsAUsageError(t *testing.T) {
+	srv, _ := prefixTestServer(t, "8b25da145460880a", "8b25da1454609999")
+	seedSessionFor(t, srv.URL)
+
+	_, stderr, err := runCmd(t, "", "exceptions", "show", "8b25da14", "--output", "json")
+	var ce *cliError
+	if !errors.As(err, &ce) || ce.code != exitcode.Usage {
+		t.Fatalf("want a usage error, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), "8b25da145460880a") || !strings.Contains(stderr.String(), "8b25da1454609999") {
+		t.Errorf("the error should list the candidates: %s", stderr.String())
+	}
+}
+
+func TestExceptionsShow_unknownPrefixStaysNotFound(t *testing.T) {
+	srv, _ := prefixTestServer(t, "8b25da145460880a")
+	seedSessionFor(t, srv.URL)
+
+	_, stderr, err := runCmd(t, "", "exceptions", "show", "ffff0000", "--output", "json")
+	var ce *cliError
+	if !errors.As(err, &ce) || ce.code != exitcode.NotFound {
+		t.Fatalf("want not_found, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), `"not_found"`) || !strings.Contains(stderr.String(), "exceptions list --since 30d") {
+		t.Errorf("want a not_found envelope with a hint: %s", stderr.String())
 	}
 }

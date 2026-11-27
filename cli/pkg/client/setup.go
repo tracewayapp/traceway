@@ -33,12 +33,15 @@ type SetupPlanDeployment struct {
 }
 
 type SetupPlanProject struct {
-	Name       string               `json:"name"`
-	Framework  string               `json:"framework"`
-	EnvFile    string               `json:"envFile,omitempty"`
-	EnvVar     string               `json:"envVar,omitempty"`
-	EnvFormat  string               `json:"envFormat,omitempty"`
-	Deployment *SetupPlanDeployment `json:"deployment,omitempty"`
+	Name               string               `json:"name"`
+	Framework          string               `json:"framework"`
+	EnvFile            string               `json:"envFile,omitempty"`
+	EnvVar             string               `json:"envVar,omitempty"`
+	EnvFormat          string               `json:"envFormat,omitempty"`
+	URLEnvVar          string               `json:"urlEnvVar,omitempty"`
+	UploadTokenEnvFile string               `json:"uploadTokenEnvFile,omitempty"`
+	UploadTokenEnvVar  string               `json:"uploadTokenEnvVar,omitempty"`
+	Deployment         *SetupPlanDeployment `json:"deployment,omitempty"`
 }
 
 func (c *Client) SubmitSetupPlan(ctx context.Context, projects []SetupPlanProject) error {

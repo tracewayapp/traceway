@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Pinboard</string>
+    <string name="feed_error">Could not load the feed.</string>
+</resources>

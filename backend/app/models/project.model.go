@@ -69,6 +69,18 @@ func GetBackendUrl() string {
 	return "https://cloud.tracewayapp.com"
 }
 
+// FrameworkUploadsBuildArtifacts reports whether the platform's release builds need an upload token: browser
+// source maps, Flutter symbols, Android mappings and native libraries, iOS dSYMs. Such projects get one when they
+// are created, so setup can hand it to the build with the ingest token.
+func FrameworkUploadsBuildArtifacts(framework string) bool {
+	switch framework {
+	case "react", "svelte", "vuejs", "jquery", "flutter", "android", "ios":
+		return true
+	default:
+		return false
+	}
+}
+
 type ProjectWithBackendUrl struct {
 	Project
 	BackendUrl string `json:"backendUrl"`

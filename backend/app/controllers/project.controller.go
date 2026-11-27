@@ -144,6 +144,7 @@ func (p projectController) ListProjects(c *gin.Context) {
 		return
 	}
 
+	withInstanceUrl(c, projectsWithBackendUrl...)
 	c.JSON(http.StatusOK, projectsWithBackendUrl)
 }
 
@@ -230,6 +231,7 @@ func (p projectController) CreateProject(c *gin.Context) {
 
 	projectWithUrl := project.ToProjectWithBackendUrl()
 	projectWithUrl.Role = creatorRole
+	withInstanceUrl(c, projectWithUrl)
 	c.JSON(http.StatusCreated, projectWithUrl)
 }
 
@@ -250,7 +252,7 @@ func (p projectController) UpdateProject(c *gin.Context) {
 		return
 	}
 	if !validFrameworks[request.Framework] {
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": invalidFrameworkMessage})
 		return
 	}
 
@@ -346,7 +348,9 @@ func (p projectController) UpdateProject(c *gin.Context) {
 
 	cache.ProjectCache.UpdateProject(project)
 
-	c.JSON(http.StatusOK, project.ToProjectWithBackendUrl())
+	projectWithUrl := project.ToProjectWithBackendUrl()
+	withInstanceUrl(c, projectWithUrl)
+	c.JSON(http.StatusOK, projectWithUrl)
 }
 
 func (p projectController) DeleteProject(c *gin.Context) {

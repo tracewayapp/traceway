@@ -11,7 +11,7 @@ The two work side by side under separate Traceway projects. Use an **OpenTelemet
 
 ## Quick Start
 
-Minimum configuration to get errors flowing in. Drop these in, replace the connection string, and you're done.
+Minimum configuration to get errors flowing in. Drop these in, put the two projects' tokens in your environment, and you're done.
 
 **Frontend.** Install `@tracewayapp/react`, wrap your app in `TracewayProvider`:
 
@@ -27,7 +27,7 @@ import { TracewayProvider } from "@tracewayapp/react";
 
 export function TracewayClientProvider({ children }: { children: React.ReactNode }) {
   return (
-    <TracewayProvider connectionString={process.env.NEXT_PUBLIC_TRACEWAY_WEB_CONNECTION_STRING!}>
+    <TracewayProvider token={process.env.NEXT_PUBLIC_TRACEWAY_TOKEN}>
       {children}
     </TracewayProvider>
   );
@@ -140,7 +140,7 @@ import { TracewayProvider } from "@tracewayapp/react";
 
 export default function App({ Component, pageProps }: AppProps) {
   return (
-    <TracewayProvider connectionString={process.env.NEXT_PUBLIC_TRACEWAY_WEB_CONNECTION_STRING!}>
+    <TracewayProvider token={process.env.NEXT_PUBLIC_TRACEWAY_TOKEN}>
       <Component {...pageProps} />
     </TracewayProvider>
   );
@@ -161,7 +161,7 @@ Defaults match the rest of the JS SDK family (no flags needed):
 
 See [TracewayProvider](/client/react/provider#options) for the other options and [Distributed Tracing](/client/js-sdk/distributed-tracing) for how the `traceparent` header links a browser request to the server trace.
 
-The `connectionString` uses the standard `{token}@{apiUrl}` value from the React browser project. Do not use the OpenTelemetry server project's token here.
+`NEXT_PUBLIC_TRACEWAY_TOKEN` is the token of the React browser project, from its **Connection** page (`.env.local`). Do not use the OpenTelemetry server project's token here. The SDK sends to Traceway Cloud; for a self-hosted server also pass `baseUrl={process.env.NEXT_PUBLIC_TRACEWAY_URL}`. `token` and `baseUrl` need `@tracewayapp/react` 2.1.0 or later; see [Upgrading from 2.0](/client/js-sdk/migration#upgrading-from-20) for an app that still passes a connection string.
 
 `TracewayProvider` also acts as a React error boundary. Render-time exceptions are captured and re-thrown so your app behaves exactly as without Traceway. No separate `<TracewayErrorBoundary>` is required.
 
@@ -238,7 +238,6 @@ export default nextConfig;
 The `!dev` guard keeps the production-only plugin from replacing Next.js's development source-map mode. Use `next build --webpack`, then verify the emitted client bundles contain `//# debugId=` and their `.js.map` files contain a `debugId` field. Upload the browser artifacts with the **React project's** upload token:
 
 ```bash
-TRACEWAY_URL=https://traceway.example.com \
 TRACEWAY_SOURCEMAP_TOKEN=... \
 npx @tracewayapp/sourcemap-upload --directory .next/static/chunks
 ```
@@ -694,7 +693,7 @@ Instead of hardcoding the endpoint and token, use standard OTel environment vari
 
 ```bash
 export OTEL_SERVICE_NAME="my-nextjs-app"
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-traceway-instance.com/api/otel"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://cloud.tracewayapp.com/api/otel"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
 ```
 

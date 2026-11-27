@@ -231,7 +231,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		return
 	}
 	if wantsProject && !validFrameworks[request.Framework] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, flutter, android, ios"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidFrameworkMessage})
 		return
 	}
 
@@ -327,6 +327,7 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		return
 	}
 
+	withInstanceUrl(c, append(projects, projectWithUrl)...)
 	c.JSON(http.StatusCreated, &models.RegisterResponse{
 		Token:         token,
 		User:          user.ToResponse(),

@@ -60,7 +60,7 @@ Skip the CLI session entirely with environment variables:
 
 | Variable | Purpose |
 |---|---|
-| `TRACEWAY_URL` | Instance origin, e.g. `https://traceway.example.com` |
+| `TRACEWAY_URL` | Instance origin: `https://cloud.tracewayapp.com`, or your self-hosted server's |
 | `TRACEWAY_TOKEN` | A personal access token (`twp_...`, see [CLI Authentication](/learn/cli-auth)) |
 | `TRACEWAY_PROJECT` | Optional default project id |
 
@@ -83,20 +83,21 @@ Every tool wraps one API call and declares an output schema, so results come bac
 | `query_metrics` | Time-bucketed metric series, including `rate`, `last`, and percentiles or `good_ratio` of a distribution metric; `whole_range` returns one value for the window |
 | `discover_metrics` | Recorded names, types, units, tag keys; optional `name` + `key` for tag values |
 | `list_dashboards` / `dashboard_library` / `export_dashboard` | Applied dashboards, organization-wide assignments and importable JSON |
+| `list_sessions` | User sessions that started in a window, newest first; `search` matches the session id, client IP or an attribute value |
 | `get_task` / `get_ai_trace` / `get_session` / `get_trace` | By-id detail lookups |
 | `list_pages` / `get_page` | On-call pages and their delivery log |
 | `list_notification_rules` | Alert rules, enabled and snoozed state |
 | `list_checks` / `get_check` | Monitors and their incidents |
 | `list_slos` / `get_slo` / `get_slo_series` / `preview_slo` | [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp): status and error budget, history, and a dry run of a definition |
 | `list_post_mortems` / `get_post_mortem` | Post-mortem documents |
-| `list_sdk_config_rules` | A browser or Flutter project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
+| `list_sdk_config_rules` | A browser, Flutter, iOS or Android project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
 | `preview_sdk_config` | The settings document saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live client applied |
 
 The write server adds `import_dashboards`, `create_dashboard_embed`, `create_read_token`, `list_personal_access_tokens`, `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, `create_slo`, `update_slo`, `delete_slo`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
 
 Project selection is per call: every project-scoped tool accepts a `project_id` parameter and falls back to the CLI's current project.
 
-The by-id detail tools require the record's timestamp (`recorded_at`, or `started_at` for sessions) so lookups stay partition-pruned and fast, exactly like the CLI's `--recorded-at` flags. The tool descriptions teach agents where to recover it (dashboard URL `?t=` params, occurrence lists, notifications).
+The by-id detail tools require the record's timestamp (`recorded_at`) so lookups stay partition-pruned and fast, exactly like the CLI's `--recorded-at` flags. `get_session` is the exception: its `started_at` is optional, and without it the start is looked up among the sessions of the last 30 days. The tool descriptions teach agents where to recover it (dashboard URL `?t=` params, occurrence lists, notifications).
 
 ## Prompts and resources
 
@@ -121,7 +122,7 @@ These are the same documents the Traceway Claude Code skills are generated from,
 | `learn/monitors` | Monitors, incidents, status pages, post-mortems |
 | `learn/alerts` | Every alert rule type, channels, cooldowns, snoozing |
 | `learn/on-call` | Teams, schedules, overrides, escalation policies, pages, contact methods |
-| `learn/data-collection` | Remote SDK config for browser and Flutter projects: signal modes, rules, triggers, recording trigger steps (CSS selectors in a browser, widget selectors and route names in Flutter), captures, preview |
+| `learn/data-collection` | Remote SDK config for browser, Flutter, iOS and Android projects: signal modes, rules, triggers, recording trigger steps (CSS selectors in a browser, widget or view selectors and route names in the apps), captures, preview |
 | `learn/organization` | Projects, roles, organization views, settings, agent access |
 
 The same guide ships as the `traceway-learn` skill, installed with the other skills (`npx skills add tracewayapp/skills --all`, or the `tw` Claude Code plugin). Ask an agent how paging escalates, why an endpoint is Critical, or how to put a status page on your own domain, and it answers from the guide.

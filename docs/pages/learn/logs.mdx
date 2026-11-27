@@ -173,6 +173,24 @@ No extra configuration is required. The standard OTel context propagation carrie
 
 Logs are stored in ClickHouse with daily partitioning and a 90-day TTL on the timestamp date. Older logs are removed automatically without operator intervention. Self-hosted deployments on SQLite or DuckDB prune logs after 30 days by default, configurable with `SQLITE_RETENTION_DAYS` (on DuckDB, `DUCKDB_RETENTION_DAYS`). They can additionally cap the log table with `LOG_RECORDS_MAX_ROWS`. The cap is a cleanup task, not a hard limit: every minute the oldest logs are deleted until only the newest N rows remain. A burst that ingests more than N rows within one minute can still push the table past the cap until the next run, so size the cap with headroom for your peak log volume.
 
+## Logs from Browsers and Apps
+
+The browser, Flutter, Android and iOS SDKs send log lines as OpenTelemetry log records of the `console` signal, with the session's `session.id`. By default a line stays on the device and is uploaded with an error, a trigger or a capture; a [Data Collection](/learn/remote-config) rule can stream it or switch it off, and sets the minimum severity (`info` by default) and a sample rate. `captureLogs: false` in the app turns all of them off.
+
+The `log.source` attribute says where a line came from:
+
+| `log.source` | Lines |
+|---|---|
+| `api` | `log(message, level, attributes)` in the browser, `Traceway.log` in the apps |
+| none | Browser `console.*` calls: the event name is `browser.console`, and `browser.console.method` names the method |
+| `print` | Flutter `print` and `debugPrint` lines, at info |
+| `logging` | Flutter `package:logging` records at their level, with `logger.name` |
+| `stdout`, `stderr` | Android `System.out` (info) and `System.err` (error). On iOS, standard output (info) and standard error (error) with the `captureStdout` option, which is off by default |
+| `logcat` | Android `android.util.Log` calls, Timber's included, with the Traceway Gradle plugin; the tag is `log.tag` |
+| `oslog` | iOS 15 and later: the unified log (`NSLog`, `os_log`, `Logger`) of the app, with `oslog.subsystem` and `oslog.category` |
+
+To see one source, add the filter `log.source` equals `logcat` (or another value). Lines that a [recording trigger](/learn/remote-config/trigger-sequences) or a log-line trigger should match can come from any of these sources.
+
 ## Sending Logs
 
 See the SDK-specific guides for setup instructions:
@@ -180,6 +198,7 @@ See the SDK-specific guides for setup instructions:
 - [OpenTelemetry](/client/otel/logs): direct SDK export or OTel Collector
 - [Symfony](/client/otel/symfony/logs): Monolog handler and the OTel PHP Logs API
 - [Cloudflare Workers](/client/otel/cloudflare): Worker-side OTel logs exporter
+- Browser and mobile apps: the [JS SDK](/client/js-sdk), [Flutter](/client/flutter), [Android](/client/android) and [iOS](/client/ios) guides
 
 For API callers, `POST /api/logs` accepts `traceId` and optional `spanId`, scoped to the selected project and time window. The retired `distributedTraceId` and `excludeTraceId` selectors return 400, so stale clients cannot silently widen a query. Invalid trace IDs also return 400. Each entry of `attributeFilters` takes `scope`, `key`, `value`, `exclude`, `contains` and `exists` (match on the key alone). `POST /api/logs/histogram` takes the same filters plus `maxBuckets` (10 to 200, default 80) and returns the counts behind the volume chart: `intervalSeconds`, `total`, and one bucket per interval with a count for each level.
 

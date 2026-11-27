@@ -110,3 +110,14 @@ func TestIsIOSTrace(t *testing.T) {
 		t.Error("js/plain text misdetected as iOS")
 	}
 }
+
+// MetricKit's call stack trees name an image by its UUID with dashes; it is the same debug id.
+func TestParseTraceTakesMetricKitUUIDs(t *testing.T) {
+	trace := ParseTrace("WatchdogTermination: x\nos: ios arch: arm64e\n#00 2DD71042-1184-32BE-8F92-DD4E3D3FE24A 0x460 sample")
+	if len(trace.Frames) != 1 || trace.Frames[0].UUID != "2dd71042118432be8f92dd4e3d3fe24a" || trace.Frames[0].Offset != 0x460 || trace.Frames[0].Image != "sample" {
+		t.Fatalf("frames = %+v", trace.Frames)
+	}
+	if IsIOSTrace("#00 2DD71042-1184-32BE-8F92-DD4E3D3FE24A-0000 0x460 sample") {
+		t.Error("a longer id is taken for an image UUID")
+	}
+}

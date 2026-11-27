@@ -1,26 +1,25 @@
 # Session Replay
 
-import BrowserSdkV1 from "../../../components/BrowserSdkV1";
+This page is the reference for replay in the browser SDK. To set it up step by step, follow [Configure Session Capture](/client/js-sdk/session-capture).
 
-<BrowserSdkV1 href="/client/js-sdk/v1/session-replay" />
+The browser SDK records the page's DOM with rrweb. Replay is buffered on the device by default. Accepted errors upload up to 10 minutes of buffered breadcrumbs; the built-in exception trigger also requests a 30-second replay clip, with a 5-second cooldown and at most 20 clips per session. An error inside the cooldown or past the limit still uploads its breadcrumbs, without a clip. The session page can show the surrounding uploaded segments and breadcrumbs.
 
-The 2.x browser SDK records DOM events with rrweb. Replay is buffered on the device by default. Accepted errors upload up to 10 minutes of buffered breadcrumbs; the built-in exception trigger also requests a 30-second replay clip, with a 5-second cooldown and at most 20 clips per session. An error inside the cooldown or past the limit still uploads its breadcrumbs, without a clip. The session page can show the surrounding uploaded segments and breadcrumbs.
-
-rrweb is loaded the first time replay starts, so with a bundler a page whose replay is off never downloads or runs it.
+rrweb is loaded the first time replay starts, so with a bundler a page whose replay is off never downloads or runs it. A failure inside the recorder is contained: the page's own calls go on as they would without it.
 
 ## Options
 
-| Option | Default | Meaning |
-|---|---|---|
-| `sessionRecording` | `true` | Allow replay at all; remote settings cannot override `false` |
+| Option                            | Default | Meaning                                                                                               |
+| --------------------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `sessionRecording`                | `true`  | Allow replay at all; remote settings cannot override `false`                                          |
 | `sessionRecordingSegmentDuration` | `30000` | Segment duration in milliseconds. Every segment starts with a full snapshot, so it replays on its own |
-| `recordAllSessions` | `false` | Stream completed replay segments and breadcrumbs by default |
-| `sessions` | `true` | Report session lifecycle events, independently of replay |
+| `recordAllSessions`               | `false` | Stream completed replay segments and breadcrumbs by default                                           |
+| `sessions`                        | `true`  | Report session lifecycle events, independently of replay                                              |
 
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init(connectionString, {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   sessionRecordingSegmentDuration: 30000,
 });
 ```
@@ -29,18 +28,24 @@ init(connectionString, {
 
 Replay is in one of three modes:
 
-| Mode | What happens |
-|---|---|
+| Mode               | What happens                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `buffer` (default) | rrweb records and completed segments stay in memory. A trigger or a capture uploads the segments that ended inside its lookback, plus the segment in progress |
-| `stream` | Every completed segment is uploaded as it rotates, and the segment in progress is uploaded when the page is hidden |
-| `off` | rrweb does not run, and what was buffered or queued is discarded |
+| `stream`           | Every completed segment is uploaded as it rotates, and the segment in progress is uploaded when the page is hidden                                            |
+| `off`              | rrweb does not run, and what was buffered or queued is discarded                                                                                              |
 
 `recordAllSessions: true` makes `stream` the default. The mode and its companions can also be set locally with `collection`, or remotely with a rule:
 
 ```javascript
-init(connectionString, {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   collection: {
-    replay: { mode: "stream", sessionSampleRate: 0.1, maskAllInputs: true },
+    replay: {
+      mode: "stream",
+      sessionSampleRate: 0.1,
+      maskAllInputs: true,
+      images: "wifi",
+    },
     buffer: { replayMaxBytes: 4 * 1024 * 1024, maxAgeSeconds: 300 },
   },
 });
@@ -52,33 +57,51 @@ Sessions are recorded even when replay is buffered or disabled, unless `sessions
 
 ## Remote control
 
-[Data Collection rules](/learn/remote-config/setup) can switch replay between `off`, `buffer`, and `stream`, set session sampling, and start targeted captures. Turning replay off discards its buffered and queued segments. Cancelling a capture removes its streaming override at the next successful poll; another capture or rule can still keep replay streaming.
+[Data Collection rules](/learn/remote-config/setup) can switch replay between `off`, `buffer`, and `stream`, set session sampling and `replay.images`, and start targeted captures. Turning replay off discards its buffered and queued segments. Cancelling a capture removes its streaming override at the next successful poll; another capture or rule can still keep replay streaming.
 
 The default replay buffer holds completed segments within an 8 MiB estimate and a ten-minute age window. The active segment is separate. Replay stays in memory and does not survive a full page navigation. A lookback can only include data the device actually retained. Session sampling controls continuous streaming; unsampled sessions can still provide a buffered error clip.
 
 ## Privacy
 
-Mark the parts of the page the replay must not show with a class in your markup; no code is needed. Masking happens in the browser, before anything is uploaded. Browser SDK releases after 2.0.3 read two classes:
+Mark the parts of the page the replay must not show with a class in your markup; no code is needed. Masking happens in the browser, before anything is uploaded.
 
-| Class | What the replay shows |
-|---|---|
-| `traceway-mask` | The element and its layout. Text inside it is recorded with every character except whitespace replaced by `*`. `img`, `picture`, `video`, `canvas` and `svg` elements inside it, or carrying the class themselves, are recorded as empty boxes of their size, without their source URL or content |
-| `traceway-blank` | An empty box of the element's size. Nothing inside it is recorded: no text, no images, no input values or input events |
+| Class            | What the replay shows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `traceway-mask`  | The element and its layout. Text inside it is recorded with every character except whitespace replaced by `*`, and so are the values of its attributes that carry text (`title`, `alt`, `aria-*`, `data-*`, `placeholder`, `label`, `href`, `value`, the label of an `<input type="submit">`) and what is typed into its fields, even with `maskAllInputs` off. `img`, `picture`, `video`, `canvas` and `svg` elements inside it, or carrying the class themselves, are recorded as empty boxes of their size, without their source URL or content; `src`, `srcset` and `poster` attributes are left out, and pictures in a `style` attribute (`background-image: url(…)`) become `none` |
+| `traceway-blank` | An empty box of the element's size. Nothing inside it is recorded: no text, no images, no input values or input events                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ```html
 <p class="traceway-mask">Card ending 4242, Alice Smith</p>
 <!-- replays as: **** ****** ***** ***** ***** -->
-<div class="traceway-mask"><img src="/avatars/42.jpg"> Alice Smith</div>
+<div class="traceway-mask"><img src="/avatars/42.jpg" /> Alice Smith</div>
 <div class="traceway-blank"><canvas id="signature"></canvas></div>
 ```
 
-rrweb's own classes keep working next to them, as in 1.x: `rr-mask` masks text like `traceway-mask` but leaves images as they are, `rr-block` records an empty box like `traceway-blank`, and `rr-ignore` stops recording an input's events. On 2.0.3 and earlier, use these.
+In React, the attribute is `className="traceway-mask"`.
 
-The values of form inputs are masked by default (`replay.maskAllInputs: true`); 1.x masked only password inputs. With it on, the value of every `input`, `textarea` and `select` is recorded as `*`; with it off, only passwords are. A field that must stay hidden even then belongs inside `traceway-blank`. `collection.replay.maskAllInputs` or a rule can change it; applying a change restarts rrweb and discards incompatible buffered or queued replay. Already-sent requests cannot be recalled. Images outside a mask are not uploaded: the replay loads them from their URLs when it plays. Set `sessionRecording: false` in the application when replay must never run.
+The mask reaches into shadow roots and same-origin iframes inside it, also for text they render or change after recording started. What it does not hide, so keep it inside `traceway-blank` when it is private: pictures that a stylesheet sets (a class with `background-image`), which the replay loads by their URL, and the content an element had before it was given the class while recording, until the next full snapshot (every 30 seconds). Masked `data-*` and `aria-*` values can change how the masked area looks in the replay when the page's CSS selects on them.
+
+rrweb's own classes keep working next to them: `rr-mask` masks text like `traceway-mask` but leaves images as they are, `rr-block` records an empty box like `traceway-blank`, and `rr-ignore` stops recording an input's events.
+
+The values of form inputs are masked by default (`replay.maskAllInputs: true`). With it on, the value of every `input`, `textarea` and `select` is recorded as `*`; with it off, only passwords are. A field that must stay hidden even then belongs inside `traceway-mask` or `traceway-blank`. `collection.replay.maskAllInputs` or a rule can change it, except that `maskAllInputs: true` in the app's own `collection` is a floor no rule lowers; applying a change restarts rrweb and discards incompatible buffered or queued replay. Already-sent requests cannot be recalled. Set `sessionRecording: false` in the application when replay must never run.
+
+## Replay images
+
+`replay.images` (set it in `collection.replay` or with a rule's **Replay images** select) decides what the replay shows of pictures outside a mask:
+
+| Value              | What the replay shows                                                                                                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"off"`            | Every `img`, `picture`, SVG `image` and `<input type="image">` as an empty box of its size, without its URL                                                                                        |
+| `"wifi"` (default) | The pictures, loaded from their URLs when the replay plays; no pixels are uploaded                                                                                                                 |
+| `"always"`         | The same, plus a small copy of each picture the page may read (its own origin, or another one that serves it with CORS) in the recording, so the replay shows it even when the URL no longer works |
+
+With `"always"` a loaded `<img>` is drawn at its displayed size: a picture with transparency as PNG at most 192 px on the longest side (never JPEG, which would replay its transparent pixels as black), any other as JPEG at quality 0.45 at most 384 px. One larger than 48 KiB is tried once at half the size and otherwise left as a URL. The SDK keeps up to 128 pictures for the next snapshots (the one used longest ago makes room), adds at most 4 MiB of them to a session's recording, and spends at most 16 ms on them per recorded change; what is left is added at the next snapshot. Pictures of other origins that the browser does not let the page read stay URL references: the SDK never changes the page's own `<img>` elements.
+
+The browser has no network type check: `"wifi"` behaves like the mobile SDKs on a metered network. The `replayImages` option of `init()` is the ceiling (`"always"` by default): a rule's value replaces the one in `collection`, and the lower of it and `replayImages` applies. `"off"` leaves `video` and `canvas` elements alone; mask those. A change of `replay.images` restarts rrweb and discards the buffered replay recorded with the old value. Session events carry `traceway.replay.images` and `traceway.replay.image_bytes`.
 
 ## Breadcrumbs
 
-Console output, `log()` lines, navigation, clicks and app events are OTLP log records, while requests are OTLP CLIENT spans. They carry `session.id` and are read alongside replay in the dashboard. Replay files contain rrweb events, rather than duplicate copies of these breadcrumbs.
+Console output, `log()` lines, navigation, clicks and app events are OTLP log records, while requests are OTLP CLIENT spans. They carry `session.id` and the screen keys (`app.screen.name` and the others, see [Screens and navigation](/client/js-sdk#screens-and-navigation)), and are read alongside replay in the dashboard. Replay files contain rrweb events, rather than duplicate copies of these breadcrumbs.
 
 SDK 1.x and mobile recordings that contain embedded breadcrumbs remain readable. See [Sessions](/learn/sessions) and the [remote settings reference](/learn/remote-config/reference) for collection and retention details.
 
@@ -100,6 +123,6 @@ Each browser session has a shared diagnostic budget of **50 MiB of uncompressed 
 
 Lower the ceiling with `collectionLimits: { maxBytes: 10 * 1024 * 1024, maxEvents: 5000 }`. Remote configuration cannot raise it. Errors, web vitals, and lifecycle/control metadata are exempt. Error burst/duplicate protection applies separately.
 
-`traceway.collection.health` reports accepted bytes/events, dropped diagnostics and suppressed errors without waiting for another exception. Session metadata carries the counters too. `traceway.context.evicted` identifies lost buffered breadcrumbs. A missing summary is possible if the browser closes before it can send. The session overview exposes drop counts; these are counts reported by that running client, not estimates of project-wide loss.
+`traceway.collection.health` reports accepted bytes/events, dropped diagnostics and suppressed errors without waiting for another exception. Session metadata carries the counters too, with `traceway.replay.images` and `traceway.replay.image_bytes`. `traceway.context.evicted` identifies lost buffered breadcrumbs. A missing summary is possible if the browser closes before it can send. The session overview exposes drop counts; these are counts reported by that running client, not estimates of project-wide loss.
 
-Replay requests rejected permanently or exhausted after retries increment `traceway.replay.failed_segments`, included in health logs and session metadata. The session overview displays failed replay uploads separately from budget drops. An unload-time failure may occur too late to report its counter.
+Replay uploads that keep failing wait in a bounded retry queue of at most 20 batches. Uploads rejected for good, or dropped from that queue (the oldest first), are counted in `traceway.replay.failed_segments`, included in health logs and session metadata. The session overview displays failed replay uploads separately from budget drops. An unload-time failure may occur too late to report its counter.

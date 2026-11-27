@@ -29,7 +29,7 @@ Set these in the **process environment**: the container `env:` block, a systemd 
 ```bash
 export OTEL_SERVICE_NAME=my-python-service
 export OTEL_RESOURCE_ATTRIBUTES="service.version=1.0.0"
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://cloud.tracewayapp.com/api/otel
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
 export OTEL_TRACES_EXPORTER=otlp

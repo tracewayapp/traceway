@@ -7,7 +7,14 @@
   "flush": "Flush & Lifecycle",
   "sourcemap-upload": "Source Maps",
   "debug-ids": "Debug IDs",
+  "session-capture": "Configure Session Capture",
   "session-replay": "Session Replay",
-  "migration": "Migrating from 1.x",
-  "v1": "SDK 1.x (legacy)"
+  "migration": {
+    "title": "Upgrading",
+    "theme": { "pagination": false }
+  },
+  "v1": {
+    "title": "SDK 1.x (legacy)",
+    "theme": { "collapsed": true }
+  }
 }

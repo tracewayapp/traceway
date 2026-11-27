@@ -1,0 +1,22 @@
+The browser SDK records the page itself. rrweb, an open-source recorder, captures the DOM and every change to it, and the player in Traceway rebuilds the page from that recording: no screenshots and no video. The recorder runs in the tab and keeps what it records in the tab's memory. Nothing is uploaded until an error, a trigger or a capture asks for it ([Step 4](#step-4-choose-which-sessions-upload-replay)).
+
+Replay is on by default, so starting the SDK is enough. The options below only make the limits explicit:
+
+{props.children}
+
+The options the SDK starts with are **ceilings**: a rule or a capture from the dashboard can keep a signal on the device or switch it off, but it never turns on what the app turned off. These are the ones that matter for replay:
+
+| Option                                                                     | Default                  | What it limits                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessionRecording`                                                         | `true`                   | `false` means no replay at all. The recorder is never loaded, whatever a rule, a trigger or a capture says                                                                                                                                        |
+| `replayImages`                                                             | `"always"`               | The most the replay records of pictures: `"off"` (empty boxes), `"wifi"` (their URLs) or `"always"` (also small copies). `replay.images` from `collection` or a rule applies only up to it ([Step 3](#step-3-choose-whether-replays-show-images)) |
+| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions` | `true`                   | The console lines, requests, page changes and clicks the player shows next to the replay. `false` removes one from every session, uploads included                                                                                                |
+| `collectionLimits`                                                         | 50 MiB and 10,000 events | What one session may upload in all, replay events included. It can only be lowered                                                                                                                                                                |
+
+Leave `sessions` on: the **Sessions** page lists the sessions the SDK reports.
+
+The recording waits in memory in segments of 30 seconds (`sessionRecordingSegmentDuration`), each starting with a full snapshot of the page, so every segment plays on its own. The buffer keeps at most 8 MiB (`collection.buffer.replayMaxBytes`) and 10 minutes (`collection.buffer.maxAgeSeconds`). An error clip takes the last 30 seconds of it; a trigger or a capture can take more, as far back as the buffer still reaches. The buffer starts empty on every full page load.
+
+`collection` takes the same settings document as a Data Collection rule ([Step 6](#step-6-change-collection-remotely-with-data-collection-rules)), so the examples on this page show that document as JSON. Put it in `collection` to set it in the app, or in a rule's **JSON** tab to set it from the dashboard. A rule wins over `collection`, and the ceilings win over both. One field of `collection` is a floor instead: `replay.maskAllInputs: true` there keeps inputs masked whatever a rule says ([Step 2](#inputs-are-masked-by-default)).
+
+When the page needs the user's consent before it may record, start the SDK after consent, or start it with `sessionRecording: false`.

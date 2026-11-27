@@ -16,7 +16,7 @@ tools, and deterministic graders score the result.
 | perf | Diagnosing latency against every bottleneck row in `performance.md` | `cli+skill`, `cli-noskill`, `mcp` |
 | debug | Debugging an issue to root cause and fixing the code | `cli+skill`, `cli-noskill`, `mcp` |
 | write | The write playbooks (pages, alerts, monitors, archive, post-mortems, slow marks) and the 403 policy | `cli-write+skill`, `mcp-write` |
-| setup | Instrumenting an app with the setup skill until its telemetry arrives | `cli+setup-skill` |
+| setup | Instrumenting an app with the setup skill until its telemetry arrives; Flutter, Android and iOS apps are graded on their files | `cli+setup-skill` |
 
 The agents are the entries of `models.yaml` (`opus`, `astra`, `haiku`,
 `deepseek-flash`, `luna`, `minimax-flash`, `mimo-pro`, `qwen-27b`, `glm`), and
@@ -133,7 +133,10 @@ a real model's patch are skipped unless `TWEVALS_HOST_TESTS=1` (the diff
 checks, such as touching the culprit, still gate). Oracle runs (our own code)
 use the host when Docker is missing. The setup oracles install pinned
 packages (Go modules, npm and PyPI), so `oracle --all` needs those registries
-or warm caches, and `node`/`npm` and `python3` with `venv` on the host.
+or warm caches, and `node`/`npm` and `python3` with `venv` on the host. The
+browser oracles (`setup-react-browser`, `setup-monorepo-plan`) install
+`@tracewayapp/*` 2.1.0 from npm, so they fail until that version is
+published. The Flutter, Android and iOS oracles only write files.
 
 ### Exit codes
 
@@ -152,11 +155,11 @@ averages: 100-400k cumulative input tokens (about 70% cached), 5-15k output.
 | GPT-6 Astra | ~$0.62-2.23 | up to ~$4.75 |
 | Judge (Haiku 5.5) | under $0.01 | |
 
-| Preset, 1 repeat | Runs per model | Both models (live prices, 2026-10-17) |
+| Preset, 1 repeat | Runs per model | Both models (live prices, 2026-11-27) |
 |---|---|---|
-| `smoke` | 12 | ~$11-38 |
-| `core` | 68 | ~$60-217 |
-| `full` | 178 | ~$158-568 |
+| `smoke` | 13 | ~$12-41 |
+| `core` | 71 | ~$63-227 |
+| `full` | 181 | ~$160-577 |
 
 `twevals plan` prints the real numbers from live OpenRouter prices, including
 the cache-write price and long-prompt tiers. Controls: the required cap, the
@@ -198,9 +201,9 @@ Graders:
 | `trajectory` | yes | Required, alternative, forbidden and ordered operations. CLI and MCP calls map to the same operations (`internal/ops`) |
 | `efficiency` | no | The thrash limits in `expect.calls`: `max_calls`, `max_failed_calls` and `max_identical_repeats`. An operation counts once per tool call, so one shell loop is one call, and a `git` op is keyed by its argv. Re-running a call to check a JSON shape is not a wrong answer, so these are counted in the summary's Efficiency table instead of failing the run. The case `budget` still stops a run that spins |
 | `grounding` | yes | Cited calls exist, succeeded and were not truncated. A shell call succeeded when one of its operations (a `traceway` or `git` command) did, even if a later command in it (a `jq`) failed; then only what the model saw counts. Their output contains the deciding signal. No id in the answer was invented |
-| `state` | yes | After write and setup runs: the backend and the workspace are in the expected state |
+| `state` | yes | After write and setup runs: the backend and the workspace are in the expected state. A failed assertion carries its `note` (the 2.0 connection-string start, say) |
 | `hidden_tests` | per case | Hidden tests copied in after the run, and whether the diff (against the workspace before the run) touches the culprit |
-| `setup_verify` | yes | The instrumented app builds, starts against the backend, and serves traffic |
+| `setup_verify` | yes | The instrumented app builds, starts against the backend, and serves traffic. The Flutter, Android and iOS cases have no verify step: the sandbox has no toolchain for them (no Flutter, JDK, Android SDK or Swift), so they are graded on their files only |
 | `judge` | no | The rubric, scored by Haiku. It does not gate until it agrees with human labels on at least 85% of runs |
 
 ## Baseline
@@ -364,7 +367,13 @@ See `perf-db-n-plus-1.yaml` for the full shape. The keys:
 - `credential` (`scope: read`, `member: readonly`) and `agent_access: false`
   for the policy cases.
 - `expect.answer`, `expect.grounding`, `expect.calls`, `expect.state` (kinds
-  in `internal/grade/state.go`), `expect.code`, `expect.report`.
+  in `internal/grade/state.go`), `expect.code`, `expect.report`. A `file`
+  assertion's `path` takes `{a,b}` alternatives (`**/*.{kt,java}`),
+  `same_file: true` makes every `contains` regexp match in one file, and
+  `note` is appended to the assertion's failure. Write the regexps for every
+  equivalent shape of the code (a prop or an object spread in, a named or a
+  positional argument), and add those shapes, the oracle's result and the
+  mistakes the case is about to `internal/grade/setup_files_test.go`.
 - `judge.rubric` and `judge.expected`. Both are shown only to the judge.
 - `hooks`: harness actions after a matching call, such as editing a
   post-mortem behind the agent's back (`edit_post_mortem`, `stub_healthy`,
@@ -420,14 +429,14 @@ reached` or Postgres's `deadlock detected`, and neutral names.
 
 ## The catalog
 
-68 cases, 178 case × arm combinations:
+71 cases, 181 case × arm combinations:
 
 | Suite | Cases | What they cover |
 |---|---|---|
 | perf | 35 | All 26 rows of the bottleneck checklist; controls (inside a marked-slow allowance, past it, onset bisection outside the chart's top 5, an alert hand-off, a healthy endpoint, the metric "p95" trap); cross-surface cases where browser, Android and iOS crashes have a backend root cause |
 | debug | 14 | Go, Python, Node, Android, iOS and Flutter issues reached by hash, pasted notification, dashboard URL or bug report; a mixed group, a log-only failure, a case where the right answer is more instrumentation, and a write-credential case that must stay read-only |
 | write | 13 | Pages, alerts, monitors, archiving, post-mortems (incl. a concurrent-edit conflict), slow marks, and the 403 policy (opt-in off, read token, readonly member) |
-| setup | 6 | Go net/http, Express, FastAPI, Next.js, a React SPA with the browser SDK, and a Go + React monorepo through the setup-token plan flow |
+| setup | 9 | Go net/http, Express, FastAPI, the server side of Next.js, a React SPA with the browser SDK 2.1 (token start, debug IDs, source maps from CI), a Go + React monorepo through the setup-token plan flow, and three apps graded on their files: Flutter with the `traceway_video` add-on, Android with the Gradle plugin and desugaring, and a SwiftUI app whose Xcode project gets the Swift package and a masked checkout screen |
 
 `twevals list --preset full` prints every combination.
 

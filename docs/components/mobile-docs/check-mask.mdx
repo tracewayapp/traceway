@@ -1,0 +1,8 @@
+A mask you forgot is a leak, and the live app looks the same with or without one. Before a release, record a session of the screens that show private data and play it:
+
+1. In a debug build, turn on `recordAllSessions` so every session streams its replay, or create a capture for your test device ([Step 5](#step-5-capture-one-user-or-device-from-the-dashboard)).
+2. Open each screen that shows card numbers, addresses, balances, messages or other private content, and type into its fields.
+3. Open the session on the **Sessions** page and play it. Every masked part should be a box or `*` characters, typed text should be `*`, and no password field should show what was typed.
+4. Open the session's **Actions** list: the taps on masked controls must not show their text or label.
+
+Turn `recordAllSessions` off again before you ship.

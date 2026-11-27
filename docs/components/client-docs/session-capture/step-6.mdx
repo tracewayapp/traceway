@@ -1,0 +1,32 @@
+A rule changes what a group of browsers collects while the app runs. It holds the same settings document as `collection`, and applies to the browsers whose attributes match its conditions.
+
+1. Open the project in Traceway and click **Data Collection** in the sidebar. The page lists the rules, in the order they apply, and the captures below them.
+
+   <img
+     src="/session-capture/data-collection.png"
+     alt="The Data Collection page of a project: the rules, each with its targeting and its effect on one line and an enable switch, the Preview and New Rule buttons, and the captures below"
+     style={{ maxWidth: "100%", height: "auto", marginTop: "16px" }}
+   />
+
+2. Click **New Rule** and give it a **Name**.
+3. In **Applies to**, add the conditions a browser must match: a key such as `service.version`, `browser.name`, `user.id` or an attribute you set, an operator (**equals**, **is one of**, **version matches**, ...) and a value. **Roll out to** limits the rule to a share of the matching browsers, and a browser stays in or out as long as the share does not drop. With no condition, the rule applies to every browser of the project.
+
+   <img
+     src="/session-capture/rule-dialog-applies.png"
+     alt="The Applies to tab of a new rule: a condition on service.version with a version range, and the share of matching clients to roll out to"
+     style={{ maxWidth: "100%", height: "auto", marginTop: "16px" }}
+   />
+
+4. In **Signals**, set what this rule changes and leave the rest on **Inherit**. For replay: **Session replay** (**Off**, **Buffer** or **Stream**), **Replay images** (**Off**, **Wi-Fi only** or **Always**) and **Healthy session sample (%)**.
+
+   <img
+     src="/session-capture/rule-dialog-signals.png"
+     alt="The Signals tab of a rule: Inherit, Off, Buffer or Stream for each signal, then Session replay, Replay images, Sessions, Performance metrics and All collection, and the healthy session sample"
+     style={{ maxWidth: "100%", height: "auto", marginTop: "16px" }}
+   />
+
+5. In **Triggers**, add the recording triggers of [Step 4](#record-a-journey-with-a-trigger).
+6. In **JSON**, edit the whole document. Fields the form does not show, such as `replay.sessionSampleRate` and `replay.maskAllInputs`, are set there.
+7. Click **New Rule** to save it.
+
+**Preview** shows the document a browser with the attributes you enter would get. Browsers pick up a change within about 5 minutes, and when a tab becomes visible again after its polling interval. When two rules set the same field, the one lower in the list wins. A rule can lower what the app collects, or raise it up to the app's ceilings, never past them. The [settings reference](/learn/remote-config/reference) lists every field.

@@ -42,17 +42,32 @@ func eventAttr(t *testing.T, span sdktrace.ReadOnlySpan, key string) string {
 	return ""
 }
 
+// Every spelling the Traceway SDKs accept, plus the backend's own /api/otel spelling.
 func TestParseConnectionString(t *testing.T) {
 	cases := []struct {
 		in, token, base string
 		wantErr         bool
 	}{
-		{in: "tok@https://traceway.example.com/api/report", token: "tok", base: "https://traceway.example.com"},
-		{in: "tok@http://localhost:8082", token: "tok", base: "http://localhost:8082"},
-		{in: "tok@https://example.com/traceway/api/otel/", token: "tok", base: "https://example.com/traceway"},
-		{in: "https://example.com", wantErr: true},
+		{in: "tok@https://cloud.tracewayapp.com", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "tok@https://cloud.tracewayapp.com/", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "tok@https://cloud.tracewayapp.com/api", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "tok@https://cloud.tracewayapp.com/api/", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "tok@https://cloud.tracewayapp.com/api/report", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "tok@https://cloud.tracewayapp.com/api/report/", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "tok@cloud.tracewayapp.com", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "tok@cloud.tracewayapp.com/api/report", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "  tok@https://cloud.tracewayapp.com/api/report  ", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "tok@http://localhost:8082/api/report", token: "tok", base: "http://localhost:8082"},
+		{in: "tok@localhost:8082", token: "tok", base: "http://localhost:8082"},
+		{in: "tok@https://corp.example/traceway/api/report", token: "tok", base: "https://corp.example/traceway"},
+		{in: "tok@https://cloud.tracewayapp.com/api/report?x=1", token: "tok", base: "https://cloud.tracewayapp.com"},
+		{in: "@https://cloud.tracewayapp.com", wantErr: true},
+		{in: "tok", wantErr: true},
 		{in: "tok@", wantErr: true},
-		{in: "tok@ftp://example.com", wantErr: true},
+		{in: "tok@ftp://host", wantErr: true},
+		{in: "tok@https://example.com/traceway/api/otel/", token: "tok", base: "https://example.com/traceway"},
+		{in: "tok@127.0.0.1:8082", token: "tok", base: "http://127.0.0.1:8082"},
+		{in: "https://example.com", wantErr: true},
 	}
 	for _, tc := range cases {
 		token, base, err := ParseConnectionString(tc.in)
@@ -64,6 +79,27 @@ func TestParseConnectionString(t *testing.T) {
 		}
 		if err != nil || token != tc.token || base != tc.base {
 			t.Errorf("%q: got (%q, %q, %v), want (%q, %q)", tc.in, token, base, err, tc.token, tc.base)
+		}
+	}
+}
+
+func TestNormalizeBaseURL(t *testing.T) {
+	cases := map[string]string{
+		"https://cloud.tracewayapp.com/api/report": "https://cloud.tracewayapp.com",
+		"cloud.tracewayapp.com/":                   "https://cloud.tracewayapp.com",
+		"10.0.2.2:8082/api":                        "http://10.0.2.2:8082",
+		"[::1]:8082":                               "http://[::1]:8082",
+		"https://corp.example/traceway/":           "https://corp.example/traceway",
+		"https://corp.example/traceway/api/otel":   "https://corp.example/traceway/api/otel",
+	}
+	for in, want := range cases {
+		if got, err := NormalizeBaseURL(in); err != nil || got != want {
+			t.Errorf("NormalizeBaseURL(%q) = (%q, %v), want %q", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "ftp://host", "https://"} {
+		if got, err := NormalizeBaseURL(in); err == nil {
+			t.Errorf("NormalizeBaseURL(%q) = %q, want an error", in, got)
 		}
 	}
 }

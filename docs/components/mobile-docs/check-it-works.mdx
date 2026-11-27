@@ -1,0 +1,15 @@
+Then look at what arrived:
+
+1. Open **Issues**: the test error has a **Session Replay** card with the clip of the seconds before it.
+2. Open **Sessions** and the session: the player plays the replay, and its header says **Wireframe replay**. A session recorded by a trigger lists it under **Recording triggers**, with the steps that matched.
+
+<img
+  src="/session-capture/session-replay.png"
+  alt="A session page: the wireframe replay with its player controls, and the recording triggers that recorded the session"
+  style={{ maxWidth: "100%", height: "auto", marginTop: "16px" }}
+/>
+
+3. If a rule or a capture should be in effect, open [Logs](/learn/logs) and filter by the events the SDK reports about itself: `traceway.config.applied` (a settings document was applied), `traceway.trigger.fired` (a trigger fired) and `traceway.capture.started` (a capture started on the device).
+4. On the session's **Overview**, **Failed replay uploads** counts replay segments that never arrived and **Diagnostic events dropped** what the session budget cut. The session's own records (`session.start`, `traceway.session.update`) carry `traceway.replay.images`, the image policy the session started with, and `traceway.replay.image_bytes`, the picture bytes it uploaded; find them in [Logs](/learn/logs) too.
+
+To try it without the dashboard, start the app with `remoteConfig` off and a `collection` document that holds a `capture` trigger, or with `recordAllSessions` on.

@@ -4,7 +4,7 @@
 
 - An **organization** is the tenant. It owns members and roles, projects, dashboards, teams, schedules, escalation policies and status pages. Nothing is shared across organizations. A user can belong to several, with one role in each.
 - A **project** is one application boundary and belongs to exactly one organization. Telemetry is isolated per project, and almost every page is scoped to the current project. Switch projects from the switcher in the top-left header, where projects are grouped under their organization.
-- **Frameworks**: a backend project is always **OpenTelemetry**, whatever the language. Browser projects are React, Svelte, Vue.js or jQuery, and mobile projects are Flutter, React Native, Android or iOS. Browser and mobile projects get a smaller sidebar with no endpoints, tasks, profiles, AI traces or monitors. Browser and Flutter projects have Issues, Logs, Spans, Sessions, Dashboards, SLOs, Alerts, On-Call, Data Collection and Connection; React Native, Android and iOS projects have Issues, Alerts, On-Call and Connection. Their home page opens Issues.
+- **Frameworks**: a backend project is always **OpenTelemetry**, whatever the language. Browser projects are React, Svelte, Vue.js or jQuery, and mobile projects are Flutter, React Native, Android or iOS. Browser and mobile projects get a smaller sidebar with no endpoints, tasks, profiles, AI traces or monitors. Browser, Flutter, Android and iOS projects have Issues, Logs, Spans, Sessions, Dashboards, SLOs, Alerts, On-Call, Data Collection and Connection; React Native projects have Issues, Alerts, On-Call and Connection. Their home page opens Issues.
 - **Recommended split**: one backend project for all server-side signals (APIs, workers, schedulers, AI calls, logs, metrics, the host agent), with a distinct `service.name` per process. One project per independently deployed browser app and per independently released mobile app. Prefer more projects over more organizations: the organization views, dashboards, on-call and status pages are all organization-wide.
 
 ## Roles
@@ -27,7 +27,7 @@ The project's landing page, for backend projects. It answers "is anything wrong 
 - **Starred** widgets from dashboards, always over the last 24 hours. They can be reordered, resized and unstarred.
 - **Endpoints**: the worst endpoints by impact over 24 hours (Good ones hidden), with Calls, Typical (P50), Slow (P95) and Impact.
 - **Issues**: the 10 latest issues in 24 hours, messages excluded.
-- A project with no data yet shows **Connect Your Application** with setup steps and **Check Again**. An account with no projects shows **Create Your First Project** with **Set Up Projects**, which opens the guided setup at `/setup`.
+- A project with no data yet shows **Connect Your Application** with setup steps and **Check Again**. An account with no projects shows **Create Your First Project** with **Set Up Projects**, which opens the guided setup at `/setup`. An organization that already has projects adds more at `/setup?mode=add` (titled **Add Projects**, with the AI and Manual tabs): the organization's **Projects** page has an **Add Projects with Your Agent** button for it, and `traceway setup apply` links `/setup?mode=add&organizationId=<id>` to review and approve a plan.
 
 From an agent, the same question is the `whats_broken` recipe: recent exceptions, error logs and the worst endpoints by impact.
 
@@ -47,12 +47,12 @@ Servers and Monitors are hidden when every project is a browser or mobile app.
 
 ## Connection (`/connection`)
 
-The setup guide for the current project: the project token, the OTLP endpoint and the snippet for the chosen language and framework. Two tabs:
+The setup guide for the current project: the project token, the OTLP endpoint and the snippet for the chosen language and framework. Browser, Flutter, Android and iOS projects get the 2.1.0 SDK's install line and start code, which takes the project `token` (plus `baseUrl` only on a self-hosted server), and the files that carry it (`.env` with the bundler's public prefix, Flutter `.env` with `--dart-define-from-file`, Android `local.properties` with `buildConfigField`, iOS `Traceway.xcconfig` with `Info.plist` keys). Two tabs:
 
 - **AI**: install the skills with `npx skills add tracewayapp/skills --all` and paste a ready-made prompt with the URL and token. The `traceway-setup` skill instruments the application.
 - **Manual**: step-by-step setup.
 
-Browser and mobile projects also get **Source Map Upload** (browser and Android) or **Symbol Upload** (Flutter and iOS) with an upload token for CI, hidden from read-only members. Regenerating it invalidates the old one.
+Browser, Flutter, Android and iOS projects also get **Source Map Upload** (browser) or **Symbol Upload** (Flutter, Android and iOS) with the project's upload token for CI, hidden from read-only members. The token exists from the moment the project is created (and `traceway setup` can write it into an env file when the plan asks); regenerating it invalidates the old one.
 
 ## Account (`/account`)
 
@@ -69,7 +69,7 @@ Stacked sections, with an organization switcher for people who manage several:
 - **Team Members**: name, email, role, status, per-project role overrides. **Pending Invitations**. Invitations carry a role.
 - **Agent Access**: the **Allow agent writes** switch and the **Agent activity** log (when, who, credential, project, action, result). See below.
 
-Per-project settings open from the project switcher (**Edit Project**), not from Settings: **Project** (name, framework), **Healthchecks** (drop healthy healthcheck requests, extra healthcheck paths), **Profiles** (extra pprof labels), **AI** (flagged term packs and custom terms), and the **Danger Zone**. Remote SDK config (rules and captures) is not here: browser projects have a **Data Collection** page in the sidebar, see `data-collection.md`.
+Per-project settings open from the project switcher (**Edit Project**), not from Settings: **Project** (name, framework), **Healthchecks** (drop healthy healthcheck requests, extra healthcheck paths), **Profiles** (extra pprof labels), **AI** (flagged term packs and custom terms), and the **Danger Zone**. Remote SDK config (rules and captures) is not here: browser, Flutter, Android and iOS projects have a **Data Collection** page in the sidebar, see `data-collection.md`.
 
 ## How agents get access
 

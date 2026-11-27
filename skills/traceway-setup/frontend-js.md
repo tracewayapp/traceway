@@ -1,293 +1,303 @@
-# JS Frontend SDKs Reference (v1)
+# Browser SDK Reference
 
-Use this reference when the version rules in SKILL.md select v1: the app already runs `@tracewayapp/*` 1.x and the user did not ask to upgrade, or the registry in use has no stable 2.x. Otherwise follow [frontend-js-v2.md](frontend-js-v2.md): npm's `latest` dist-tag is 2.x, and new integrations use it. Check the registry with `npm view @tracewayapp/frontend dist-tags --json` as described in SKILL.md; do not mix the APIs from the two versions. Moving a v1 app to v2 is a migration (https://docs.tracewayapp.com/client/js-sdk/migration), not a version bump.
+Browser apps use the Traceway browser SDK, `@tracewayapp/frontend`, directly or through a thin wrapper: `@tracewayapp/react`, `@tracewayapp/vue`, `@tracewayapp/svelte` or `@tracewayapp/jquery`. This file describes 2.1.0. It is built on OpenTelemetry and follows the project's **Data Collection** rules. Read [rum.md](rum.md) for performance measurement and verification. Docs: https://docs.tracewayapp.com/client/js-sdk (and `/client/react`, `/vue`, `/svelte`, `/jquery`).
 
-Browser-side setup for every supported framework, plus the bundler plugin and source map upload that complete each integration. The connection string everywhere is `<project-token>@https://<instance>/api/report`.
+## Choose the version
 
-## Packages
+- **New integration**: install 2.1.0 (the dashboard's install line pins it: `npm install @tracewayapp/react@2.1.0`). SKILL.md, Step 7, says how to check the npm registry first.
+- **An app on 2.x**: update it within 2.x. The start options `token` and `baseUrl` need 2.1.0 or later. An app on 2.0.x starts with a connection string until it is upgraded (see "Upgrading from 2.0").
+- **An app on 1.x** (older projects): keep it on 1.x unless the user asks to move. See "Older projects: 1.x" at the end. Moving to 2.x is a migration, not a version bump: https://docs.tracewayapp.com/client/js-sdk/migration.
+
+Read the installed version from the lockfile, not only from the range in `package.json`. Never mix 1.x and 2.x packages, and never substitute a local SDK checkout.
+
+## Install
 
 | Package | Use for |
 |---|---|
-| `@tracewayapp/frontend` | Plain JS, vanilla apps, frameworks without official bindings |
-| `@tracewayapp/react` | React: provider, error boundary, hooks |
-| `@tracewayapp/vue` | Vue 3: plugin and composables |
-| `@tracewayapp/svelte` | Svelte and SvelteKit: context-based setup |
-| `@tracewayapp/jquery` | jQuery: automatic AJAX error capture |
+| `@tracewayapp/frontend` | Plain JS or TS, and frameworks without a wrapper |
+| `@tracewayapp/react` | React and Next.js (browser side): provider, error boundary, hooks, route helpers |
+| `@tracewayapp/vue` | Vue 3: plugin with a global `errorHandler`, composables |
+| `@tracewayapp/svelte` | Svelte and SvelteKit: `setupTraceway()` / `getTraceway()` |
+| `@tracewayapp/jquery` | jQuery: also reports failed `$.ajax` calls |
 
-Install or update with the major pinned, `npm install @tracewayapp/react@1` (or `frontend@1`, `vue@1`, `svelte@1`, `jquery@1`): the plain package name installs 2.x.
-
-All framework packages wrap the core SDK and accept the same options object (see Options below). Every SDK captures uncaught errors and unhandled promise rejections, batches uploads with retry, and ships session replay: the last ~30s of DOM events (rrweb) accompany every captured exception by default.
-
-## Plain JS (`@tracewayapp/frontend`)
-
-```javascript
-import { init, captureException, captureMessage } from "@tracewayapp/frontend";
-
-init("your-token@https://traceway.example.com/api/report");
-
-try {
-  riskyOperation();
-} catch (error) {
-  captureException(error);
-}
-
-captureMessage("User completed checkout");
+```bash
+npm install @tracewayapp/react@2.1.0   # or frontend, vue, svelte, jquery
 ```
 
-Via CDN (exposes `window.Traceway`, no build step):
+Each wrapper depends on the exact `@tracewayapp/frontend` version it was released with and re-exports its whole API (everything except `init` and the client class). Do not add a separate `@tracewayapp/frontend` dependency next to a wrapper. Use the repository's package manager and update the lockfile.
+
+The Traceway project's framework is `react`, `vuejs`, `svelte` or `jquery`. Next.js and Remix browser apps use `react`. Plain JS has no id of its own: pick the closest one (all four behave the same in Traceway; only the Connection page snippet differs).
+
+CDN, no bundler:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@1/dist/traceway.iife.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2.1.0/dist/traceway.iife.global.js"></script>
 <script>
-  Traceway.init("your-token@https://traceway.example.com/api/report");
+  Traceway.init({ token: "YOUR_TOKEN" });
 </script>
 ```
 
-## React (`@tracewayapp/react`)
+jQuery's CDN build is `https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@2.1.0/dist/traceway-jquery.iife.global.js` (`window.TracewayJQuery`), loaded after jQuery. Pin an exact version so a later release does not change the page unannounced.
 
-Wrap the app in `TracewayProvider`. It doubles as an error boundary: render-time exceptions anywhere in the tree are captured and re-thrown, so app behavior is unchanged. `TracewayErrorBoundary` is still exported for the case where a crashed subtree should show a fallback UI instead of propagating; it is not required for capture.
+## Initialize
 
-```jsx
+Start the SDK once, in browser code, as early as possible. `token` is the project token. The SDK sends to Traceway Cloud (`https://cloud.tracewayapp.com`) by default; pass `baseUrl` only for a self-hosted server. These snippets are the ones the dashboard's Connection page shows.
+
+Plain JS (`init` takes every option in the same object):
+
+```ts
+import { init } from "@tracewayapp/frontend";
+
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  baseUrl: import.meta.env.VITE_TRACEWAY_URL, // only for a self-hosted server
+  version: "1.4.2",
+});
+```
+
+React (the wrappers take `token` and `baseUrl` next to an `options` object that holds every other option):
+
+```tsx
 import { TracewayProvider } from "@tracewayapp/react";
 
 function App() {
   return (
-    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+    <TracewayProvider token={import.meta.env.VITE_TRACEWAY_TOKEN} options={{ version: "1.4.2" }}>
       <YourApp />
     </TracewayProvider>
   );
 }
 ```
 
-Manual capture uses the `useTraceway` hook:
+Self-hosted: add `baseUrl={import.meta.env.VITE_TRACEWAY_URL}`. The provider captures render errors and rethrows them, so the app behaves as without Traceway. `TracewayErrorBoundary` is only for a custom fallback UI inside the provider. A second `init()` (StrictMode, a second provider) is a no-op until `await shutdown()`.
 
-```jsx
-import { useTraceway } from "@tracewayapp/react";
+Next.js (App Router), browser side only, with `"use client"`:
 
-function MyComponent() {
-  const { captureException } = useTraceway();
+```tsx
+// app/traceway-provider.tsx
+"use client";
 
-  async function handleSubmit() {
-    try {
-      await submitForm();
-    } catch (error) {
-      captureException(error);
-    }
-  }
+import { TracewayProvider } from "@tracewayapp/react";
+
+export function TracewayClientProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <TracewayProvider token={process.env.NEXT_PUBLIC_TRACEWAY_TOKEN}>
+      {children}
+    </TracewayProvider>
+  );
 }
 ```
 
-Options go on the provider: `<TracewayProvider connectionString="..." options={{ debug: true, version: "1.0.0" }}>`.
+Render `<TracewayClientProvider>{children}</TracewayClientProvider>` inside `<body>` in `app/layout.tsx`. Self-hosted: `baseUrl={process.env.NEXT_PUBLIC_TRACEWAY_URL}`.
 
-`TracewayProvider` initializes the SDK in its constructor, and React StrictMode double-invokes constructors in development. The Vite and CRA scaffolds both wrap the app in `<StrictMode>` by default, so in dev you get two clients and every uncaught error is reported twice. Production builds do not double-invoke, so treat inflated dev counts as expected, or mount the provider outside `<StrictMode>` while developing.
+Vue:
 
-## Vue 3 (`@tracewayapp/vue`)
-
-The plugin installs a global error handler for uncaught errors:
-
-```javascript
+```ts
 import { createApp } from "vue";
 import { createTracewayPlugin } from "@tracewayapp/vue";
 import App from "./App.vue";
 
 const app = createApp(App);
+
 app.use(createTracewayPlugin({
-  connectionString: "your-token@https://traceway.example.com/api/report",
-  options: { version: "1.0.0" },
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  options: { version: "1.4.2" },
 }));
+
 app.mount("#app");
 ```
 
-Manual capture uses the `useTraceway` composable:
-
-```vue
-<script setup>
-import { useTraceway } from "@tracewayapp/vue";
-const { captureException } = useTraceway();
-</script>
-```
-
-## Svelte / SvelteKit (`@tracewayapp/svelte`)
-
-Call `setupTraceway` in the root layout. The `if (browser)` guard keeps the rrweb recorder out of the SSR bundle:
+SvelteKit (root layout, Svelte 5):
 
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script>
   import { setupTraceway } from "@tracewayapp/svelte";
-  import { browser } from "$app/environment";
+  import { PUBLIC_TRACEWAY_TOKEN } from "$env/static/public";
 
-  if (browser) {
-    setupTraceway({
-      connectionString: "your-token@https://traceway.example.com/api/report",
-    });
-  }
+  let { children } = $props();
+
+  setupTraceway({
+    token: PUBLIC_TRACEWAY_TOKEN,
+  });
 </script>
 
-<slot />
+{@render children()}
 ```
 
-For a non-SvelteKit Svelte app, drop the guard and the `$app/environment` import. Manual capture in child components uses `getTraceway()`:
+Do not wrap `setupTraceway` in a `browser` check: it puts the capture functions into Svelte's context, and it does nothing on the server. Self-hosted: import `PUBLIC_TRACEWAY_URL` too and pass `baseUrl: PUBLIC_TRACEWAY_URL`. A plain Svelte app (Vite) uses `import.meta.env.VITE_TRACEWAY_TOKEN` in its root component. Svelte has no global error boundary: in Svelte 5 pass `onerror={(error) => captureSvelteError(error)}` to `<svelte:boundary>`; SvelteKit `load` and navigation errors are reported from `handleError` in `src/hooks.client.js` with the plain `captureException` export.
 
-```svelte
-<script>
-  import { getTraceway } from "@tracewayapp/svelte";
-  const { captureException } = getTraceway();
-</script>
-```
-
-## jQuery (`@tracewayapp/jquery`)
-
-```javascript
-import { init, captureException } from "@tracewayapp/jquery";
-
-init("your-token@https://cloud.tracewayapp.com/api/report");
-```
-
-Via CDN (exposes `window.TracewayJQuery`):
-
-```html
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@1/dist/traceway-jquery.iife.global.js"></script>
-<script>
-  TracewayJQuery.init("your-token@https://cloud.tracewayapp.com/api/report");
-</script>
-```
-
-Beyond the standard capture, the jQuery SDK adds exactly one thing: it hooks `$(document).ajaxError()` to capture failed `$.ajax()` calls (URL, method, status, message). Trace-header injection is not jQuery-specific. `init()` in the core SDK patches both `fetch` and `XMLHttpRequest`, so it is already active in every JS SDK.
-
-## Options (shared by all JS SDKs)
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `debug` | `boolean` | `false` | Log captured events to the browser console |
-| `debounceMs` | `number` | `1500` | Batch delay in milliseconds |
-| `retryDelayMs` | `number` | `10000` | Retry delay for failed uploads |
-| `version` | `string` | `undefined` | App version, shown on exceptions for filtering by build (unrelated to source maps) |
-| `ignoreErrors` | `Array<string \| RegExp>` | default patterns | Error patterns to ignore; pass `[]` to capture everything |
-| `beforeCapture` | `(exception) => boolean` | `undefined` | Return `false` to suppress an error |
-| `sessionRecording` | `boolean` | `true` | rrweb session recorder |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | rrweb segment length in ms |
-| `recordAllSessions` | `boolean` | `false` | Always-on session recording instead of error-triggered |
-| `captureLogs` | `boolean` | `true` | Mirror `console.*` calls into the rolling log buffer |
-| `captureNetwork` | `boolean` | `true` | Record `fetch` / XHR calls as network actions |
-| `captureNavigation` | `boolean` | `true` | Record History API transitions |
-| `captureHttpServerErrors` | `boolean` | `false` | Report every `fetch` response with status >= 500 as a synthetic exception. 4xx is never included, and it is wired into the `fetch` wrapper only, so XHR and browser Axios do not trigger it |
-| `eventsWindowMs` | `number` | `10000` (`30000` with `recordAllSessions`) | Rolling window the log and action buffers retain |
-| `eventsMaxCount` | `number` | `200` (`600` with `recordAllSessions`) | Hard cap applied independently to the log buffer and the action buffer |
-
-### Error filtering
-
-By default 4xx HTTP errors, network errors, and timeouts are NOT captured. Opt in with `ignoreErrors: []`, and filter selectively with `beforeCapture`:
-
-```javascript
-init("your-token@https://<instance>/api/report", {
-  ignoreErrors: [],
-  beforeCapture: (exception) => {
-    const status = Number(exception.attributes?.status);
-    if (status >= 400 && status < 500) return false;
-    return true;
-  },
-});
-```
-
-### Custom attributes
-
-Attach app-level identifiers to every session and exception. Layering on each event: defaults < global scope < per-call.
-
-```javascript
-import { setAttribute, setAttributes, clearAttributes } from "@tracewayapp/jquery";
-
-setAttribute("userId", "u_42");
-setAttributes({ tenant: "acme", plan: "pro" });
-clearAttributes();
-```
-
-(Same exports from each framework package.)
-
-### Distributed tracing
-
-v1 does not link browser errors to backend requests, so there is nothing to set up for it. `init()` still patches `fetch` and `XMLHttpRequest` and sends a `traceway-trace-id` header on same-origin requests, but Traceway ignores that id on reported exceptions, and the backend span attribute `traceway.distributed_trace_id` no longer joins traces. Do not add any of the old wiring, which is dead code now:
-
-- no backend middleware that copies `traceway-trace-id` onto the server span or echoes it back;
-- no `getActiveDistributedTraceId()` reads and no `{ distributedTraceId }` third argument to `captureExceptionWithAttributes`;
-- no `createAxiosInterceptor()` (browser Axios already goes through the patched XHR).
-
-When an existing integration has that wiring, leave it unless the user asks for cleanup, and do not report a missing frontend-to-backend link as a setup failure. v1 exceptions still carry their session replay clip. Linking a browser request to the backend work it caused needs browser SDK v2, which sends W3C `traceparent` (see [frontend-js-v2.md](frontend-js-v2.md)); only move to it under the version rules in SKILL.md.
-
-## Bundler Plugin (debug IDs)
-
-`@tracewayapp/bundler-plugin` embeds a deterministic 128-bit debug ID into each emitted chunk and its `.map` (ECMA-426 debug ID format, interoperable with Sentry tooling). The backend then matches stack frames to the exact map from the same build, immune to filename collisions and concurrent deploys. Without it, matching falls back to filename (fine with content-hashed bundle names, broken with stable names like `app.js`).
-
-```bash
-npm install -D @tracewayapp/bundler-plugin@1
-```
-
-The `@1` pin keeps the build tools on the SDK's major. Their 2.x releases are functionally the same and also work with a v1 app.
-
-Vite:
+jQuery (with a bundler, pass the jQuery you import; a bundled jQuery is not on `window`):
 
 ```ts
-import { tracewayDebugIds } from "@tracewayapp/bundler-plugin/vite";
+import $ from "jquery";
+import { init } from "@tracewayapp/jquery";
 
-export default defineConfig({
-  build: { sourcemap: true },
-  plugins: [tracewayDebugIds()],
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  jQuery: $,
 });
 ```
 
-Rollup: same import from `@tracewayapp/bundler-plugin/rollup`, with `output: { sourcemap: true }`.
+`init()` never throws, in any package. Without a usable token or URL (a preview build without its env variable), it logs one `console.warn` and the SDK stays off; every other function does nothing. On the server (SSR, no `window`) it does nothing, so the wrappers are safe to render there.
 
-webpack (requires webpack 5):
+### Where the token comes from
 
-```js
-const { TracewayDebugIdsWebpackPlugin } = require("@tracewayapp/bundler-plugin/webpack");
+Keep the values in an untracked env file, with the bundler's public prefix. This is what the Connection page and `traceway setup` write:
 
-module.exports = {
-  devtool: "source-map",
-  plugins: [new TracewayDebugIdsWebpackPlugin()],
-};
+| App | File | Variables |
+|---|---|---|
+| Vite (React, Vue, Svelte, jQuery, plain JS) | `.env` | `VITE_TRACEWAY_TOKEN`, and `VITE_TRACEWAY_URL` only for a self-hosted server |
+| SvelteKit | `.env` | `PUBLIC_TRACEWAY_TOKEN`, `PUBLIC_TRACEWAY_URL` (read from `$env/static/public`) |
+| Next.js | `.env.local` | `NEXT_PUBLIC_TRACEWAY_TOKEN`, `NEXT_PUBLIC_TRACEWAY_URL` |
+
+Other bundlers use their own public prefix (`REACT_APP_` for Create React App). The project token ends up in the shipped bundle by design: it is an ingest credential, not a dashboard login. Still never commit the env file.
+
+The `traceway setup` plan entry for a browser project:
+
+```json
+{"name": "Product Web", "framework": "react", "envFile": "web/.env", "envVar": "VITE_TRACEWAY_TOKEN"}
 ```
 
-esbuild is not covered; bundles processed by Sentry's esbuild plugin still work (the SDK reads `_sentryDebugIds` too), otherwise esbuild falls back to filename matching.
+The apply step writes `VITE_TRACEWAY_TOKEN`, plus `VITE_TRACEWAY_URL` on a server other than Traceway Cloud (`urlEnvVar` overrides the name). The source map upload token is written only when the plan names `uploadTokenEnvFile` or `uploadTokenEnvVar` (default variable `TRACEWAY_SOURCEMAP_TOKEN`, never with a public prefix), see "Source map upload".
 
-## Source Map Upload
+### Upgrading from 2.0
 
-Uploads authenticate with a dedicated upload token (Connection page > Source Maps > Generate Upload Token), NOT the project token. It is a CI secret; never commit it. `readonly` members cannot generate one.
+2.0 started with a connection string: `init("<token>@https://host", options)`, `<TracewayProvider connectionString="…">`, `connectionString:` in the Vue plugin and in `setupTraceway`. It still works in 2.1.0, every spelling of it, but it is deprecated and logs one warning that names the new form. Rewrite it as `token` (+ `baseUrl: "https://host"` for a self-hosted server) and rename the env variable to `…_TRACEWAY_TOKEN` (+ `…_TRACEWAY_URL`). An app pinned to 2.0.x keeps its connection string until it is upgraded. The `transport` option is ignored with a warning: the SDK always sends OTLP.
 
-First make the build actually emit maps, or there is nothing to upload. Vite needs `build: { sourcemap: true }`, Rollup needs `output: { sourcemap: true }`, webpack needs `devtool: "source-map"`. Vite's default is `false`, so a stock `vite build` produces no `.map` files at all, and `traceway-sourcemaps` then prints `No .map files found` and exits 0. A `postbuild` hook reports success while uploading nothing.
+## What is captured automatically
+
+- Uncaught errors (the window's `error` event) and unhandled promise rejections. Failed `$.ajax` calls with `@tracewayapp/jquery`. Vue component, watcher and lifecycle errors with the Vue plugin. React render errors with the provider.
+- Sessions: start, end and attributes of every visit.
+- Breadcrumbs: `console.*` and `log()` lines (info and above), `fetch`/XHR as OpenTelemetry client spans, navigation, clicks, `recordAction`/`track` events. By default they stay on the device; an error uploads up to the last 10 minutes of them and a 30-second replay clip (5-second cooldown, at most 20 clips per session).
+- Performance metrics, aggregated on the device: web vitals, route changes, requests, page views, errors, rage clicks. Uploaded when the page hides, at session end and every 5 minutes. See [rum.md](rum.md).
+- Screen context on exceptions, messages, log lines and actions, with the keys of the mobile SDKs: `app.screen.name` (the route template, else the path), `app.screen.route`, `app.screen.previous`, `app.screen.duration_ms`, `viewport`.
+- Auto attributes on every session, exception and message: `url`, `path`, `referrer`, `userAgent`, `language`, `platform`, `viewport`, `screen`, `timezone`.
+
+Errors are not sampled. Identical errors within 1 second are suppressed, and one client accepts at most 60 errors a minute; the next accepted error carries `traceway.error.suppressed_count`. The default `ignoreErrors` drops network errors, timeouts and 4xx status errors (`Failed to fetch`, `Load failed`, `/status code 4\d{2}/`, …); `ignoreErrors: []` captures everything.
+
+**The SDK never takes the page down.** A failure in its own code (a public function, a listener, a timer, the `console`/`fetch` wrappers, the replay recorder) is contained, and the page's own call goes on unchanged. The page's own errors still reach the page's handlers. `debug: true` logs contained failures.
+
+## Manual capture
+
+Every wrapper re-exports these functions, so code outside components imports them from the wrapper. They do nothing before `init()` (or before the provider mounts).
+
+```ts
+import { captureException, captureMessage, log, setAttribute, recordAction, track } from "@tracewayapp/react";
+
+try {
+  await checkout();
+} catch (error) {
+  captureException(error, { step: "payment" }); // optional string attributes
+}
+captureMessage("Checkout fell back to card form", { plan: "pro" });
+log("cart synced", "debug", { items: 3 }); // trace, debug, info (default), warn, error, fatal
+setAttribute("user.id", "u_42"); // on every later event and the session; rules and captures target user.id
+recordAction("checkout", "payment_submitted", { amount: 42 });
+track("checkout_opened"); // a named event that triggers can match
+```
+
+In components: React `useTraceway()`, Vue `useTraceway()`, Svelte `getTraceway()` return `captureException`, `captureMessage` and `recordAction`; outside a provider they return the same functions instead of throwing. Attributes per component: React `<TracewayAttributes>` / `useTracewayAttributes`, Svelte and Vue `useTracewayAttributes`. `captureExceptionWithAttributes(error, attributes)` is the 1.x name of `captureException(error, attributes)`.
+
+- **One user action as a trace**: `startInteraction(name, attributes?)` returns `{ traceId, spanId, isEnded, run, bind, setAttribute, captureException, end }`. Requests made inside `run(callback)` join its trace; the context does not cross an `await`, so wrap each later step in another `run`.
+- **Spans of your own**: `tracer()` returns the SDK's OpenTelemetry tracer (`undefined` before `init()`). Its spans carry `session.id` and nest under the active interaction. The SDK registers no OpenTelemetry globals.
+- **Route names**: React Router framework mode, Remix, TanStack Router, the Next.js Pages Router, Vue Router and Nuxt need no code. React Router `createBrowserRouter`: `<TracewayProvider router={router}>` or `trackRouter(router)`. React Router `<Routes>` and the Next.js App Router: `useTracewayRoute(pathname, params)` in a layout. SvelteKit: `$effect(() => { page.url.pathname; trackRoute(page.route.id); })` in the root layout. Anything else: `setRoute("/orders/:id")`.
+- **Navigation the address does not show** (a hash or memory router, a modal, a wizard step): `recordNavigation(path, action = "push", from?, route?)`.
+- **Custom metrics**: `metric(name, value, dims?)`, `count(name, n?, dims?)`, `setMetricDimension(key, value)` (at most two dimensions, never a user id).
+- `flush(timeoutMs?)` sends what is queued (it does not release buffered breadcrumbs); `refreshConfig()` fetches Data Collection rules now, for example right after login; `currentSessionId()`, `getInstanceId()`.
+
+## Options
+
+Set them in `init({ … })` (plain JS, jQuery) or in `options` (React, Vue, Svelte). Keep the defaults unless the user asks for another policy.
+
+| Option | Default | What it does |
+|---|---|---|
+| `token` / `baseUrl` | none / `https://cloud.tracewayapp.com` | Project token; server, only for self-hosted |
+| `version`, `environment`, `serviceName` | none, none, the page's host | `service.version` (release comparison, rule targeting), `deployment.environment.name`, `service.name` |
+| `attributes` | `{}` | Initial global attributes |
+| `debug` | `false` | Logs SDK decisions and contained failures with the page's own `console.warn` |
+| `ignoreErrors` / `beforeCapture` | `DEFAULT_IGNORE_PATTERNS` / none | Drop errors by pattern; `beforeCapture({ error, type, message, isMessage, stack, attributes })` returns `false` to drop |
+| `errorLimits` | `{ maxPerMinute: 60, duplicateWindowMs: 1000 }` | Per-client error limit and duplicate suppression |
+| `remoteConfig` | `true` | Poll Data Collection rules over OpAMP |
+| `collection` | SDK defaults | A local collection policy (modes, sampling, triggers, buffer, replay, metric interval) |
+| `telemetry` | none | Send logs, traces and metrics to another OpenTelemetry provider |
+| `sessions`, `sessionRecording` | `true`, `true` | Report sessions; allow rrweb replay at all |
+| `replayImages` | `"always"` | The most a replay records of pictures: `"off"`, `"wifi"` (their URLs) or `"always"` (also small copies). `replay.images` from `collection` or a rule applies only up to it |
+| `recordAllSessions` | `false` | Stream every replay segment and breadcrumb. Not setup boilerplate |
+| `baselineSampleRate` | `0` | Stream breadcrumbs and request spans for a stable sample of healthy sessions (`0.01` = 1%); no replay |
+| `collectionLimits` | `{ maxBytes: 52428800, maxEvents: 10000 }` | Per-session diagnostic upload ceiling; can only be lowered |
+| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions`, `captureWebVitals`, `captureResourceTiming`, `captureLongTasks`, `captureRouteTiming`, `captureMetrics` | `true` | Ceilings: a rule can switch a signal off, never on past `false` |
+| `metricDimensions` | none | Up to two dimensions of your own on every metric |
+| `detectRoutes` | `true` | Read route templates from the app's router |
+| `captureHttpServerErrors` | `false` | Report fetch/XHR responses with status 500 and above as message issues |
+| `propagateTraceHeaderCorsUrls` | none | Cross-origin URLs that get the W3C `traceparent` header |
+| `exportDelayMs` | `1000` | Delay between log and span exports |
+
+The 1.x options `debounceMs`, `retryDelayMs`, `eventsWindowMs` and `eventsMaxCount` no longer exist; do not carry them over.
+
+## Session replay
+
+rrweb replay runs in every session; by default it stays on the device and only an error uploads a 30-second clip. A session without an error uploads metadata, no replay. Do not turn on `recordAllSessions` to prove that setup works: a Data Collection rule or a capture streams replay for the sessions that need it.
+
+Masks are classes in the markup; no code is needed, and masking happens before upload:
+
+- `class="traceway-mask"`: layout stays; text, text attributes (`title`, `alt`, `aria-*`, `data-*`, `placeholder`, `href`, …) and typed values become `*`; images, video, canvas and SVG become empty boxes without their URL.
+- `class="traceway-blank"`: an empty box of the element's size; nothing inside is recorded.
+- rrweb's `rr-mask` (text only), `rr-block` (box) and `rr-ignore` (stop an input's events) keep working.
+- Input values are masked by default (`maskAllInputs`, set in `collection.replay` or by a rule). With it off only passwords are masked, so put fields that must stay hidden inside `traceway-blank`.
+- A mask does not hide a stylesheet `background-image`; put such pictures inside `traceway-blank`.
+
+`replay.images` (in `collection.replay` or a Data Collection rule) decides what the replay shows of pictures outside a mask: `"off"` empty boxes without URLs; `"wifi"` (default) the pictures by their URLs, no pixels uploaded (the browser has no network type check); `"always"` adds a small copy of each picture the page may read (same origin or CORS): PNG at most 192 px for a picture with transparency, else JPEG quality 0.45 at most 384 px, at most 48 KiB each, 128 kept, 4 MiB per session.
+
+## Send telemetry to another OpenTelemetry provider
+
+Only when the user asks for it. `telemetry` sends logs, traces and metrics to any OTLP/HTTP endpoint; with a `token`, errors, replay, captures and Data Collection rules stay on Traceway:
+
+```ts
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  telemetry: { url: "https://collector.example.com", headers: { "x-api-key": "…" } },
+});
+```
+
+A shared `url` gets `/v1/logs`, `/v1/traces` and `/v1/metrics` appended; `telemetry.logs`, `.traces` and `.metrics` (`{ url, headers }`) take a complete signal URL for one signal. Ordinary log lines, request spans and metrics then go to the receiver only, so Traceway's session timeline and Web Performance dashboard do not get them. The receiver must accept OTLP/HTTP JSON with CORS for the app's origin, delta sums and exponential histograms. Use a browser-safe credential, never a server secret; the Traceway token is never sent there. Without a `token` the SDK runs standalone: only the `telemetry` destination, no Data Collection rules, no sessions, no replay, and exceptions are plain OTLP logs.
+
+## Source map upload
+
+Production stacks are minified until the build's source maps are uploaded. Three pieces:
+
+1. Make the build emit maps: Vite `build: { sourcemap: true }`, Rollup `output: { sourcemap: true }`, webpack `devtool: "source-map"`. Vite emits none by default, and the uploader then prints `No .map files found` and exits 0.
+2. Add debug IDs, so each frame resolves against the map of the exact build: `npm install -D @tracewayapp/bundler-plugin`, then `tracewayDebugIds()` from `@tracewayapp/bundler-plugin/vite` (or `/rollup`), or `new TracewayDebugIdsWebpackPlugin()` from `@tracewayapp/bundler-plugin/webpack` (webpack 5). esbuild is not covered; without debug IDs frames resolve by file name.
+3. Upload after each production build: `npm install -D @tracewayapp/sourcemap-upload`, then
 
 ```bash
-npm install -D @tracewayapp/sourcemap-upload@1
-
-traceway-sourcemaps --url https://<instance> --token <upload-token> --directory ./dist
+traceway-sourcemaps --token "$TRACEWAY_SOURCEMAP_TOKEN" --directory ./dist
 ```
 
-Env vars `TRACEWAY_URL` and `TRACEWAY_SOURCEMAP_TOKEN` replace the flags. The CLI uploads all `*.map` files plus the sibling `.js`/`.cjs`/`.mjs` bundles (the bundle is what enables function-name resolution). Limit: 50 MB per file. Uploads take effect immediately.
-
-Wire it as a postbuild script:
+The maps go to Traceway Cloud by default; for a self-hosted server add `--url https://traceway.mycompany.com`. `--url` and `--token` can come from `TRACEWAY_URL` and `TRACEWAY_SOURCEMAP_TOKEN`, and a blank value counts as unset. `--url` is optional since 2.1.0 of `@tracewayapp/sourcemap-upload`; an older uploader (1.x, 2.0.x) needs it on Traceway Cloud too (`--url https://cloud.tracewayapp.com`). The uploader does not read env files, and npm does not either, so a postbuild step that relies on the file the setup wrote (`uploadTokenEnvFile`, for example `.env.sourcemaps`) loads it first:
 
 ```json
 {
   "scripts": {
     "build": "vite build",
-    "postbuild": "traceway-sourcemaps --directory ./dist"
+    "postbuild": "set -a; . ./.env.sourcemaps; set +a; traceway-sourcemaps --directory ./dist"
   }
 }
 ```
 
-Or as a CI step after build:
+The file also holds `TRACEWAY_URL` off Cloud, so the same line works on a self-hosted server. On CI, set `TRACEWAY_SOURCEMAP_TOKEN` (and `TRACEWAY_URL` off Cloud) as secrets instead of the file; `.` fails when the file is missing, so a CI step calls `traceway-sourcemaps` directly rather than through this postbuild. The upload token comes from the project's **Connection** page (Source Map Upload card). It is a CI secret: never commit it, never give it a public prefix, keep it apart from the project token. A component-specific CI secret name is fine when the step passes it with `--token`. Self-hosted servers need blob storage (S3 or a persistent volume), or uploaded maps disappear when the container is recreated.
 
-```yaml
-- name: Upload source maps
-  run: npx traceway-sourcemaps --directory ./dist
-  env:
-    TRACEWAY_URL: ${{ secrets.TRACEWAY_URL }}
-    TRACEWAY_SOURCEMAP_TOKEN: ${{ secrets.TRACEWAY_SOURCEMAP_TOKEN }}
-```
-
-Self-hosted instances must have blob storage (S3 or a persistent volume) configured, or uploaded maps disappear when the container is recreated.
+Next.js browser build: the bundler plugin has a webpack entry, not a Turbopack one. Set `productionBrowserSourceMaps: true`, add `TracewayDebugIdsWebpackPlugin` only when `!isServer && !dev`, build with `next build --webpack` (Next.js 16 defaults to Turbopack), confirm client `.js` files contain `//# debugId=`, and upload `.next/static/chunks`.
 
 ## Verify
 
-Trigger a test error (`captureException(new Error("Test error"))` behind a button) and check the Issues page: the error appears, and with the bundler plugin plus upload in place the stack trace resolves to original files and lines.
+- Trigger a test error from a production build (`captureException(new Error("Traceway test"))` behind a button) and open `/issues` in the browser project, not the backend project. The stack resolves to original files and lines.
+- Open the session on `/sessions`: the error has its log lines, request spans and a replay clip.
+- A healthy session without an error has session metadata and no replay upload.
+- Interact with the app, navigate once, hide the tab, wait for the server flush, then open the **Web Performance** dashboard. No interaction means no INP.
+- If distributed tracing was set up, a request from the browser links to its backend trace. Same-origin requests carry `traceparent`; cross-origin APIs must be listed in `propagateTraceHeaderCorsUrls` and allow the header in CORS.
+- A temporary Data Collection rule takes effect after the next poll (or `refreshConfig()`); remove the test rule afterwards.
+
+## Older projects: 1.x
+
+Recognise 1.x by `@tracewayapp/*` 1.x in the lockfile. It starts with the connection string the project already has: `init(connectionString, options)` (plain JS, jQuery), `<TracewayProvider connectionString={…}>`, `createTracewayPlugin({ connectionString, options })`, `setupTraceway({ connectionString, options })`. Keep that value as it is. Add or update 1.x packages with `@1` (`npm install @tracewayapp/react@1`), because the plain package name installs 2.x. 1.x has no OpenTelemetry export, performance metrics, Data Collection rules or `traceparent` linking, and its options are `debounceMs`, `retryDelayMs`, `eventsWindowMs` and `eventsMaxCount`. Its `traceway-trace-id` header no longer links anything: do not add backend middleware or Axios interceptors for it. The bundler plugin and source map upload above work with 1.x too. Reference: https://docs.tracewayapp.com/client/js-sdk/v1.

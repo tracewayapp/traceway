@@ -55,7 +55,12 @@ func main() {
 	if len(os.Args) > 1 {
 		root = os.Args[1]
 	}
+	generate(root)
+}
 
+// generate writes every generated skill file under root, the repository root
+// or a stand-in for it.
+func generate(root string) {
 	readDir := filepath.Join(root, "skills", "traceway")
 	write(filepath.Join(readDir, "SKILL.md"), render(skillTemplate))
 	write(filepath.Join(readDir, "performance.md"), copiedHeader("performance.md")+knowledge.MustRead("performance.md"))

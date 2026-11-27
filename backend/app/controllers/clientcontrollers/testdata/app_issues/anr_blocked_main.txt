@@ -1,0 +1,18 @@
+Input dispatching timed out (com.example.shop/com.example.shop.CheckoutActivity, Waited 5001ms for MotionEvent)
+"main" prio=5 tid=1 Blocked
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x72e3b8f8 self=0xb4000077f3c1b7b0
+  | sysTid=8123 nice=-10 cgrp=top-app sched=0/0 handle=0x790e6b44f8
+  | state=S schedstat=( 1830297145 63211988 1540 ) utm=158 stm=24 core=4 HZ=100
+  at com.example.shop.cart.CartRepository.load(CartRepository.kt:41)
+  - waiting to lock <0x0d3a1f2e> (a java.lang.Object) held by thread 23
+  at com.example.shop.cart.CartViewModel.refresh(CartViewModel.kt:67)
+  at com.example.shop.CheckoutActivity.onResume(CheckoutActivity.kt:112)
+  at android.app.Instrumentation.callActivityOnResume(Instrumentation.java:1531)
+  at android.app.Activity.performResume(Activity.java:8422)
+  at android.app.ActivityThread.performResumeActivity(ActivityThread.java:4886)
+  at android.os.Looper.loopOnce(Looper.java:201)
+  at android.os.Looper.loop(Looper.java:288)
+  at android.app.ActivityThread.main(ActivityThread.java:7872)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:548)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:936)

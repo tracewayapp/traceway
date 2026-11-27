@@ -1,0 +1,12 @@
+To see sessions that had no error, stream their replay. There are two ways:
+
+- **In the app**, `recordAllSessions` streams every breadcrumb signal and the replay of every session. It suits a debug build or a small test group; in a production app it uploads a lot.
+- **From the dashboard**, a rule whose **Signals** tab sets **Session replay** to **Stream** streams the replay of the devices it applies to. To record only a share of their sessions, add `replay.sessionSampleRate` on the rule's **JSON** tab. The choice is made per session id, so a session is recorded whole or not at all, and the sessions left out keep their error clips:
+
+```json
+{
+  "replay": { "mode": "stream", "sessionSampleRate": 0.1 }
+}
+```
+
+**Healthy session sample (%)** on the **Signals** tab (`sessions.baselineSampleRate`) sends the breadcrumbs of a share of sessions all the time, so you can compare healthy sessions with failing ones. It does not stream replay.

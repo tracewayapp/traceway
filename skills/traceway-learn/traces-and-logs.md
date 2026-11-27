@@ -24,7 +24,7 @@ Two rules worth knowing when something seems missing:
 
 ## Spans page (`/spans`)
 
-A search over every span of the project. Hidden in the sidebar for browser and mobile projects.
+A search over every span of the project. Hidden in the sidebar only for React Native projects; browser, Flutter, Android and iOS projects show their request and interaction spans here.
 
 - **Filters**: span name (contains, case insensitive), service, kind, status (unset, ok, error), minimum and maximum duration, trace id, and up to 10 attribute filters with the operators of the logs page: equals, not equals, contains, not contains, **key exists** and **key does not exist**. Each is a pill whose operator switches in place; the negated ones keep spans without the attribute.
 - **Sort**: start time or duration, either direction.

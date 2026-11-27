@@ -1,0 +1,11 @@
+Broadcast of Intent { act=android.intent.action.SCREEN_ON flg=0x50200010 }
+"main" prio=5 tid=1 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x72e3b8f8 self=0xb4000077f3c1b7b0
+  native: #00 pc 00000000000a33b8  /apex/com.android.runtime/lib64/bionic/libc.so (__epoll_pwait+8) (BuildId: 1c3a2b5d4e6f7a8b9c0d1e2f3a4b5c6d)
+  native: #01 pc 0000000000010dfc  /system/lib64/libutils.so (android::Looper::pollOnce(int, int*, int*, void**)+156) (BuildId: 8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d)
+  native: #02 pc 000000000015a56c  /system/lib64/libandroid_runtime.so (android::android_os_MessageQueue_nativePollOnce(_JNIEnv*, _jobject*, long, int)+44) (BuildId: 4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a)
+  at android.os.MessageQueue.nativePollOnce(Native method)
+  at android.os.MessageQueue.next(MessageQueue.java:335)
+  at android.os.Looper.loopOnce(Looper.java:161)
+  at android.os.Looper.loop(Looper.java:288)
+  at android.app.ActivityThread.main(ActivityThread.java:7872)

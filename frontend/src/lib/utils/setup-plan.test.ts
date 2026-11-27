@@ -24,7 +24,7 @@ describe('credentialValue', () => {
 		expect(credentialValue(planned, project('https://cloud.tracewayapp.com'))).toBe('tok');
 	});
 
-	it('keeps an old plan readable, without the 1.x suffix', () => {
+	it('writes the absolute report endpoint for a legacy plan', () => {
 		const old: SetupPlanProject = { ...planned, envFormat: 'connectionString' };
 		for (const backendUrl of [
 			'https://cloud.tracewayapp.com',
@@ -32,13 +32,15 @@ describe('credentialValue', () => {
 			'https://cloud.tracewayapp.com/api/report',
 			'cloud.tracewayapp.com'
 		]) {
-			expect(credentialValue(old, project(backendUrl))).toBe('tok@https://cloud.tracewayapp.com');
+			expect(credentialValue(old, project(backendUrl))).toBe(
+				'tok@https://cloud.tracewayapp.com/api/report'
+			);
 		}
 		expect(credentialValue(old, project('http://localhost:8082/api'))).toBe(
-			'tok@http://localhost:8082'
+			'tok@http://localhost:8082/api/report'
 		);
 		expect(credentialValue(old, project('https://corp.example/traceway/'))).toBe(
-			'tok@https://corp.example/traceway'
+			'tok@https://corp.example/traceway/api/report'
 		);
 	});
 });

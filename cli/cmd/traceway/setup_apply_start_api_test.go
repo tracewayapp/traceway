@@ -157,8 +157,8 @@ func TestSetupApplyOldPlanKeepsAnEquivalentConnectionString(t *testing.T) {
 		{"name": "Web", "framework": "svelte", "envFile": "web/.env", "envVar": "PUBLIC_TRACEWAY_CONNECTION_STRING", "envFormat": "connectionString"},
 		{"name": "Mobile", "framework": "flutter", "envFile": "mobile/.env", "envVar": "TRACEWAY_CONNECTION_STRING", "envFormat": "connectionString"},
 	}})
-	// Written by an older CLI: the 1.x suffix, spaces and quotes; the SDKs read every one of these the same way.
-	oldWeb := "OTHER=1\nPUBLIC_TRACEWAY_CONNECTION_STRING=\"  tok_web-secret@traceway.example.com/api/report/  \"\n"
+	// Preserve a quoted value when the exact destination already works with the legacy transport.
+	oldWeb := "OTHER=1\nPUBLIC_TRACEWAY_CONNECTION_STRING=\"tok_web-secret@https://traceway.example.com/api/report\"\n"
 	if err := os.MkdirAll(filepath.Join(dir, "web"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -173,8 +173,8 @@ func TestSetupApplyOldPlanKeepsAnEquivalentConnectionString(t *testing.T) {
 	if got := readFile(t, filepath.Join(dir, "web", ".env")); got != oldWeb {
 		t.Errorf("an equivalent connection string must be left alone, got %q", got)
 	}
-	if got := readFile(t, filepath.Join(dir, "mobile", ".env")); got != "TRACEWAY_CONNECTION_STRING=tok_mobile-secret@https://traceway.example.com\n" {
-		t.Errorf("an old plan gets <token>@<server> without /api/report, got %q", got)
+	if got := readFile(t, filepath.Join(dir, "mobile", ".env")); got != "TRACEWAY_CONNECTION_STRING=tok_mobile-secret@https://traceway.example.com/api/report\n" {
+		t.Errorf("an old plan needs the report endpoint, got %q", got)
 	}
 	if !strings.Contains(stdout.String(), "unchanged") {
 		t.Errorf("the kept web env file should report unchanged: %s", stdout.String())
@@ -224,11 +224,18 @@ func TestSetupInstanceURL(t *testing.T) {
 func TestSetupEnvWritesOnCloudNeedNoURL(t *testing.T) {
 	p := client.SetupPlanProject{Name: "Web", Framework: "react", EnvFile: ".env", EnvVar: "VITE_TRACEWAY_TOKEN", UploadTokenEnvFile: ".env.sourcemaps"}
 	writes := setupEnvWrites(p, "tok", cloud)
-	if len(writes) != 1 || writes[0].key != "VITE_TRACEWAY_TOKEN" || writes[0].value != "tok" {
+	dir := t.TempDir()
+	if err := applyEnvWrites(dir, writes); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, filepath.Join(dir, ".env")) != "VITE_TRACEWAY_TOKEN=tok\n" {
 		t.Errorf("cloud writes = %+v, want the token only", writes)
 	}
 	upload := setupUploadTokenWrites(p, "up", cloud, writes)
-	if len(upload) != 1 || upload[0].file != ".env.sourcemaps" || upload[0].key != "TRACEWAY_SOURCEMAP_TOKEN" {
+	if err := applyEnvWrites(dir, upload); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, filepath.Join(dir, ".env.sourcemaps")) != "TRACEWAY_SOURCEMAP_TOKEN=up\n" {
 		t.Errorf("cloud upload writes = %+v", upload)
 	}
 	if got := setupUploadTokenWrites(client.SetupPlanProject{Framework: "react", EnvFile: ".env", EnvVar: "X"}, "up", cloud, writes); got != nil {
@@ -239,7 +246,7 @@ func TestSetupEnvWritesOnCloudNeedNoURL(t *testing.T) {
 	}
 
 	legacy := setupEnvWrites(client.SetupPlanProject{EnvFile: ".env", EnvVar: "CS", EnvFormat: "connectionString"}, "tok", cloud)
-	if len(legacy) != 1 || legacy[0].value != "tok@"+cloud {
+	if len(legacy) != 1 || legacy[0].value != "tok@"+cloud+"/api/report" {
 		t.Errorf("legacy writes = %+v", legacy)
 	}
 }
@@ -269,22 +276,73 @@ func TestValidateSetupPlanStartAPIRules(t *testing.T) {
 		{Name: "B", Framework: "ios", EnvFile: "Traceway.xcconfig", EnvVar: "TRACEWAY_TOKEN", UploadTokenEnvFile: "Secrets.xcconfig"},
 		{Name: "C", Framework: "react", EnvFile: ".env", EnvVar: "VITE_TRACEWAY_TOKEN", UploadTokenEnvVar: "TRACEWAY_SOURCEMAP_TOKEN"},
 	}
-	if err := validateSetupPlan(&setupPlan{Projects: valid}); err != nil {
+	if err := validateSetupPlan(&setupPlan{Projects: valid}, t.TempDir()); err != nil {
 		t.Errorf("valid plan rejected: %v", err)
 	}
+	dir := t.TempDir()
 	invalid := map[string]client.SetupPlanProject{
-		"dotted key in .env":       {Name: "A", Framework: "android", EnvFile: ".env", EnvVar: "traceway.token"},
-		"bad urlEnvVar":            {Name: "A", Framework: "react", EnvFile: ".env", EnvVar: "T", URLEnvVar: "1X"},
-		"public upload token":      {Name: "A", Framework: "react", EnvFile: ".env", EnvVar: "T", UploadTokenEnvVar: "VITE_TRACEWAY_UPLOAD_TOKEN"},
-		"upload var without file":  {Name: "A", Framework: "ios", UploadTokenEnvVar: "TRACEWAY_UPLOAD_TOKEN"},
-		"dotted upload key in env": {Name: "A", Framework: "ios", UploadTokenEnvFile: ".env", UploadTokenEnvVar: "traceway.upload"},
-		"upload token over token":  {Name: "A", Framework: "ios", EnvFile: "Traceway.xcconfig", EnvVar: "TRACEWAY_TOKEN", UploadTokenEnvVar: "TRACEWAY_TOKEN"},
-		"upload token over url":    {Name: "A", Framework: "ios", EnvFile: "./Traceway.xcconfig", EnvVar: "TRACEWAY_TOKEN", UploadTokenEnvFile: "Traceway.xcconfig", UploadTokenEnvVar: "TRACEWAY_URL"},
-		"url over token":           {Name: "A", Framework: "react", EnvFile: ".env", EnvVar: "VITE_TRACEWAY_TOKEN", URLEnvVar: "VITE_TRACEWAY_TOKEN"},
+		"absolute and relative aliases":   {Name: "A", Framework: "react", EnvFile: ".env", EnvVar: "TOKEN", UploadTokenEnvVar: "TOKEN", UploadTokenEnvFile: filepath.Join(dir, ".env")},
+		"standalone uploader URL":         {Name: "A", Framework: "react", UploadTokenEnvFile: ".env.upload", UploadTokenEnvVar: "TRACEWAY_URL"},
+		"runtime token over uploader URL": {Name: "A", Framework: "react", EnvFile: ".env", EnvVar: "TRACEWAY_URL", UploadTokenEnvFile: "./.env"},
+		"dotted key in .env":              {Name: "A", Framework: "android", EnvFile: ".env", EnvVar: "traceway.token"},
+		"bad urlEnvVar":                   {Name: "A", Framework: "react", EnvFile: ".env", EnvVar: "T", URLEnvVar: "1X"},
+		"public upload token":             {Name: "A", Framework: "react", EnvFile: ".env", EnvVar: "T", UploadTokenEnvVar: "VITE_TRACEWAY_UPLOAD_TOKEN"},
+		"upload var without file":         {Name: "A", Framework: "ios", UploadTokenEnvVar: "TRACEWAY_UPLOAD_TOKEN"},
+		"dotted upload key in env":        {Name: "A", Framework: "ios", UploadTokenEnvFile: ".env", UploadTokenEnvVar: "traceway.upload"},
+		"upload token over token":         {Name: "A", Framework: "ios", EnvFile: "Traceway.xcconfig", EnvVar: "TRACEWAY_TOKEN", UploadTokenEnvVar: "TRACEWAY_TOKEN"},
+		"upload token over url":           {Name: "A", Framework: "ios", EnvFile: "./Traceway.xcconfig", EnvVar: "TRACEWAY_TOKEN", UploadTokenEnvFile: "Traceway.xcconfig", UploadTokenEnvVar: "TRACEWAY_URL"},
+		"url over token":                  {Name: "A", Framework: "react", EnvFile: ".env", EnvVar: "VITE_TRACEWAY_TOKEN", URLEnvVar: "VITE_TRACEWAY_TOKEN"},
 	}
 	for name, p := range invalid {
-		if err := validateSetupPlan(&setupPlan{Projects: []client.SetupPlanProject{p}}); err == nil {
+		if err := validateSetupPlan(&setupPlan{Projects: []client.SetupPlanProject{p}}, dir); err == nil {
 			t.Errorf("%s: plan accepted, want an error", name)
 		}
+	}
+}
+
+func TestReapplySetupFromSelfHostedToCloud(t *testing.T) {
+	p := client.SetupPlanProject{Name: "Web", Framework: "react", EnvFile: ".env", EnvVar: "VITE_TRACEWAY_TOKEN", UploadTokenEnvFile: ".env.upload"}
+	dir := t.TempDir()
+	for _, instance := range []string{"https://previous.example", cloud} {
+		runtime := setupEnvWrites(p, "token", instance)
+		for _, writes := range [][]setupEnvWrite{runtime, setupUploadTokenWrites(p, "upload", instance, runtime)} {
+			if err := applyEnvWrites(dir, writes); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for file, key := range map[string]string{".env": "VITE_TRACEWAY_URL", ".env.upload": "TRACEWAY_URL"} {
+		if got := readFile(t, filepath.Join(dir, file)); !strings.Contains(got, key+"="+cloud+"\n") {
+			t.Errorf("%s still has the old destination: %q", file, got)
+		}
+	}
+}
+
+func TestRepairLegacyReactNativeDestination(t *testing.T) {
+	dir := t.TempDir()
+	p := client.SetupPlanProject{Framework: "react-native", EnvFile: ".env", EnvVar: "DSN", EnvFormat: "connectionString"}
+	if err := os.WriteFile(filepath.Join(dir, p.EnvFile), []byte("DSN=tok@https://example.test/sub\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyEnvWrites(dir, setupEnvWrites(p, "tok", "https://example.test/sub")); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(dir, p.EnvFile)); got != "DSN=tok@https://example.test/sub/api/report\n" {
+		t.Fatal(got)
+	}
+}
+
+func TestCloudResetsWhitespaceSeparatedGradleURL(t *testing.T) {
+	p := client.SetupPlanProject{Name: "Android", Framework: "android", EnvFile: "local.properties", EnvVar: "traceway.token"}
+	dir := t.TempDir()
+	path := filepath.Join(dir, p.EnvFile)
+	if err := os.WriteFile(path, []byte("traceway.url   https://previous.example\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyEnvWrites(dir, setupEnvWrites(p, "token", cloud)); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, path); got != "traceway.url="+cloud+"\ntraceway.token=token\n" {
+		t.Fatal(got)
 	}
 }

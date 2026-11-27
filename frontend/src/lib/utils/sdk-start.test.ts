@@ -4,7 +4,8 @@ import {
 	getCodeLanguage,
 	getFrameworkCode,
 	getInstallCommand,
-	getInstallLanguage
+	getInstallLanguage,
+	getTestingRouteCode2
 } from './framework-code';
 import { getOtelSteps, OTEL_TARGETS } from './otel-setup';
 import { getStartCode, getStartConfigFiles, usesStartApi, xcconfigValue } from './sdk-start';
@@ -18,7 +19,6 @@ const START_FRAMEWORKS: Framework[] = [
 	'svelte',
 	'vuejs',
 	'jquery',
-	'nextjs',
 	'flutter',
 	'android',
 	'ios'
@@ -61,12 +61,7 @@ describe('start snippets', () => {
 			['react', 'token={import.meta.env.VITE_TRACEWAY_TOKEN}', 'VITE_TRACEWAY_TOKEN=abc123token'],
 			['vuejs', 'token: import.meta.env.VITE_TRACEWAY_TOKEN,', 'VITE_TRACEWAY_TOKEN=abc123token'],
 			['jquery', 'token: import.meta.env.VITE_TRACEWAY_TOKEN,', 'VITE_TRACEWAY_TOKEN=abc123token'],
-			['svelte', 'token: PUBLIC_TRACEWAY_TOKEN,', 'PUBLIC_TRACEWAY_TOKEN=abc123token'],
-			[
-				'nextjs',
-				'token={process.env.NEXT_PUBLIC_TRACEWAY_TOKEN}',
-				'NEXT_PUBLIC_TRACEWAY_TOKEN=abc123token'
-			]
+			['svelte', 'token: PUBLIC_TRACEWAY_TOKEN,', 'PUBLIC_TRACEWAY_TOKEN=abc123token']
 		];
 		for (const [framework, code, env] of cases) {
 			expect(getStartCode(framework, CLOUD)).toContain(code);
@@ -120,6 +115,10 @@ describe('start snippets', () => {
 			'buildConfigField("String", "TRACEWAY_TOKEN", "\\"${localProperties.getProperty("TRACEWAY_TOKEN", "")}\\"")'
 		);
 		expect(android[1].code).toContain('"TRACEWAY_URL"');
+		expect(android[1].code).toContain('isCoreLibraryDesugaringEnabled = true');
+		expect(android[1].code).toContain(
+			'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")'
+		);
 		expect(getStartConfigFiles('android', TOKEN, CLOUD)[1].code).not.toContain('TRACEWAY_URL');
 
 		const ios = getStartConfigFiles('ios', TOKEN, SELF_HOSTED);
@@ -173,7 +172,10 @@ describe('start snippets', () => {
 describe('install lines', () => {
 	it('pin 2.1.0 for the browser and mobile SDKs', () => {
 		expect(getInstallCommand('react')).toBe('npm install @tracewayapp/react@2.1.0');
-		expect(getInstallCommand('nextjs')).toBe('npm install @tracewayapp/react@2.1.0');
+		expect(getInstallCommand('nextjs')).toBe('');
+		expect(usesStartApi('nextjs')).toBe(false);
+		expect(getTestingRouteCode2('nextjs')).toBe('');
+		expect(getStartConfigFiles('nextjs', TOKEN, CLOUD)).toEqual([]);
 		expect(getInstallCommand('svelte')).toBe('npm install @tracewayapp/svelte@2.1.0');
 		expect(getInstallCommand('vuejs')).toBe('npm install @tracewayapp/vue@2.1.0');
 		expect(getInstallCommand('jquery')).toBe('npm install @tracewayapp/jquery@2.1.0');

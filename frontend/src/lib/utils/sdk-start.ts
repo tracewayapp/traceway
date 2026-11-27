@@ -34,11 +34,6 @@ const BROWSER_ENV: Partial<Record<Framework, BrowserEnv>> = {
 		file: '.env',
 		prefix: 'PUBLIC_',
 		description: 'SvelteKit exposes PUBLIC_ variables through $env/static/public.'
-	},
-	nextjs: {
-		file: '.env.local',
-		prefix: 'NEXT_PUBLIC_',
-		description: 'Next.js exposes NEXT_PUBLIC_ variables to the browser.'
 	}
 };
 
@@ -170,10 +165,17 @@ val localProperties = Properties().apply {
 }
 
 android {
+    // Required when minSdk is below 26.
+    compileOptions { isCoreLibraryDesugaringEnabled = true }
     buildFeatures { buildConfig = true }
     defaultConfig {
 ${[field('TRACEWAY_TOKEN'), ...(selfHosted ? [field('TRACEWAY_URL')] : [])].join('\n')}
     }
+}
+
+dependencies {
+    // Include with core library desugaring.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }`;
 }
 
@@ -196,33 +198,6 @@ ${reactProvider(viteToken, viteUrl, selfHosted, '    ')}
 }
 
 export default App;`;
-
-		case 'nextjs':
-			return `// app/traceway-provider.tsx
-"use client";
-
-import { TracewayProvider } from "@tracewayapp/react";
-
-export function TracewayClientProvider({ children }: { children: React.ReactNode }) {
-  return (
-${reactProvider('process.env.NEXT_PUBLIC_TRACEWAY_TOKEN', 'process.env.NEXT_PUBLIC_TRACEWAY_URL', selfHosted, '    ')}
-      {children}
-    </TracewayProvider>
-  );
-}
-
-// app/layout.tsx
-import { TracewayClientProvider } from "./traceway-provider";
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html>
-      <body>
-        <TracewayClientProvider>{children}</TracewayClientProvider>
-      </body>
-    </html>
-  );
-}`;
 
 		case 'svelte':
 			return `<!-- src/routes/+layout.svelte -->

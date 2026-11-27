@@ -96,12 +96,12 @@ func batchCreateProjects(tx *sql.Tx, orgId int, createdBy int, inputs []BatchPro
 			}
 			added := false
 			if project.SourceMapToken == nil && models.FrameworkUploadsBuildArtifacts(project.Framework) {
-				token, err := transactional.ProjectRepository.GenerateSourceMapToken(tx, project.Id)
+				token, changed, err := transactional.EnsureSourceMapToken(tx, project.Id)
 				if err != nil {
 					return nil, err
 				}
 				project.SourceMapToken = &token
-				added = true
+				added = changed
 			}
 			results = append(results, BatchProjectResult{Project: project, Status: "existing", UploadTokenAdded: added})
 			continue

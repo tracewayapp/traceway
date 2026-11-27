@@ -55,8 +55,10 @@ func TestOtelSpanWireRoundTrip(t *testing.T) {
 	defer func() { chdb.Conn = previous }()
 	createSpansTable(t, ctx, conn)
 	project, start := uuid.New(), time.Now().UTC().Truncate(time.Microsecond)
+	// Supply a non-UTC offset even when the ClickHouse server runs in UTC.
+	recordedAt := start.In(time.FixedZone("source", -7*60*60))
 	span := models.OtelSpan{Span: models.Span{ProjectId: project, TraceId: "0123456789abcdef0123456789abcdef", SpanId: "abcdef1234567890",
-		ParentSpanId: "fedcba9876543210", Name: "query", StartTime: start, RecordedAt: start, Duration: 123456789,
+		ParentSpanId: "fedcba9876543210", Name: "query", StartTime: start, RecordedAt: recordedAt, Duration: 123456789,
 		Attributes: map[string]string{"db.system": "postgresql"}, SpanKind: 3, StatusCode: 2, ServiceName: "api", ScopeName: "test"}}
 	span.OTLP = &tracepb.Span{Name: "original name", Flags: 0xffffffff, Status: &tracepb.Status{Message: "original status"}, Links: []*tracepb.Span_Link{{Flags: 0x100}}}
 	span.OTLP.Attributes = []*commonpb.KeyValue{{Key: "db.system", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "postgresql"}}}}
@@ -73,7 +75,7 @@ func TestOtelSpanWireRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("stored attributes", storedJSON)
-	found, err := OtelSpanRepository.FindTraceTopology(ctx, []shared.SpanLookup{{ProjectId: project, TraceId: span.TraceId, SpanId: span.SpanId}}, 0)
+	found, err := OtelSpanRepository.FindTraceTopology(ctx, []shared.SpanLookup{{ProjectId: project, TraceId: span.TraceId, SpanId: span.SpanId, RecordedAt: &recordedAt}}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,11 +88,15 @@ func TestOtelSpanWireRoundTrip(t *testing.T) {
 	}
 	found[0].Attributes = attributes[span.SpanId].Attributes
 	expectedSpan := span.Span
-	expectedSpan.RecordedAt = start.Truncate(time.Second)
-	if !reflect.DeepEqual(found[0].Span, expectedSpan) {
-		t.Fatalf("stored span mismatch: want %+v; got %+v", expectedSpan, found)
+	actualSpan := found[0].Span
+	// ClickHouse DateTime preserves the instant to seconds and the driver
+	// renders it in the server timezone. Compare the instants in UTC.
+	expectedSpan.RecordedAt = recordedAt.Truncate(time.Second).UTC()
+	actualSpan.RecordedAt = actualSpan.RecordedAt.UTC()
+	if !reflect.DeepEqual(actualSpan, expectedSpan) {
+		t.Fatalf("stored span mismatch: want %+v; got %+v", expectedSpan, actualSpan)
 	}
-	payload, err := OtelSpanRepository.FindOTLP(ctx, project, span.TraceId, span.SpanId, span.StartTime)
+	payload, err := OtelSpanRepository.FindOTLP(ctx, project, span.TraceId, span.SpanId, recordedAt)
 	if err != nil {
 		t.Fatal(err)
 	}

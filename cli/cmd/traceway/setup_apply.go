@@ -72,13 +72,21 @@ func loadSetupPlan(path string) (*setupPlan, error) {
 	return &plan, nil
 }
 
-func validateSetupPlan(plan *setupPlan) error {
+func setupFilePath(planDir, file string) string {
+	if filepath.IsAbs(file) {
+		return filepath.Clean(file)
+	}
+	return filepath.Join(planDir, file)
+}
+
+func validateSetupPlan(plan *setupPlan, planDir string) error {
 	if len(plan.Projects) == 0 {
 		return errors.New("the plan has no projects")
 	}
 	if len(plan.Projects) > 20 {
 		return errors.New("the plan has more than 20 projects")
 	}
+	files := map[[2]string]bool{} // true for a server URL, which projects may share
 	for i, p := range plan.Projects {
 		if strings.TrimSpace(p.Name) == "" {
 			return fmt.Errorf("projects[%d] has no name", i)
@@ -110,35 +118,16 @@ func validateSetupPlan(plan *setupPlan) error {
 		default:
 			return fmt.Errorf("project %q has an invalid envFormat %q (use \"token\")", p.Name, p.EnvFormat)
 		}
-		if key := repeatedSetupKey(p); key != "" {
-			return fmt.Errorf("project %q writes %q more than once to the same file: envVar, urlEnvVar and uploadTokenEnvVar must differ", p.Name, key)
+		runtime := setupEnvWrites(p, "", "")
+		for _, w := range append(runtime, setupUploadTokenWrites(p, "upload", "", runtime)...) {
+			slot := [2]string{setupFilePath(planDir, w.file), w.key}
+			if isURL, exists := files[slot]; exists && (!isURL || !w.serverURL) {
+				return fmt.Errorf("project %q writes conflicting values for %q in %s", p.Name, w.key, w.file)
+			}
+			files[slot] = w.serverURL
 		}
 	}
 	return nil
-}
-
-// repeatedSetupKey names a key the plan would write two values under in one file (the token, the server URL, the
-// upload token), where the later write would replace the earlier one. The URL key counts even on Traceway Cloud,
-// where it is not written, so a plan is valid or not whatever server it is applied to.
-func repeatedSetupKey(p client.SetupPlanProject) string {
-	if p.EnvFile == "" || p.EnvVar == "" {
-		return ""
-	}
-	keys := []string{p.EnvVar}
-	if p.EnvFormat != envFormatConnectionString {
-		keys = append(keys, urlEnvVarFor(p))
-	}
-	if file := uploadTokenFile(p); file != "" && filepath.Clean(file) == filepath.Clean(p.EnvFile) {
-		keys = append(keys, uploadTokenEnvVarFor(p))
-	}
-	seen := map[string]bool{}
-	for _, key := range keys {
-		if seen[key] {
-			return key
-		}
-		seen[key] = true
-	}
-	return ""
 }
 
 func uploadTokenFile(p client.SetupPlanProject) string {
@@ -229,10 +218,14 @@ func uploadTokenEnvVarFor(p client.SetupPlanProject) string {
 }
 
 type setupEnvWrite struct {
-	file       string
-	key        string
-	value      string
-	equivalent func(existing string) bool
+	file          string
+	key           string
+	value         string
+	serverURL     bool
+	onlyIfPresent bool
+	result        envfile.Result
+	err           error
+	equivalent    func(existing string) bool
 }
 
 func sameBaseURL(want string) func(string) bool {
@@ -242,29 +235,19 @@ func sameBaseURL(want string) func(string) bool {
 	}
 }
 
-// sameConnection keeps an older spelling of the same connection string (…/api/report, no scheme) as it is.
-func sameConnection(token, baseURL string) func(string) bool {
-	return func(existing string) bool {
-		gotToken, gotURL, err := connstr.Parse(existing)
-		return err == nil && gotToken == token && gotURL == baseURL
-	}
+func setupServerURL(file, key, instance string) setupEnvWrite {
+	return setupEnvWrite{file: file, key: key, value: instance, serverURL: true, onlyIfPresent: connstr.IsCloud(instance), equivalent: sameBaseURL(instance)}
 }
 
-// setupEnvWrites lists what the project's env file gets: the token, and the server URL when the server is not
-// Traceway Cloud (where the SDKs need no baseUrl). The 1.x "connectionString" format of old plans gets
-// <token>@<server> instead, which every SDK still reads.
 func setupEnvWrites(p client.SetupPlanProject, token, instance string) []setupEnvWrite {
 	if p.EnvFile == "" {
 		return nil
 	}
 	if p.EnvFormat == envFormatConnectionString {
-		return []setupEnvWrite{{file: p.EnvFile, key: p.EnvVar, value: token + "@" + instance, equivalent: sameConnection(token, instance)}}
+		value := token + "@" + instance + "/api/report"
+		return []setupEnvWrite{{file: p.EnvFile, key: p.EnvVar, value: value, equivalent: func(existing string) bool { return existing == value }}}
 	}
-	writes := []setupEnvWrite{{file: p.EnvFile, key: p.EnvVar, value: token}}
-	if !connstr.IsCloud(instance) {
-		writes = append(writes, setupEnvWrite{file: p.EnvFile, key: urlEnvVarFor(p), value: instance, equivalent: sameBaseURL(instance)})
-	}
-	return writes
+	return []setupEnvWrite{{file: p.EnvFile, key: p.EnvVar, value: token}, setupServerURL(p.EnvFile, urlEnvVarFor(p), instance)}
 }
 
 // setupUploadTokenWrites lists the upload token and, for a server other than Traceway Cloud, the TRACEWAY_URL the
@@ -275,41 +258,67 @@ func setupUploadTokenWrites(p client.SetupPlanProject, uploadToken, instance str
 		return nil
 	}
 	writes := []setupEnvWrite{{file: file, key: uploadTokenEnvVarFor(p), value: uploadToken}}
-	if connstr.IsCloud(instance) {
-		return writes
-	}
 	urlKey := "TRACEWAY_URL"
 	if strings.HasSuffix(strings.ToLower(file), ".properties") && strings.Contains(p.EnvVar, ".") {
 		urlKey = urlEnvVarFor(p)
 	}
 	for _, w := range envWrites {
-		if w.file == file && w.key == urlKey {
+		if w.serverURL && filepath.Clean(w.file) == filepath.Clean(file) && w.key == urlKey {
 			return writes
 		}
 	}
-	return append(writes, setupEnvWrite{file: file, key: urlKey, value: instance, equivalent: sameBaseURL(instance)})
+	return append(writes, setupServerURL(file, urlKey, instance))
 }
 
 var envResultRank = map[envfile.Result]int{envfile.ResultUnchanged: 0, envfile.ResultUpdated: 1, envfile.ResultAdded: 2, envfile.ResultCreated: 3}
 
-// applyEnvWrites writes each entry and sums the results up per call: the strongest change wins (created, added,
-// updated, unchanged), and the first error ends it.
-func applyEnvWrites(planDir string, writes []setupEnvWrite) (string, error) {
-	combined := envfile.ResultUnchanged
-	for _, w := range writes {
-		path := w.file
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(planDir, path)
-		}
-		result, err := envfile.UpsertEquivalent(path, w.key, w.value, w.equivalent)
-		if err != nil {
-			return "", err
-		}
-		if envResultRank[result] > envResultRank[combined] {
-			combined = result
+// Commit credentials and their destinations together, including when the runtime
+// and uploader share a file. An error in one file does not prevent another from being written.
+func applyEnvWrites(planDir string, groups ...[]setupEnvWrite) error {
+	files := map[string][]*setupEnvWrite{}
+	for _, group := range groups {
+		for i := range group {
+			w := &group[i]
+			path := setupFilePath(planDir, w.file)
+			files[path] = append(files[path], w)
 		}
 	}
-	return string(combined), nil
+	var failures []error
+	for path, writes := range files {
+		err := envfile.Edit(path, func(file *envfile.File) error {
+			for _, w := range writes {
+				if w.onlyIfPresent && !file.Has(w.key) {
+					continue
+				}
+				result, err := file.Set(w.key, w.value, w.equivalent)
+				if err != nil {
+					return err
+				}
+				w.result = result
+			}
+			return nil
+		})
+		if err != nil {
+			failures = append(failures, err)
+			for _, w := range writes {
+				w.err = err
+			}
+		}
+	}
+	return errors.Join(failures...)
+}
+
+func setupWriteResult(writes []setupEnvWrite) string {
+	combined := envfile.ResultUnchanged
+	for _, w := range writes {
+		if w.err != nil {
+			return "error: " + w.err.Error()
+		}
+		if envResultRank[w.result] > envResultRank[combined] {
+			combined = w.result
+		}
+	}
+	return string(combined)
 }
 
 type setupApplyProjectSummary struct {
@@ -344,7 +353,12 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), appdir.Binary+" setup apply --help")
 	}
-	if err := validateSetupPlan(plan); err != nil {
+	absPlanPath, err := filepath.Abs(setupApplyPlanPath)
+	if err != nil {
+		return err
+	}
+	planDir := filepath.Dir(absPlanPath)
+	if err := validateSetupPlan(plan, planDir); err != nil {
 		return renderUsageError(cmd.ErrOrStderr(), mode, err.Error(), appdir.Binary+" setup apply --help")
 	}
 
@@ -392,7 +406,6 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 		byName[p.Name] = p
 	}
 
-	planDir := filepath.Dir(setupApplyPlanPath)
 	summaries := make([]setupApplyProjectSummary, 0, len(plan.Projects))
 	var mobileURLs []mobileServerURL
 	deploymentURLVars := map[string]string{}
@@ -423,33 +436,25 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 			}
 		}
 		envWrites := setupEnvWrites(planned, project.Token, instance)
+		uploadWrites := setupUploadTokenWrites(planned, project.SourceMapToken, instance, envWrites)
+		if err := applyEnvWrites(planDir, envWrites, uploadWrites); err != nil {
+			envWriteFailed = true
+		}
 		if len(envWrites) > 0 {
 			summary.EnvFile = planned.EnvFile
 			summary.EnvVar = planned.EnvVar
-			if len(envWrites) > 1 {
+			summary.EnvResult = setupWriteResult(envWrites)
+			if len(envWrites) > 1 && envWrites[1].result != "" && envWrites[1].err == nil {
 				summary.URLEnvVar = envWrites[1].key
 			}
-			result, err := applyEnvWrites(planDir, envWrites)
-			if err != nil {
-				summary.EnvResult = "error: " + err.Error()
-				envWriteFailed = true
-			} else {
-				summary.EnvResult = result
-				if mobileFrameworks[project.Framework] && writesServerURL(planned, envWrites) {
-					mobileURLs = append(mobileURLs, mobileServerURL{project: project.Name, url: instance})
-				}
+			if envWrites[0].err == nil && mobileFrameworks[project.Framework] && writesServerURL(planned, envWrites) {
+				mobileURLs = append(mobileURLs, mobileServerURL{project: project.Name, url: instance})
 			}
 		}
-		if uploadWrites := setupUploadTokenWrites(planned, project.SourceMapToken, instance, envWrites); len(uploadWrites) > 0 {
+		if len(uploadWrites) > 0 {
 			summary.UploadTokenEnvFile = uploadWrites[0].file
 			summary.UploadTokenEnvVar = uploadWrites[0].key
-			result, err := applyEnvWrites(planDir, uploadWrites)
-			if err != nil {
-				summary.UploadTokenResult = "error: " + err.Error()
-				envWriteFailed = true
-			} else {
-				summary.UploadTokenResult = result
-			}
+			summary.UploadTokenResult = setupWriteResult(uploadWrites)
 		}
 		summaries = append(summaries, summary)
 	}

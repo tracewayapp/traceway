@@ -538,6 +538,8 @@ The pictures image views show can be recorded into the wireframe instead of plac
 - Each picture is copied at the size it shows (one pixel per dp, at most 384 pixels on its longest side) and encoded off the main thread as JPEG at quality 0.45. A picture with transparency is always PNG, at most 192 pixels on its longest side, so it never replays as a black box. One larger than 48 KiB at half that size is left out. The first frame shows the placeholder, a later one the picture.
 - The same bitmap at the same size is one picture however many views show it. At most 128 pictures are kept per recorder: past that, the one shown longest ago makes room (shown again, it is recorded again). At most 4 MiB of encoded pictures per session, counted with the replay budget; past it, new pictures are placeholders. A picture's style stays in the recording 30 seconds after its view left the screen.
 
+Each wireframe segment allows up to 128 KiB of embedded raster image data, counting base64 URLs each time they appear in snapshots or updates. If the segment exceeds that total, the SDK sends a layout-only wireframe with the same events, text masks and image positions. The next segment has its own allowance.
+
 Session records carry `traceway.replay.images` (the policy in effect when the session started) and `traceway.replay.image_bytes` (the encoded bytes used).
 
 ### Privacy masks

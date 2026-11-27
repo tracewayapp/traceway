@@ -137,7 +137,7 @@ Each confirmed row must also settle what Step 3's plan file needs:
   | Android | `local.properties` | `TRACEWAY_TOKEN` | `buildConfigField` and `BuildConfig` |
   | iOS | `Traceway.xcconfig` (untracked) | `TRACEWAY_TOKEN` | an `Info.plist` key and `Bundle.main` |
 
-  On a server other than Traceway Cloud the apply step also writes the server URL into the same file, under `urlEnvVar` (default: `envVar` with `TOKEN` replaced by `URL`, so `VITE_TRACEWAY_TOKEN` gets `VITE_TRACEWAY_URL`); on Cloud the SDKs need no URL. Leave `envFormat` out: `"connectionString"` is the deprecated 1.x form, kept only so old plans still validate.
+  On a server other than Traceway Cloud the apply step also writes the server URL into the same file, under `urlEnvVar` (default: `envVar` with `TOKEN` replaced by `URL`, so `VITE_TRACEWAY_TOKEN` gets `VITE_TRACEWAY_URL`); on Cloud new files need only the token, and a URL already present in the file is reset to Cloud. Leave `envFormat` out: `"connectionString"` is the deprecated 1.x form, kept only so old plans still validate.
 - The **upload token**, for projects whose release build uploads source maps, Flutter symbols, Android mappings or iOS dSYMs. Traceway creates one for every React, Svelte, Vue.js, jQuery, Flutter, Android and iOS project (none for OpenTelemetry or React Native). Add `uploadTokenEnvFile` and/or `uploadTokenEnvVar` only when a local build step will read it from a file; otherwise leave both out and the user copies it from the project's Connection page into the CI secret store. The file must be untracked and must not reach the shipped app: browsers a separate file such as `web/.env.sourcemaps`; Flutter a separate `.env.symbols`, never the `.env` the build passes to `--dart-define-from-file`; Android `local.properties` (the Gradle plugin reads it there); iOS the untracked `Traceway.xcconfig` itself (Xcode hands its settings to the dSYM upload script, and `Info.plist` does not reference the token), never a committed `.xcconfig`. The default variable is `TRACEWAY_SOURCEMAP_TOKEN` for browsers and `TRACEWAY_UPLOAD_TOKEN` for Flutter, Android and iOS, the names the upload tools read; a public prefix such as `VITE_` is refused. The platform files say how each upload step reads it.
 - The **deployment placement**, from Step 1's deployment analysis: when the credential cannot be hardcoded into the repository because of how the component is deployed (Vercel/Fly/K8s/CI-injected env, secret managers), add a `deployment` block with the platform name and the exact command or UI path, using the literal placeholder `<token>` for the value (and `<url>` for the server URL). The website substitutes the real values after approval; never put real tokens in the plan. A mobile app built in CI usually gets both: an `envFile` for local builds and a `deployment` block for the CI secret.
 
@@ -216,9 +216,9 @@ Then wait for the decision with the script below. The script exists because the 
 
 ```sh
 #!/bin/sh
-# Waits for the setup decision, then writes each project's token (and, off
-# Traceway Cloud, the server URL) into the env file named by the plan, plus the
-# upload token where the plan asks for it. Prints statuses and names only.
+# Waits for approval and writes runtime and upload credentials to the planned files.
+# Self-hosted setups include the server URL. Cloud resets an existing URL and
+# leaves it out of new files. Prints statuses and names only.
 set -eu
 PLAN=${1:-traceway-setup-plan.json}
 AUTH="Authorization: Bearer ${TRACEWAY_SETUP_TOKEN:?}"
@@ -252,17 +252,19 @@ write_var() {
   dir=$(dirname "$1"); mkdir -p "$dir"
   tmp=$(mktemp "$dir/.tmp-env-XXXXXX")
   touch "$1"
-  K=$2 V=$v S=$sep awk '
+  K=$2 V=$v S=$sep EXISTING_ONLY=${4:-} awk '
     { line = $0; sub(/\r$/, "", line); rest = line
       sub(/^[ \t]*/, "", rest); sub(/^export[ \t]+/, "", rest)
       if (index(rest, ENVIRON["K"]) == 1) {
-        tail = substr(rest, length(ENVIRON["K"]) + 1); sub(/^[ \t]*/, "", tail)
-        if (tail != "" && index(ENVIRON["S"], substr(tail, 1, 1)) > 0) {
+        tail = substr(rest, length(ENVIRON["K"]) + 1)
+        property = ENVIRON["S"] == "=:" && (tail == "" || tail ~ /^[ \t\f]/)
+        sub(/^[ \t]*/, "", tail)
+        if (property || (tail != "" && index(ENVIRON["S"], substr(tail, 1, 1)) > 0)) {
           print substr(line, 1, length(line) - length(rest)) ENVIRON["K"] "=" ENVIRON["V"]; done = 1; next
         }
       }
       print }
-    END { if (!done) print ENVIRON["K"] "=" ENVIRON["V"] }' "$1" > "$tmp"
+    END { if (!done && !ENVIRON["EXISTING_ONLY"]) print ENVIRON["K"] "=" ENVIRON["V"] }' "$1" > "$tmp"
   mv "$tmp" "$1"
 }
 url_var_for() {
@@ -295,10 +297,14 @@ while [ "$i" -lt "$n" ]; do
   if [ -n "$envfile" ] && [ -n "$envvar" ]; then
     token=$(printf '%s' "$project" | jq -r '.token')
     if [ "$format" = connectionString ]; then
-      write_var "$envfile" "$envvar" "$token@$inst"
+      write_var "$envfile" "$envvar" "$token@$inst/api/report"
     else
       write_var "$envfile" "$envvar" "$token"
-      if [ "$inst" != "$CLOUD" ]; then write_var "$envfile" "$urlvar" "$inst"; wroteurl=1; fi
+      if [ "$inst" = "$CLOUD" ]; then
+        write_var "$envfile" "$urlvar" "$inst" existing
+      else
+        write_var "$envfile" "$urlvar" "$inst"; wroteurl=1
+      fi
     fi
     msg="$msg, wrote $envvar${wroteurl:+ and $urlvar} to $envfile"
   fi
@@ -313,12 +319,12 @@ while [ "$i" -lt "$n" ]; do
     fi
     write_var "$ufile" "$uvar" "$utoken"
     msg="$msg, wrote $uvar to $ufile"
-    if [ "$inst" != "$CLOUD" ]; then
-      ukey=TRACEWAY_URL
-      case "$ufile" in *.properties) case "$envvar" in *.*) ukey=$urlvar ;; esac ;; esac
-      if [ -z "$wroteurl" ] || [ "$ufile" != "$envfile" ] || [ "$ukey" != "$urlvar" ]; then
-        write_var "$ufile" "$ukey" "$inst"
-      fi
+    ukey=TRACEWAY_URL
+    case "$ufile" in *.properties) case "$envvar" in *.*) ukey=$urlvar ;; esac ;; esac
+    if [ -z "$wroteurl" ] || [ "$ufile" != "$envfile" ] || [ "$ukey" != "$urlvar" ]; then
+      existing_only=
+      if [ "$inst" = "$CLOUD" ]; then existing_only=existing; fi
+      write_var "$ufile" "$ukey" "$inst" "$existing_only"
     fi
   elif [ -n "$utoken" ]; then
     msg="$msg, upload token on the Connection page"
@@ -435,7 +441,7 @@ Two of those lines are load-bearing in a way that fails silently:
 
 SDKs append `/v1/traces`, `/v1/metrics`, `/v1/logs` to the endpoint automatically, so set the **base** URL only. A full signal path in `OTEL_EXPORTER_OTLP_ENDPOINT` produces `/v1/traces/v1/traces`, and the signal-specific variables (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) are used verbatim with nothing appended. When configuring in code instead, the full URLs are `https://<instance>/api/otel/v1/traces` (and `/v1/metrics`, `/v1/logs`) with header `Authorization: Bearer <project-token>`.
 
-When Step 3's apply script wrote the env files, the plan's variables already hold real values locally, so wire the exporter to exactly those names (e.g. `Authorization=Bearer ${TRACEWAY_BACKEND_TOKEN}`) and run live verification immediately. Off Traceway Cloud the script also wrote the server URL under the plan's `urlEnvVar` (default `TRACEWAY_BACKEND_URL` for `TRACEWAY_BACKEND_TOKEN`; set `urlEnvVar: "TRACEWAY_URL"` in the plan when the exporter code reads that name). On Cloud it writes no URL, so add `TRACEWAY_URL=https://cloud.tracewayapp.com` yourself where the exporter code reads one; it is not a secret. On the manual fallback the user populates the variables first.
+When Step 3's apply script wrote the env files, the plan's variables already hold real values locally, so wire the exporter to exactly those names (e.g. `Authorization=Bearer ${TRACEWAY_BACKEND_TOKEN}`) and run live verification immediately. Off Traceway Cloud the script also wrote the server URL under the plan's `urlEnvVar` (default `TRACEWAY_BACKEND_URL` for `TRACEWAY_BACKEND_TOKEN`; set `urlEnvVar: "TRACEWAY_URL"` in the plan when the exporter code reads that name). On Cloud it omits the URL from new files, so add `TRACEWAY_URL=https://cloud.tracewayapp.com` yourself where the exporter code reads one; it is not a secret. On the manual fallback the user populates the variables first.
 
 Constraints: OTLP/HTTP only (protobuf or JSON). OTLP/gRPC is not supported, there is no listener on port 4317. `Content-Encoding: gzip` is fine. The body is capped at 10 MB after decompression, and an oversized batch is rejected outright with `413` and `{"error":"request body exceeds the 10MB limit"}`. Nothing is ingested partially. A wrong or missing token answers `401`, and any other path answers `404`. All three are invisible from the application: most SDKs log exporter failures at debug level only, so when nothing arrives, turn the SDK's own diagnostic logging on first.
 

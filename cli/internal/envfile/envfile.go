@@ -29,11 +29,48 @@ func Upsert(path, key, value string) (Result, error) {
 // UpsertEquivalent is Upsert that leaves the file alone when key already holds a value equivalent reports true for,
 // such as an older spelling of the same connection string.
 func UpsertEquivalent(path, key, value string, equivalent func(existing string) bool) (Result, error) {
-	content, mode, existed, err := readEnvFile(path)
+	var result Result
+	err := Edit(path, func(file *File) error {
+		var err error
+		result, err = file.Set(key, value, equivalent)
+		return err
+	})
 	if err != nil {
 		return "", err
 	}
+	return result, nil
+}
 
+// File holds one env file's contents during Edit.
+type File struct {
+	path, content string
+	existed       bool
+}
+
+// Edit makes all related assignments visible in a single rename. A reader
+// opening the file during setup sees credentials and URLs from the same apply.
+func Edit(path string, update func(*File) error) error {
+	content, mode, existed, err := readEnvFile(path)
+	if err != nil {
+		return err
+	}
+	file := &File{path, content, existed}
+	if err := update(file); err != nil {
+		return err
+	}
+	if file.content == content && file.existed == existed {
+		return nil
+	}
+	return writeAtomic(path, file.content, mode)
+}
+
+func (f *File) Has(key string) bool {
+	_, found := lookupIn(f.path, f.content, key)
+	return found
+}
+
+func (f *File) Set(key, value string, equivalent func(string) bool) (Result, error) {
+	path, content := f.path, f.content
 	if equivalent != nil {
 		if existing, found := lookupIn(path, content, key); found && equivalent(existing) {
 			return ResultUnchanged, nil
@@ -78,18 +115,14 @@ func UpsertEquivalent(path, key, value string, equivalent func(existing string) 
 		}
 		updated += key + "=" + written + eol
 		result = ResultAdded
-		if !existed {
+		if !f.existed {
 			result = ResultCreated
 		}
 	}
-
-	if existed && updated == content {
+	if f.existed && updated == content {
 		return ResultUnchanged, nil
 	}
-
-	if err := writeAtomic(path, updated, mode); err != nil {
-		return "", err
-	}
+	f.content, f.existed = updated, true
 	return result, nil
 }
 
@@ -125,11 +158,11 @@ func lookupIn(path, content, key string) (string, bool) {
 }
 
 func assignmentRegex(path, key string) (*regexp.Regexp, error) {
-	separator := `=`
+	separator := `\s*=`
 	if strings.HasSuffix(strings.ToLower(path), ".properties") {
-		separator = `[=:]`
+		separator = `(?:[ \t\f]*[=:]|[ \t\f]+|$)`
 	}
-	return regexp.Compile(`^(\s*(?:export\s+)?)` + regexp.QuoteMeta(key) + `\s*` + separator)
+	return regexp.Compile(`^(\s*(?:export\s+)?)` + regexp.QuoteMeta(key) + separator)
 }
 
 func isXcconfig(path string) bool {

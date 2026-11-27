@@ -16,6 +16,9 @@ func TestParseContractTable(t *testing.T) {
 		{"  tok@https://cloud.tracewayapp.com/api/report  ", "tok", "https://cloud.tracewayapp.com"},
 		{"tok@http://localhost:8082/api/report", "tok", "http://localhost:8082"},
 		{"tok@localhost:8082", "tok", "http://localhost:8082"},
+		{"tok@http://api", "tok", "http://api"},
+		{"tok@http://api/report", "tok", "http://api/report"},
+		{"tok@http://api/api/report?x", "tok", "http://api"},
 		{"tok@https://corp.example/traceway/api/report", "tok", "https://corp.example/traceway"},
 		{"tok@https://cloud.tracewayapp.com/api/report?x=1", "tok", "https://cloud.tracewayapp.com"},
 	}
@@ -53,7 +56,7 @@ func TestNormalizeBaseURL(t *testing.T) {
 			t.Errorf("NormalizeBaseURL(%q) = (%q, %v), want %q", tc.in, got, err, tc.want)
 		}
 	}
-	for _, in := range []string{"", "ftp://host", "https://", "  "} {
+	for _, in := range []string{"", "ftp://host", "http://:8080", "https://", "  "} {
 		if got, err := NormalizeBaseURL(in); err == nil {
 			t.Errorf("NormalizeBaseURL(%q) = %q, want an error", in, got)
 		}

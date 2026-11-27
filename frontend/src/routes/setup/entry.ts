@@ -25,6 +25,18 @@ export function setupEntry(params: URLSearchParams, cachedProjects: number): Set
 	return null;
 }
 
+export function setupOrganization(
+	writable: { id: number }[],
+	requested: number | null,
+	current: number | null | undefined,
+	picked: number | null
+): number | null {
+	const available = (id: number | null | undefined) => writable.some((org) => org.id === id);
+	if (picked !== null && available(picked)) return picked;
+	if (requested !== null) return available(requested) ? requested : null;
+	return current != null && available(current) ? current : (writable[0]?.id ?? null);
+}
+
 /** The first of the organizations whose latest setup proposal still waits for a decision. */
 export async function findPendingProposalOrganization(
 	organizationIds: number[]

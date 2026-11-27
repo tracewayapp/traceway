@@ -10,7 +10,7 @@ const { get, auth } = vi.hoisted(() => ({
 vi.mock('$lib/api', () => ({ api: { get } }));
 vi.mock('$lib/state/auth.svelte', () => ({ authState: auth }));
 
-import { findPendingProposalOrganization, setupEntry } from './entry';
+import { findPendingProposalOrganization, setupEntry, setupOrganization } from './entry';
 import { load } from './+page';
 
 type LoadEvent = Parameters<typeof load>[0];
@@ -144,5 +144,18 @@ describe('/setup load', () => {
 	it('sends a plain /setup to the dashboard when nothing is pending', async () => {
 		get.mockResolvedValue(draftResponse('approved'));
 		await expect(redirectOf('/setup')).resolves.toBe('/');
+	});
+});
+
+describe('setup organization selection', () => {
+	it('follows a new deep link and waits for the requested organization to appear on refresh', () => {
+		const old = [{ id: 1 }];
+		expect(setupOrganization(old, 1, 1, null)).toBe(1);
+		expect(setupOrganization(old, 2, 1, null)).toBeNull();
+		expect(setupOrganization([...old, { id: 2 }], 2, 1, null)).toBe(2);
+	});
+	it('honours an explicit picker choice, including for an unavailable destination', () => {
+		expect(setupOrganization([{ id: 1 }], 2, null, 1)).toBe(1);
+		expect(setupOrganization([{ id: 1 }], null, null, 2)).toBe(1);
 	});
 });

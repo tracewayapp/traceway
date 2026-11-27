@@ -264,3 +264,15 @@ func TestSubmitPlanStartApiFields(t *testing.T) {
 		}
 	}
 }
+
+func TestSetupPlanRejectsInferredFileKeyCollisions(t *testing.T) {
+	for _, projects := range [][]models.SetupPlanProject{
+		{{Name: "Web", Framework: "react", UploadTokenEnvFile: ".env.upload", UploadTokenEnvVar: "TRACEWAY_URL"}},
+		{{Name: "Web", Framework: "react", EnvFile: ".env", EnvVar: "TRACEWAY_URL", UploadTokenEnvFile: "./.env"}},
+		{{Name: "Web", Framework: "react", EnvFile: ".env", EnvVar: "VITE_TOKEN"}, {Name: "Other", Framework: "ios", EnvFile: "./.env", EnvVar: "VITE_URL"}},
+	} {
+		if msg := validateSetupPlanPayload(&models.SetupPlanPayload{Projects: projects}); msg == "" {
+			t.Fatalf("accepted conflicting plan %+v", projects)
+		}
+	}
+}

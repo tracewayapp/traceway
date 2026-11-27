@@ -1,6 +1,7 @@
 package envfile
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -254,5 +255,40 @@ func TestUpsertEquivalentKeepsAnOlderSpelling(t *testing.T) {
 	result, err = UpsertEquivalent(path, "CS", "other@https://cloud.tracewayapp.com", func(string) bool { return false })
 	if err != nil || result != ResultUpdated || read(t, path) != "CS=other@https://cloud.tracewayapp.com\n" {
 		t.Errorf("a different value must be written: (%s, %v) %q", result, err, read(t, path))
+	}
+}
+
+func TestEditPublishesTokenAndDestinationTogether(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	before := "TOKEN=old\nURL=https://previous.example\n"
+	write(t, path, before, 0600)
+	edit := func(f *File) error {
+		if _, err := f.Set("TOKEN", "new", nil); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil || string(data) != before {
+			t.Fatalf("partial env on disk, error %v", err)
+		}
+		_, err = f.Set("URL", "https://current.example", nil)
+		return err
+	}
+	abort := errors.New("abort")
+	if err := Edit(path, func(f *File) error {
+		if err := edit(f); err != nil {
+			return err
+		}
+		return abort
+	}); !errors.Is(err, abort) {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != before {
+		t.Fatal("failed edit changed file")
+	}
+	if err := Edit(path, edit); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "TOKEN=new\nURL=https://current.example\n" {
+		t.Fatal("completed edit did not install both assignments")
 	}
 }

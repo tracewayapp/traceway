@@ -10,6 +10,7 @@ export default defineConfig({
 		__SVELTEKIT_PAYLOAD__: 'undefined',
 		__SVELTEKIT_APP_VERSION__: '"test"',
 		__SVELTEKIT_DEV__: 'false',
+		__SVELTEKIT_EXPERIMENTAL_EXPLICIT_ENVIRONMENT_VARIABLES__: 'false',
 		__SVELTEKIT_APP_VERSION_POLL_INTERVAL__: '0',
 		__SVELTEKIT_PATHS_BASE__: '""',
 		__SVELTEKIT_PATHS_ASSETS__: '""',

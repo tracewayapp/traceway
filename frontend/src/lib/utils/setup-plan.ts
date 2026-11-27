@@ -10,7 +10,7 @@ export interface SetupPlanProject {
 	framework: string;
 	envFile?: string;
 	envVar?: string;
-	/** `connectionString` is the 1.x form of old plans: `<token>@<server>` in one variable. */
+	/** `connectionString` is the 1.x form of old plans: `<token>@<server>/api/report` in one variable. */
 	envFormat?: 'token' | 'connectionString';
 	urlEnvVar?: string;
 	uploadTokenEnvFile?: string;
@@ -47,11 +47,11 @@ export interface SetupTokenResponse {
 	backendUrl: string;
 }
 
-/** The value the token variable gets: the token, or `<token>@<server>` for an old plan's connection string. */
+/** The value the token variable gets: the token, or `<token>@<server>/api/report` for an old plan's connection string. */
 export function credentialValue(planned: SetupPlanProject, project: SetupDraftProject): string {
 	if (planned.envFormat === 'connectionString') {
 		const base = normalizeBaseUrl(project.backendUrl) ?? project.backendUrl.replace(/\/+$/, '');
-		return `${project.token}@${base}`;
+		return `${project.token}@${base}/api/report`;
 	}
 	return project.token;
 }

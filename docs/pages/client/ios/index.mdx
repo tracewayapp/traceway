@@ -444,6 +444,8 @@ The pictures `UIImageView`s show, and the image layers SwiftUI uses for photos, 
 - Each picture is downscaled to its displayed size (one pixel per point): an opaque picture as JPEG at quality 0.45, at most 384 pixels a side; one with see-through pixels always as PNG (a JPEG would replay it as a black or white box), at most 192 pixels a side. One over 48 KiB is tried once at half size, then dropped.
 - A picture seen for the first time is encoded off the main thread: the frame that first shows it has the placeholder, a later one the picture. The same picture in many cells is sent once. The recorder keeps up to 128 pictures; a new one past that replaces the one shown longest ago. At most 4 MiB of pictures per session, counted with the replay budget (50 MiB and 10,000 rrweb events); past that, placeholders.
 
+Each wireframe segment allows up to 128 KiB of embedded raster image data, counting base64 URLs each time they appear in snapshots or updates. If the segment exceeds that total, the SDK sends a layout-only wireframe with the same events, text masks and image positions. The next segment has its own allowance.
+
 Session records carry `traceway.replay.images` (the policy in effect when the session started) and `traceway.replay.image_bytes`.
 
 ### Privacy masks

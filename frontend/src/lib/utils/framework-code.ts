@@ -13,8 +13,6 @@ export function getInstallCommand(framework: Framework): string {
 			return `npm install @tracewayapp/svelte@${SDK_VERSION}`;
 		case 'vuejs':
 			return `npm install @tracewayapp/vue@${SDK_VERSION}`;
-		case 'nextjs':
-			return `npm install @tracewayapp/react@${SDK_VERSION}`;
 		case 'jquery':
 			return `npm install @tracewayapp/jquery@${SDK_VERSION}`;
 		case 'react-native':
@@ -34,7 +32,6 @@ export function getInstallCommand(framework: Framework): string {
 		case 'flutter':
 			return `flutter pub add 'traceway:^${SDK_VERSION}'`;
 		case 'android':
-			// An app with minSdk below 26 also enables core library desugaring.
 			return `implementation("com.tracewayapp:traceway:${SDK_VERSION}")`;
 		case 'ios':
 			return `.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "${SDK_VERSION}")`;
@@ -244,6 +241,7 @@ throw new Error("Test error from Traceway integration");`;
 }
 
 export function getTestingRouteCode2(framework?: Framework): string {
+	if (framework === 'nextjs') return '';
 	if (framework === 'symfony') {
 		return '';
 	}
@@ -300,13 +298,6 @@ captureException(new Error("Test error"));`;
 			case 'jquery':
 				return `import { captureException } from "@tracewayapp/jquery";
 
-captureException(new Error("Test error"));`;
-			case 'nextjs':
-				return `import { useTraceway } from "@tracewayapp/react";
-
-// In a client component
-"use client";
-const { captureException } = useTraceway();
 captureException(new Error("Test error"));`;
 			case 'react-native':
 				return `import { useTraceway } from "@tracewayapp/react-native";

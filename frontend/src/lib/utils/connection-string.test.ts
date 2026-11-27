@@ -19,6 +19,9 @@ const SPELLINGS: [string, string, string][] = [
 	['tok@cloud.tracewayapp.com/api/report', 'tok', 'https://cloud.tracewayapp.com'],
 	['  tok@https://cloud.tracewayapp.com/api/report  ', 'tok', 'https://cloud.tracewayapp.com'],
 	['tok@http://localhost:8082/api/report', 'tok', 'http://localhost:8082'],
+	['tok@http://api', 'tok', 'http://api'],
+	['tok@http://api/report', 'tok', 'http://api/report'],
+	['tok@http://api/api/report?x', 'tok', 'http://api'],
 	['tok@localhost:8082', 'tok', 'http://localhost:8082'],
 	['tok@https://corp.example/traceway/api/report', 'tok', 'https://corp.example/traceway'],
 	['tok@https://cloud.tracewayapp.com/api/report?x=1', 'tok', 'https://cloud.tracewayapp.com']
@@ -59,7 +62,7 @@ describe('normalizeBaseUrl', () => {
 		expect(normalizeBaseUrl(input)).toBe(want);
 	});
 
-	it.each(['', 'ftp://host', 'https://', '  '])('rejects %j', (input) => {
+	it.each(['', 'ftp://host', 'https://', 'http:///api', '  '])('rejects %j', (input) => {
 		expect(normalizeBaseUrl(input)).toBeNull();
 	});
 });

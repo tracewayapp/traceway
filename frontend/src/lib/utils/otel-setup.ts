@@ -313,7 +313,7 @@ export function register() {
 						backendUrl,
 						token,
 						[],
-						'Start your app normally with next start; no extra flags are needed.'
+						'Start the server with next start. To capture browser telemetry, create a separate React project and use its token in the browser.'
 					)
 				];
 			}
@@ -576,6 +576,7 @@ const LEGACY_GO_GUIDE: Partial<Record<string, string>> = {
 };
 
 const LEGACY_NODE_GUIDE: Partial<Record<string, string>> = {
+	nextjs: 'nextjs',
 	express: 'express',
 	nestjs: 'nestjs',
 	remix: 'other'

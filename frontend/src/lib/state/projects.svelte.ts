@@ -152,7 +152,7 @@ export const LEGACY_GO_FRAMEWORKS: Framework[] = [
 
 // Projects created for the retired 1.x Node.js SDKs. Node.js instruments with OpenTelemetry now, so they get
 // the same setup guide, opened on Node.js.
-export const LEGACY_NODE_FRAMEWORKS: Framework[] = ['nestjs', 'express', 'remix'];
+export const LEGACY_NODE_FRAMEWORKS: Framework[] = ['nextjs', 'nestjs', 'express', 'remix'];
 
 export function usesOtelSetupGuide(fw: Framework): boolean {
 	return (

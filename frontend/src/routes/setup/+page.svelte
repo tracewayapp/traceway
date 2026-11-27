@@ -15,19 +15,27 @@
 	import { getErrorMessage } from '$lib/utils/errors';
 	import SetupProjectsStep from '$lib/components/setup/setup-projects-step.svelte';
 
+	import { setupOrganization } from './entry';
+
 	let { data } = $props();
 
 	const writableOrgs = $derived(authState.organizations.filter((o) => o.role !== 'readonly'));
 
-	let selectedOrgId = $state<number | null>(null);
-
-	$effect(() => {
-		if (selectedOrgId !== null && writableOrgs.some((o) => o.id === selectedOrgId)) return;
-		const preferred = [data.organizationId, projectsState.currentProject?.organizationId].find(
-			(id) => id != null && writableOrgs.some((o) => o.id === id)
-		);
-		selectedOrgId = preferred ?? writableOrgs[0]?.id ?? null;
+	const requestedOrgId = $derived(data.organizationId);
+	let pickedOrgId = $state<number | null>(null);
+	$effect.pre(() => {
+		// A picker choice belongs to the current setup link.
+		void requestedOrgId;
+		pickedOrgId = null;
 	});
+	const selectedOrgId = $derived(
+		setupOrganization(
+			writableOrgs,
+			requestedOrgId,
+			projectsState.currentProject?.organizationId,
+			pickedOrgId
+		)
+	);
 
 	const selectedOrgName = $derived(writableOrgs.find((o) => o.id === selectedOrgId)?.name ?? '');
 
@@ -189,14 +197,14 @@
 				You need an owner, admin, or user role in an organization to create projects.
 			</p>
 		{:else}
-			{#if writableOrgs.length > 1}
+			{#if writableOrgs.length > 1 || selectedOrgId === null}
 				<div class="flex max-w-xs flex-col space-y-1.5">
 					<Label>Organization</Label>
 					<Select.Root
 						type="single"
 						value={selectedOrgId !== null ? String(selectedOrgId) : undefined}
 						onValueChange={(val) => {
-							if (val) selectedOrgId = Number(val);
+							if (val) pickedOrgId = Number(val);
 						}}
 					>
 						<Select.Trigger class="w-full">

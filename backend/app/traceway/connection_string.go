@@ -50,22 +50,26 @@ func normalizeInstanceURL(raw string, dropOtelSuffix bool) (string, error) {
 	if i := strings.IndexAny(s, "?#"); i >= 0 {
 		s = s[:i]
 	}
-	s = strings.TrimRight(s, "/")
-	switch {
-	case strings.HasSuffix(s, "/api/report"):
-		s = strings.TrimSuffix(s, "/api/report")
-	case dropOtelSuffix && strings.HasSuffix(s, "/api/otel"):
-		s = strings.TrimSuffix(s, "/api/otel")
-	default:
-		s = strings.TrimSuffix(s, "/api")
-	}
-	s = strings.TrimRight(s, "/")
-
 	u, err := url.Parse(s)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return "", errors.New("the instance URL must be an http(s) URL with a host")
 	}
-	return s, nil
+	// The authority can itself be named "api".
+	schemeEnd := strings.Index(s, "://") + 3
+	host, tail, _ := strings.Cut(s[schemeEnd:], "/")
+	authority := s[:schemeEnd] + host
+	path := "/" + tail
+	path = strings.TrimRight(path, "/")
+	switch {
+	case strings.HasSuffix(path, "/api/report"):
+		path = strings.TrimSuffix(path, "/api/report")
+	case dropOtelSuffix && strings.HasSuffix(path, "/api/otel"):
+		path = strings.TrimSuffix(path, "/api/otel")
+	default:
+		path = strings.TrimSuffix(path, "/api")
+	}
+	path = strings.TrimRight(path, "/")
+	return authority + path, nil
 }
 
 func hostWithoutPort(s string) string {

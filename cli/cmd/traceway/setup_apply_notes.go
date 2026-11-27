@@ -26,10 +26,9 @@ type mobileServerURL struct {
 	url     string
 }
 
-// writesServerURL reports whether the project's env file got the server URL: next to the token off Cloud, or inside
-// the connection string of an old plan.
+// writesServerURL reports whether the project received a separate URL assignment or a legacy connection string.
 func writesServerURL(p client.SetupPlanProject, writes []setupEnvWrite) bool {
-	return len(writes) > 1 || (p.EnvFormat == envFormatConnectionString && len(writes) == 1)
+	return (len(writes) > 1 && writes[1].result != "") || (p.EnvFormat == envFormatConnectionString && len(writes) == 1)
 }
 
 type serverReach struct {

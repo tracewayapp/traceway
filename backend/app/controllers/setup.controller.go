@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -99,6 +100,56 @@ func (s setupController) GetSession(ctx *gin.Context) {
 	})
 }
 
+// The CLI and shell fallback also write default keys when a setup plan omits them.
+// Validate those destinations before a proposal can be approved.
+type setupFileKey struct {
+	file, key string
+	serverURL bool
+}
+
+func setupFileKeys(p *models.SetupPlanProject) []setupFileKey {
+	urlKey := p.UrlEnvVar
+	if urlKey == "" {
+		switch {
+		case strings.HasSuffix(p.EnvVar, "TOKEN"):
+			urlKey = strings.TrimSuffix(p.EnvVar, "TOKEN") + "URL"
+		case strings.HasSuffix(p.EnvVar, "token"):
+			urlKey = strings.TrimSuffix(p.EnvVar, "token") + "url"
+		case strings.Contains(p.EnvVar, "."):
+			urlKey = p.EnvVar + ".url"
+		default:
+			urlKey = p.EnvVar + "_URL"
+		}
+	}
+	var keys []setupFileKey
+	if p.EnvFile != "" && p.EnvVar != "" {
+		keys = append(keys, setupFileKey{p.EnvFile, p.EnvVar, false})
+		if p.EnvFormat != setupEnvFormatConnectionString {
+			keys = append(keys, setupFileKey{p.EnvFile, urlKey, true})
+		}
+	}
+	file, uploadKey := p.UploadTokenEnvFile, p.UploadTokenEnvVar
+	if file == "" && uploadKey != "" {
+		file = p.EnvFile
+	}
+	if file != "" {
+		if uploadKey == "" {
+			switch p.Framework {
+			case "react", "svelte", "vuejs", "jquery", "nextjs":
+				uploadKey = "TRACEWAY_SOURCEMAP_TOKEN"
+			default:
+				uploadKey = "TRACEWAY_UPLOAD_TOKEN"
+			}
+		}
+		uploadURL := "TRACEWAY_URL"
+		if strings.HasSuffix(strings.ToLower(file), ".properties") && strings.Contains(p.EnvVar, ".") {
+			uploadURL = urlKey
+		}
+		keys = append(keys, setupFileKey{file, uploadKey, false}, setupFileKey{file, uploadURL, true})
+	}
+	return keys
+}
+
 func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
 	if len(payload.Projects) == 0 {
 		return "At least one project is required"
@@ -108,6 +159,7 @@ func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
 	}
 
 	seen := map[string]bool{}
+	files := map[[2]string]bool{}
 	for i := range payload.Projects {
 		p := &payload.Projects[i]
 		p.Name = strings.TrimSpace(p.Name)
@@ -140,11 +192,18 @@ func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
 		if hasPublicEnvPrefix(p.UploadTokenEnvVar) {
 			return "uploadTokenEnvVar must not have a public prefix such as VITE_ or NEXT_PUBLIC_: the upload token is a secret"
 		}
-		if p.UrlEnvVar != "" && p.UrlEnvVar == p.EnvVar {
-			return "urlEnvVar must differ from envVar"
+		if p.EnvFile != "" && p.EnvVar == "" {
+			return "envFile requires envVar"
 		}
-		if p.UploadTokenEnvVar != "" && p.EnvFile != "" && uploadFile == p.EnvFile && (p.UploadTokenEnvVar == p.EnvVar || p.UploadTokenEnvVar == p.UrlEnvVar) {
-			return "uploadTokenEnvVar must differ from envVar and urlEnvVar when they are written to the same file"
+		if p.UploadTokenEnvVar != "" && uploadFile == "" {
+			return "uploadTokenEnvVar requires an uploadTokenEnvFile or envFile"
+		}
+		for _, w := range setupFileKeys(p) {
+			slot := [2]string{filepath.Clean(w.file), w.key}
+			if isURL, exists := files[slot]; exists && !(isURL && w.serverURL) {
+				return "Conflicting environment variable assignments in " + w.file + ": " + w.key
+			}
+			files[slot] = w.serverURL
 		}
 		if utf8.RuneCountInString(p.EnvVar) > 100 || utf8.RuneCountInString(p.UrlEnvVar) > 100 || utf8.RuneCountInString(p.UploadTokenEnvVar) > 100 {
 			return "envVar must be 100 characters or fewer"

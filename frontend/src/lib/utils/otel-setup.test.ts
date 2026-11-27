@@ -29,6 +29,7 @@ describe('legacy Go projects', () => {
 			expect(guide?.target).toBe('nodejs');
 			expect(node?.frameworks.some((f) => f.id === guide?.framework)).toBe(true);
 		}
+		expect(legacyOtelGuide('nextjs')).toEqual({ target: 'nodejs', framework: 'nextjs' });
 		expect(legacyOtelGuide('express')).toEqual({ target: 'nodejs', framework: 'express' });
 		expect(legacyOtelGuide('nestjs')).toEqual({ target: 'nodejs', framework: 'nestjs' });
 	});

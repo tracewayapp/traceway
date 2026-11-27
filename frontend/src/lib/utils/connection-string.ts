@@ -28,10 +28,6 @@ export function normalizeBaseUrl(raw: string | null | undefined): string | null 
 	}
 	const cut = s.search(/[?#]/);
 	if (cut >= 0) s = s.slice(0, cut);
-	s = s.replace(/\/+$/, '');
-	if (s.endsWith('/api/report')) s = s.slice(0, -'/api/report'.length);
-	else if (s.endsWith('/api')) s = s.slice(0, -'/api'.length);
-	s = s.replace(/\/+$/, '');
 
 	try {
 		const url = new URL(s);
@@ -39,7 +35,16 @@ export function normalizeBaseUrl(raw: string | null | undefined): string | null 
 	} catch {
 		return null;
 	}
-	return s;
+	const authorityStart = s.indexOf('://') + 3;
+	const authorityEnd = s.indexOf('/', authorityStart);
+	if (authorityEnd === authorityStart) return null;
+	if (authorityEnd < 0) return s;
+	const path = s
+		.slice(authorityEnd)
+		.replace(/\/+$/, '')
+		.replace(/\/api(?:\/report)?$/, '')
+		.replace(/\/+$/, '');
+	return s.slice(0, authorityEnd) + path;
 }
 
 /** The token and base URL of a connection string, or null when it is not one. */

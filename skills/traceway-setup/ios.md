@@ -52,40 +52,40 @@ The package identity is `traceway-ios` and the product is `Traceway`, so the tar
 
    ```
    /* Begin PBXBuildFile section */   (the first section in "objects = {"; create it if missing)
-   		BUILDFILE /* Traceway in Frameworks */ = {isa = PBXBuildFile; productRef = PRODDEP /* Traceway */; };
+        BUILDFILE /* Traceway in Frameworks */ = {isa = PBXBuildFile; productRef = PRODDEP /* Traceway */; };
 
    /* the app target's PBXFrameworksBuildPhase */
-   			files = (
-   				BUILDFILE /* Traceway in Frameworks */,
-   			);
+            files = (
+                BUILDFILE /* Traceway in Frameworks */,
+            );
 
    /* the app target's PBXNativeTarget, next to its name */
-   			packageProductDependencies = (
-   				PRODDEP /* Traceway */,
-   			);
+            packageProductDependencies = (
+                PRODDEP /* Traceway */,
+            );
 
    /* the PBXProject object, next to mainGroup */
-   			packageReferences = (
-   				PKGREF /* XCRemoteSwiftPackageReference "traceway-ios" */,
-   			);
+            packageReferences = (
+                PKGREF /* XCRemoteSwiftPackageReference "traceway-ios" */,
+            );
 
    /* Begin XCRemoteSwiftPackageReference section */   (before the closing "};" of objects)
-   		PKGREF /* XCRemoteSwiftPackageReference "traceway-ios" */ = {
-   			isa = XCRemoteSwiftPackageReference;
-   			repositoryURL = "https://github.com/tracewayapp/traceway-ios.git";
-   			requirement = {
-   				kind = upToNextMajorVersion;
-   				minimumVersion = 2.1.0;
-   			};
-   		};
+        PKGREF /* XCRemoteSwiftPackageReference "traceway-ios" */ = {
+            isa = XCRemoteSwiftPackageReference;
+            repositoryURL = "https://github.com/tracewayapp/traceway-ios.git";
+            requirement = {
+                kind = upToNextMajorVersion;
+                minimumVersion = 2.1.0;
+            };
+        };
    /* End XCRemoteSwiftPackageReference section */
 
    /* Begin XCSwiftPackageProductDependency section */
-   		PRODDEP /* Traceway */ = {
-   			isa = XCSwiftPackageProductDependency;
-   			package = PKGREF /* XCRemoteSwiftPackageReference "traceway-ios" */;
-   			productName = Traceway;
-   		};
+        PRODDEP /* Traceway */ = {
+            isa = XCSwiftPackageProductDependency;
+            package = PKGREF /* XCRemoteSwiftPackageReference "traceway-ios" */;
+            productName = Traceway;
+        };
    /* End XCSwiftPackageProductDependency section */
    ```
 

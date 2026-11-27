@@ -205,7 +205,7 @@ func (a authController) Register(c *gin.Context) {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
-		if err := populateDashboardsOnCreate(tx, project, &user.Id); err != nil {
+		if err := PopulateDashboardsOnCreate(tx, project, &user.Id); err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}

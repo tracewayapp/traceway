@@ -1,316 +1,309 @@
 # On-Call
 
-On-Call turns an alert into a person's phone ringing. Alerts on their own post to a channel and hope somebody is watching. A page keeps escalating until a human acknowledges it.
+On-Call turns an alert into a person's phone ringing. An alert on its own posts to a channel and hopes somebody is watching. A page goes to whoever is on call and keeps escalating to the next person until a human acknowledges it.
 
-Traceway ships the full paging stack: teams, rotating schedules, escalation policies, per-responder contact methods, and a no-login acknowledge link. It lives under **On-Call** in the sidebar, and the badge there counts the pages still open on the current project.
+Setting it up takes five steps. The first four are done once by whoever runs the rotation, and the fifth by every responder for themselves:
 
-That badge and that queue are per project. For pages across every project in the organization at once, use the organization's [On-Call page](/learn/organization-overview#on-call).
+| | What you do | Who | How often |
+|---|---|---|---|
+| **1** | [Create a team](#step-1-create-a-team) of responders | An organization owner or admin | Once per team |
+| **2** | [Build a schedule](#step-2-build-a-schedule) that says who is on call when | An organization owner or admin | Once per rotation |
+| **3** | [Create an escalation policy](#step-3-create-an-escalation-policy) that says who is paged first and who is next | An organization owner or admin | Once per policy |
+| **4** | [Connect your alerts](#step-4-connect-your-alerts-to-the-policy) to the policy | Anyone with write access to the project | Once per project |
+| **5** | [Add your contact methods](#step-5-add-your-contact-methods) | Every responder | Once per person |
 
-<img src="/on-call/oncall-pages.png" alt="The On-Call page showing the incident queue" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+Then [send a test page](#check-that-it-works) to see the whole chain work. Steps 1 to 3 happen on the **On-Call** page in the sidebar. You can also do every step [from the CLI or through an AI agent](#configure-on-call-with-the-cli-or-mcp).
 
-## How the pieces fit together
+## Step 1: Create a team
 
-An alert rule fires, and instead of sending a message it opens a **page**. The page walks an **escalation policy**. Each step of that policy names targets, and a target resolves to people through a **schedule**, a **team**, or a direct user. Each of those people is then reached through their own **contact methods**, in the order their **notification rules** define.
+A team is the group of people who answer for a set of projects. Schedules belong to a team, so it comes first.
 
-<img src="/on-call/how-the-pieces-fit-together.svg" alt="An alert rule opens a page, which walks an escalation policy level by level until somebody acknowledges" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+1. Open **On-Call** in the sidebar and select the **Teams** tab.
+2. Click **New Team**.
+3. Enter a **Name** and a **Description**, tick the **Members**, and under **Owned projects** tick the projects this team answers for.
+4. Click **New Team**.
 
-Two ideas are worth holding onto:
+<img src="/on-call/oncall-teams.png" alt="The On-Call page in the sidebar with the Teams tab selected. Two teams are listed with their members, owned projects and number of schedules, and a New Team button sits on the right" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-- **The page is the unit of work, not the message.** A noisy rule that fires two hundred times produces one page. Re-fires bump an event counter and never restart the escalation clock.
-- **Escalation stops on acknowledge, not on delivery.** Sending a message proves nothing. Traceway keeps climbing the policy until somebody acknowledges, or until the policy is exhausted.
+<img src="/on-call/oncall-team-dialog.png" alt="The team dialog with a name, a description, four ticked members, their order, and the owned project checkout-api" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-## Setting it up
+A project has at most one owning team. The issue detail page uses that link to show who is on call for the project you are looking at.
 
-The pieces reference each other, so build them in this order. Steps 1 to 3 are organization scoped and need the **owner** or **admin** role. Step 4 is project scoped and needs write access on the project, not an admin role. Contact methods are personal, so every responder does step 5 for themselves.
+**Member order** is only how the team is listed. It is not a rotation: an escalation step that targets the team pages every member at once, and each schedule layer keeps its own order.
 
-1. **Create a team.** It groups the responders and owns the projects they are responsible for.
-2. **Build a schedule** for that team, so there is always somebody on call.
-3. **Create an escalation policy** whose first step points at that schedule.
-4. **Add an escalation channel** on the Alerts page pointing at the policy, then attach your rules to it.
-5. **Tell each responder to add contact methods**, and optionally a notification rule chain.
+## Step 2: Build a schedule
 
-Step 5 is the one teams forget. It still works without it, because a responder with no contact methods is paged on their account email, but nobody wants to find that out during an incident.
+A schedule answers one question: who is on call right now. It belongs to a team, has its own timezone, and is built from **layers**. Each layer is a rotation over a list of people.
 
-## Teams
+1. Select the **Schedules** tab and click **New Schedule**.
+2. Enter a **Name**, pick the **Team**, and pick the **Timezone** the responders live in. Handoff times are read in this timezone. Leave it empty to use the organization's timezone.
+3. Click **New Schedule**. The new schedule opens below the list, still without layers.
 
-A team is a named group of people that owns projects. Ownership is one project to one team, so every project has at most one team answering for it. The issue detail page uses that link to show who is on call for the project you are looking at.
+<img src="/on-call/new-schedule-dialog.png" alt="The New Schedule dialog with the name Platform secondary, a description, the team Platform and the timezone Europe/Berlin" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-<img src="/on-call/oncall-teams.png" alt="The Teams tab" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+4. Click **Edit Layers**, then **Add Layer**, and fill in the layer:
 
-Creating or editing a team sets its name, description, members, and owned projects in one dialog.
+| Field | What to enter |
+|-------|---------------|
+| **Rotation** | **Daily**, **Weekly**, or **Custom interval** (every N days) |
+| **Handoff time** | The time of day the shift changes hands |
+| **Handoff day** | The weekday of the handoff, for weekly rotations |
+| **Rotation start** | The date the rotation counts from |
+| **Members (rotation order)** | The people to rotate through, in order. Use **Add member...** to pick anyone in the organization. |
+| **Restrictions** | Optional. Limits the layer to certain hours (**Daily**, for example 18:00 to 09:00) or certain days (**Weekly**, for example Saturday 00:00 to Monday 09:00). Without one the layer covers every minute. |
 
-<img src="/on-call/oncall-team-dialog.png" alt="The team dialog with members and projects" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+5. Add more layers if different people cover different hours. A layer further down the list wins where two overlap.
+6. Click **Update Schedule**.
 
-Members are stored in order, but that order is only how the team is listed. A policy step targeting the whole team pages every member at once. Schedule layers do not inherit it either. Each layer keeps its own rotation order, picked from anyone in the organization.
+<img src="/on-call/oncall-layer-editor.png" alt="The Schedules tab with the schedule Payments Primary open. The layer editor shows a Business hours layer restricted to Monday 09:00 through Friday 18:00 and a Nights and weekends layer below it, and the timeline underneath shows one row per layer and a combined Schedule row" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-## Schedules
+The timeline under the editor shows the result. There is one row per layer, and the bottom **Schedule** row is who actually gets paged. Read it for gaps before you move on: where no layer covers a moment, nobody is on call, and an escalation step that targets the schedule reaches nobody.
 
-A schedule answers one question: who is on call right now. It belongs to a team, carries its own timezone, and is built from **layers**.
+[How a schedule picks the person on call](#how-a-schedule-picks-the-person-on-call) explains stacking, restrictions and daylight saving in detail.
 
-<img src="/on-call/oncall-schedules.png" alt="The Schedules tab with a rendered timeline" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+## Step 3: Create an escalation policy
 
-### Layers
+A policy is the ordered list of who to wake, and how long to wait before moving on to the next.
 
-Each layer is an independent rotation over a list of people. Layers stack, and a layer later in the list takes precedence over the ones before it. At any instant at most one person is on call for the schedule, which is the highest-precedence layer covering that moment. If no layer covers it, nobody is on call and a policy step targeting the schedule reaches nobody.
+1. Select the **Policies** tab and click **New Policy**.
+2. Enter a **Name**.
+3. In **Level 1**, pick the kind of target in the first dropdown and the target itself in the second. For the first level, choose **Schedule** and the schedule from step 2. A level can have several targets.
+4. Set **Escalate after** to the number of minutes the page waits for an acknowledgement before it moves to the next level.
+5. Click **Add Step** for each further level, for example a second schedule and then the whole team.
+6. Set **Repeat** and **Urgency** if you need them (see below), check the **Preview**, and click **New Policy**.
 
-<img src="/on-call/oncall-layer-editor.png" alt="The layer editor with two stacked layers" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-A layer has:
-
-| Field | Meaning |
-|-------|---------|
-| Rotation | `daily`, `weekly`, or `custom` (every N days) |
-| Handoff time | The wall-clock time the shift changes hands, in the schedule's timezone |
-| Handoff day | Which weekday the handoff happens on, for weekly rotations |
-| Rotation start | The anchor date the rotation counts from |
-| Members | The people to rotate through, in order |
-| Restrictions | Optional windows that limit when this layer covers anything |
-
-### Restrictions
-
-A restriction narrows a layer to certain hours or days. Without one, the layer covers every minute. Two shapes are supported:
-
-- **Daily**, for example 18:00 to 09:00. A window that ends earlier than it starts wraps past midnight.
-- **Weekly**, for example Saturday 00:00 to Monday 09:00. These can span several days.
-
-Restrictions are evaluated in the schedule's timezone, so daylight saving changes are handled for you. On a spring-forward day a wall-clock time inside the skipped hour resolves back an hour, so a window ending in that hour is simply an hour shorter that night. A short window that reaches into the gap can collapse to nothing, in which case the layer covers nothing that day and only that day. The days around it are unaffected.
-
-The screenshot above shows the common pattern: a business hours layer restricted to Monday 09:00 through Friday 18:00, and a nights and weekends layer below it restricted to the inverse. Layers are listed in precedence order, so the one further down wins where the two overlap. The bottom `Schedule` row of the timeline is the stacked result, which is who actually gets paged.
-
-### Timezone
-
-The schedule's timezone is what handoff times and restrictions mean. Set it to where the people live, not where the servers live. A rotation set to `Europe/Berlin` hands off at 09:00 Berlin time all year, through daylight saving on both sides.
-
-The timeline renders in the schedule's timezone and marks the current moment with a red line. It can span at most 62 days per request, which the Day, Week, 2 Weeks, and Month controls stay inside.
-
-### Overrides
-
-An override temporarily replaces whoever the layers would have picked. Use it for a doctor's appointment, a swapped weekend, or someone going on vacation.
-
-<img src="/on-call/oncall-override-dialog.png" alt="The override dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-Overrides beat every layer. Where two overrides overlap, the one created most recently wins. They appear on the timeline as a dashed block labelled `OVERRIDE`.
-
-They are also the one on-call mutation any member can make, not just admins. Covering for a teammate should not need an administrator. An override can cover at most 30 days, and it can be deleted by whoever created it, the covering replacement responder, or an admin.
-
-<img src="/on-call/oncall-schedule-detail.png" alt="A schedule with its timeline and override list" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-## Escalation policies
-
-A policy is the ordered list of who to wake, and how long to wait before giving up on them.
-
-<img src="/on-call/oncall-policies.png" alt="The Escalation Policies tab" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-Each step holds one or more targets and a delay. The delay is how long the page waits for an acknowledgement before moving to the next step.
-
-<img src="/on-call/oncall-policy-dialog.png" alt="The policy dialog with a three level chain" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/on-call/oncall-policy-dialog.png" alt="The policy dialog with three levels: the schedule Payments Primary with 5 minutes, the schedule Payments Secondary with 10 minutes, and the team Payments with 15 minutes. Repeat is 1, Urgency is Auto, and the Preview shows the chain" style={{ maxWidth: '560px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 A target is one of:
 
-| Target | Resolves to |
-|--------|-------------|
-| Schedule | Whoever is on call for that schedule at the moment the step runs |
-| Team | Every member of the team |
-| User | That specific person |
-| Channel | A notification channel, for posting the page into Slack or a webhook alongside the human paging |
+| Target | Who is notified |
+|--------|-----------------|
+| **Schedule** | Whoever is on call for that schedule at the moment the step runs |
+| **Team** | Every member of the team |
+| **User** | That specific person |
+| **Channel** | A notification channel, to post the page into Slack or a webhook alongside the people being paged |
 
-A page snapshots its policy the moment it opens, so editing a policy never changes pages that are already escalating. Inside that snapshot, targets are still resolved to people when the step runs. A schedule target reaches whoever is on call at that moment, including an override that started five minutes ago.
+**Repeat** sends the whole chain around again after the last step, up to five more times. Use it when a page must not go unanswered overnight. With repeat at zero the page stays open after the last step, but nothing further is sent.
 
-Because a policy that points at something deleted would page nobody, a schedule or team a live policy targets cannot be deleted. Remove the step first. The same guard already stops you deleting a policy a channel is using.
-
-Within a single step, each person is notified once. Someone who appears on two targets of the same step does not get two pages.
-
-### Repeat
-
-After the last step, `Repeat` sends the whole chain around again up to five more times. Use it when a page must not be allowed to go unanswered overnight. With repeat set to zero the page stays open after the last step, but nothing further is sent.
-
-### Urgency
-
-Urgency decides which of the responder's two notification rule chains runs.
+**Urgency** decides which of each responder's two [notification rule](#notification-rules) chains runs:
 
 | Setting | Behaviour |
 |---------|-----------|
-| Auto (default) | Critical severity becomes high urgency, everything else becomes low |
-| Always high | Every page from this policy is high urgency |
-| Always low | Every page from this policy is low urgency |
+| **Auto** (default) | Critical severity becomes high urgency, everything else becomes low |
+| **Always high** | Every page from this policy is high urgency |
+| **Always low** | Every page from this policy is low urgency |
 
-Urgency is resolved once when the page opens and then remembered. A low severity re-fire can never quietly downgrade a page that is already escalating at high urgency.
+## Step 4: Connect your alerts to the policy
 
-## Connecting alerts to a policy
+Paging is wired in through [Alerts](/learn/alerts). A channel of the type **Escalation policy** opens a page where other channels send a message.
 
-Paging is wired in through the normal Alerts machinery. Create a channel with the type **Escalation policy** and point it at the policy you want.
+1. Open **Alerts** in the sidebar, select the **Channels** tab and click **New Channel**.
+2. Enter a **Name**, set **Type** to **Escalation policy**, and select your policy under **Escalation Policy**. The list holds the policies of the organization that owns the project.
+3. Click **New Channel**.
+4. On the **Rules** tab, create a rule or edit one, and select this channel as its **Channel**.
 
-<img src="/on-call/oncall-channel-dialog.png" alt="Creating an escalation channel" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+<img src="/on-call/oncall-channel-dialog.png" alt="The New Channel dialog with Type set to Escalation policy, an Escalation Policy dropdown, and a note that testing an escalation channel opens a real page" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-Then attach any rule to that channel, exactly as you would for Slack or email. When the rule fires, the channel opens a page instead of sending a message.
+From now on, when one of those rules fires, a page opens and the policy starts at level 1.
 
-The channel's **Test** button opens a real page and runs the real escalation. It is the honest way to find out whether your rotation and your policy work. Two things to know about it. The test page is created with `info` severity, so a policy left on **Auto** treats it as low urgency and runs your low urgency chain. And every test of the same channel shares a dedup key, so pressing Test again while the previous test page is still unresolved only bumps that page. Resolve the test page when you are done.
+## Step 5: Add your contact methods
 
-The policy must belong to the same organization as the project. The dialog only lists policies you can actually use.
+Contact methods are how Traceway reaches you when you are paged. They are personal: every responder adds their own, and nobody else can read or change them.
 
-## Pages
+This is the step teams forget. Paging still works without it, because a responder with no contact methods is paged on their account email, but nobody wants to find that out during an incident.
 
-A page is one incident. It has a status, an escalation level, and a delivery log.
+1. Open **Account** in the sidebar and select the **Contact Methods** tab.
+2. Click **New Contact Method**, pick the **Type** and fill in its fields:
 
-| Status | Meaning |
-|--------|---------|
-| Open | Nobody has taken it. Escalation is running. |
-| Acknowledged | Somebody is on it. Escalation has stopped, and queued deliveries are cancelled. |
-| Resolved | Finished. The dedup key is released, so the same condition can open a fresh page. |
+| Type | What you enter |
+|------|----------------|
+| **Email** | Optional address. Leave it blank to use your account email. |
+| **Slack** | Incoming webhook URL, with optional channel and username |
+| **Pushover** | User key and app token |
+| **Telegram** | Bot token and chat ID |
+| **SMS (Twilio)** | Phone number in international format, for example `+12025550123`. Only offered when the server [has Twilio configured](#sms-and-twilio). |
 
-### Deduplication
+3. Click **New Contact Method**.
+4. Click the paper plane icon in the method's row to send yourself a test message.
 
-While a page is unresolved, the same rule and dedup token bump the existing page instead of opening a new one. The event counter goes up, the escalation clock is untouched, and nobody gets notified again.
+<img src="/on-call/oncall-contact-method-dialog.png" alt="The New Contact Method dialog with Type set to Email and an optional email field that defaults to the account email" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-This is what keeps a flapping error from turning into a pager storm. A rule that fires sixty times over half an hour produces one page and exactly the notifications its policy calls for.
+<img src="/on-call/contact-methods-tab.png" alt="The Contact Methods tab of the Account page listing a Slack method and an Email method, each with an Enabled switch and icons to test, edit and delete" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-Rules without a dedup token deduplicate at the rule level, so one noisy rule is one page.
+The **Enabled** switch silences a method without deleting it.
 
-### Acknowledging and resolving
-
-Acknowledging stops escalation immediately and cancels anything still queued for delivery, including the later steps of a responder's own notification chain. Resolving closes the page.
-
-Neither action requires write access on the project. A responder with a read-only role who gets paged at 3am can still take the incident and close it out.
-
-<img src="/on-call/oncall-page-detail.png" alt="Page detail with the escalation chain and delivery log" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-The detail view shows the escalation chain with the current level highlighted, and every delivery attempt with its outcome. That log is the thing to read when somebody says they never got paged.
-
-### Acknowledging without logging in
-
-Every delivery addressed to a person carries its own single-purpose acknowledge link. Opening it shows a summary of the page. It does not require a session, so it works from a phone at 3am with no password manager in reach. Deliveries to a **Channel** target are the exception, since a shared Slack room has no single owner. Those carry the ordinary dashboard link instead.
-
-<img src="/on-call/oncall-ack-link.png" alt="The no-login acknowledge page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-The link is scoped to acknowledging that one page and nothing else. It gives no dashboard access, cannot resolve, and stops working once the page is resolved. Opening the link is read-only, so an email scanner following links cannot acknowledge your incident by accident. The acknowledgement is attributed to whoever the delivery was addressed to, and the page records that it came in through a link rather than the dashboard.
-
-## Contact methods
-
-Contact methods are personal. Each responder manages their own from the **Account** page, and nobody else can read or change them. The one thing teammates do see is a page's delivery log, which names the destination each notification went to so an incident can be debugged. Personal destinations are masked there: a phone number shows its last four digits, an email override shows its first character and domain. Your account email is shown in full, since everyone in the organization can already see it.
-
-<img src="/on-call/oncall-contact-methods.png" alt="Contact methods and notification rules on the account page" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-| Type | Configuration |
-|------|---------------|
-| Email | Optional address. Leave it blank to use your account email. |
-| Slack | Incoming webhook URL, with optional channel and username overrides |
-| Pushover | User key and app token |
-| Telegram | Bot token and chat ID |
-| SMS | Phone number in E.164 format, for example `+12025550123` |
-
-<img src="/on-call/oncall-contact-method-dialog.png" alt="Adding a contact method" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-Every method has a **Test** button that sends a canned message, and an enable toggle so you can silence one without deleting it.
-
-If you configure nothing at all, pages still fall back to your account email, so a responder is never silently skipped.
-
-That fallback only leaves the building if the server can send mail. Set `SMTP_ENABLED=true` along with the rest of the SMTP settings. With SMTP off, Traceway runs the email adapter in log-only mode and writes the page to the server log instead of delivering it, which is fine for local development and a bad surprise in production. On a self-hosted instance, configure SMTP before you rely on on-call.
-
-### Slack webhooks and private addresses
-
-Slack is the one contact method type where you choose the destination host yourself. Every other type sends to a fixed service, so only the Slack webhook URL is checked: it must use http or https and resolve to a public address. A URL whose host does not resolve is rejected too, since it could never receive a page.
-
-The check exists because contact methods are personal. They need no project role, so without it any member of the organization, readonly included, could point a webhook at an internal address and use the **Test** button to send requests into the server's own network.
-
-If your paging destinations genuinely live on a private network, for example a self-hosted Mattermost behind the same firewall as Traceway, set `ALLOW_PRIVATE_NOTIFICATION_TARGETS=true` on the server to turn the check off.
-
-Project notification channels are not affected either way. The [webhook channel type](/learn/alerts) exists to post anywhere, and creating one requires write access.
-
-### SMS and Twilio
-
-SMS needs Twilio credentials on the server. Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and one sender, either `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
-
-Without them SMS is not offered at all. The type picker hides it, and the server rejects attempts to create one. This is deliberate. A channel that silently drops your 3am page is worse than no channel.
-
-Phone numbers must be verified before they are paged. Adding one sends a six digit code, which expires after ten minutes and allows five attempts. Unverified numbers are never used for a real page, and the code send rate is capped per number so nobody can be flooded with codes.
+A phone number has to be verified before it is paged. Adding one sends a six digit code, which expires after ten minutes and allows five attempts. At most three codes are sent to a number per hour.
 
 ### Notification rules
 
-By default, a page notifies every enabled contact method at once. Notification rules replace that with an ordered chain per urgency.
+By default a page notifies all your enabled contact methods at once. Notification rules replace that with an ordered chain, one for high urgency pages and one for low.
 
-Each step names one contact method and a delay in minutes. A typical high urgency chain nudges you quietly first, then gets louder:
+1. On the **Account** page, select the **Notification Rules** tab.
+2. Under **High urgency**, click **Add step**, choose a contact method and the number of minutes after which it is tried. Add a step for each further method.
+3. Do the same under **Low urgency**, then click **Update Notification Rules**.
 
-| Step | Method | After |
-|------|--------|-------|
-| 1 | Slack | 0 minutes |
-| 2 | Push notification | 2 minutes |
-| 3 | SMS | 5 minutes |
+<img src="/on-call/notification-rules-tab.png" alt="The Notification Rules tab of the Account page. High urgency notifies Slack after 0 minutes and the account email after 5 minutes, low urgency notifies Slack only" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-The whole chain is scheduled the moment the page reaches you. Acknowledging cancels every step that has not fired yet, so taking the incident in the first thirty seconds means your phone never rings.
+A typical high urgency chain nudges you quietly first and then gets louder: Slack at once, a push notification after 2 minutes, SMS after 5. Delays count from the moment the page reaches you. Acknowledging cancels every step that has not fired yet, so taking the incident in the first thirty seconds means your phone never rings.
 
-Low urgency usually deserves a shorter chain, often a single Slack message with no follow-up. Leave a chain empty to fall back to notifying every enabled method immediately.
+Low urgency usually deserves a shorter chain, often a single Slack message. A chain you leave empty falls back to notifying every enabled method at once. It does not silence pages.
 
-## Who is on call right now
+## Check that it works
 
-The **Overview** tab answers that at a glance, per team and per schedule, with who is up next.
+Send a test page through the channel from step 4. It is a real page and runs the real escalation, so it is the honest way to find out whether your rotation and your policy work.
 
-<img src="/on-call/oncall-overview.png" alt="The overview tab showing current and next on-call" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+1. Open **Alerts**, select the **Channels** tab and click the paper plane icon in the row of your escalation channel.
+2. Click **Send Test**.
 
-The issue detail page shows the same thing for the project you are looking at, so you know who to pull in without leaving the stack trace.
+<img src="/on-call/test-channel-dialog.png" alt="The Test Channel dialog: testing Platform pager opens a real page and notifies whoever is on call, exactly as a firing rule would, with Cancel and Send Test buttons" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+3. Open **On-Call**. The **Pages** tab shows `Test page from channel "<name>"` as **Open**, and the person on call for level 1 receives it through their contact methods.
+4. Acknowledge it from the notification or with the single check mark in the row, then resolve it with the double check mark.
+
+<img src="/on-call/test-page-open.png" alt="The Pages tab of the On-Call page with one row: Test page from channel Platform pager, severity Info, low urgency, level 1 of 2, status Open, and the acknowledge and resolve icons on the right" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Two things to know about the test:
+
+- **It is low urgency.** The test page has `info` severity, so a policy left on **Auto** runs each responder's low urgency chain.
+- **Pressing Test twice does not open two pages.** While the previous test page of the same channel is unresolved, another test only raises its event count. Resolve the test page when you are done.
+
+To check the rotation without paging anyone, read the timeline of the schedule or the [Overview tab](#see-who-is-on-call).
+
+## Respond to a page
+
+The **Pages** tab is the queue of the current project, and the badge on **On-Call** in the sidebar counts its open pages. For the pages of every project at once, use the organization's [On-Call page](/learn/organization-overview#on-call).
+
+<img src="/on-call/oncall-pages.png" alt="The On-Call page with the Pages tab selected and two pages in the queue, one open and one acknowledged. The On-Call item in the sidebar carries a badge with the number of open pages" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+| Status | Meaning |
+|--------|---------|
+| **Open** | Nobody has taken it. Escalation is running. |
+| **Acknowledged** | Somebody is on it. Escalation has stopped, and queued deliveries are cancelled. |
+| **Resolved** | Finished. The same condition can open a fresh page. |
+
+**Acknowledge** stops the escalation immediately and cancels anything still queued for delivery, including the later steps of your own notification chain. **Resolve** closes the page. Both are in the row and in the page's detail view.
+
+Neither needs write access to the project. A responder with a read-only role who is paged at 3am can still take the incident and close it out.
+
+<img src="/on-call/oncall-page-detail.png" alt="The detail view of an acknowledged page: the rule, the event count, the escalation chain with level 1 highlighted, and a delivery timeline showing an email that was sent and who acknowledged" style={{ maxWidth: '480px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+Click a row to open the detail view. It shows the escalation chain with the current level highlighted, and every delivery attempt with its outcome. That log is the thing to read when somebody says they never got paged. Personal destinations are masked in it: a phone number shows its last four digits, an email override its first character and domain. Account emails are shown in full, since everyone in the organization can already see them.
+
+### Acknowledge without logging in
+
+Every notification addressed to a person carries its own acknowledge link. It opens a summary of the page with an acknowledge button and needs no session, so it works from a phone with no password manager in reach.
+
+<img src="/on-call/oncall-ack-link.png" alt="The acknowledge page opened from a link: the page's subject, severity, project, rule and event count, and a line saying who acknowledged it and when" style={{ maxWidth: '520px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+The link can acknowledge that one page and nothing else. It gives no dashboard access, cannot resolve, and stops working once the page is resolved. Opening it only shows the page, so an email scanner that follows links cannot acknowledge your incident by accident. The acknowledgement is attributed to the person the notification was addressed to, and the page records that it came in through a link.
+
+Deliveries to a **Channel** target are the exception, since a shared Slack room has no single owner. Those carry the ordinary dashboard link.
+
+## Cover a shift with an override
+
+An override puts someone else on call for a stretch of time without touching the rotation. Use it for a doctor's appointment, a swapped weekend, or a vacation. Any member of the organization can add one, because covering for a teammate should not need an administrator.
+
+1. On the **Schedules** tab, click the schedule.
+2. Click **Add Override**.
+3. Pick the **User** who covers, the **Start** and the **End**. The times are in your local timezone. An override can cover at most 30 days.
+4. Click **New Override**.
+
+<img src="/on-call/oncall-override-dialog.png" alt="The Add Override dialog with a user, a start and an end" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+An override beats every layer, and where two overrides overlap the one created most recently wins. It shows on the timeline as a dashed block labelled `OVERRIDE` and ends on its own when its time is up.
+
+<img src="/on-call/oncall-schedule-detail.png" alt="A schedule with its timeline and override list. The Schedule row contains a dashed block labelled OVERRIDE, and the override is listed below with a delete icon" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+An override can be deleted by whoever created it, by the person covering, or by an organization owner or admin.
+
+## See who is on call
+
+The **Overview** tab shows who is on call right now for every team and schedule, and who is up next.
+
+<img src="/on-call/oncall-overview.png" alt="The Overview tab showing, per team and schedule, the person on call now and who takes over next" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+The issue detail page shows the same for the project you are looking at, so you know who to pull in without leaving the stack trace.
 
 ## Common setups
 
 ### One engineer, one rotation
 
-The smallest useful configuration. One team, one schedule with a single weekly layer over everybody, one policy with a single step pointing at the schedule and a delay of 15 minutes. Set repeat to 1 or 2 so an unanswered page comes back around.
+The smallest useful configuration. One team, one schedule with a single weekly layer over everybody, and one policy with a single step that targets the schedule and waits 15 minutes. Set **Repeat** to 1 or 2 so an unanswered page comes back around.
 
 ### Business hours and out of hours
 
-Two layers on one schedule. The first layer covers the working week and rotates over the whole team. The second covers nights and weekends and rotates over the smaller group that signed up for it. Restrictions on both keep them out of each other's way, and the second wins anywhere they overlap. This is the configuration in the screenshots above.
+Two layers on one schedule. The first covers the working week and rotates over the whole team. The second covers nights and weekends and rotates over the smaller group that signed up for it. Restrictions on both keep them out of each other's way, and the second wins anywhere they overlap. This is the configuration in the [layer editor screenshot](#step-2-build-a-schedule).
 
 ### Primary and secondary
 
-Two schedules on the same team, and a policy with two steps. Step one targets the primary schedule with a delay of five minutes. Step two targets the secondary. A third step targeting the whole team makes a decent last resort.
+Two schedules on the same team, and a policy with two steps. Step one targets the primary schedule and waits five minutes. Step two targets the secondary. A third step that targets the whole team makes a decent last resort.
 
 ### Loud for critical, quiet for the rest
 
-Two policies. The critical one keeps urgency on Auto and escalates quickly. The other sets urgency to **Always low** with one step and a long delay, then each responder points their low urgency chain at Slack only. Attach noisy rules to the second policy and they will never ring a phone.
+Two policies. The critical one keeps **Urgency** on **Auto** and escalates quickly. The other sets it to **Always low** with one step and a long delay, and each responder points their low urgency chain at Slack only. Attach noisy rules to the second policy and they will never ring a phone.
 
 ### Vacation cover
 
-Add an override for the dates. It beats the rotation without editing it, and it disappears on its own when the dates pass. There is no need to reshuffle the layer and remember to put it back.
+Add an [override](#cover-a-shift-with-an-override) for the dates. It beats the rotation without editing it and disappears on its own when the dates pass. There is no need to reshuffle the layer and remember to put it back.
 
-## Permissions
+## How it works
 
-| Action | Required role |
-|--------|---------------|
-| View teams, schedules, policies, and who is on call | Any member of the organization |
-| Create or edit teams, schedules, and policies | Organization owner or admin |
-| Create a schedule override | Any member of the organization |
-| Delete a schedule override | Its creator, the covering replacement responder, or an organization owner or admin |
-| View, acknowledge, and resolve pages | Project read access, no write access needed |
-| Manage your own contact methods and notification rules | Yourself only |
+An alert rule fires, and instead of sending a message it opens a **page**. The page walks an **escalation policy**. Each step of the policy names targets, and a target resolves to people through a **schedule**, a **team**, or a direct user. Each of those people is then reached through their own **contact methods**, in the order their **notification rules** define.
 
-## Delivery guarantees
+<img src="/on-call/how-the-pieces-fit-together.svg" alt="An alert rule opens a page, which walks an escalation policy level by level until somebody acknowledges" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+Two ideas are worth holding onto:
+
+- **The page is the unit of work, not the message.** A noisy rule that fires two hundred times produces one page. Re-fires raise an event counter and never restart the escalation clock.
+- **Escalation stops on acknowledge, not on delivery.** Sending a message proves nothing. Traceway keeps climbing the policy until somebody acknowledges, or until the policy is exhausted.
+
+### One page per problem
+
+While a page is unresolved, the same rule and dedup token raise the event count of the existing page instead of opening a new one. The escalation clock is untouched, and nobody is notified again. Rules without a dedup token deduplicate at the rule level, so one noisy rule is one page.
+
+This is what keeps a flapping error from turning into a pager storm. A rule that fires sixty times over half an hour produces one page and exactly the notifications its policy calls for. Resolving the page releases the key, so the same condition can open a fresh page afterwards.
+
+### How a schedule picks the person on call
+
+Layers stack, and a layer later in the list takes precedence over the ones before it. At any instant at most one person is on call for the schedule: the member whose turn it is in the highest layer that covers that moment. Overrides sit above every layer. If nothing covers the moment, nobody is on call.
+
+A restriction narrows a layer to certain hours or days:
+
+- **Daily**, for example 18:00 to 09:00. A window that ends earlier than it starts wraps past midnight.
+- **Weekly**, for example Saturday 00:00 to Monday 09:00. These can span several days.
+
+The schedule's timezone is what handoff times and restrictions mean. Set it to where the people live, not where the servers live. A rotation set to `Europe/Berlin` hands off at 09:00 Berlin time all year, through daylight saving on both sides.
+
+On a spring-forward day a time inside the skipped hour resolves back an hour, so a window ending in that hour is an hour shorter that night. A short window that reaches into the gap can collapse to nothing, in which case the layer covers nothing that day and only that day.
+
+The timeline renders in the schedule's timezone and marks the current moment with a red line. The **Day**, **Week**, **2 Weeks** and **Month** controls change how much it shows.
+
+### How a policy escalates
+
+A page snapshots its policy the moment it opens, so editing a policy never changes pages that are already escalating. Inside that snapshot, targets are still resolved to people when the step runs. A schedule target reaches whoever is on call at that moment, including an override that started five minutes ago.
+
+Within a single step, each person is notified once. Someone who appears on two targets of the same step does not get two pages.
+
+Urgency is resolved once when the page opens and then remembered. A low severity re-fire can never quietly downgrade a page that is already escalating at high urgency.
+
+A freshly opened page does not wait for a polling interval. The escalator is woken directly, so the first level is notified within a second or so.
+
+### Delivery guarantees
 
 Nothing is sent from inside the request that triggered it. A firing rule only opens the page, in its own transaction. The escalator then claims that page and, in a single transaction, advances the escalation level and writes every delivery for that level into a durable outbox. A separate worker drains the outbox and does the sending.
 
 Because the level advance and the deliveries commit together, a crash mid-incident cannot lose a page or enqueue a level twice. Sending itself is at-least-once by design. A delivery interrupted between the send and the record of it is reclaimed about five minutes later and retried, so a crash at exactly the wrong moment can repeat one message. Paging twice is the right failure mode when the alternative is not paging at all.
 
-Deliveries that fail are retried on a backoff of 1, 5, 15, and 60 minutes, up to five attempts, before being recorded as permanently failed and reported as an exception. Acknowledging cancels anything still queued, and a cancelled delivery can never come back to life, though a send already in flight may still land once.
-
-The `outbox` block on `/api/health/deep` exposes queue depth and the oldest pending delivery, so you can alert on your alerting. It is an operator endpoint gated by the `HEALTH_DEEP_TOKEN` deploy secret (unset disables it).
-
-## Configuration
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `ONCALL_POLL_SECONDS` | `30` | How often the escalator checks for pages that are due to escalate. Minimum 5. Kept separate from rule evaluation so raising that interval never delays paging. |
-| `OUTBOX_POLL_SECONDS` | `15` | How often the outbox drain worker sends queued notifications. Minimum 5. |
-| `APP_BASE_URL` | `http://localhost:5173` | The origin used to build acknowledge links. Set it. The escalator sends from a background worker with no request to derive an origin from, so if this is unset every page links to localhost. |
-| `TWILIO_ACCOUNT_SID` | unset | Twilio account SID, required for SMS |
-| `TWILIO_AUTH_TOKEN` | unset | Twilio auth token, required for SMS |
-| `TWILIO_FROM_NUMBER` | unset | Sending number. Use this or a messaging service. |
-| `TWILIO_MESSAGING_SERVICE_SID` | unset | Twilio messaging service, as an alternative to a from number |
-| `ALLOW_PRIVATE_NOTIFICATION_TARGETS` | unset | Set to `true` to let personal contact methods point at private or loopback addresses. Off by default so a contact method, which needs no project role, cannot be used to reach the server's own network. |
-| `SMTP_ENABLED` | unset | Must be `true` for email pages to be delivered. Anything else runs the email adapter in log-only mode. |
-
-A freshly opened page does not wait for the next poll. The escalator is woken directly, so the first level is notified within a second or so regardless of `ONCALL_POLL_SECONDS`.
+Deliveries that fail are retried after 1, 5, 15, and 60 minutes, up to five attempts, before being recorded as permanently failed and reported as an exception. Acknowledging cancels anything still queued, and a cancelled delivery can never come back to life, though a send already in flight may still land once.
 
 ## Limits
 
 | Thing | Limit |
 |-------|-------|
+| Layers per schedule | 20 |
+| Members per layer | 50 |
+| Restrictions per layer | 10 |
+| Custom rotation interval | 1 to 365 days |
 | Steps per escalation policy | 10 |
 | Targets per step | 10 |
 | Delay between steps | 1 to 1440 minutes |
@@ -320,54 +313,257 @@ A freshly opened page does not wait for the next poll. The escalator is woken di
 | Override duration | 30 days |
 | Timeline range per request | 62 days |
 
+## Who can do what
+
+| Action | Required role |
+|--------|---------------|
+| View teams, schedules, policies, and who is on call | Any member of the organization |
+| Create or edit teams, schedules, and policies | Organization owner or admin |
+| Create a schedule override | Any member of the organization |
+| Delete a schedule override | Its creator, the person covering, or an organization owner or admin |
+| Create an escalation channel and attach rules to it | Write access to the project |
+| View, acknowledge, and resolve pages | Read access to the project. No write access needed. |
+| Manage your own contact methods and notification rules | Yourself only |
 
 ## Configure on-call with the CLI or MCP
 
-The write CLI can configure teams, schedules, overrides, escalation policies, your own contact methods and your personal notification chains. Select a project in the organization for the write permission/audit context. Organization operations additionally take `--organization <id>`.
+Everything above can also be done with the [write CLI](/learn/agent-write-access) `traceway-write`, or by an AI agent through the `traceway-write` skill or the write MCP server. Writes need **Allow agent writes** switched on for the organization, and the same roles as in the dashboard. [Agent Write Access](/learn/agent-write-access) covers the setup.
 
-A complete route is **team → schedule → escalation policy → project escalation channel → project alert rule**. Responders then configure their personal contact methods and urgency chains. A team target notifies every member; a schedule target resolves to whoever is on call at that moment. Admins discover responder IDs with `organization-members list --organization <id>`.
+With an agent you describe the result:
 
-| CLI group | Operations | MCP tools |
-|---|---|---|
-| `teams` | list/create/update/delete, set-members, set-projects | `list_teams`, `create_team`, `update_team`, `delete_team`, `set_team_members`, `set_team_projects` |
-| `schedules` | list/show/create/update/delete, timeline, create-override, delete-override | `list_oncall_schedules`, `get_oncall_schedule`, `create_oncall_schedule`, `update_oncall_schedule`, `delete_oncall_schedule`, `get_oncall_timeline`, `create_oncall_override`, `delete_oncall_override` |
-| `escalation-policies` | list/create/update/delete | `list_escalation_policies`, `create_escalation_policy`, `update_escalation_policy`, `delete_escalation_policy` |
-| `contact-methods` | list/create/update/delete/test/verify/resend-code | Corresponding contact-method tools |
-| `notification-chains` | show/replace | `get_user_notification_rules`, `set_user_notification_rules` |
-| `oncall` | now/current | `get_oncall_now`, `get_current_oncall` |
+```
+/traceway-write Set up on-call for the Platform team: Maya and
+Jonas rotate weekly, handoff Mondays at 09:00 Europe/Berlin.
+Page whoever is on call first, and the whole team after 15
+minutes without an acknowledgement.
+```
 
-Create/update bodies use `--file F`; `validate <action>` checks request envelopes offline. MCP accepts `organization_id` as an integer, `id` as applicable, `data` for the JSON body, and `project_id` for every write. Schedule override deletion additionally takes `child_id`. The full payload schemas and examples are in the write skill's **oncall-configuration.md** and **personal-notifications.md**, also MCP resources under `traceway://knowledge/`.
+By hand, each step is one command that takes a JSON file:
 
-For example, a weekly schedule document:
+```bash
+# Ids you will need: members (owners and admins only) and projects
+traceway-write organization-members list --organization <org-id>
+traceway-write projects list
 
-```json filename="schedule.json"
+# Steps 1 to 3 (organization owners and admins)
+traceway-write teams create --organization <org-id> --file team.json
+traceway-write schedules create --organization <org-id> --file schedule.json
+traceway-write escalation-policies create --organization <org-id> --file policy.json
+
+# Step 4: the escalation channel, in the selected project
+traceway-write channels create --file channel.json
+
+# Step 5: your own contact methods and notification chains
+traceway-write contact-methods create --file contact.json
+traceway-write notification-chains replace --file chains.json
+
+# Check the result without paging anyone
+traceway-write schedules timeline <schedule-id> --organization <org-id> \
+  --from 2026-11-23T00:00:00Z --to 2026-12-07T00:00:00Z
+traceway-write oncall now --organization <org-id>
+traceway-write oncall current
+```
+
+`<org-id>` is the number of your organization. `traceway-write dashboards list` prints it as `organizationId`. Organization commands still need a selected project in that organization (`traceway-write projects use <project-id>`), which decides whose **Allow agent writes** switch applies.
+
+The files, in the order of the steps. Replace the ids with the ones the previous commands returned:
+
+```json filename="team.json"
 {
-  "teamId":3,"name":"Platform primary","timezone":"Europe/Berlin",
-  "definition":{"schemaVersion":1,"layers":[{
-    "name":"Primary","rotationType":"weekly","handoffDay":1,
-    "handoffTime":"09:00","rotationStart":"2026-11-16",
-    "userIds":[1,2],"restrictions":[]
-  }]}
+  "name": "Platform",
+  "description": "Checkout API responders",
+  "memberUserIds": [1, 2],
+  "projectIds": ["1e5b3c0f-0e8e-4652-b917-dfe3ce55ed11"]
 }
 ```
 
-```bash
-traceway-write schedules create --organization 1 --file schedule.json --yes
-traceway-write schedules timeline 4 --organization 1 --from 2026-11-16T00:00:00Z --to 2026-11-30T00:00:00Z
-traceway-write oncall now --organization 1
+```json filename="schedule.json"
+{
+  "teamId": 1,
+  "name": "Platform primary",
+  "description": "Weekly rotation, handoff Monday 09:00",
+  "timezone": "Europe/Berlin",
+  "definition": {
+    "schemaVersion": 1,
+    "layers": [
+      {
+        "name": "Primary",
+        "rotationType": "weekly",
+        "handoffDay": 1,
+        "handoffTime": "09:00",
+        "rotationStart": "2026-11-23",
+        "userIds": [1, 2],
+        "restrictions": []
+      }
+    ]
+  }
+}
 ```
 
-Use actual returned team/schedule IDs and organization user IDs. Timelines cover at most 62 days. Verify handoffs and gaps without sending a test page. Schedule/policy updates replace definitions; preserve unrelated layers/steps. Policy edits affect future pages; existing pages retain their snapshots. Team deletion removes its schedules and is blocked by policy references.
+`rotationType` is `daily`, `weekly` or `custom` (with `intervalDays`), and `handoffDay` runs from Monday = 1 to Sunday = 7. A restriction is `{"type":"daily","startTime":"18:00","endTime":"09:00"}`, or `"type":"weekly"` with `startDay` and `endDay` added.
 
-Personal chains are replaced together:
+```json filename="policy.json"
+{
+  "name": "Platform escalation",
+  "definition": {
+    "schemaVersion": 1,
+    "urgency": "auto",
+    "repeatCount": 1,
+    "steps": [
+      { "delayMinutes": 5, "targets": [{ "type": "schedule", "id": 1 }] },
+      { "delayMinutes": 15, "targets": [{ "type": "team", "id": 1 }] }
+    ]
+  }
+}
+```
+
+A target `type` is `schedule`, `team`, `user` or `channel`, and `urgency` is `auto`, `high` or `low`.
+
+```json filename="channel.json"
+{
+  "name": "Platform pager",
+  "channelType": "escalation",
+  "config": { "policyId": 1 }
+}
+```
+
+Route a rule to the channel with `traceway-write alerts create` or `alerts update`, described in [Alerts](/learn/alerts#configure-alerting-with-the-cli-or-mcp).
+
+```json filename="contact.json"
+{
+  "methodType": "slack",
+  "config": { "webhookUrl": "https://hooks.slack.com/services/T000/B000/XXXX" },
+  "enabled": true
+}
+```
+
+The other values of `methodType` are `email` (`config.email`, empty for your account email), `pushover` (`userKey`, `appToken`), `telegram` (`botToken`, `chatId`) and `sms` (`phoneNumber`). A new phone number is verified with `contact-methods verify <id> --file code.json`, where the file is `{"code":"123456"}`.
 
 ```json filename="chains.json"
-{"high":[{"contactMethodId":7,"delayMinutes":0},{"contactMethodId":9,"delayMinutes":5}],"low":[{"contactMethodId":7,"delayMinutes":0}]}
+{
+  "high": [
+    { "contactMethodId": 1, "delayMinutes": 0 },
+    { "contactMethodId": 2, "delayMinutes": 5 }
+  ],
+  "low": [
+    { "contactMethodId": 1, "delayMinutes": 0 }
+  ]
+}
 ```
+
+An override is `{"userId":2,"startAt":"2026-12-04T09:00:00Z","endAt":"2026-12-04T18:00:00Z"}`, sent with `schedules create-override <schedule-id>`.
+
+The rest of the commands:
 
 ```bash
+# Read
+traceway-write teams list --organization <org-id>
+traceway-write schedules list --organization <org-id>
+traceway-write schedules show <id> --organization <org-id>
+traceway-write escalation-policies list --organization <org-id>
+traceway-write contact-methods list
 traceway-write notification-chains show
-traceway-write notification-chains replace --file chains.json --yes
+
+# Change and delete: teams, schedules, escalation-policies
+traceway-write teams update <id> --organization <org-id> --file team.json
+traceway-write teams delete <id> --organization <org-id>
+traceway-write teams set-members <id> --organization <org-id> --file members.json
+traceway-write teams set-projects <id> --organization <org-id> --file projects.json
+
+# Overrides
+traceway-write schedules create-override <id> --organization <org-id> --file override.json
+traceway-write schedules delete-override <id> <override-id> --organization <org-id>
+
+# Contact methods
+traceway-write contact-methods update <id> --file contact.json
+traceway-write contact-methods test <id>
+traceway-write contact-methods resend-code <id>
+traceway-write contact-methods delete <id>
+
+# Pages
+traceway-write pages list
+traceway-write pages show <id>
+traceway-write pages ack <id>
+traceway-write pages resolve <id>
+
+# Check a file offline before sending it
+traceway-write schedules validate create --organization <org-id> --file schedule.json
 ```
 
-Preserve the other urgency chain when editing one. Each allows up to 10 steps with 0–120 minute delays measured from when the page reaches you. Contacts must be your own, enabled and verified. Empty chains fall back to all usable methods; they do not silence pages. Only you can change your personal settings, even through an admin credential. SMS creation or destination changes send verification codes, and contact tests send real notifications. See [Agent Write Access](/learn/agent-write-access) for the organization opt-in and role requirements.
+In a terminal every write asks `Continue? [y/N]`. An agent passes `--yes`.
+
+A few behaviours to know before you change something that exists:
+
+- **Updates replace the whole document.** Updating a schedule or a policy sends the complete definition, so read the current one first and keep the layers and steps you are not changing. `set-members` and `set-projects` replace the whole list (`{"userIds":[1,2]}`, `{"projectIds":["<project-id>"]}`).
+- **`notification-chains replace` replaces both chains.** Keep the other urgency's chain in the file when you edit one. The methods in a chain must be your own, enabled and verified.
+- **Personal settings are yours only.** Contact methods and notification chains can be changed only by their owner, also through an admin's credential.
+- **Some commands send for real.** `contact-methods test` sends a real notification, adding or changing a phone number sends a verification code, and `channels test` on an escalation channel opens a real page.
+- **Deleting a team deletes its schedules.**
+
+The MCP server offers the same actions as tools:
+
+| Area | Tools |
+|---|---|
+| Teams | `list_teams`, `create_team`, `update_team`, `delete_team`, `set_team_members`, `set_team_projects` |
+| Schedules | `list_oncall_schedules`, `get_oncall_schedule`, `create_oncall_schedule`, `update_oncall_schedule`, `delete_oncall_schedule`, `get_oncall_timeline`, `create_oncall_override`, `delete_oncall_override` |
+| Escalation policies | `list_escalation_policies`, `create_escalation_policy`, `update_escalation_policy`, `delete_escalation_policy` |
+| Contact methods | `list_contact_methods`, `create_contact_method`, `update_contact_method`, `delete_contact_method`, `test_contact_method`, `verify_contact_method`, `resend_contact_method_code` |
+| Notification chains | `get_user_notification_rules`, `set_user_notification_rules` |
+| Who is on call | `get_oncall_now`, `get_current_oncall` |
+| Pages | `list_pages`, `get_page`, `acknowledge_page`, `resolve_page` |
+
+The tools take `organization_id` as a number, `id` where one applies, `data` for the JSON body, and `project_id` for every write. Deleting an override also takes `child_id`. The same JSON reference ships with the write skill as **oncall-configuration.md** and **personal-notifications.md**, and with the MCP server as resources under `traceway://knowledge/`.
+
+## Server configuration
+
+This section is for people who run their own Traceway instance. On Traceway Cloud the server is run for you and there is nothing to set here.
+
+| Variable | Purpose |
+|----------|---------|
+| `APP_BASE_URL` | The origin used to build the links in notifications, including acknowledge links. Set it. Pages are sent from a background worker with no request to take the origin from, so while this is unset every page links to `http://localhost:5173`. |
+| `SMTP_ENABLED` | Must be `true` for email pages to be delivered. Anything else writes the email to the server log instead of sending it. |
+| `TWILIO_ACCOUNT_SID` | Twilio account SID, required for SMS |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token, required for SMS |
+| `TWILIO_FROM_NUMBER` | Sending number. Use this or a messaging service. |
+| `TWILIO_MESSAGING_SERVICE_SID` | Twilio messaging service, as an alternative to a from number |
+| `ALLOW_PRIVATE_NOTIFICATION_TARGETS` | Set to `true` to let personal Slack contact methods point at private or loopback addresses. Off by default. |
+| `ONCALL_POLL_SECONDS` | How often the escalator checks for pages that are due to escalate. Default 30, minimum 5. Separate from rule evaluation, so raising that interval never delays paging. |
+| `OUTBOX_POLL_SECONDS` | How often queued notifications are sent. Default 15, minimum 5. |
+
+### Email delivery
+
+The account email is the fallback for every responder, and it only leaves the building if the server can send mail. Set `SMTP_ENABLED=true` along with the rest of the SMTP settings before you rely on on-call. With SMTP off, the page is written to the server log, which is fine for local development and a bad surprise in production.
+
+### SMS and Twilio
+
+SMS needs Twilio credentials on the server: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and one sender, either `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
+
+Without them SMS is not offered at all. The type picker hides it, and the server rejects attempts to create one. This is deliberate: a channel that silently drops your 3am page is worse than no channel.
+
+### Slack webhooks and private addresses
+
+Slack is the one contact method type where the responder chooses the destination host. Every other type sends to a fixed service, so only the Slack webhook URL is checked: it must use http or https and resolve to a public address. A URL whose host does not resolve is rejected too, since it could never receive a page.
+
+The check exists because contact methods are personal. They need no project role, so without it any member of the organization, read-only members included, could point a webhook at an internal address and use the test button to send requests into the server's own network.
+
+If your paging destinations really live on a private network, for example a self-hosted Mattermost behind the same firewall as Traceway, set `ALLOW_PRIVATE_NOTIFICATION_TARGETS=true`. Project notification channels are not affected either way: the webhook channel type of [Alerts](/learn/alerts) exists to post anywhere, and creating one requires write access.
+
+### Watching the queue
+
+The `outbox` block of `/api/health/deep` reports the queue depth and the oldest pending delivery, so you can alert on your alerting. It is an operator endpoint behind the `HEALTH_DEEP_TOKEN` secret, and it is disabled while that is unset.
+
+## When something goes wrong
+
+| What you see | Cause | Fix |
+|---|---|---|
+| A responder says they were never paged | Their contact method failed, was disabled, or was never added | Open the page and read its delivery log. Then have them add and test a [contact method](#step-5-add-your-contact-methods). |
+| Pages only arrive by email | The responder has no contact methods, so the account email is used | [Step 5](#step-5-add-your-contact-methods) |
+| No email arrives at all on a self-hosted instance | `SMTP_ENABLED` is not `true`, so emails go to the server log | [Email delivery](#email-delivery) |
+| Links in notifications point to `localhost` | `APP_BASE_URL` is not set | [Server configuration](#server-configuration) |
+| A page shows `exhausted` and stays open | The last step ran and **Repeat** is used up. Nothing more is sent. | Acknowledge or resolve it, and add a step or a repeat to the policy |
+| A step notified nobody | No layer of the targeted schedule covers that moment | Close the gap on the schedule's timeline |
+| **SMS (Twilio)** is missing from the **Type** list | The server has no Twilio credentials | [SMS and Twilio](#sms-and-twilio) |
+| `This schedule is used by escalation policy(ies): ...` or `This team is used by escalation policy(ies): ...` | A policy that points at something deleted would page nobody, so the delete is refused | Remove those steps from the policy first |
+| `This policy is used by notification channel(s): ...` | A channel still pages through the policy | Delete or re-point those channels first |
+| `Verify this phone number before testing it.` | The SMS method is not verified yet | Enter the code, or request a new one |
+| `Agent write access is turned off for this organization` | A CLI or MCP write while **Allow agent writes** is off | [Agent Write Access](/learn/agent-write-access#step-1-turn-on-agent-access) |

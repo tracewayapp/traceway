@@ -1,39 +1,88 @@
 # Alerts
 
-Alerts notify you when conditions in your application require attention: errors, latency spikes, metric thresholds, or missing data. Configure channels and rules to get notified through email, Slack, webhooks, GitHub Issues, Pushover, or Telegram, or to page whoever is [on call](/learn/on-call).
+import { Callout } from "nextra/components";
 
-## How Alerts Work
+Alerts tell you when something in your application needs attention: a new error, a latency spike, a metric over its limit, a service that stopped reporting. You choose where the notification goes (email, Slack, a webhook, a GitHub issue, Pushover, Telegram, or a page to whoever is [on call](/learn/on-call)) and which condition sends it.
 
-The alerting system has two parts:
+Setting it up takes two steps in the dashboard. First you create a **channel**, which is where notifications are delivered. Then you create a **rule**, which is the condition that sends one. Each rule sends to exactly one channel, and one channel can serve many rules.
 
-- **Channels** define where notifications are delivered (email, Slack, webhook, GitHub, Pushover, Telegram, or an escalation policy)
-- **Rules** define what conditions trigger a notification
+Channels and rules belong to a project. To create or change them you need write access to that project, which is every role except `readonly`.
 
-When a rule's condition is met, Traceway sends a notification through the rule's attached channel. Each rule is linked to exactly one channel, but a channel can be used by multiple rules.
+## Step 1: Create a channel
+
+A rule has nowhere to send its notification until a channel exists, so the channel comes first.
+
+1. Open the project and click **Alerts** in the sidebar. The page opens on the **Channels** tab.
+2. Click **New Channel**.
+3. Enter a **Name** and pick the **Type**. The fields below change with the type. Email only needs **Recipients**, up to 10 addresses. What the other types need is listed under [Channels](#channels).
+4. Click **New Channel**.
+
+<img src="/alerts/new-channel-email.png" alt="The Alerts page of the checkout-api project with the New Channel dialog open: Name is Operations email, Type is Email, and Recipients holds ops@acme.dev with an Add Recipient button below it" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+The channel is now in the list. The three icons at the end of its row are **Test**, **Edit** and **Delete**. Deleting a channel also deletes every rule attached to it.
+
+<img src="/alerts/channels-list.png" alt="The Channels tab listing two channels, #checkout-alerts of type Slack and Operations email of type Email, both enabled, each with Test, Edit and Delete icons" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+## Step 2: Create a rule
+
+A rule watches one condition in this project and notifies its channel when the condition is met.
+
+1. Switch to the **Rules** tab and click **New Rule**.
+2. Enter a **Name**. It is included in every notification, so say what is wrong: "Checkout p95 above 1 second".
+3. Pick the **Channel** you created in step 1.
+4. Pick the **Rule Type**. The dialog describes the selected type and shows its settings under **Rule Configuration**. **New Issue** is a good first rule: it needs no settings and tells you about every error you have not seen before. All types are described under [Rule types](#rule-types).
+5. Check the numbers under **Rule Configuration**. The form opens with general starting values, so set the threshold and the lookback you want.
+6. Leave **Cooldown (minutes)** at 15 and **Severity** at **Auto (default)** for now. [Cooldown and snooze](#cooldown-and-snooze) and [Severity](#severity) explain both.
+7. Click **New Rule**.
+
+<img src="/alerts/new-rule.png" alt="The New Rule dialog: Name is Checkout p95 above 1 second, Channel is Operations email, Rule Type is Endpoint P95, and under Rule Configuration the Endpoint is POST /api/checkout, Threshold (ms) is 1000 and Lookback (minutes) is 10. Cooldown is 15 minutes and Severity is Auto (default)" style={{ maxWidth: '420px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+The rule is on as soon as you save it. The icons at the end of its row are **Snooze**, **Disable**, **Edit** and **Delete**.
+
+<img src="/alerts/rules-list.png" alt="The Rules tab listing three rules that all send to Operations email and have status On: checkout-api stopped reporting of type No Data, Checkout p95 above 1 second of type Endpoint P95, and New issue in checkout-api of type New Issue" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+## Check that it works
+
+Send a test through the channel so you know the destination is right before a real alert depends on it.
+
+1. On the **Channels** tab, click the **Test** icon (the paper plane) on the channel's row.
+2. Click **Send Test**.
+
+<img src="/alerts/test-channel.png" alt="The Test Channel dialog asking whether to send a test notification to Operations email, with Cancel and Send Test buttons" style={{ maxWidth: '480px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+A message titled "Traceway Test Notification" arrives at the destination. In an email the subject line is "[INFO] Traceway Test Notification". If the destination refuses it, the dialog stays open and shows the reason, for example `Test notification failed: Slack returned status 404`.
+
+<Callout type="warning">
+  Testing an **Escalation policy** channel is not a dry run. It opens a real [page](/learn/on-call) and notifies whoever is on call. Resolve the test page on the On-Call page when you are done.
+</Callout>
+
+A test proves the channel, not the rule, and it is not recorded. Once a rule fires for real, the notification is listed on the **History** tab with its delivery status:
+
+<img src="/alerts/history.png" alt="The History tab with one notification: severity Critical, rule checkout-api stopped reporting, a subject that links to the dashboard, channel Operations email, status Sent" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
+
+If nothing arrives, see [When no notification arrives](#when-no-notification-arrives).
 
 ## Channels
 
-A channel represents a notification destination. Traceway supports the following channel types:
+Traceway supports the following channel types:
 
-| Channel | Description | Configuration |
-|---------|-------------|---------------|
-| Email   | Sends an email to one or more recipients | List of email addresses |
-| Slack   | Posts a message to a Slack channel via incoming webhook | Webhook URL |
-| Webhook | Sends an HTTP POST with a JSON payload to any URL | URL, optional headers, optional HMAC secret |
-| GitHub  | Creates a GitHub issue in a repository | Personal access token, repository owner/name, optional labels |
-| Pushover | Sends push notifications to your mobile devices | User Key, App Token |
-| Telegram | Sends a message via a Telegram bot to a user or group chat | Bot Token, Chat ID |
-| Escalation policy | Opens an on-call [page](/learn/on-call) and runs the policy's escalation chain until somebody acknowledges, instead of sending a message | Escalation policy |
+| Type | What it does | What it needs |
+|------|--------------|---------------|
+| Email | Sends an email to one or more recipients | 1 to 10 email addresses |
+| Slack | Posts a message to a Slack channel through an incoming webhook | Webhook URL |
+| Webhook | Sends an HTTP request with a JSON payload to any URL | URL, optional headers, optional HMAC secret |
+| GitHub | Creates a GitHub issue in a repository | Personal access token, repository owner and name, optional labels |
+| Pushover | Sends a push notification to your mobile devices | User Key, App Token |
+| Telegram | Sends a message through a Telegram bot to a user or group chat | Bot Token, Chat ID |
+| Escalation policy | Opens an on-call [page](/learn/on-call) and runs the policy's escalation chain until somebody acknowledges, instead of sending a message | An escalation policy |
 
-Each channel has a **Test** button that sends a sample notification so you can verify the configuration before attaching rules. Escalation-policy channels are the exception: their Test button opens a real [page](/learn/on-call) and notifies the on-call responder, so resolve the test page when you are done.
+### Setting up email
 
-### Setting Up Email
+Add one or more recipient addresses. Traceway sends the email to every listed recipient when a rule fires.
 
-To receive alerts via email, add one or more recipient email addresses. Traceway will send an email to all listed recipients when a rule fires.
+On a self-hosted instance the server has to be able to send mail: set `SMTP_ENABLED=true` together with the other `SMTP_` settings. Without them the email is written to the server log and never delivered.
 
-<img src="/channel-email.png" alt="Email channel configuration dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
-
-### Setting Up Slack
+### Setting up Slack
 
 To send alerts to a Slack channel, you need an **Incoming Webhook URL**:
 
@@ -43,7 +92,7 @@ To send alerts to a Slack channel, you need an **Incoming Webhook URL**:
 4. Click **Add New Webhook to Workspace**, select the channel you want alerts posted to, and click **Allow**
 5. Copy the **Webhook URL**. It will look like `https://hooks.slack.com/services/T.../B.../xxx`
 
-Then configure the Slack channel in Traceway:
+Then create the channel in Traceway with **Type** set to **Slack**:
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -53,7 +102,7 @@ Then configure the Slack channel in Traceway:
 
 <img src="/channel-slack.png" alt="Slack channel configuration dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
-### Setting Up GitHub
+### Setting up GitHub
 
 To create GitHub issues from alerts, you need a **Personal Access Token** with issue permissions:
 
@@ -65,20 +114,20 @@ To create GitHub issues from alerts, you need a **Personal Access Token** with i
 6. Under **Permissions → Repository permissions**, set **Issues** to **Read and write**
 7. Click **Generate token** and copy it; you won't be able to see it again
 
-Then configure the GitHub channel in Traceway:
+Then create the channel in Traceway with **Type** set to **GitHub**:
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | Personal Access Token | Yes | The fine-grained token you generated |
-| Owner | Yes | The repository owner (user or organization), e.g. `my-org` |
-| Repo | Yes | The repository name, e.g. `backend` |
-| Labels | No | Comma-separated labels to apply to created issues, e.g. `bug,traceway` |
+| Repository Owner | Yes | The user or organization that owns the repository, e.g. `my-org` |
+| Repository Name | Yes | The repository name, e.g. `backend` |
+| Labels | No | Comma-separated labels to apply to created issues, e.g. `bug, traceway` |
 
 <img src="/channel-github.png" alt="GitHub channel configuration dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
 
 Issues opened by this channel can start an AI coding agent in the repository's own GitHub Actions, which investigates the exception with the traceway CLI and opens a pull request or comments its analysis. See [Auto-Fix](/learn/auto-fix).
 
-### Setting Up Telegram
+### Setting up Telegram
 
 To send alerts to Telegram, you need a **Bot Token** and a **Chat ID**:
 
@@ -88,16 +137,34 @@ To send alerts to Telegram, you need a **Bot Token** and a **Chat ID**:
 4. Open the channel's settings → **Administrators** → **Add Admin**, search for your bot's username, and add it with permission to post messages.
 5. Forward any message from the channel to [@userinfobot](https://t.me/userinfobot); it will reply with the channel's **Chat ID** (a negative number, e.g. `-1001234567890`). Copy it including the minus sign.
 
-Then configure the Telegram channel in Traceway:
+Then create the channel in Traceway with **Type** set to **Telegram**:
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | Bot Token | Yes | The token BotFather gave you |
 | Chat ID | Yes | The destination channel ID (e.g. `-1001234567890`) |
 
-### Webhook Payload
+### Setting up Pushover
 
-When a webhook channel fires, Traceway sends a JSON POST request with the following fields:
+You need the **User Key** of your Pushover account and the **App Token** of a Pushover application you created for Traceway. Then create the channel in Traceway with **Type** set to **Pushover**:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| User Key | Yes | Your Pushover user key |
+| App Token | Yes | The API token of your Pushover application |
+| Device | No | Send to one device only. Empty sends to all of them |
+| Priority | No | **Normal**, **High** or **Emergency**. Emergency repeats the notification until it is acknowledged and adds **Retry Interval** (at least 30 seconds), **Expiry** (at most 10800 seconds) and an optional **Callback URL** |
+| Sound | No | A Pushover sound name, e.g. `bugle` |
+| Enable HTML formatting | No | Lets Pushover render HTML in the message |
+| Time to Live | No | Seconds after which the notification disappears from the device. 0 keeps it |
+
+### Webhook payload
+
+A webhook channel takes a **URL**, a **Method** (`POST` or `PUT`), an optional **Secret** and optional **Headers** that are sent with every request.
+
+<img src="/channel-webhook.png" alt="Webhook channel configuration dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+
+When a rule fires, Traceway sends a JSON request with the following fields:
 
 | Field | Description |
 |-------|-------------|
@@ -109,25 +176,15 @@ When a webhook channel fires, Traceway sends a JSON POST request with the follow
 | `url` | Deep link to the relevant dashboard page. Absolute when the server sets `APP_BASE_URL`, otherwise a path such as `/issues/<hash>` relative to your dashboard origin |
 | `timestamp` | When the alert fired (ISO 8601) |
 
-If you configure an HMAC secret on the channel, each request includes an `X-Traceway-Signature` header containing `sha256=<hex>` of the request body, which you can use to verify that the request came from Traceway.
+If you set a **Secret**, each request includes an `X-Traceway-Signature` header containing `sha256=<hex>`, the HMAC of the request body, which you can use to verify that the request came from Traceway. A response with status 400 or higher counts as a failed delivery.
 
-<img src="/channel-webhook.png" alt="Webhook channel configuration dialog" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+### Paging with an escalation policy
 
-## Rules
+Pick the type **Escalation policy** and select a policy. A rule that sends to this channel opens an on-call page and escalates it until somebody acknowledges, instead of sending one message. Policies are created on the On-Call page first. See [On-Call](/learn/on-call).
 
-A rule connects a condition to a channel. Every rule has:
+## Rule types
 
-| Setting | Description |
-|---------|-------------|
-| Name | A label you choose, included in notifications |
-| Type | One of the rule types below, with type-specific configuration |
-| Channel | The channel notifications are delivered through (exactly one per rule) |
-| Cooldown | Minimum time between notifications for the same condition (default 15 minutes) |
-| Severity | Auto (derived from the condition) or an explicit override |
-
-Rules belong to a project and only evaluate that project's data. Frontend projects support New Issue, Metric Threshold and Release Regression (the last two over their [client metrics](/learn/client-metrics#alerts-and-slos)) and the two SLO rule types; all other types monitor backend telemetry.
-
-## Rule Types
+Every rule has a name, one channel, a cooldown, a severity, and the settings of its type. Rules only evaluate the data of their own project. Frontend projects support New Issue, Metric Threshold and Release Regression (the last two over their [client metrics](/learn/client-metrics#alerts-and-slos)) and the two SLO rule types; all other types monitor backend telemetry.
 
 | Rule | Fires When | Evaluation |
 |------|-----------|------------|
@@ -152,6 +209,8 @@ Rules belong to a project and only evaluate that project's data. Frontend projec
 | [SLO Burn Rate](#slo-burn-rate) | An SLO burns its error budget faster than a threshold over both a long and a short window | Polled |
 | [SLO Budget Consumed](#slo-budget-consumed) | An SLO has consumed at least a share of its window's error budget | Polled |
 
+The option tables below use the labels of the **New Rule** form. **Default** is the usual starting value for that rule type. The form itself opens with the same starting numbers for every type (a 5 minute lookback, for example), so compare them with this column before you save. When you create a rule with the CLI or the API, set every threshold in its `config` yourself. The server only fills in an omitted window (lookback, silence, baseline), Min Executions and the Impact Score Min Requests. It does not fill in a threshold, and the two SLO rule types are refused without their settings.
+
 ### New Issue
 
 Fires the first time an error with a given [fingerprint](/learn/issues#fingerprinting) is seen. Errors are grouped by a normalized stack trace hash, so the same logical error reported many times produces a single alert rather than one per occurrence. If you archive an issue and it occurs again, that first re-occurrence counts as new and fires the rule.
@@ -174,8 +233,8 @@ Fires when the percentage of requests returning a 5xx status across all endpoint
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Threshold % | 5 | Error rate that triggers the alert |
-| Lookback Minutes | 5 | Window the rate is computed over |
+| Threshold (%) | 5 | Error rate that triggers the alert |
+| Lookback (minutes) | 5 | Window the rate is computed over |
 | Min Requests | 10 | Minimum requests in the window; below this the rule never fires, which avoids noise from a single failed request in quiet periods |
 
 ### Error Count
@@ -185,7 +244,7 @@ Fires when the total number of errors recorded in the lookback window reaches th
 | Option | Default | Description |
 |--------|---------|-------------|
 | Threshold Count | 100 | Number of errors that triggers the alert |
-| Lookback Minutes | 60 | Window the count is computed over |
+| Lookback (minutes) | 60 | Window the count is computed over |
 
 ### Endpoint Error Rate
 
@@ -193,9 +252,9 @@ Like Error Rate, but scoped to a single endpoint.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Endpoint | | The endpoint to monitor, e.g. `GET /api/users` |
-| Threshold % | 2 | Error rate that triggers the alert |
-| Lookback Minutes | 10 | Window the rate is computed over |
+| Endpoint | | The endpoint to monitor, e.g. `GET /api/users`. It has to be one exact endpoint: the `*` the form starts with matches nothing for this rule type |
+| Threshold (%) | 2 | Error rate that triggers the alert |
+| Lookback (minutes) | 10 | Window the rate is computed over |
 | Min Requests | 20 | Minimum requests in the window before the rule can fire |
 
 ### Endpoint P95 / P99
@@ -204,9 +263,9 @@ Fires when the P95 (or P99) response time over the lookback window exceeds the t
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Endpoint | `*` | A specific endpoint, or `*` for all endpoints combined |
-| Threshold ms | 500 | Latency that triggers the alert |
-| Lookback Minutes | 5 | Window the percentile is computed over |
+| Endpoint | `*` | A specific endpoint, or the default for all endpoints combined |
+| Threshold (ms) | 500 | Latency that triggers the alert |
+| Lookback (minutes) | 5 | Window the percentile is computed over |
 
 ### Apdex Drop
 
@@ -214,8 +273,8 @@ Fires when the Apdex score over the lookback window falls below the threshold. T
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Threshold Apdex | 0.85 | Score below which the alert fires |
-| Lookback Minutes | 15 | Window the score is computed over |
+| Apdex Threshold | 0.85 | Score below which the alert fires |
+| Lookback (minutes) | 15 | Window the score is computed over |
 | Min Requests | 50 | Minimum requests in the window before the rule can fire |
 
 ### Throughput Drop
@@ -224,9 +283,9 @@ Fires when request volume in the lookback window drops by more than the configur
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Drop % | 50 | Drop versus the normalized baseline that triggers the alert |
-| Lookback Minutes | 15 | The current window being measured |
-| Baseline Window Minutes | 60 | The preceding window used as the baseline |
+| Drop (%) | 50 | Drop versus the normalized baseline that triggers the alert |
+| Lookback (minutes) | 15 | The current window being measured |
+| Baseline Window (minutes) | 60 | The preceding window used as the baseline |
 
 ### Impact Score (Critical / High / Medium)
 
@@ -246,9 +305,9 @@ Fires when the P95 duration of background task executions over the lookback wind
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Task Name | `*` | A specific task, or `*` for all tasks combined |
-| Threshold ms | 30000 | P95 duration that triggers the alert |
-| Lookback Minutes | 30 | Window the percentile is computed over |
+| Task Name | `*` | A specific task, or the default for all tasks combined |
+| Threshold (ms) | 30000 | P95 duration that triggers the alert |
+| Lookback (minutes) | 30 | Window the percentile is computed over |
 
 ### Task Failure Rate
 
@@ -256,9 +315,9 @@ Fires when the percentage of task executions that recorded an error exceeds the 
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Task Name | `*` | A specific task, or `*` for all tasks combined |
-| Threshold % | 10 | Failure rate that triggers the alert |
-| Lookback Minutes | 60 | Window the rate is computed over |
+| Task Name | `*` | A specific task, or the default for all tasks combined |
+| Threshold (%) | 10 | Failure rate that triggers the alert |
+| Lookback (minutes) | 60 | Window the rate is computed over |
 | Min Executions | 5 | Minimum executions in the window before the rule can fire |
 
 ### Metric Threshold
@@ -268,10 +327,12 @@ Fires when an aggregated [metric](/learn/metrics) value violates the configured 
 | Option | Default | Description |
 |--------|---------|-------------|
 | Metric Name | | The metric to monitor |
-| Aggregation | avg | One of `avg`, `max`, `min`, `sum`, `count`, `p50`, `p75`, `p90`, `p95`, `p99`, `last` (most recent value). A distribution metric, such as a [client metric](/learn/client-metrics#alerts-and-slos), also takes `good_ratio`, as a percentage |
 | Operator | gt | One of `gt`, `gte`, `lt`, `lte`, `eq` |
 | Threshold Value | 90 | The value compared against the aggregate |
-| Lookback Minutes | 5 | Window the aggregate is computed over |
+| Aggregation | avg | One of `avg`, `max`, `min`, `sum`, `count`, `p50`, `p75`, `p90`, `p95`, `p99`, `last` (most recent value). A distribution metric, such as a [client metric](/learn/client-metrics#alerts-and-slos), also takes `good_ratio`, as a percentage |
+| Good At Or Under | the metric's own limit | Only with `good_ratio`: the value up to which an observation counts as good, e.g. 2500 for LCP |
+| Lookback (minutes) | 5 | Window the aggregate is computed over |
+| Minimum Observations | 10 | Distribution metrics only: a series with fewer observations in the window is not judged |
 | Tag Filters | | Optional `key=value` pairs, comma-separated. Only points whose tags match every pair count. Up to 20 |
 | Group By Tags | | Optional tag keys, comma-separated. Each combination of their values is evaluated as its own series. Up to 5 |
 
@@ -284,7 +345,8 @@ Over the API the filters are the `tags` object of the rule config, for example `
 Set Group By Tags to alert on each series separately, for example `site_id` for a gauge reported once per gateway. The aggregate is then computed per combination of the listed tags, and every series that breaches sends its own notification naming it:
 
 ```
-[HS API] Metric radius.accounting_freshness_seconds{site_id=RUINS} is 22166.00 (threshold: gt 900.00)
+[HS API] Metric radius.accounting_freshness_seconds{site_id=RUINS}
+is 22166.00 (threshold: gt 900.00)
 ```
 
 A point without one of the tags falls into a series where that value reads `(empty)`. Tag filters still apply first, so `tags` and `groupBy` combine.
@@ -294,7 +356,8 @@ The cooldown is kept per series instead of per rule. A series that keeps breachi
 Once a notified series is back within the threshold, the rule sends an Info recovery notice naming it. On an escalation channel it resolves that series' page instead:
 
 ```
-[HS API] Metric radius.accounting_freshness_seconds{site_id=RUINS} recovered: 120.00 (threshold: gt 900.00)
+[HS API] Metric radius.accounting_freshness_seconds{site_id=RUINS}
+recovered: 120.00 (threshold: gt 900.00)
 ```
 
 A recovery leaves the series' cooldown counting from its last alert. For a distribution metric, a series that reports fewer observations than its configured minimum stays open until there is enough data to judge it.
@@ -312,7 +375,7 @@ Fires when no telemetry of the selected kind has been received for the configure
 | Option | Default | Description |
 |--------|---------|-------------|
 | Data Type | any | One of `any`, `endpoints`, `exceptions`, `metrics`, `tasks`. `any` fires only when all four kinds are silent |
-| Silence Minutes | 10 | How long the data must be absent before the alert fires |
+| Silence (minutes) | 10 | How long the data must be absent before the alert fires |
 
 ### AI Trace Cost
 
@@ -320,8 +383,8 @@ Fires when a single [AI trace](/learn/ai-tracing) exceeds a cost threshold, catc
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Trace Name | `*` | A specific trace name, or `*` for all traces |
-| Threshold Cost | 0.5 | Cost in USD a single trace must reach to trigger the alert |
+| Trace Name | `*` | A specific trace name, or the default for all traces |
+| Cost Threshold ($) | 0.5 | Cost in USD a single trace must reach to trigger the alert |
 
 The cooldown applies per trace name, so two different expensive workflows alert independently.
 
@@ -331,7 +394,7 @@ Fires when the cumulative cost of a single [AI conversation](/learn/ai-tracing) 
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Cost Threshold | 5 | Cumulative cost in USD a conversation must reach within 24 hours to trigger the alert |
+| Cost Threshold ($) | 5 | Cumulative cost in USD a conversation must reach within 24 hours to trigger the alert |
 
 The cooldown applies per conversation, so one noisy conversation alerts once per cooldown window while a second conversation crossing the threshold still alerts immediately.
 
@@ -341,7 +404,7 @@ Fires when an [AI conversation](/learn/ai-tracing#content-flagging) matches a fl
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Terms | all | Optional comma-separated list to narrow the rule to specific terms; empty fires on any flagged match |
+| Only These Terms | all | Optional comma-separated list to narrow the rule to specific terms; empty fires on any flagged match |
 
 ### Monitor Down
 
@@ -356,9 +419,9 @@ Fires when an [SLO](/learn/slos) spends its error budget faster than the thresho
 | Option | Default | Description |
 |--------|---------|-------------|
 | SLO | required | The SLO to watch |
-| Long Window Minutes | 60 | Lookback of the long window |
-| Short Window Minutes | 5 | Lookback of the short window; must be shorter than the long one. On a metric SLO with longer slices, both windows are rounded up to whole slices |
-| Burn Rate Threshold | 14.4 | Multiple of the rate that spends the budget exactly over the SLO window |
+| Long window (minutes) | 60 | Lookback of the long window |
+| Short window (minutes) | 5 | Lookback of the short window; must be shorter than the long one. On a metric SLO with longer slices, both windows are rounded up to whole slices |
+| Burn rate threshold (x) | 14.4 | Multiple of the rate that spends the budget exactly over the SLO window |
 
 The form offers three presets: Fast (14.4x over 1h / 5m, pages when 2% of a 30-day budget burns in an hour), Slow (6x over 6h / 30m) and Long (1x over 3d / 6h). Pointing the rule at an escalation channel opens an [on-call page](/learn/on-call) that the recovery resolves automatically.
 
@@ -369,9 +432,70 @@ Fires when an [SLO](/learn/slos) has consumed at least the configured share of i
 | Option | Default | Description |
 |--------|---------|-------------|
 | SLO | required | The SLO to watch |
-| Consumed % | 80 | Share of the error budget that has to be gone |
+| Budget consumed (%) | 80 | Share of the error budget that has to be gone |
 
-## Evaluation Model and Cost
+## Cooldown and snooze
+
+**Cooldown** prevents a rule from firing repeatedly for the same ongoing condition. The default is 15 minutes, configurable per rule.
+
+- For polled rules the cooldown is rule-wide: after a notification is delivered, the rule is not evaluated again until the cooldown expires. SLO rules keep being evaluated, so their recovery notice is sent at once; the cooldown only holds back a new fire, and a recovery notice does not restart it. Metric Threshold rules with Group By Tags keep their cooldown per series instead, so they are also evaluated on every poll.
+- For on-ingest rules the cooldown is per condition: per error hash for New Issue and Error Regression, per trace name for AI Trace Cost. Different errors can alert back-to-back; the same error cannot.
+- For Monitor Down the cooldown is per monitor and ends when the monitor recovers. Every new outage alerts, however soon it follows the last one; the failure threshold on the monitor is what damps a flapping check.
+
+Rule-level cooldowns are persisted with the notification history, so a server restart does not cause every rule to re-fire. Per-error cooldown state is held in memory and resets on restart, meaning an already-alerted error can alert once more after a restart. Changing a rule's type, channel or condition resets its cooldown and per-error state so the new configuration takes effect immediately. Renaming it or changing its cooldown or severity keeps them.
+
+**Snooze** mutes a rule for a set time and then turns it back on by itself. Use it during deployments, maintenance windows, or known incidents. On the **Rules** tab, click the **Snooze** icon (the clock) on the rule's row and pick a duration. **Clear snooze** ends it early.
+
+<img src="/alerts/snooze-rule.png" alt="The Snooze Rule dialog with the durations 30 minutes, 1 hour, 4 hours, 8 hours and 24 hours, a Clear snooze link and a Cancel button" style={{ maxWidth: '300px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+A snoozed rule shows **Snoozed** in the Status column and sends no notifications. Recovery cleanup still runs: an on-call page that a Monitor Down rule already opened still resolves when the monitor recovers.
+
+To turn a rule off until somebody turns it back on, use the **Disable** icon next to it. The rule then shows **Off**.
+
+## Severity
+
+Each rule has a **Severity** setting that controls the severity attached to its notifications. The default is **Auto**, which derives severity from how badly the condition is violated:
+
+| Rule | Auto Severity |
+|------|--------------|
+| New Issue | Critical |
+| Error Regression | Critical |
+| No Data | Critical |
+| Error Rate | Warning; Critical at twice the threshold |
+| Error Count | Warning; Critical at five times the threshold |
+| Endpoint Error Rate | Warning; Critical at twice the threshold |
+| Endpoint P95 / P99 | Warning |
+| Apdex Drop | Warning; Critical when Apdex falls below 0.5 |
+| Throughput Drop | Warning; Critical at an 80% drop or more |
+| Impact Score Critical | Critical |
+| Impact Score High | Warning |
+| Impact Score Medium | Info |
+| Task Duration | Warning |
+| Task Failure Rate | Warning; Critical at twice the threshold |
+| Metric Threshold | Warning; Critical when the value deviates from the threshold by more than 20%; the recovery notice of a series is Info |
+| AI Trace Cost | Warning; Critical at three times the threshold |
+| Monitor Down | Critical; the recovery notice is Info |
+| SLO Burn Rate | Warning; Critical when the long window burns at twice the threshold; the recovery notice is Info |
+| SLO Budget Consumed | Warning; Critical once the whole budget is consumed; the recovery notice is Info |
+
+You can override the automatic severity by setting it explicitly on a rule to **Critical**, **Warning**, or **Info**. This is useful when you want a normally-warning condition to page as critical, or to downgrade noisy rules to info.
+
+## History
+
+Every notification a rule sends is recorded on the **History** tab of the Alerts page. The tab shows the last 7 days by default, and you can search it and change the time range. Each entry shows:
+
+| Column | Description |
+|--------|-------------|
+| Severity | Critical, Warning, or Info |
+| Rule | The name of the rule that fired |
+| Subject | Alert title summarizing the condition. It links to the dashboard page the alert is about |
+| Channel | The channel the notification went through |
+| Status | **Sent**, **Failed**, or **Deduped** when the alert was folded into an on-call page that was already open |
+| Sent At | When the notification was sent |
+
+A delivery that fails is retried, up to 5 attempts, before it is recorded as **Failed**.
+
+## Evaluation model and cost
 
 Rules are evaluated in one of three ways:
 
@@ -411,87 +535,89 @@ Cost-relevant behavior:
 - Polled query cost scales with the lookback window. The defaults keep windows short; a 24-hour lookback on a high-traffic project costs proportionally more.
 - In SQLite mode percentile rules (Endpoint P95/P99, Task Duration, Metric Threshold with `p95`/`p99`) load the window's values into memory to compute the percentile, so prefer short lookback windows on busy projects.
 
-## Cooldown and Snooze
-
-**Cooldown** prevents a rule from firing repeatedly for the same ongoing condition. The default is 15 minutes, configurable per rule.
-
-- For polled rules the cooldown is rule-wide: after a notification is delivered, the rule is not evaluated again until the cooldown expires. SLO rules keep being evaluated, so their recovery notice is sent at once; the cooldown only holds back a new fire, and a recovery notice does not restart it. Metric Threshold rules with Group By Tags keep their cooldown per series instead, so they are also evaluated on every poll.
-- For on-ingest rules the cooldown is per condition: per error hash for New Issue and Error Regression, per trace name for AI Trace Cost. Different errors can alert back-to-back; the same error cannot.
-- For Monitor Down the cooldown is per monitor and ends when the monitor recovers. Every new outage alerts, however soon it follows the last one; the failure threshold on the monitor is what damps a flapping check.
-
-Rule-level cooldowns are persisted with the notification history, so a server restart does not cause every rule to re-fire. Per-error cooldown state is held in memory and resets on restart, meaning an already-alerted error can alert once more after a restart. Changing a rule's type, channel or condition resets its cooldown and per-error state so the new configuration takes effect immediately. Renaming it or changing its cooldown or severity keeps them.
-
-**Snooze** temporarily mutes a rule for a set duration from the dashboard. Snoozed rules do not send notifications. Recovery cleanup still runs: an on-call page that a Monitor Down rule already opened still resolves when the monitor recovers. Use it during deployments, maintenance windows, or known incidents.
-
-## Severity
-
-Each rule has a **Severity** setting that controls the severity attached to its notifications. The default is **Auto**, which derives severity from how badly the condition is violated:
-
-| Rule | Auto Severity |
-|------|--------------|
-| New Issue | Critical |
-| Error Regression | Critical |
-| No Data | Critical |
-| Error Rate | Warning; Critical at twice the threshold |
-| Error Count | Warning; Critical at five times the threshold |
-| Endpoint Error Rate | Warning; Critical at twice the threshold |
-| Endpoint P95 / P99 | Warning |
-| Apdex Drop | Warning; Critical when Apdex falls below 0.5 |
-| Throughput Drop | Warning; Critical at an 80% drop or more |
-| Impact Score Critical | Critical |
-| Impact Score High | Warning |
-| Impact Score Medium | Info |
-| Task Duration | Warning |
-| Task Failure Rate | Warning; Critical at twice the threshold |
-| Metric Threshold | Warning; Critical when the value deviates from the threshold by more than 20%; the recovery notice of a series is Info |
-| AI Trace Cost | Warning; Critical at three times the threshold |
-| Monitor Down | Critical; the recovery notice is Info |
-| SLO Burn Rate | Warning; Critical when the long window burns at twice the threshold; the recovery notice is Info |
-| SLO Budget Consumed | Warning; Critical once the whole budget is consumed; the recovery notice is Info |
-
-You can override the automatic severity by setting it explicitly on a rule to **Critical**, **Warning**, or **Info**. This is useful when you want a normally-warning condition to page as critical, or to downgrade noisy rules to info.
-
-## History
-
-All fired notifications are recorded and visible in the **History** tab on the Alerts page. Each entry shows:
-
-| Field | Description |
-|-------|-------------|
-| Severity | Critical, warning, or info |
-| Rule Name | The rule that triggered |
-| Subject | Alert title summarizing the condition |
-| Channel | Which channel delivered the notification |
-| Status | Whether delivery succeeded or failed |
-| Timestamp | When the notification was sent |
-
-
 ## Configure alerting with the CLI or MCP
 
-The write CLI supports channel and rule creation, replacement and deletion. Start with `traceway-write channels list` and `traceway-write alerts list` to inspect existing configuration. Create a channel before a rule, using its returned ID:
+Everything above can also be done from a terminal or by an AI agent. Reading works with the [`traceway` CLI](/learn/cli). Changing anything needs `traceway-write` and the organization's Agent Access switch, both described in [Agent Write Access](/learn/agent-write-access).
+
+Create the channel before the rule, because the rule refers to the channel by the `id` that `channels create` returns:
 
 ```json filename="channel.json"
-{"name":"Operations email","channelType":"email","config":{"recipients":["ops@example.com"]},"enabled":true}
-```
-
-```bash
-traceway-write channels validate create --file channel.json
-traceway-write channels create --file channel.json --yes
+{
+  "name": "Operations email",
+  "channelType": "email",
+  "config": { "recipients": ["ops@example.com"] },
+  "enabled": true
+}
 ```
 
 ```json filename="rule.json"
-{"name":"Slow orders","channelId":12,"ruleType":"endpoint_p95_threshold","config":{"endpoint":"GET /api/orders","thresholdMs":1000,"lookbackMinutes":10},"cooldownMinutes":15,"severity":"warning"}
+{
+  "name": "Slow orders",
+  "channelId": 12,
+  "ruleType": "endpoint_p95_threshold",
+  "config": {
+    "endpoint": "GET /api/orders",
+    "thresholdMs": 1000,
+    "lookbackMinutes": 10
+  },
+  "cooldownMinutes": 15,
+  "severity": "warning"
+}
 ```
 
 ```bash
+# Look at what exists
+traceway-write channels list
+traceway-write alerts list
+
+# Create a channel, then a rule that uses its id
+traceway-write channels validate create --file channel.json
+traceway-write channels create --file channel.json --yes
 traceway-write alerts validate create --file rule.json
 traceway-write alerts create --file rule.json --yes
-traceway-write alerts list
+
+# Change or remove
+traceway-write channels update <id> --file channel.json --yes
+traceway-write alerts update <id> --file rule.json --yes
+traceway-write alerts delete <id> --yes
+traceway-write channels delete <id> --yes
+
+# Mute, turn off and on, test
+traceway-write alerts snooze <id> --minutes 60 --yes   # 0 clears the snooze
+traceway-write alerts disable <id> --yes               # and: alerts enable <id>
+traceway-write channels test <id> --yes
+
+# Delivery history
+traceway-write notification-history list --file query.json
 ```
 
-Replace example IDs and endpoint names with observed values. `validate` runs offline and checks the request envelope; server-side checks validate adapter settings, relationships and permissions. `update <id> --file F` sends the complete rule/channel configuration. Rule `severity` is empty for automatic, or `info`, `warning`, `critical`; enabled/snoozed state uses the separate alert enable/disable/snooze commands. Channel `enabled` is optional: true by default on create, preserved when omitted on update.
+Replace the example ids and endpoint names with your own. A few things to know:
 
-`channels delete <id>` also deletes its attached rules. `alerts delete <id>` permanently removes one rule; snooze for temporary suppression. `channels test <id>` sends a real test notification, and an escalation channel opens a real page. Saving or validating configuration does not test delivery.
+- **`validate` runs offline** and only checks the shape of the file. The server checks the channel settings, the references and your permissions when you create or update.
+- **`update` sends the complete document**, not a patch. Start from the current version in `channels list` or `alerts list`.
+- **Rule `severity`** is an empty string for automatic, or `info`, `warning`, `critical`. Whether a rule is enabled or snoozed is not part of the document: use `alerts enable`, `disable` and `snooze`.
+- **Channel `enabled`** is optional. It is true by default on create and keeps its value when you leave it out of an update. The rules of a disabled channel are not evaluated.
+- **`channels delete` also deletes the rules attached to the channel.** `alerts delete` removes one rule for good; snooze it if you only want it quiet for a while.
+- **`channels test` sends a real notification**, and on an escalation channel it opens a real page. Saving or validating a channel does not test delivery.
+- **`notification-history list`** takes a query file such as `{"pagination":{"page":1,"pageSize":20}}`, with optional `search`, `fromDate` and `toDate`.
 
-The write MCP server exposes `create_notification_channel`, `update_notification_channel`, `delete_notification_channel`, `test_notification_channel`, and matching `create_notification_rule`, `update_notification_rule`, `delete_notification_rule` tools. Pass `project_id`, `id` for existing records and `data` containing the JSON object. Discovery uses `list_notification_channels` and `list_notification_rules`. `list_notification_history` reads delivery history; CLI equivalent is `notification-history list --file query.json` with `{"pagination":{"page":1,"pageSize":20}}` and optional `search`, `fromDate`, `toDate`.
+The write MCP server offers the same actions as tools. Pass `project_id`, the `id` of an existing record, and the JSON document as `data`. The two rule state tools take a plain field instead of `data`: `duration_minutes` to snooze (0 clears it) and `enabled` to turn a rule on or off.
 
-The write skill's **alert-configuration.md**, also served as `traceway://knowledge/alert-configuration`, lists every channel's fields and every rule type's JSON config. Channel configuration contains credentials: use a secure secret mechanism and do not commit or echo them. See [Agent Write Access](/learn/agent-write-access) for authorization.
+| What | Tools |
+|------|-------|
+| Channels | `list_notification_channels`, `create_notification_channel`, `update_notification_channel`, `delete_notification_channel`, `test_notification_channel` |
+| Rules | `list_notification_rules`, `create_notification_rule`, `update_notification_rule`, `delete_notification_rule`, `snooze_notification_rule`, `set_notification_rule_enabled` |
+| History | `list_notification_history` |
+
+The write skill's **alert-configuration.md**, also served as `traceway://knowledge/alert-configuration`, lists every channel's fields and every rule type's JSON config. Channel configuration contains credentials: use a secure secret mechanism and do not commit or echo them.
+
+## When no notification arrives
+
+| What you see | Cause | Fix |
+|---|---|---|
+| The Test dialog shows `Test notification failed: ...` | The destination refused the message. The rest of the line is its answer, such as "Slack returned status 404" | Correct the channel with **Edit** and test again |
+| On a self-hosted instance the email test succeeds, or the History tab shows **Sent**, but no email arrives | The server has no SMTP configured and wrote the email to its log | Configure SMTP on the server, see [Setting up email](#setting-up-email) |
+| The Test dialog shows `A test page for this channel is still open. Resolve it before testing again.` | An earlier test of this escalation channel is still paging | Resolve that page on the On-Call page |
+| The condition is met, but the History tab has no entry | The rule is **Snoozed** or **Off**, it is still in its cooldown, or its window had fewer requests than **Min Requests** | Check the Status column on the **Rules** tab and the rule's settings |
+| The History tab shows **Failed** | Every delivery attempt was refused | Test the channel to see the reason |
+| The History tab shows **Deduped** | The rule sends to an escalation channel and its page was already open | Nothing. The open page already covers it |

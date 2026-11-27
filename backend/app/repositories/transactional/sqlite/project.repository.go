@@ -170,10 +170,20 @@ func (p *projectRepository) Create(tx *sql.Tx, name string, framework string) (*
 }
 
 func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, framework string, organizationId int) (*models.Project, error) {
+	return p.CreateWithOrganizationAndTokens(tx, name, framework, organizationId, "", "")
+}
+
+// CreateWithOrganizationAndTokens takes the tokens from the caller, for a
+// bootstrap file whose devices are configured with them in advance. An empty
+// token is generated like CreateWithOrganization does.
+func (p *projectRepository) CreateWithOrganizationAndTokens(tx *sql.Tx, name string, framework string, organizationId int, token string, sourceMapToken string) (*models.Project, error) {
+	if token == "" {
+		token = generateSecureToken()
+	}
 	project := &models.Project{
 		Id:                      uuid.New(),
 		Name:                    name,
-		Token:                   generateSecureToken(),
+		Token:                   token,
 		Framework:               framework,
 		OrganizationId:          &organizationId,
 		CreatedAt:               time.Now().UTC(),
@@ -183,9 +193,11 @@ func (p *projectRepository) CreateWithOrganization(tx *sql.Tx, name string, fram
 		AiFlaggedLanguages:      models.StringSlice(contentflag.DefaultLanguages),
 	}
 
-	if frameworkRequiresSymbolUpload(framework) {
-		token := generateSecureToken()
-		project.SourceMapToken = &token
+	if sourceMapToken == "" && frameworkRequiresSymbolUpload(framework) {
+		sourceMapToken = generateSecureToken()
+	}
+	if sourceMapToken != "" {
+		project.SourceMapToken = &sourceMapToken
 	}
 
 	err := lit.InsertExistingUuid(tx, project)

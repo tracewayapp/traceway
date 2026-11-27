@@ -1,175 +1,552 @@
 # CLI
 
-import { Callout } from "nextra/components";
+import { Tabs } from "nextra/components";
 
-`traceway` is a command-line client for the Traceway HTTP API: exceptions, logs, endpoints, tasks, traces, metrics, monitors, alerts, on-call pages, post-mortems and remote SDK config rules from a terminal. It is read only. Changes go through the separate `traceway-write` CLI described in [Agent Write Access](/learn/agent-write-access). It is designed to be first-class for both humans (with `gh`-style ergonomics) and LLM agents invoking it via shell tools: JSON output when piped, stable error identifiers and exit codes, and nothing that hangs waiting for input. For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
+`traceway` puts your Traceway data in the terminal: the errors that are firing, the endpoints that got slow, the logs and spans of one request, metrics, alerts, on-call pages and monitors. You can run it yourself or hand it to an AI agent. It prints tables for people and JSON for scripts.
 
-## Installation
+It only reads. Nothing you run with it changes anything in Traceway. Changes go through the separate [`traceway-write` CLI](#write-commands).
 
-### One-line install (macOS, Linux)
+Setup takes three steps:
+
+| | What you do | How often |
+|---|---|---|
+| **1** | [Install the CLI](#step-1-install-the-cli) | Once per machine |
+| **2** | [Log in](#step-2-log-in) and approve the login in your browser | Once per machine |
+| **3** | [Pick a project](#step-3-pick-a-project) | Once, and again when you switch projects |
+
+After that you [ask questions](#examples). For a quick tour, see the [CLI product page](https://tracewayapp.com/product/cli).
+
+## Step 1: Install the CLI
+
+<Tabs items={['macOS and Linux', 'Windows, or by hand', 'From source']}>
+<Tabs.Tab>
 
 ```bash
 curl -fsSL https://cli.tracewayapp.com/install.sh | sh
 ```
 
-Add `-s -- --write` to install `traceway-write` instead (see [Agent Write Access](/learn/agent-write-access)). The installer detects your OS and architecture, downloads the latest CLI release from GitHub, verifies its sha256 checksum, and installs `traceway` to `/usr/local/bin` (when writable) or `~/.local/bin`, without sudo. Two environment variables tweak it: `TRACEWAY_CLI_VERSION` pins a version (e.g. `1.9.3`) and `TRACEWAY_INSTALL_DIR` overrides the target directory.
+The installer detects your OS and architecture, downloads the latest CLI release from GitHub, verifies its sha256 checksum, and installs `traceway` to `/usr/local/bin` when that is writable, otherwise to `~/.local/bin`. It does not use sudo. If it tells you the directory is not on your `PATH`, add it in your shell profile.
 
-### Prebuilt binaries
+Two environment variables change what it does: `TRACEWAY_CLI_VERSION` pins a version and `TRACEWAY_INSTALL_DIR` sets the target directory.
 
-Every release publishes prebuilt binaries at [github.com/tracewayapp/traceway/releases](https://github.com/tracewayapp/traceway/releases) under the matching `CLI vX.Y.Z` tag (the CLI version tracks the backend release). Download the archive for your platform (`traceway_<version>_<os>_<arch>.tar.gz`, or `.zip` on Windows), extract it, and put `traceway` on your `PATH`. This is also the route for Windows, which the install script doesn't cover.
+```bash
+curl -fsSL https://cli.tracewayapp.com/install.sh | \
+  TRACEWAY_CLI_VERSION=2.0.20 TRACEWAY_INSTALL_DIR="$HOME/bin" sh
+```
 
-### From source
+</Tabs.Tab>
+<Tabs.Tab>
 
-The `cli/` directory of the [main repo](https://github.com/tracewayapp/traceway) ships a Nix dev shell with everything needed:
+Every release publishes prebuilt binaries on the [releases page](https://github.com/tracewayapp/traceway/releases), under the title `CLI vX.Y.Z`. The CLI version follows the backend release.
+
+Download the archive for your platform, extract it, and put `traceway` on your `PATH`:
+
+| Platform | Archive |
+|---|---|
+| Linux, macOS | `traceway_<version>_<os>_<arch>.tar.gz` |
+| Windows | `traceway_<version>_windows_x86_64.zip` |
+
+`<os>` is `linux` or `darwin` and `<arch>` is `x86_64` or `arm64`. Each release also has a `checksums.txt` with the sha256 of every archive.
+
+</Tabs.Tab>
+<Tabs.Tab>
+
+You need Go and a checkout of the [main repository](https://github.com/tracewayapp/traceway):
 
 ```bash
 cd cli
-nix develop
-just build         # produces ./bin/traceway
-```
-
-Or with vanilla Go:
-
-```bash
 go build -o bin/traceway ./cmd/traceway
 ```
 
-Verify an installed binary with `traceway version` (source builds report `dev`).
-
-## Quick start
+The repository's Nix dev shell brings Go and `just`, and `just build` builds both `bin/traceway` and `bin/traceway-write`:
 
 ```bash
-# 1. log in: prints a URL + short code, you approve in the browser
-traceway login --url https://cloud.tracewayapp.com
+nix develop
+cd cli
+just build
+```
 
-# 2. pick a project (one-time; future calls use it implicitly)
+</Tabs.Tab>
+</Tabs>
+
+Check that the binary runs:
+
+```bash
+traceway version
+```
+
+It prints the release version, or `dev` for a build from source.
+
+## Step 2: Log in
+
+Logging in connects the CLI to your account on one Traceway instance. Run this in a terminal:
+
+```bash
+traceway login --url https://cloud.tracewayapp.com
+```
+
+Use your own URL for a self-hosted instance. The command prints a link and a short code, opens the link in your browser, and waits:
+
+```
+To sign in, open this URL in your browser:
+
+    https://cloud.tracewayapp.com/device
+
+And enter the code:  MF6H-T2S1
+
+Waiting for authorization...
+```
+
+Sign in to the dashboard if you are not already, check that the code on the page matches the one in your terminal, and click **Approve**:
+
+<img src="/cli/login-approval.png" alt="The Device login page: Traceway CLI is requesting read-only access to your Traceway account, with the code MF6H-T2S1 to compare with the terminal, and Approve and Deny buttons" style={{ maxWidth: '360px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+The terminal then confirms the login:
+
+```
+Logged in as maya@acme.dev on https://cloud.tracewayapp.com (profile: default)
+```
+
+You stay logged in for up to 90 days of inactivity, and `traceway logout` ends the session on the server. On a machine without a browser, add `--no-browser` and open the link on another device.
+
+A login with a password or with a personal access token is covered in [CLI Authentication](/learn/cli-auth). For CI, see [Scripts and CI](#scripts-and-ci).
+
+## Step 3: Pick a project
+
+Every query runs against one project. List the projects you can see and choose one:
+
+```bash
+traceway projects list
+```
+
+```
+ID                                    NAME          ROLE
+1e5b3c0f-0e8e-4652-b917-dfe3ce55ed11  checkout-api  owner
+```
+
+```bash
+traceway projects use 1e5b3c0f-0e8e-4652-b917-dfe3ce55ed11
+```
+
+The CLI remembers the choice. To query another project once without switching, add `--project <project-id>` to any command.
+
+## Check that it works
+
+Ask for the errors of the last day:
+
+```bash
+traceway exceptions list --since 24h
+```
+
+You get one row per issue: its hash, how often it occurred, when it was last and first seen, and the first line of the error. A table with only the header row means the project recorded no exceptions in that window, which is also a working answer. On a backend project, `traceway endpoints list --since 24h` is a second check.
+
+If you get an error instead, look it up in [When it fails](#when-it-fails).
+
+## What you can read
+
+| Area | What the CLI shows |
+|---|---|
+| **Issues** | Exception groups, the occurrences of one group, and a single occurrence with its session and recording |
+| **Endpoints and tasks** | p50, p95 and p99 per endpoint, latency over time, the slowest requests of one endpoint, and one request or task run with its spans and linked errors |
+| **Traces and sessions** | A distributed trace across services and projects, an AI trace with its conversation, the sessions of a window, and a session with the exceptions that fired in it |
+| **Logs** | Log records by time, service, severity, trace id or text |
+| **Metrics** | The metric names, types, units and tags a project records, and any metric as a time series or as one value |
+| **Dashboards** | The dashboards applied to the project, the organization's library, and a dashboard as importable JSON |
+| **Alerting** | Alert rules and their state, channels, notification history, and [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp) with their error budget |
+| **On-call** | Open pages and their delivery log, who is on call, teams, schedules and escalation policies |
+| **Monitors** | Uptime monitors with their incidents, and post-mortems |
+| **Browser data collection** | A browser, Flutter, iOS or Android project's [remote SDK config](/learn/remote-config) rules, and the settings a given client would receive |
+
+### What you cannot do with it
+
+- **Change anything.** Archiving an issue, acknowledging a page, snoozing an alert and every other change needs [`traceway-write`](#write-commands).
+- **List tasks or AI traces.** Those have a `show` command only. Take the id from the dashboard URL or from the output of another command, such as the nodes of `traces show`.
+- **Manage the account.** Creating projects, inviting members and changing settings stay in the dashboard.
+
+## Examples
+
+Queries cover the last hour unless you say otherwise. `--since` takes a duration such as `30m`, `24h` or `7d`, and `--from` with `--to` takes two RFC 3339 timestamps. List commands return 50 rows per page: use `--page` and `--page-size` (100 at most) for more.
+
+### What is failing
+
+```bash
+traceway exceptions list --since 24h --order-by count
+```
+
+The issues of the last day, most frequent first.
+
+```bash
+traceway exceptions show <hash>
+```
+
+One issue with its occurrences. Pass the full 16-character hash: the table of `exceptions list` shortens it to 12, so take `exceptionHash` from `--output json` or from the issue's URL in the dashboard. Each occurrence has an `id` and a `recordedAt`, and in the JSON output a `traceId` when it happened inside a request.
+
+```bash
+traceway exceptions occurrence <id> --recorded-at 2026-11-26T14:20:05Z
+```
+
+A single occurrence with its stack trace and trace id, plus its session id when it has one. The JSON output adds its attributes and the session recording.
+
+### What got slow
+
+```bash
+traceway endpoints list --since 1h --order-by p95
+```
+
+Endpoints with their request count and p50, p95 and p99, slowest first. Without `--order-by` they are sorted by impact.
+
+```bash
+traceway endpoints chart --since 24h --interval-minutes 60
+```
+
+The p95 of the top five endpoints hour by hour, so you can see when a latency jump started.
+
+```bash
+traceway endpoints requests "POST /api/checkout" --since 1h
+traceway endpoints show <id> --recorded-at <recordedAt>
+```
+
+The slowest requests of one endpoint, then one of them with its span waterfall and linked errors. The first command prints the `id` and `recordedAt` the second one takes.
+
+### One request across services
+
+```bash
+traceway traces show <traceId> --recorded-at <recordedAt>
+traceway logs query --trace-id <traceId> --since 24h
+```
+
+Every endpoint, task, AI call and exception that shares the trace id, across the projects you can see, and then the log lines written during it.
+
+### Logs
+
+```bash
+traceway logs query --since 1h --search "OutOfMemory"
+traceway logs query --since 6h --service checkout-api --min-severity 17
+```
+
+A text search in the log body, and everything at ERROR or above from one service. Severity uses the OpenTelemetry numbers: 9 is INFO, 13 is WARN, 17 is ERROR, 21 is FATAL.
+
+### Metrics
+
+```bash
+traceway metrics discover --since 24h
+```
+
+The metrics the project recorded, with type, unit and tag keys. Take metric names from here.
+
+```bash
+traceway metrics query --name system.memory.utilization \
+  --tag state=used --group-by server_name --since 6h
+```
+
+Memory use per server as a time series. `--aggregation` takes `avg`, `sum`, `count`, `min`, `max`, `rate` and `last`, and for a distribution metric `p50` to `p99` and `good_ratio`. Add `--whole-range` to get one value for the window instead of a series.
+
+### Alerts and on-call
+
+```bash
+traceway pages list
+traceway pages show <id>
+traceway alerts list
+traceway oncall current
+traceway monitors list
+```
+
+The pages that are open or acknowledged, one page with its delivery log, the alert rules with their enabled and snoozed state, who is on call for this project, and the monitors with their current status.
+
+### In a script
+
+```bash
+traceway exceptions list --since 24h --fields exceptionHash,count,lastSeen
+traceway exceptions list --since 24h | jq -r '.data[] | [.count, .exceptionHash] | @tsv'
+```
+
+`--fields` keeps only the named keys of each row. Piped output is JSON without asking for it. See [Output formats](#output-formats).
+
+## Looking up one record
+
+The commands that fetch a single record by id need to know when it was recorded:
+
+```bash
+traceway exceptions occurrence <id> --recorded-at <time>
+traceway endpoints show <id>        --recorded-at <time>
+traceway tasks show <id>            --recorded-at <time>
+traceway ai-traces show <id>        --recorded-at <time>
+traceway traces show <traceId>      --recorded-at <time>
+traceway sessions show <id>         [--started-at <time>]
+```
+
+Telemetry is stored by day. The timestamp tells the server which days to look in, so the lookup does not scan everything. It is an RFC 3339 time such as `2026-11-26T14:20:05Z`, and it only has to be close: the server searches a window around it.
+
+Always take the id and its timestamp from the same place:
+
+- **A list row.** `exceptions show` and `endpoints requests` print `recordedAt` next to each id. The table of `exceptions show` prints it as `2026-11-26 14:20:05`, in UTC: write it as `2026-11-26T14:20:05Z`, or read it from `--output json`.
+- **A dashboard URL.** Detail pages carry the time as the `?t=` parameter. A session page has none: use the session's start time, or the `recordedAt` of an exception that fired in it.
+- **A notification.** Use its **Occurred at** time, rewritten as RFC 3339.
+
+Without the flag the command stops with `usage_error` (exit 2). `sessions show` is the exception: without `--started-at` the CLI looks the start up among the sessions of the last 30 days, so pass it for an older session.
+
+## Command reference
+
+`traceway <command> --help` lists every flag of a command.
+
+```bash
+# Account
+traceway login [--url <url>] [--profile <name>] [--no-browser]
+traceway logout
+traceway profiles list
+traceway profiles use <name>
 traceway projects list
 traceway projects use <project-id>
+traceway version
 
-# 3. ask questions
-traceway exceptions list --since 24h
-traceway logs query --since 1h --search "OutOfMemory"
-traceway endpoints list --since 1h
-traceway metrics query --name http.server.duration --aggregation avg --since 1h
+# Issues
+traceway exceptions list [--search <text>] [--include-archived]
+traceway exceptions show <hash>
+traceway exceptions occurrence <id> --recorded-at <time>
+
+# Endpoints and tasks
+traceway endpoints list [--search <name>] [--order-by impact|count|p95|lastSeen]
+traceway endpoints chart [--metric-type total_time|p50|p95|p99]
+traceway endpoints requests "<endpoint>" [--search <attribute value>]
+traceway endpoints show <id> --recorded-at <time>
+traceway endpoints slow "<endpoint>"
+traceway tasks show <id> --recorded-at <time>
+
+# Traces, AI traces and sessions
+traceway traces show <traceId> --recorded-at <time>
+traceway ai-traces show <id> --recorded-at <time>
+traceway sessions list [--search <text>] [--order-by startedAt|duration]
+traceway sessions show <id> [--started-at <time>]
+
+# Logs
+traceway logs query [--search <text>] [--service <name>]
+                    [--min-severity <n>] [--trace-id <traceId>]
+
+# Metrics
+traceway metrics discover [--name <metric> --key <tag>]
+traceway metrics query --name <metric> [--aggregation <agg>]
+                       [--tag key=value] [--group-by <tag>] [--whole-range]
+
+# Dashboards
+traceway dashboards list
+traceway dashboards library
+traceway dashboards export <id>
+traceway dashboards validate --file dashboard.json
+
+# Alerting
+traceway alerts list
+traceway channels list
+traceway notification-history list --file query.json
+traceway slos list
+traceway slos show <id>
+traceway slos series <id> --file range.json
+traceway slos preview --file preview.json
+
+# On-call
+traceway pages list [--status active|open|acknowledged|resolved]
+traceway pages show <id>
+traceway oncall current
+traceway oncall now --organization <org-id>
+traceway teams list --organization <org-id>
+traceway schedules list --organization <org-id>
+traceway schedules show <id> --organization <org-id>
+traceway schedules timeline <id> --organization <org-id> --from <time> --to <time>
+traceway escalation-policies list --organization <org-id>
+traceway organization-members list --organization <org-id>
+traceway contact-methods list
+traceway notification-chains show
+
+# Monitors and post-mortems
+traceway monitors list
+traceway monitors show <id>
+traceway post-mortems list [--search <text>] [--tag <tag>]
+traceway post-mortems show <id>
+
+# Browser data collection
+traceway opamp rules list
+traceway opamp preview --file client.json
+
+# Agents and setup
+traceway mcp
+traceway setup apply --plan plan.json
 ```
 
-The default `traceway login` runs a browser device flow with an auto-refreshing token, so you stay logged in for up to 90 days of inactivity. Password login (`--password`) and personal access tokens (`--token`) are also supported; see [CLI Authentication](/learn/cli-auth) for all three modes, and for what to use in CI.
+A few of these need a word more:
 
-## Commands
-
-| Command | Purpose |
-|---|---|
-| `traceway login` | Authenticate and store a token (device flow, `--password`, or `--token`) |
-| `traceway logout` | Revoke the session server-side and forget stored credentials |
-| `traceway profiles {list,use}` | Manage multiple Traceway accounts/instances |
-| `traceway projects {list,use}` | List or select the active project |
-| `traceway exceptions list` | Recent grouped exceptions |
-| `traceway exceptions show <hash>` | A single exception group + occurrences; takes the full hash or a unique prefix of 4 or more hex characters |
-| `traceway exceptions occurrence <id> --recorded-at <t>` | A single occurrence by id (+ `sessionId` and recording) |
-| `traceway logs query` | Query logs with severity / service / search filters |
-| `traceway endpoints list` | Per-endpoint p50/p95/p99 stats |
-| `traceway endpoints show <id> --recorded-at <t>` | A single request (transaction) by id: spans + linked errors |
-| `traceway tasks show <id> --recorded-at <t>` | A single background task run by id |
-| `traceway ai-traces show <id> --recorded-at <t>` | A single AI trace by id + its conversation |
-| `traceway sessions list` | Sessions that started in the window, with id, start, duration, version, replay and user (`--search` by session id, client IP or an attribute value such as a user id) |
-| `traceway sessions show <id> [--started-at <t>]` | A single session by id + the exceptions that fired in it; without `--started-at` the start is looked up among the last 30 days |
-| `traceway traces show <id> --recorded-at <t>` | A distributed trace: every service node sharing the id |
-| `traceway metrics query` | Time-series metric queries, including `rate`, `last`, and percentiles or `good_ratio` of a distribution metric; `--whole-range` returns one value for the window |
-| `traceway metrics discover` | Recorded metric names, types, units and tag keys; `--name M --key K` discovers tag values |
-| `traceway dashboards {list,library,export}` | Applied dashboards, shared project assignments and importable JSON |
-| `traceway dashboards validate --file F` | Offline dashboard validation without login |
-| `traceway pages {list,show}` | On-call pages (`--status active\|open\|acknowledged\|resolved`) |
-| `traceway alerts list` | Alert rules with their enabled and snoozed state |
-| `traceway slos list` / `slos show <id>` / `slos series <id> --file F` / `slos preview --file F` | [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp): definition, status, current SLI and error budget, history, and a dry run of a definition |
-| `traceway monitors {list,show}` | Uptime monitors and their incidents |
-| `traceway post-mortems {list,show}` | Post-mortem documents (`--search`, `--tag`) |
-| `traceway opamp rules list` | A browser project's [remote SDK config](/learn/remote-config) rules, in order, with their `updatedAt` |
-| `traceway opamp preview --file client.json` | The settings document the saved rules give a client: `{"attributes": {...}, "instanceUid": "..."}` from a file, or `-` for stdin |
-| `traceway mcp` | Serve the [MCP server](/learn/mcp) over stdio |
-
-Run `traceway <command> --help` for full per-command flags.
-
-<Callout type="info">
-  The `show` / `occurrence` commands take a UUID plus a **required** timestamp flag (`--recorded-at`). Telemetry tables are partitioned by day; the timestamp bounds the query so the lookup prunes partitions instead of scanning all of them. Get the id and its timestamp together: from a dashboard URL's `?t=` param, a notification's `Occurred at`, or a list row's `recordedAt`. Omitting the flag exits 2 (`usage_error`). `sessions show` is the exception: `--started-at` is optional, and without it the CLI looks the start up among the last 30 days' sessions first (one more query; pass it when you know it).
-</Callout>
-
-## Profiles
-
-Multiple Traceway instances or accounts coexist via profiles. Configuration (URL, username) lives in `$XDG_CONFIG_HOME/traceway/config.json` so it can be checked in or managed declaratively; credentials and the active project live in `$XDG_STATE_HOME/traceway/state.json`.
-
-```bash
-traceway login --url https://traceway.mycompany.com --profile work   # a self-hosted instance
-traceway profiles list
-traceway profiles use work
-traceway --profile personal exceptions list   # one-off override
-```
+- **`exceptions show`** takes the full hash or a unique prefix of 4 or more hex characters.
+- **`sessions list`** prints the sessions that started in the window, with id, start, duration, version, replay and user. `--search` matches the session id, the client IP or an attribute value such as a user id.
+- **`endpoints slow`** shows the expected-slow allowance someone set for an endpoint. It shifts Apdex and impact only, never the percentiles.
+- **`metrics discover --name M --key K`** lists the values one tag takes for one metric.
+- **`dashboards validate`** checks a dashboard file on your machine. It needs no login.
+- **`notification-history list`** reads its query from the file: `{"pagination": {"page": 1, "pageSize": 20}}`, with optional `search`, `fromDate` and `toDate`.
+- **`slos series`** takes a time range, and **`slos preview`** takes the indicator of an SLO (`sliKind` and `sliConfig`) without its name, target and window. Both files are described in [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp).
+- **`--organization <org-id>`** is required by the organization-wide on-call commands. `traceway dashboards library` prints the id of each of your organizations.
+- **`opamp preview`** reads `{"attributes": {...}, "instanceUid": "..."}` from the file, or from stdin with `--file -`, and prints the settings the saved rules give that client. `opamp rules list` prints the rules in order with their `updatedAt`.
+- **`setup apply`** is run for you by the `traceway-setup` skill when an agent instruments a repository. It submits a plan of projects that you approve in the dashboard.
+- **`mcp`** serves the same reads to MCP clients. See [Use it from an AI agent](#use-it-from-an-ai-agent).
 
 ## Output formats
 
-The `--output` flag picks the format. The default is `table` on a TTY and `json` otherwise, so piping always gets machine-readable output.
+`--output` (or `-o`) picks the format. Without it you get `table` in a terminal and `json` everywhere else, so a pipe or an agent always receives machine-readable output.
 
-| Format | Use |
+| Format | What you get |
 |---|---|
-| `table` | Human-friendly columns (default on TTY) |
-| `json` | Compact JSON, one record per line (default when stdout isn't a TTY) |
-| `yaml` | YAML rendering of the same data |
+| `table` | Columns for reading. The default in a terminal. |
+| `json` | Compact JSON on one line. The default when the output is piped. |
+| `yaml` | The same data as YAML |
 
-`--fields a,b,c` projects list responses to just those keys:
+Paginated lists such as `exceptions list` and `pages list` wrap their rows as `{"data": [...], "pagination": {...}}`. `--fields a,b,c` keeps only those keys of each row:
 
 ```bash
 traceway exceptions list --output json --fields exceptionHash,count,lastSeen
 ```
 
+## Profiles
+
+A profile is one login: an instance URL, an account and a selected project. Use profiles to keep several instances or accounts side by side.
+
+```bash
+traceway login --url https://traceway.mycompany.com --profile work
+traceway profiles list
+traceway profiles use work
+traceway --profile personal exceptions list   # one command only
+```
+
+Without `--profile` every command, `login` included, uses the current profile: the first one you logged in to, until you switch with `profiles use`. A first login without `--profile` creates the profile named `default`.
+
+The URL and username of each profile are in `~/.config/traceway/config.json`, which holds no secret, so it can be checked in or managed declaratively. Credentials and the selected project are in `~/.local/state/traceway/state.json`. `XDG_CONFIG_HOME` and `XDG_STATE_HOME` move the two files.
+
+## Use it from an AI agent
+
+The CLI is built to be run by an agent through its shell tool: output is JSON when piped, errors have stable identifiers and exit codes, and no command ever waits for input.
+
+**Install the skill** that teaches the agent the commands and how to investigate with them:
+
+<Tabs items={['Any agent', 'Claude Code plugin']}>
+<Tabs.Tab>
+
+```bash
+npx skills add tracewayapp/skills --skill traceway
+```
+
+Works with Claude Code, Cursor, Codex and every other agent that reads `SKILL.md`. `--all` in place of `--skill traceway` installs all four Traceway skills.
+
+You invoke it as `/traceway`.
+
+</Tabs.Tab>
+<Tabs.Tab>
+
+```
+/plugin marketplace add tracewayapp/skills
+/plugin install tw@traceway
+```
+
+You invoke it as `/tw:traceway`.
+
+</Tabs.Tab>
+</Tabs>
+
+Then ask in plain language:
+
+```
+/traceway what's broken in prod?
+```
+
+```
+/traceway debug https://cloud.tracewayapp.com/issues/3f9a1c2b7d4e5f60
+```
+
+```
+/traceway perf POST /api/checkout got slow this afternoon
+```
+
+The agent runs the read commands, follows the evidence from the issue to the trace and the logs, and reports what it found. It uses your login from step 2, so log in yourself first.
+
+**MCP server.** `traceway mcp` serves the same reads as an MCP server on stdio for clients like Claude Code, Claude Desktop and Cursor, with the CLI's login and selected project. Every Traceway instance also hosts the server at `/mcp`, which needs no install. See [MCP Server](/learn/mcp) for both, and for running `traceway mcp` without a login, with `TRACEWAY_URL` and `TRACEWAY_TOKEN`.
+
+## Scripts and CI
+
+A job without a browser logs in with a personal access token. Create one in **Account > Personal Access Tokens** (read only is the default, and those tokens start with `twp_`), then give it to the CLI on stdin so it never appears on the command line:
+
+```bash
+printf '%s' "$TRACEWAY_TOKEN" | \
+  traceway login --url https://cloud.tracewayapp.com --token-stdin
+
+traceway --project <project-id> exceptions list --since 24h
+```
+
+The other ways to log in are in [CLI Authentication](/learn/cli-auth).
+
+Scripts can rely on three things: output is JSON when it is not a terminal, a failure writes an [error with a stable identifier](#errors-and-exit-codes) to stderr and sets the exit code, and nothing prompts.
+
 ## Errors and exit codes
 
-Every error writes a stable JSON envelope to stderr (in `json` / `yaml` modes; prose in `table` mode):
+Every error is one JSON object on stderr when the output format is `json` or `yaml`, and a sentence with a hint in `table` mode:
 
 ```json
 {"error":"token_expired","message":"session expired or invalid","hint":"traceway login","exit_code":4}
 ```
 
-The `error` field is a stable snake_case identifier that scripts and LLMs can branch on. Exit codes:
+`error` is a stable snake_case identifier that scripts and agents can branch on. The exit codes are stable too:
 
 | Exit | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Generic / API error |
+| 1 | Generic or API error |
 | 2 | Usage error (bad flags, missing confirmation, invalid time range) |
 | 3 | Connection failure |
 | 4 | Auth failure (`not_authenticated`, `token_expired`, `forbidden`) |
 | 5 | Not found |
 | 6 | Rate limited |
-| 7 | Server (5xx) |
+| 7 | Server error (5xx) |
+
+## When it fails
+
+| `error` | What happened and what to do |
+|---|---|
+| `not_authenticated` | There is no login for this profile on this machine. Run `traceway login`. |
+| `token_expired` | The session ended: 90 days without use, a logout, or a revoked token. Run `traceway login` again. |
+| `no_project` | No project is selected. Run `traceway projects use <project-id>`, or pass `--project`. |
+| `no_profile` | The profile you named in `profiles use` or `logout` does not exist. `traceway profiles list` shows the ones you have. |
+| `usage_error` | The message says which flag is wrong or missing. `--recorded-at is required` means a by-id command ran without its timestamp: see [Looking up one record](#looking-up-one-record). |
+| `invalid_time_range` | `--since` is not a duration such as `24h`, or it is combined with `--from` and `--to`. Use one or the other. |
+| `not_found` | The id does not exist in the selected project, the timestamp is far from the record, or `exceptions show` got the shortened hash from the table. Check the project, take the id and its time from the same row, and pass the full hash. |
+| `forbidden` | The server refused the request, and the message says why. Usually your account has no access to the project: ask an owner or admin. |
+| `connection_failed` | The instance cannot be reached. Check the URL in `traceway profiles list` and your network. |
+| `device_login_unsupported` | The server is too old for the browser login. Log in with `traceway login --password`, or upgrade the server. |
+| `write_required` | You ran a command that changes data. Use [`traceway-write`](#write-commands). |
 
 ## Write commands
 
-`traceway` changes nothing. Its write commands (`exceptions archive`, `pages ack`, `alerts snooze` and the rest) exist only in `traceway-write`, a separate binary with its own login. Running one of them in `traceway` fails with `write_required` (exit 2). `opamp rules create`, `update`, `delete` and `reorder`, which change remote SDK config rules, are also only in `traceway-write`. Install the write CLI with:
+`traceway` changes nothing. Commands that change data (`exceptions archive`, `pages ack`, `alerts snooze`, `opamp rules create` and the rest) exist only in `traceway-write`, a separate binary with its own login. Running one of them in `traceway` fails with `write_required` (exit 2).
+
+`traceway-write` includes every command on this page, so you do not need both. Install it with:
 
 ```bash
 curl -fsSL https://cli.tracewayapp.com/install.sh | sh -s -- --write
 ```
 
-Every `traceway-write` write requires explicit consent:
+[Agent Write Access](/learn/agent-write-access) is the guide to it: turning writes on for the organization, logging in, and the [full list of write commands](/learn/agent-write-access#running-the-commands-yourself).
 
-- Pass `--yes` to skip the prompt.
-- Or set `TRACEWAY_ASSUME_YES=1` in the environment.
-- Or run interactively and answer the `Continue? [y/N]` prompt.
+**Confirmation.** Every write needs explicit consent. In a terminal it prints what it is about to change and asks `Continue? [y/N]`. Pass `--yes` or set `TRACEWAY_ASSUME_YES=1` to skip the question. Outside a terminal (a script, an agent's tool call) a write without one of the two fails at once with `usage_error` (exit 2), so nothing hangs.
 
-Calling a mutating command from a non-TTY context (script, LLM tool call) without one of the opt-ins fails immediately with `usage_error` (exit 2); no hung prompts.
+**Configuration.** `channels`, `alerts`, `slos`, `teams`, `schedules`, `escalation-policies`, `contact-methods` and `notification-chains` take their request body as JSON with `--file`. Organization resources also take `--organization <id>`, and every write needs a selected project. `traceway-write <resource> validate <action> --file F` checks the shape of a file offline; the server validates the nested settings and your permissions. See the [alerting examples](/learn/alerts#configure-alerting-with-the-cli-or-mcp) and the [on-call examples](/learn/on-call#configure-on-call-with-the-cli-or-mcp).
 
-## MCP server
+**Dashboards and tokens.**
 
-`traceway mcp` serves the whole query/debug surface as an MCP server on stdio for clients like Claude Code, Claude Desktop, and Cursor, reusing the CLI session and current project. See [MCP Server](/learn/mcp) for the stdio setup, the zero-install remote server every backend hosts at `/mcp`, and headless use via `TRACEWAY_URL` + `TRACEWAY_TOKEN`.
+```bash
+# Create dashboards from JSON and apply them to the selected project
+traceway-write dashboards import --file dashboard.json --yes
 
-## Build dashboards
+# Issue an expiring read-only link to a dashboard
+traceway-write dashboards embed <id> --timeframe 7d --expires-in-days 3 --yes
+traceway-write dashboards embed <id> --tag account_id=acme --theme light --yes
 
-Use `traceway-write dashboards import --file dashboard.json --yes` to create and apply dashboards to the selected project. Add `--mode upsert` to replace definitions by organization-wide name; edits affect every assigned project. Both CLI editions can validate files offline with `dashboards validate --file dashboard.json`. See [Dashboards](/learn/dashboards#build-dashboards-with-the-cli-or-an-ai-agent) for discovery, chart selection, JSON examples and verification.
+# Create a read-only token (twp_) for your account, and list your tokens
+traceway-write tokens create --name "Acme embed" --yes
+traceway-write tokens list
+```
 
-`traceway-write dashboards embed <id> --yes` issues an expiring read-only link to a dashboard of the selected project and prints it as `url`. Add `--timeframe 7d` or `--from`/`--to` for the range, `--tag account_id=acme` (repeatable) to limit every widget to a tag value, `--expires-in-days N` (1 to 90) or `--expires-at` for the lifetime (five minutes by default) and `--theme light|dark`. The output holds the signed token, so treat it like a credential. See [Share and embed a dashboard](/learn/dashboards#share-and-embed-a-dashboard).
-
-
-`traceway-write tokens create --name "Acme embed" --yes` creates a read-only personal access token (`twp_`) for your account and prints it once; it never expires unless you add `--expires-in-days N`. Write tokens can only be created in the dashboard. `traceway-write tokens list` shows your tokens' names, prefixes, scopes and expiry, never the tokens.
-
-## Alerting and on-call configuration
-
-`traceway-write` provides `channels`, `alerts`, `slos`, `teams`, `schedules`, `escalation-policies`, `contact-methods` and `notification-chains` commands for configuration, plus `notification-history` and `oncall` for verification. Reads are available in the read-only edition too. Use `--file` JSON for request bodies, `--organization <id>` for organization resources, and a selected project for all writes. `<resource> validate <action> --file F` validates the request envelope offline; the server validates nested settings and permissions. See [alerting examples](/learn/alerts#configure-alerting-with-the-cli-or-mcp), [on-call examples](/learn/on-call#configure-on-call-with-the-cli-or-mcp) and [Agent Write Access](/learn/agent-write-access).
+- **`dashboards import --mode upsert`** replaces dashboards matched by name across the organization. The edit shows up in every project the dashboard is applied to. See [Dashboards](/learn/dashboards#build-dashboards-with-the-cli-or-an-ai-agent) for discovery, chart selection, JSON examples and verification.
+- **`dashboards embed`** prints the link as `url`. `--timeframe` or `--from` with `--to` sets the range, `--tag key=value` (repeatable) limits every widget to a tag value, `--expires-in-days N` (1 to 90) or `--expires-at` sets the lifetime, which is five minutes by default, and `--theme` is `light` or `dark`. The output holds the signed token, so treat it like a credential. See [Share and embed a dashboard](/learn/dashboards#share-and-embed-a-dashboard).
+- **`tokens create`** prints the token once. It never expires unless you add `--expires-in-days N`. Write tokens can only be created in the dashboard. `tokens list` shows the names, prefixes, scopes and expiry of your tokens, never the tokens themselves.

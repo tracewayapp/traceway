@@ -1,45 +1,99 @@
 # MCP Server
 
-Traceway speaks [MCP](https://modelcontextprotocol.io) in two ways: the `traceway` CLI doubles as a **local stdio server** (`traceway mcp`), and every backend serves the same tools as a **remote server** at `https://<your-instance>/mcp` with OAuth login built in. Either way, MCP clients like Claude Code, Claude Desktop, and Cursor can investigate your production errors, logs, latency, and metrics directly.
+import { Tabs } from "nextra/components";
 
-The server is a thin layer over the same API client the CLI uses, and it ships the same operator playbooks the Traceway skill contains, exposed as MCP resources and prompts. One binary, one login, three surfaces.
+Connect your AI agent to Traceway and it can look into production for you: find what is failing, read the stack trace and the logs around it, see which endpoint got slow and when, and check who is on call. It works with Claude Code, Cursor, Claude Desktop and every other client that speaks [MCP](https://modelcontextprotocol.io).
 
-Both servers described here are read only. A separate write server (`/mcp/write`, or `traceway-write mcp`) adds tools that configure alert channels/rules, teams, schedules, escalation policies, personal delivery and dashboards, archive issues, acknowledge pages, snooze alerts, edit post-mortems and change remote SDK config rules, behind write credentials and an organization opt-in. See [Agent Write Access](/learn/agent-write-access).
+Every Traceway instance serves the MCP server at `/mcp`, so there is nothing to install. The server is read only. To let an agent change things, see [Agent Write Access](/learn/agent-write-access).
 
-## Remote server (zero install)
+| | What you do | How often |
+|---|---|---|
+| **1** | [Add the server](#step-1-add-the-server-to-your-mcp-client) to your MCP client | Once per client |
+| **2** | [Approve the connection](#step-2-approve-the-connection) in your browser | Once per client |
+| **or** | [Run the server locally](#alternative-run-the-server-locally-with-the-cli) with the `traceway` CLI, in place of steps 1 and 2 | Once per machine |
 
-Point any streamable-HTTP MCP client at your instance and it handles login itself:
+After that you ask your agent in plain language. The [example prompts](#example-prompts) show what to type.
+
+## Step 1: Add the server to your MCP client
+
+The client only needs the address of your instance followed by `/mcp`.
+
+<Tabs items={['Claude Code', 'Cursor', 'Other clients']}>
+<Tabs.Tab>
 
 ```bash
-# Claude Code
-claude mcp add --transport http traceway https://<your-instance>/mcp
+claude mcp add --transport http traceway https://cloud.tracewayapp.com/mcp
 ```
 
-On first use the client discovers the OAuth metadata, registers itself (RFC 7591 dynamic client registration), and opens your browser on the instance's consent page. Approve, and the client holds a short-lived access token plus a rotating refresh token; nothing to install or configure on the host.
+</Tabs.Tab>
+<Tabs.Tab>
 
-Non-OAuth clients (or CI) can instead send a personal access token directly: `Authorization: Bearer twp_...` on every request.
+Add the server to `.cursor/mcp.json`:
 
-`/mcp` never lists a write tool, whatever the credential. Agent credentials (personal access tokens and OAuth tokens) only reach the API routes the tools need; the rest of the dashboard API refuses them.
+```json
+{
+  "mcpServers": {
+    "traceway": {
+      "url": "https://cloud.tracewayapp.com/mcp"
+    }
+  }
+}
+```
 
-Two things differ from the local server: there is no default project (pass `project_id`, or let the model call `list_projects` first), and an unauthenticated request gets a `401` with a `WWW-Authenticate` challenge pointing at `/.well-known/oauth-protected-resource/mcp`, which is how spec-compliant clients find the login flow. The discovery documents and the `/mcp` endpoint answer CORS preflights, so browser-based clients (like the MCP Inspector auth debugger) can reach them too.
+</Tabs.Tab>
+<Tabs.Tab>
 
-## Local server (CLI session)
+Any client that supports streamable HTTP servers with OAuth takes the same URL:
 
-Log in and pick a default project once, in a terminal:
+```
+https://cloud.tracewayapp.com/mcp
+```
+
+A client without OAuth can send a [personal access token](#tokens-for-ci-and-containers) as an `Authorization: Bearer twp_...` header.
+
+</Tabs.Tab>
+</Tabs>
+
+Replace `cloud.tracewayapp.com` with your own host if you self-host.
+
+## Step 2: Approve the connection
+
+The server does not answer until you have logged the client in. On the first connection the client opens your browser on Traceway's **Authorize application** page. In Claude Code you start this yourself: run `/mcp`, select `traceway` and choose **Authenticate**.
+
+1. Log in to Traceway if the page asks you to.
+2. Check that the page names the client you just added.
+3. Click **Approve**.
+
+<img src="/mcp/mcp-consent.png" alt="The Authorize application page: Claude Code is requesting access to your Traceway account. It will be able to read your projects' telemetry but not change anything. Approve and Deny buttons below" style={{ maxWidth: '360px', width: '100%', height: 'auto', marginTop: '16px' }} />
+
+The browser returns to the client, which now holds a login of its own. It reads what you can read, in every project you are a member of, and it stays logged in for up to 90 days of inactivity.
+
+## Alternative: run the server locally with the CLI
+
+The [`traceway` CLI](/learn/cli) contains the same server and runs it on your machine with `traceway mcp`. This replaces steps 1 and 2. Use it when you already work with the CLI, when your client can only start servers as commands, or when the agent should work in one project without being told which.
+
+**Install the CLI, log in and pick the project.** Run this yourself in a terminal:
 
 ```bash
-traceway login --url https://<your-instance>
+curl -fsSL https://cli.tracewayapp.com/install.sh | sh
+traceway login --url https://cloud.tracewayapp.com
+traceway projects list
 traceway projects use <project-id>
 ```
 
-Then register the server with your MCP client:
+**Register the server with your client:**
+
+<Tabs items={['Claude Code', 'Claude Desktop, Cursor and others']}>
+<Tabs.Tab>
 
 ```bash
-# Claude Code
 claude mcp add traceway -- traceway mcp
 ```
 
-For Claude Desktop, Cursor, or any other client, the command is `traceway` with the single argument `mcp`:
+</Tabs.Tab>
+<Tabs.Tab>
+
+The command is `traceway` with the single argument `mcp`:
 
 ```json
 {
@@ -52,61 +106,175 @@ For Claude Desktop, Cursor, or any other client, the command is `traceway` with 
 }
 ```
 
-The server reuses the CLI session (including automatic token refresh for device logins) and the CLI's current project. If you are not logged in, `traceway mcp` exits immediately with instructions; log in in a terminal and reconnect.
+</Tabs.Tab>
+</Tabs>
 
-## Headless use (CI, containers)
+The server uses the CLI's login and keeps it fresh on its own. The project you selected is the default for every tool, and the agent can still name another project in a call.
 
-Skip the CLI session entirely with environment variables:
+## Check that it works
 
-| Variable | Purpose |
+Ask your agent something it can only answer from Traceway:
+
+```
+Which Traceway projects can you see?
+```
+
+The agent calls the `list_projects` tool and answers with your project names. Then ask a real question:
+
+```
+What broke in checkout-api in the last 24 hours?
+```
+
+With the remote server no project is selected, so name the project in your prompt, as above, or let the agent list your projects and ask you.
+
+If the agent says it has no Traceway tools or gets an error, see [When it fails](#when-it-fails).
+
+## What your agent can read
+
+| Area | What the agent can look up |
 |---|---|
-| `TRACEWAY_URL` | Instance origin: `https://cloud.tracewayapp.com`, or your self-hosted server's |
-| `TRACEWAY_TOKEN` | A personal access token (`twp_...`, see [CLI Authentication](/learn/cli-auth)) |
-| `TRACEWAY_PROJECT` | Optional default project id |
+| **Issues** | Grouped exceptions in a time window, one issue with its stack trace and occurrences, a single occurrence |
+| **Logs** | Log search by severity, service, text or trace id |
+| **Endpoints and tasks** | p50, p95 and p99, request counts and impact per endpoint, latency over time, one endpoint's slowest requests, the span waterfall of a request or task run, and whether an endpoint is marked expected-slow |
+| **Traces, sessions and AI** | A distributed trace across services and projects, the sessions of a time window, a session with the exceptions that happened in it, an AI trace with its conversation |
+| **Metrics and dashboards** | Which metrics are recorded and their tags, metric series, the dashboards of a project and their JSON |
+| **Alerts** | Alert rules with their enabled and snoozed state, notification channels, and what was sent |
+| **On-call** | Pages and who was notified, who is on call now, teams, schedules, escalation policies, and your own contact methods and notification chains |
+| **Monitors and SLOs** | Monitors and their incidents, SLO status, error budget and history, and a dry run of an SLO definition |
+| **Post-mortems** | The post-mortem documents of a project |
+| **Remote SDK config** | The [remote SDK config](/learn/remote-config) rules of a browser, Flutter, iOS or Android project, and the settings a given client would get |
+
+The agent can also explain Traceway itself. The server carries a [product guide](#the-product-guide), so "how does paging escalate?" gets an answer from the guide and not a guess.
+
+### What it cannot do
+
+- **Change anything.** `/mcp` never offers a write tool, whatever credential connects to it. Archiving issues, acknowledging pages, snoozing alerts and the rest need the [write server](#the-write-server).
+- **Play a session replay.** The agent gets the session and its exceptions. The replay stays in the dashboard.
+- **Use the rest of the dashboard API.** A login made for an MCP client, like a personal access token, only reaches the routes the tools need. Everything else refuses it, so it cannot invite or remove members, change settings, or approve another login.
+
+## Example prompts
+
+You type these as normal messages. The agent picks the tools.
+
+### Something is broken
+
+```
+What broke in checkout-api in the last hour?
+```
+
+The agent lists recent exceptions, error logs and the endpoints with the highest impact, and tells you what deserves attention.
+
+```
+Debug this issue and find the root cause:
+https://cloud.tracewayapp.com/issues/3f9a1c2b7d4e5f60
+```
+
+A dashboard URL, an issue hash, an error message or a description of the bug all work. The agent reads the latest occurrence, follows its trace across services and reads the logs of that trace.
+
+```
+I got this alert from Traceway. What is going on?
+
+<paste the email, Slack message or webhook body>
+```
+
+The agent takes the issue or the rule out of the notification and starts the matching investigation.
+
+### Something is slow
+
+```
+POST /api/checkout got slow this afternoon in checkout-api.
+When did it start, and where is the time going?
+```
+
+The agent measures the endpoint, finds the moment the latency changed, and opens the slowest requests to see which span costs the time.
+
+```
+Is p95 of GET /api/reports/export a problem, or is that
+endpoint marked as expected-slow?
+```
+
+### On-call, monitors and SLOs
+
+```
+Who is on call for checkout-api right now, and are there open
+pages?
+```
+
+```
+Are we meeting the checkout availability SLO? How much error
+budget is left, and when did we burn most of it?
+```
+
+```
+Which monitors are down, and since when?
+```
+
+### How Traceway works
+
+```
+How does paging escalate when nobody acknowledges?
+```
+
+```
+Why is an endpoint shown as Critical on the Endpoints page?
+```
+
+The agent answers these from the product guide, without touching your data.
+
+### Ready-made prompts
+
+The server also ships four prompts that hold the full investigation playbook. Clients that support MCP prompts list them as commands. In Claude Code they are `/mcp__traceway__debug_issue` and so on.
+
+| Prompt | You pass | What it does |
+|---|---|---|
+| `debug_issue` | An issue hash, a dashboard URL, an error message or a bug description | Finds the issue and drives it to a root cause |
+| `investigate_performance` | An endpoint name or a symptom | Measures the slowness, finds when it started and which span causes it |
+| `whats_broken` | A time window such as `24h` (optional) | Triage of recent exceptions, error logs and slow endpoints |
+| `resolve_notification` | The text of an alert you received | Turns the alert into the right investigation |
 
 ## Tools
 
-Every tool wraps one API call and declares an output schema, so results come back as validated `structuredContent` alongside the JSON text. Every tool on this server is annotated read-only.
+Every tool wraps one API call and is annotated read-only. Each declares an output schema, so results come back as validated `structuredContent` next to the JSON text.
 
 | Tool | Purpose |
 |---|---|
-| `list_projects` | Projects you can access (also the auth smoke check) |
+| `list_projects` | Projects you can access. Also the quickest check that the login works |
 | `list_exceptions` | Grouped exceptions in a window |
-| `get_exception` | One group by hash: stack trace + occurrences |
+| `get_exception` | One group by hash: stack trace and occurrences |
 | `get_exception_occurrence` | One occurrence by id |
 | `query_logs` | Log search (severity, service, text, trace id) |
 | `list_endpoints` | Per-endpoint p50/p95/p99, counts, impact |
 | `list_endpoint_requests` | One endpoint's requests, slowest first |
-| `get_endpoint_request` | One request: span waterfall + linked errors |
-| `endpoints_chart` | Latency over time (find when it changed) |
-| `get_slow_endpoint_config` | Operator-accepted latency baseline |
-| `query_metrics` | Time-bucketed metric series, including `rate`, `last`, and percentiles or `good_ratio` of a distribution metric; `whole_range` returns one value for the window |
-| `discover_metrics` | Recorded names, types, units, tag keys; optional `name` + `key` for tag values |
-| `list_dashboards` / `dashboard_library` / `export_dashboard` | Applied dashboards, organization-wide assignments and importable JSON |
-| `list_sessions` | User sessions that started in a window, newest first; `search` matches the session id, client IP or an attribute value |
-| `get_task` / `get_ai_trace` / `get_session` / `get_trace` | By-id detail lookups |
-| `list_pages` / `get_page` | On-call pages and their delivery log |
-| `list_notification_rules` | Alert rules, enabled and snoozed state |
-| `list_checks` / `get_check` | Monitors and their incidents |
-| `list_slos` / `get_slo` / `get_slo_series` / `preview_slo` | [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp): status and error budget, history, and a dry run of a definition |
-| `list_post_mortems` / `get_post_mortem` | Post-mortem documents |
+| `get_endpoint_request` | One request: span waterfall and linked errors |
+| `endpoints_chart` | Latency over time, to find when it changed |
+| `get_slow_endpoint_config` | Whether an endpoint is marked expected-slow, and the latency that was accepted for it |
+| `list_sessions` | User sessions that started in a window, newest first. `search` matches the session id, the client IP or an attribute value |
+| `get_task`, `get_ai_trace`, `get_session`, `get_trace` | One task run, AI trace, session or distributed trace by id |
+| `query_metrics` | Time-bucketed metric series. Aggregations include `rate`, `last`, and percentiles or `good_ratio` of a distribution metric. `whole_range` returns one value for the window |
+| `discover_metrics` | Recorded metric names, types, units and tag keys. With `name` and `key`, the values of one tag |
+| `list_dashboards`, `dashboard_library`, `export_dashboard` | The dashboards applied to a project, the dashboards of your organizations with the projects they are applied to, and one dashboard as importable JSON. See [Dashboards](/learn/dashboards#mcp-workflow) |
+| `list_notification_rules`, `list_notification_channels`, `list_notification_history` | [Alert](/learn/alerts#configure-alerting-with-the-cli-or-mcp) rules with their enabled and snoozed state, channels, and delivery history |
+| `list_pages`, `get_page` | On-call pages and their delivery log |
+| `get_current_oncall`, `get_oncall_now` | Who is on call for the project, and across the organization |
+| `list_teams`, `list_oncall_schedules`, `get_oncall_schedule`, `get_oncall_timeline`, `list_escalation_policies`, `list_organization_members` | [On-call](/learn/on-call#configure-on-call-with-the-cli-or-mcp) teams, schedules with their layers and overrides, the shifts a schedule produces, escalation policies, and organization members (owners and admins only) |
+| `list_contact_methods`, `get_user_notification_rules` | Your own contact methods and notification chains |
+| `list_checks`, `get_check` | Monitors and their incidents |
+| `list_slos`, `get_slo`, `get_slo_series`, `preview_slo` | [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp): status and error budget, history, and a dry run of a definition |
+| `list_post_mortems`, `get_post_mortem` | Post-mortem documents |
 | `list_sdk_config_rules` | A browser, Flutter, iOS or Android project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
-| `preview_sdk_config` | The settings document saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live client applied |
+| `preview_sdk_config` | The settings document that the saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live client applied |
 
-The write server adds `import_dashboards`, `create_dashboard_embed`, `create_read_token`, `list_personal_access_tokens`, `archive_exceptions`, `unarchive_exceptions`, `acknowledge_page`, `resolve_page`, `set_notification_rule_enabled`, `snooze_notification_rule`, `run_check`, `create_post_mortem`, `update_post_mortem`, `set_slow_endpoint`, `create_slo`, `update_slo`, `delete_slo`, and for remote SDK config rules `create_sdk_config_rule`, `update_sdk_config_rule` (needs the rule's `updatedAt` as `expected_updated_at`), `reorder_sdk_config_rules` and `delete_sdk_config_rule`.
+Three things hold for all of them:
 
-Project selection is per call: every project-scoped tool accepts a `project_id` parameter and falls back to the CLI's current project.
-
-The by-id detail tools require the record's timestamp (`recorded_at`) so lookups stay partition-pruned and fast, exactly like the CLI's `--recorded-at` flags. `get_session` is the exception: its `started_at` is optional, and without it the start is looked up among the sessions of the last 30 days. The tool descriptions teach agents where to recover it (dashboard URL `?t=` params, occurrence lists, notifications).
+- **The project is chosen per call.** Every project-scoped tool takes `project_id`. The local server falls back to the CLI's current project. The remote server has no default, so the agent passes `project_id`, usually after calling `list_projects`. `get_trace` takes no project: it follows a trace through every project you can see.
+- **Time windows are bounded.** Windowed tools take `since` (such as `30m`, `1h`, `24h`, `7d`, default `1h`) or `from` and `to` as RFC 3339 timestamps.
+- **By-id lookups need the record's timestamp.** `get_exception_occurrence`, `get_endpoint_request`, `get_task`, `get_ai_trace` and `get_trace` take `recorded_at`, the same as the CLI's `--recorded-at` flags. It keeps the lookup fast, and an approximate time is enough. The tool descriptions tell the agent where to find it: the `?t=` parameter of a dashboard URL, an occurrence list, or a notification. `get_session` takes `started_at` for the same reason, but it is optional: without it the start is looked up among the sessions of the last 30 days.
 
 ## Prompts and resources
 
-The debugging knowledge lives in the server, not in the client:
+The debugging knowledge lives in the server, not in the client. Besides the four [prompts](#ready-made-prompts), the server offers documents under `traceway://knowledge/` that the agent reads when it needs them: the debug flow, the performance checklist that maps waterfall shapes to causes, ready-made triage queries, how to resolve a pasted dashboard URL, how to recover a timestamp, how to handle a notification, how to embed a dashboard in your own application, and a map from CLI commands to tools.
 
-- **Prompts**: `debug_issue`, `investigate_performance`, `whats_broken`, and `resolve_notification` render the full investigation playbooks with your argument inlined.
-- **Resources**: `traceway://knowledge/*` documents cover the debug flow, the performance bottleneck checklist, dashboard URL resolution, timestamp recovery, notification handling, the product guide, and a CLI-to-tool map. The write server adds the write playbook (`traceway://knowledge/operations`).
-
-These are the same documents the Traceway Claude Code skills are generated from, so the skills and the MCP server never disagree.
+These are the same documents the [Traceway skills](https://github.com/tracewayapp/skills) are generated from, so the skills and the MCP server never disagree.
 
 ### The product guide
 
@@ -115,9 +283,10 @@ These are the same documents the Traceway Claude Code skills are generated from,
 | Resource | Covers |
 |---|---|
 | `learn/issues` | Exception grouping, the issue and occurrence pages, archiving and regressions |
-| `learn/endpoints-and-tasks` | Percentiles, the impact score, Apdex, expected-performance marks, background tasks |
+| `learn/endpoints-and-tasks` | Percentiles, the impact score, Apdex, expected-slow marks, background tasks |
 | `learn/traces-and-logs` | The span explorer, whole-trace waterfalls, distributed traces, log search |
 | `learn/metrics-and-dashboards` | Metric aggregations, dashboards, widgets, templates |
+| `learn/rum` | Browser metrics, Web Vitals, release comparisons, frontend SLOs, sampling |
 | `learn/sessions-and-ai` | Session replay, AI traces and conversations, profiles |
 | `learn/monitors` | Monitors, incidents, status pages, post-mortems |
 | `learn/alerts` | Every alert rule type, channels, cooldowns, snoozing |
@@ -125,19 +294,75 @@ These are the same documents the Traceway Claude Code skills are generated from,
 | `learn/data-collection` | Remote SDK config for browser, Flutter, iOS and Android projects: signal modes, rules, triggers, recording trigger steps (CSS selectors in a browser, widget or view selectors and route names in the apps), captures, preview |
 | `learn/organization` | Projects, roles, organization views, settings, agent access |
 
-The same guide ships as the `traceway-learn` skill, installed with the other skills (`npx skills add tracewayapp/skills --all`, or the `tw` Claude Code plugin). Ask an agent how paging escalates, why an endpoint is Critical, or how to put a status page on your own domain, and it answers from the guide.
+The same guide ships as the `traceway-learn` skill, installed with the other skills (`npx skills add tracewayapp/skills --all`, or the `tw` Claude Code plugin).
 
-## Errors
+## The write server
 
-Tool errors carry the CLI's stable error codes in the text, formatted as `error=<code>: <message>. Hint: <hint>`, so agents can branch on `token_expired`, `not_found`, `rate_limited`, `no_project`, and friends. A `forbidden` error carries the server's reason, such as a read-only credential or agent writes being turned off.
+A second server adds the tools that change things: `https://cloud.tracewayapp.com/mcp/write`, or `traceway-write mcp` locally. It needs a write login and an organization that allows agent writes. [Agent Write Access](/learn/agent-write-access) covers the setup and lists every write tool.
 
-## Dashboard authoring
+What is specific to MCP:
 
-The write server exposes `traceway://knowledge/dashboard-building`, a guide for turning instrumented code into useful charts. `import_dashboards` accepts a dashboard document or bundle in `data`, optional `mode` (`create` or `upsert`), and `project_id`. It validates the document before writing. Upserts replace shared dashboards by organization-wide name without concurrent-edit protection; inspect `dashboard_library` and `export_dashboard` first. `create_dashboard_embed` issues an expiring read-only link to a dashboard (`id`, optional `timeframe`, `from`/`to`, `tag_filters`, `expires_in_days` or `expires_at`, `theme`); both servers expose `traceway://knowledge/dashboard-embedding`, the guide an agent follows to embed a dashboard in your own application. See [Dashboards](/learn/dashboards#mcp-workflow) for complete tool arguments and the verification workflow.
+- **It contains every read tool too**, plus `list_personal_access_tokens`, so an agent that writes needs only the write server.
+- **Every write takes `project_id`**, including changes to organization and personal settings. The project decides which organization's switch applies and where the change is logged. Organization resources also take `organization_id` as an integer, and documents go in `data` as a JSON object.
+- **`update_sdk_config_rule` needs the rule's `updatedAt`** as `expected_updated_at`, so it cannot overwrite a change it has not seen.
+- **`import_dashboards`** takes a dashboard document or bundle in `data` and an optional `mode` (`create` or `upsert`), and validates the document before writing. An upsert replaces a shared dashboard by its organization-wide name without protection against concurrent edits, so the agent looks at `dashboard_library` and `export_dashboard` first. [Dashboards](/learn/dashboards#mcp-workflow) has the full workflow.
+- **`create_dashboard_embed`** issues an expiring read-only link to a dashboard. It takes `id` and optionally `timeframe`, `from` and `to`, `tag_filters`, `expires_in_days` or `expires_at`, and `theme`.
+- **It adds the guides for making changes** under `traceway://knowledge/`: `operations`, `write-setup`, `alert-configuration`, `oncall-configuration`, `personal-notifications`, `incident-actions`, `slo-configuration`, `dashboard-building` and `sdk-configuration`. The product guide explains how a feature behaves. These explain how to apply a change and check the result.
 
+## Tokens for CI and containers
 
-## Alerting configuration knowledge
+A CI job, a container or a client without OAuth logs in with a personal access token instead of a browser. In **Account > Personal Access Tokens**, click **New Token** and leave **Access** on **Read only**:
 
-The write server exposes channel/rule, team/schedule/override, escalation-policy, contact-method and personal-notification-chain tools. Their read counterparts are available on the read server. See [Alerts](/learn/alerts#configure-alerting-with-the-cli-or-mcp) and [On-Call](/learn/on-call#configure-on-call-with-the-cli-or-mcp) for exact names and examples. Mutations require `project_id` for Agent Access and audit context, including organization and personal settings. Organization resources additionally use integer `organization_id`; JSON payloads go in `data`.
+<img src="/mcp/read-token-dialog.png" alt="The New Token dialog on the Account page with the name ci-triage-agent, Access set to Read only and Expiration set to 30 days" style={{ maxWidth: '360px', width: '100%', height: 'auto', marginTop: '16px' }} />
 
-Focused resources under `traceway://knowledge/` are `write-setup`, `alert-configuration`, `oncall-configuration`, `personal-notifications`, `incident-actions`, `dashboard-building` and `sdk-configuration`. The write skill routes to the same Markdown files, so agents can load only the relevant schema and workflow. The learn resources explain product behavior, while these configuration guides explain how to apply changes and verify the result.
+The token starts with `twp_` and is shown once. More about tokens in [CLI Authentication](/learn/cli-auth#personal-access-tokens).
+
+**Remote server.** Send the token as a header on every request:
+
+```bash
+claude mcp add --transport http traceway https://cloud.tracewayapp.com/mcp \
+  --header "Authorization: Bearer $TRACEWAY_TOKEN"
+```
+
+**Local server.** Set these in the environment of `traceway mcp`. It then needs no `traceway login`:
+
+| Variable | Purpose |
+|---|---|
+| `TRACEWAY_URL` | Instance origin, such as `https://cloud.tracewayapp.com` |
+| `TRACEWAY_TOKEN` | The personal access token (`twp_...`) |
+| `TRACEWAY_PROJECT` | Optional default project id |
+
+```bash
+claude mcp add traceway \
+  -e TRACEWAY_URL=https://cloud.tracewayapp.com \
+  -e TRACEWAY_TOKEN=$TRACEWAY_TOKEN \
+  -e TRACEWAY_PROJECT=<project-id> \
+  -- traceway mcp
+```
+
+`TRACEWAY_URL` and `TRACEWAY_TOKEN` go together: the server refuses to start with only one of them.
+
+## When it fails
+
+A tool that fails returns the same stable error codes as the CLI, in the form `error=<code>: <message>. Hint: <hint>`, so an agent can tell the cases apart: `token_expired`, `forbidden`, `not_found`, `rate_limited`, `no_project`, `invalid_argument` and a few more. A `forbidden` error carries the server's reason, such as a role that may not read the resource or, on the write server, a read-only credential or agent writes being turned off.
+
+| What you see | Cause | Fix |
+|---|---|---|
+| The client lists `traceway` as needing authentication, or requests answer `401` | [Step 2](#step-2-approve-the-connection) is not done, or the login ended | Authenticate from the client again |
+| `error=no_project` | The remote server has no selected project, or the CLI has none | Name the project in your prompt. For the local server, run `traceway projects use <project-id>` |
+| `error=token_expired` | The login was revoked or ran out, or the token expired | Remote: authenticate again. Local: run `traceway login` in a terminal and reconnect. Token: create a new one and restart the server |
+| `traceway mcp` exits at once with `not logged in` | The CLI has no login on this machine | Run `traceway login` with your instance's `--url` in a terminal, then reconnect the client |
+| `TRACEWAY_TOKEN is a write token (tww_)` | A write token was given to the read-only CLI | Use a **Read only** token, or run `traceway-write mcp` |
+| The agent finds nothing | Not an error: the window is too short, the project is the wrong one, or the app sends no data yet | Ask for a longer window, and check the project name |
+| The agent has no tool to archive, acknowledge or snooze | `/mcp` is read only | Connect the [write server](#the-write-server) |
+| On a self-hosted instance, the login opens an address you cannot reach | The instance is behind a proxy that changes the `Host` header | Set [`APP_BASE_URL`](/learn/cli-auth#set-app_base_url-to-your-public-origin) to the public origin |
+
+## How the remote login works
+
+You do not need this to use the server. It is here for people who build MCP clients or run Traceway behind their own proxy.
+
+A request to `/mcp` without a login gets a `401` with a `WWW-Authenticate` challenge that points at `/.well-known/oauth-protected-resource/mcp`. A client that follows the MCP specification reads that document, finds the authorization server, and registers itself there (RFC 7591 dynamic client registration). It then sends you to the consent page of [step 2](#step-2-approve-the-connection) and exchanges the result for tokens, using the authorization code flow with PKCE. Nothing is configured on the instance for a new client.
+
+The client ends up with a short-lived access token (15 minutes) and a refresh token that changes every time it is used. That is why the login lasts as long as the client keeps using it, up to 90 days without use.
+
+The discovery documents and the `/mcp` endpoint answer CORS preflights, so browser-based clients such as the MCP Inspector can reach them too. [CLI Authentication](/learn/cli-auth#discovery-endpoints) describes the discovery documents.

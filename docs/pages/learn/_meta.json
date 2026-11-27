@@ -32,6 +32,7 @@
   "mcp": "MCP Server",
   "agent-write-access": "Agent Write Access",
   "agent-benchmarks": "AI SRE BENCH",
+  "preconfigure": "Pre-configuration",
   "embedded-mode": "Embedded Mode",
   "otel-agent": "OTel Agent",
   "kubernetes": "Kubernetes",

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { actionType, recordingSequence, tapSummary } from './session-actions';
+import {
+	actionType,
+	clickSummary,
+	navigationSummary,
+	recordingSequence,
+	tapSummary
+} from './session-actions';
 
 describe('tapSummary', () => {
 	it('reads a tap with its selector, shown text and screen', () => {
@@ -94,5 +100,40 @@ describe('actionType', () => {
 				'ios'
 			)
 		).toBe('navigation');
+	});
+});
+
+// The browser SDK stamps the page a click was on and the route template of a navigation.
+describe('clickSummary and navigationSummary', () => {
+	it('reads a browser click like a tap', () => {
+		expect(
+			clickSummary({ selector: 'button#pay', text: 'Pay now', screen: '/orders/:id' }, 'Click')
+		).toBe('Click button#pay “Pay now” on /orders/:id');
+		expect(clickSummary({ selector: 'a.logo' }, 'Click')).toBe('Click a.logo');
+	});
+
+	it('adds the route template when it says more than the path', () => {
+		expect(
+			navigationSummary({
+				type: 'navigation',
+				timestamp: '2026-11-27T10:00:00Z',
+				action: 'push',
+				from: '/orders',
+				to: '/orders/42',
+				route: '/orders/:id'
+			})
+		).toBe('push: /orders → /orders/42 (/orders/:id)');
+		expect(
+			navigationSummary({
+				type: 'navigation',
+				timestamp: '2026-11-27T10:00:00Z',
+				action: 'pop',
+				to: '/CartActivity',
+				route: '/CartActivity'
+			})
+		).toBe('pop: ? → /CartActivity');
+		expect(
+			navigationSummary({ type: 'navigation', timestamp: '', action: 5, to: null } as never)
+		).toBe('navigate: ? → ?');
 	});
 });

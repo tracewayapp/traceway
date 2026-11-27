@@ -97,17 +97,14 @@
 		/>
 	</div>
 	<div class="flex flex-wrap items-center gap-2 text-sm">
-		<!-- The Flutter SDK logs every line at info, so a level would never match; Traceway.log on iOS takes one. -->
-		{#if platform !== 'flutter'}
-			<Select.Root type="single" bind:value={level} {disabled}>
-				<Select.Trigger class="w-40">{levelLabels[level]}</Select.Trigger>
-				<Select.Content>
-					{#each Object.entries(levelLabels) as [value, label] (value)}
-						<Select.Item {value}>{label}</Select.Item>
-					{/each}
-				</Select.Content>
-			</Select.Root>
-		{/if}
+		<Select.Root type="single" bind:value={level} {disabled}>
+			<Select.Trigger class="w-40">{levelLabels[level]}</Select.Trigger>
+			<Select.Content>
+				{#each Object.entries(levelLabels) as [value, label] (value)}
+					<Select.Item {value}>{label}</Select.Item>
+				{/each}
+			</Select.Content>
+		</Select.Root>
 		<Input class="w-20" type="number" min="1" max="1000" bind:value={count} {disabled} />
 		<span class="text-muted-foreground">time(s)</span>
 		{#if Number(count) > 1}

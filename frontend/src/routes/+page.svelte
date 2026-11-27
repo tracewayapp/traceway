@@ -40,14 +40,20 @@
 	import bash from 'svelte-highlight/languages/bash';
 	import php from 'svelte-highlight/languages/php';
 	import python from 'svelte-highlight/languages/python';
+	import dart from 'svelte-highlight/languages/dart';
+	import kotlin from 'svelte-highlight/languages/kotlin';
+	import swift from 'svelte-highlight/languages/swift';
 	import {
 		getFrameworkCode,
 		getInstallCommand,
 		getTestingRouteCode,
 		getFrameworkLabel,
 		getTestingRouteCode2,
-		getCodeLanguage
+		getCodeLanguage,
+		getInstallLanguage
 	} from '$lib/utils/framework-code';
+	import { getStartConfigFiles } from '$lib/utils/sdk-start';
+	import StartConfigFiles from '$lib/components/setup/start-config-files.svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { OTEL_SDKS } from '$lib/utils/otel-sdks';
@@ -154,6 +160,16 @@
 		projectWithToken ? getInstallCommand(projectWithToken.framework) : ''
 	);
 
+	const startConfig = $derived(
+		projectWithToken
+			? getStartConfigFiles(
+					projectWithToken.framework,
+					projectWithToken.token,
+					projectWithToken.backendUrl
+				)
+			: []
+	);
+
 	const isFrontend = $derived(
 		projectWithToken ? isFrontendFramework(projectWithToken.framework) : false
 	);
@@ -162,16 +178,10 @@
 		projectWithToken ? getCodeLanguage(projectWithToken.framework) : ('go' as const)
 	);
 
-	const highlightLanguage = $derived(
-		codeLanguage === 'javascript'
-			? javascript
-			: codeLanguage === 'php'
-				? php
-				: codeLanguage === 'python'
-					? python
-					: codeLanguage === 'bash'
-						? bash
-						: go
+	const highlightLanguages = { go, javascript, bash, php, python, dart, kotlin, swift };
+	const highlightLanguage = $derived(highlightLanguages[codeLanguage]);
+	const installLanguage = $derived(
+		highlightLanguages[projectWithToken ? getInstallLanguage(projectWithToken.framework) : 'bash']
 	);
 
 	const testingRouteCode = $derived(getTestingRouteCode(projectWithToken?.framework));
@@ -597,7 +607,7 @@ service:
 							</div>
 						</div>
 						<div class="p-4">
-							<CopyableCodeBlock code={installCommand} language={bash} />
+							<CopyableCodeBlock code={installCommand} language={installLanguage} />
 						</div>
 					</div>
 
@@ -618,7 +628,8 @@ service:
 								Add the Traceway middleware to your application.
 							</p>
 						</div>
-						<div class="p-4">
+						<div class="space-y-4 p-4">
+							<StartConfigFiles files={startConfig} />
 							<CopyableCodeBlock code={sdkCode} language={highlightLanguage} secret />
 						</div>
 					</div>

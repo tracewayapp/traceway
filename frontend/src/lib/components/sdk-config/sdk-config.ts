@@ -55,7 +55,7 @@ export type SettingsDocument = Record<string, unknown> & {
 		maskAllInputs?: boolean;
 		/** How the Flutter SDK records replay; it overrides the app's screenCaptureMode. Browser SDKs ignore it. */
 		captureMode?: CaptureMode;
-		/** Read by the app SDKs (Flutter, iOS, Android); the browser SDK ignores it. */
+		/** When a replay may carry pictures; every SDK reads it (see REPLAY_IMAGES_HINTS). */
 		images?: ReplayImages;
 	};
 	/**
@@ -137,22 +137,25 @@ const APP_SIGNAL_HINTS: Record<Exclude<SdkPlatform, 'browser'>, Record<string, s
 	},
 	ios: {
 		network: 'URLSession requests',
-		console: 'Traceway.log lines',
+		// The record's log.source: `oslog` (iOS 15+, on by default), `stdout` (opt-in captureStdout) and `api`.
+		console: 'os_log, Logger and NSLog lines, Traceway.log, and print with captureStdout',
 		userActions: 'Taps'
 	},
 	android: {
 		network: 'OkHttp calls and startRequest/endRequest',
-		console: 'System.out/err lines and Traceway.log',
+		// The record's log.source: `logcat` (Gradle plugin), `stdout`/`stderr` and `api`.
+		console: 'Logcat lines with the Gradle plugin, System.out/err and Traceway.log',
 		userActions: 'Taps'
 	}
 };
 
 /**
- * What the "Replay images" setting does on each app SDK. Android and iOS inline pictures of image views; Flutter
- * keeps or drops its references to network images by URL.
+ * What the "Replay images" setting does on each SDK. The app SDKs inline small pictures of image views (Flutter keeps
+ * URL references on a metered connection); the browser blocks pictures when off and adds small copies on Always.
  */
-export const REPLAY_IMAGES_HINTS: Record<Exclude<SdkPlatform, 'browser'>, string> = {
-	flutter: 'Network images by URL; nothing is uploaded',
+export const REPLAY_IMAGES_HINTS: Record<SdkPlatform, string> = {
+	browser: 'Off hides pictures; Always adds small copies',
+	flutter: 'Small pictures of images, never a screenshot',
 	ios: 'Pictures of image views, never a screenshot',
 	android: 'Pictures of image views, never a screenshot'
 };
@@ -197,24 +200,29 @@ export const CONDITION_OPS: Array<{
 	{ value: 'not_exists', label: 'is not set', needsValue: 'none' }
 ];
 
-export const SUGGESTED_KEYS = [
-	'service.version',
-	'deployment.environment.name',
-	'browser.name',
-	'browser.version',
-	'browser.mobile',
-	'os.name',
-	'user.id',
-	'session.id',
-	'service.instance.id'
-];
+const CLIENT_KEYS: Record<'browser' | 'app', string[]> = {
+	browser: ['browser.name', 'browser.version', 'browser.mobile', 'os.name'],
+	app: ['os.name', 'os.version', 'device.form_factor', 'device.manufacturer']
+};
+
+/** The attributes a rule usually targets: an app reports its device where a browser reports itself. */
+export function suggestedKeysFor(platform: SdkPlatform): string[] {
+	return [
+		'service.version',
+		'deployment.environment.name',
+		...CLIENT_KEYS[platform === 'browser' ? 'browser' : 'app'],
+		'user.id',
+		'session.id',
+		'service.instance.id'
+	];
+}
 
 export const BUILT_IN_ERROR_TRIGGER = 'default-exception';
 
 export const TRIGGER_TEMPLATES: Array<{
 	label: string;
 	trigger: Record<string, unknown>;
-	/** Matches what only the browser SDK reports: a signal, or log levels (Flutter logs every line at info). */
+	/** Matches a signal only the browser SDK reports. */
 	browserOnly?: boolean;
 }> = [
 	{
@@ -267,7 +275,6 @@ export const TRIGGER_TEMPLATES: Array<{
 	},
 	{
 		label: 'Error log burst → capture',
-		browserOnly: true,
 		trigger: {
 			...logLineTrigger({
 				text: '*',
@@ -480,7 +487,12 @@ export function summarizeSettings(settings: SettingsDocument): string {
 	if (settings.enabled === false) parts.push('collection off');
 	for (const signal of SIGNALS) {
 		const mode = settings.signals?.[signal.key]?.mode;
-		if (mode) parts.push(`${signal.label.toLowerCase()}: ${MODE_LABELS[mode].toLowerCase()}`);
+		const severity = settings.signals?.[signal.key]?.minSeverity;
+		const label = signal.label.toLowerCase();
+		if (mode && severity)
+			parts.push(`${label}: ${MODE_LABELS[mode].toLowerCase()} (${severity} or worse)`);
+		else if (mode) parts.push(`${label}: ${MODE_LABELS[mode].toLowerCase()}`);
+		else if (severity) parts.push(`${label}: ${severity} or worse`);
 	}
 	if (settings.replay?.mode)
 		parts.push(`replay: ${MODE_LABELS[settings.replay.mode].toLowerCase()}`);

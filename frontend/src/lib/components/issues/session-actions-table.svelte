@@ -7,7 +7,7 @@
 	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import { sdkPlatform } from '$lib/components/sdk-config/sdk-config';
-	import { actionType, tapSummary } from './session-actions';
+	import { actionType, clickSummary, navigationSummary, tapSummary } from './session-actions';
 	import type {
 		SessionActionEvent,
 		SessionNetworkEvent,
@@ -71,15 +71,14 @@
 				const status = n.statusCode ?? (n.error ? 'ERR' : '?');
 				return `${n.method} ${n.url} → ${status} (${n.durationMs}ms)`;
 			}
-			case 'navigation': {
-				const n = a as SessionNavigationEvent;
-				const from = n.from ?? '?';
-				const to = n.to ?? '?';
-				return `${n.action}: ${from} → ${to}`;
-			}
+			case 'navigation':
+				return navigationSummary(a as SessionNavigationEvent);
 			case 'custom': {
 				const c = a as SessionCustomEvent;
 				if (app && c.category === 'ui' && c.name === 'click') return tapSummary(c.data);
+				// The browser SDK names the page a click was on too, read like a tap.
+				if (c.category === 'ui' && c.name === 'click' && typeof c.data?.screen === 'string')
+					return clickSummary(c.data, 'Click');
 				const data = c.data ? ` ${JSON.stringify(c.data)}` : '';
 				return `${c.category}/${c.name}${data}`;
 			}

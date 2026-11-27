@@ -20,14 +20,17 @@
 	let {
 		organizationId,
 		redirectTo = null,
-		initialFramework = 'opentelemetry'
+		initialFramework = 'opentelemetry',
+		initialMode
 	}: {
 		organizationId: number;
 		redirectTo?: string | null;
 		initialFramework?: Framework;
+		initialMode?: SetupMode;
 	} = $props();
 
-	let mode = $state<SetupMode>(getSetupMode());
+	// svelte-ignore state_referenced_locally
+	let mode = $state<SetupMode>(initialMode ?? getSetupMode());
 	let draft = $state<SetupDraft | null>(null);
 	let draftLoaded = $state(false);
 	let initialProjectIds = $state<Set<string>>(new Set());

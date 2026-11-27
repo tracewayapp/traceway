@@ -1,9 +1,11 @@
 <script lang="ts">
 	import bash from 'svelte-highlight/languages/bash';
-	import { Rocket } from '@lucide/svelte';
+	import { KeyRound, Rocket } from '@lucide/svelte';
 	import {
 		credentialValue,
 		substituteToken,
+		uploadTokenEnvFile,
+		uploadTokenEnvVar,
 		type SetupDraft,
 		type SetupDraftProject,
 		type SetupPlanProject
@@ -31,9 +33,24 @@
 			result.push({
 				planned,
 				project,
-				instructions: substituteToken(planned.deployment.instructions, value),
+				instructions: substituteToken(planned.deployment.instructions, value, project.backendUrl),
 				value
 			});
+		}
+		return result;
+	});
+
+	type UploadStep = { planned: SetupPlanProject; project: SetupDraftProject; envVar: string };
+
+	// Upload tokens the plan did not ask `traceway setup` to write: the release build needs them for source maps,
+	// symbols, mappings and dSYMs.
+	const uploadSteps = $derived.by((): UploadStep[] => {
+		const byName = new Map((draft.projects ?? []).map((p) => [p.name, p]));
+		const result: UploadStep[] = [];
+		for (const planned of draft.payload.projects) {
+			const project = byName.get(planned.name);
+			if (!project?.sourceMapToken || uploadTokenEnvFile(planned)) continue;
+			result.push({ planned, project, envVar: uploadTokenEnvVar(planned) });
 		}
 		return result;
 	});
@@ -67,6 +84,32 @@
 							<CopyableInline value={step.value} secret />
 						</div>
 					{/if}
+				</div>
+			{/each}
+		</div>
+	</div>
+{/if}
+
+{#if uploadSteps.length > 0}
+	<div class="rounded-md border bg-card">
+		<div class="border-b px-4 py-3">
+			<div class="flex items-center gap-3">
+				<KeyRound class="h-5 w-5 text-primary" />
+				<h3 class="font-semibold">Next Steps: Upload Tokens</h3>
+			</div>
+			<p class="mt-1 ml-8 text-sm text-muted-foreground">
+				Release builds upload source maps, symbols, mappings or dSYMs with these tokens. Add them to
+				your CI as secrets; they are also on each project's Connection page.
+			</p>
+		</div>
+		<div class="space-y-4 p-4">
+			{#each uploadSteps as step (step.project.id)}
+				<div class="space-y-1">
+					<div class="text-sm font-medium">
+						{step.planned.name}
+						<span class="text-muted-foreground">as {step.envVar}</span>
+					</div>
+					<CopyableInline value={step.project.sourceMapToken ?? ''} secret />
 				</div>
 			{/each}
 		</div>

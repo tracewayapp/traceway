@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import SdkVersionWarning from './sdk-version-warning.svelte';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Select from '$lib/components/ui/select';
@@ -22,7 +23,7 @@
 		REPLAY_IMAGES_HINTS,
 		REPLAY_IMAGES_LABELS,
 		SIGNALS,
-		SUGGESTED_KEYS,
+		suggestedKeysFor,
 		TRIGGER_TEMPLATES,
 		fitsForm,
 		jsonOnlyFields,
@@ -80,7 +81,6 @@
 	let captureModeChoice = $state<'inherit' | CaptureMode>('inherit');
 	let showCaptureMode = $state(false);
 	let imagesChoice = $state<'inherit' | ReplayImages>('inherit');
-	let showImages = $state(false);
 	let sessionsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let collectionChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let metricsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
@@ -109,25 +109,33 @@
 		...REPLAY_IMAGES_LABELS
 	};
 
+	// Only opening the dialog, or opening it on another rule, loads it. The load reads back form state it writes
+	// (editAsJson, captureModeChoice), so tracking it would reload the rule and drop what was typed whenever the
+	// JSON tab or a log trigger switched editAsJson.
 	$effect(() => {
 		if (!open) return;
+		const current = rule;
+		untrack(() => loadRule(current));
+	});
+
+	function loadRule(current: SdkConfigRule | null) {
 		dialogError = '';
-		name = rule?.name ?? '';
-		enabled = rule?.enabled ?? true;
-		rows = (rule?.conditions.all ?? []).map((c) => ({
+		name = current?.name ?? '';
+		enabled = current?.enabled ?? true;
+		rows = (current?.conditions.all ?? []).map((c) => ({
 			key: c.key,
 			op: c.op,
 			value: conditionText(c),
 			original: c
 		}));
-		rolloutPercent = rule?.conditions.rollout?.percent;
-		rolloutBy = rule?.conditions.rollout?.by ?? '';
-		const settings = rule?.settings ?? { schemaVersion: 1 };
+		rolloutPercent = current?.conditions.rollout?.percent;
+		rolloutBy = current?.conditions.rollout?.by ?? '';
+		const settings = current?.settings ?? { schemaVersion: 1 };
 		editAsJson = !fitsForm(settings);
 		loadForm(editAsJson ? { schemaVersion: 1 } : settings);
 		settingsJson = JSON.stringify(settings, null, 2);
 		tab = 'applies';
-	});
+	}
 
 	// The form tabs and the JSON tab edit the same settings; whichever was edited last is carried over when the
 	// tab changes. Only a document that is not a settings object at all keeps the JSON tab open and says why.
@@ -192,8 +200,6 @@
 		// form can still change it.
 		showCaptureMode = flutter || captureModeChoice !== 'inherit';
 		imagesChoice = settings.replay?.images ?? 'inherit';
-		// The app SDKs read the image policy; a browser project's rule that already sets one keeps showing it.
-		showImages = app || imagesChoice !== 'inherit';
 		sessionsChoice =
 			settings.sessions?.enabled === undefined
 				? 'inherit'
@@ -324,7 +330,7 @@
 </script>
 
 <datalist id="sdk-config-keys">
-	{#each SUGGESTED_KEYS as key (key)}
+	{#each suggestedKeysFor(platform) as key (key)}
 		<option value={key}></option>
 	{/each}
 </datalist>
@@ -581,26 +587,20 @@
 									</Select.Root>
 								</div>
 							{/if}
-							{#if showImages}
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<div class="text-sm">Replay images</div>
-										<div class="text-xs text-muted-foreground">
-											{platform === 'browser'
-												? 'Flutter, iOS and Android SDKs only'
-												: REPLAY_IMAGES_HINTS[platform]}
-										</div>
-									</div>
-									<Select.Root type="single" bind:value={imagesChoice} disabled={saving}>
-										<Select.Trigger class="w-28">{imagesLabels[imagesChoice]}</Select.Trigger>
-										<Select.Content>
-											{#each Object.entries(imagesLabels) as [value, label] (value)}
-												<Select.Item {value}>{label}</Select.Item>
-											{/each}
-										</Select.Content>
-									</Select.Root>
+							<div class="flex items-center justify-between gap-3">
+								<div>
+									<div class="text-sm">Replay images</div>
+									<div class="text-xs text-muted-foreground">{REPLAY_IMAGES_HINTS[platform]}</div>
 								</div>
-							{/if}
+								<Select.Root type="single" bind:value={imagesChoice} disabled={saving}>
+									<Select.Trigger class="w-28">{imagesLabels[imagesChoice]}</Select.Trigger>
+									<Select.Content>
+										{#each Object.entries(imagesLabels) as [value, label] (value)}
+											<Select.Item {value}>{label}</Select.Item>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+							</div>
 							<div class="flex items-center justify-between gap-3">
 								<div>
 									<div class="text-sm">Sessions</div>

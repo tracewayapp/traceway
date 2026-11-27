@@ -90,6 +90,8 @@ export interface SessionNavigationEvent {
 	action: string;
 	from?: string;
 	to?: string;
+	/** The route template of the screen or page it reached (`app.screen.route`), when the SDK knows it. */
+	route?: string;
 }
 
 export interface SessionCustomEvent {

@@ -10,8 +10,14 @@
 	import bash from 'svelte-highlight/languages/bash';
 	import CopyButton from '$lib/components/traceway/copy-button.svelte';
 	import CopyableCodeBlock from '$lib/components/setup/copyable-code-block.svelte';
+	import StartConfigFiles from '$lib/components/setup/start-config-files.svelte';
 	import { projectsState, isProjectReadonly } from '$lib/state/projects.svelte';
 	import { REPLAY_BLOCK_CLASS } from '$lib/utils/self-monitoring';
+	import { normalizeBaseUrl } from '$lib/utils/connection-string';
+	import {
+		ANDROID_SYMBOL_UPLOAD_COMMAND,
+		getAndroidSymbolUploadFiles
+	} from '$lib/utils/symbol-upload';
 
 	type Bundler = 'vite' | 'rollup' | 'webpack';
 
@@ -76,6 +82,9 @@ module.exports = {
 	const pluginInstallCommand = 'npm install -D @tracewayapp/bundler-plugin';
 
 	const project = $derived(projectsState.currentProject);
+	const instanceUrl = $derived(
+		project ? (normalizeBaseUrl(project.backendUrl) ?? project.backendUrl) : ''
+	);
 	const sourceMapToken = $derived(project?.sourceMapToken ?? null);
 	const isReadonly = $derived(isProjectReadonly(project));
 
@@ -89,7 +98,7 @@ module.exports = {
 	const uploadCommand = $derived(
 		project && sourceMapToken
 			? `npx @tracewayapp/sourcemap-upload \\
-  --url ${project.backendUrl} \\
+  --url ${instanceUrl} \\
   --token ${sourceMapToken} \\
   --directory ${showBundlerSetup ? bundlerConfigs[bundler].directory : 'dist'}`
 			: ''
@@ -102,7 +111,7 @@ module.exports = {
 		project && sourceMapToken
 			? `dart run traceway:upload_symbols \\
   --token ${sourceMapToken} \\
-  --url ${project.backendUrl}`
+  --url ${instanceUrl}`
 			: ''
 	);
 
@@ -111,32 +120,16 @@ module.exports = {
 
 	const iosUploadCommand = $derived(
 		project && sourceMapToken
-			? `curl -X POST ${project.backendUrl}/api/symbols/upload \\
+			? `curl -X POST ${instanceUrl}/api/symbols/upload \\
   -H "Authorization: Bearer ${sourceMapToken}" \\
   -F "files=@build/MyApp.xcarchive/dSYMs/MyApp.app.dSYM/Contents/Resources/DWARF/MyApp"`
 			: ''
 	);
 
-	const androidSetupSnippet = $derived(
-		project && sourceMapToken
-			? `plugins {
-  id("com.tracewayapp.symbols")
-}
-
-android {
-  buildTypes {
-    release { isMinifyEnabled = true }
-  }
-}
-
-traceway {
-  token = "${sourceMapToken}"
-  url = "${project.backendUrl}"
-}`
-			: ''
+	// The token goes to local.properties (or the CI environment), never into build.gradle.kts.
+	const androidSetupFiles = $derived(
+		project && sourceMapToken ? getAndroidSymbolUploadFiles(sourceMapToken, project.backendUrl) : []
 	);
-
-	const androidUploadCommand = './gradlew assembleRelease uploadReleaseTracewaySymbols';
 
 	let regenerateDialogOpen = $state(false);
 
@@ -221,21 +214,21 @@ traceway {
 		{:else if isAndroid}
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 1: Apply the Traceway symbols Gradle plugin</p>
-				<CopyableCodeBlock code={androidSetupSnippet} language={javascript} secret />
+				<div class="space-y-4">
+					<StartConfigFiles files={androidSetupFiles} />
+				</div>
 				<p class="mt-2 text-xs text-muted-foreground">
-					Add to your app module's <code class="font-mono">build.gradle.kts</code>. The plugin
-					embeds a ProGuard UUID into BuildConfig (matching Honeycomb's
-					<code class="font-mono">app.debug.proguard_uuid</code>) and names the uploaded mapping
-					<code class="font-mono">&lt;uuid&gt;.txt</code>.
+					The plugin gives each release build a ProGuard UUID, which the SDK reports with every
+					crash, and uploads the build's R8 mapping under that UUID.
 				</p>
 			</div>
 			<div>
 				<p class="mb-2 text-sm font-medium">Step 2: Build and upload after each release</p>
-				<CopyableCodeBlock code={androidUploadCommand} language={bash} />
+				<CopyableCodeBlock code={ANDROID_SYMBOL_UPLOAD_COMMAND} language={bash} />
 				<p class="mt-2 text-xs text-muted-foreground">
-					Uploads the R8 <code class="font-mono">mapping.txt</code> and the unstripped native
-					<code class="font-mono">.so</code> libraries. Native symbols are keyed by GNU build-id, so re-upload
-					on each release.
+					Uploads the R8 <code class="font-mono">mapping.txt</code>. The UUID comes from the app
+					version, so bump <code class="font-mono">versionCode</code> or
+					<code class="font-mono">versionName</code> for each release to keep every build's mapping.
 				</p>
 			</div>
 		{:else}
@@ -310,10 +303,9 @@ traceway {
 			</p>
 		{:else if isAndroid}
 			<p class="text-sm text-muted-foreground">
-				Release builds obfuscate Kotlin/Java with R8 and strip native code. Generate a token, then
-				upload your <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">mapping.txt</code>
-				and native <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">.so</code> libraries
-				after each release to resolve their stack traces.
+				Release builds obfuscate Kotlin and Java with R8. Generate a token, then upload your
+				<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">mapping.txt</code> after each
+				release to resolve their stack traces.
 				<a
 					href="https://docs.tracewayapp.com/symbolicator/android"
 					target="_blank"

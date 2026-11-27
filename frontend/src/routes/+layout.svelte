@@ -32,15 +32,25 @@
 	import StatusPageView from '$lib/components/traceway/status-page-view.svelte';
 	import { statusDomainSlug } from '$lib/status-domain';
 	import { shouldMonitorUrl } from '$lib/utils/self-monitoring';
+	import { normalizeConnectionString } from '$lib/utils/connection-string';
 
 	let monitoring = false;
+	// TRACEWAY_URL may hold any spelling the SDKs accept; the pinned SDK gets it normalized. The same-origin form
+	// (<token>@/api/report) names no server to normalize and goes to the SDK as written.
+	const sameOriginConnection = /^[^@\s]+@\/(?!\/)/.test(__TRACEWAY_URL__.trim());
+	const monitoringConnection = sameOriginConnection
+		? __TRACEWAY_URL__.trim()
+		: normalizeConnectionString(__TRACEWAY_URL__);
+	if (__TRACEWAY_URL__ && !monitoringConnection) {
+		console.warn('[Traceway] TRACEWAY_URL is not <token>@<server URL>; self-monitoring is off.');
+	}
 
 	// Starts on the first URL that may be monitored, so a visit that begins on a status page or on a link
 	// carrying a token only starts once it reaches the dashboard, and the public never does.
 	function startMonitoring(url: URL) {
-		if (monitoring || !__TRACEWAY_URL__ || !shouldMonitorUrl(url, statusDomainSlug)) return;
+		if (monitoring || !monitoringConnection || !shouldMonitorUrl(url, statusDomainSlug)) return;
 		monitoring = true;
-		init(__TRACEWAY_URL__, {
+		init(monitoringConnection, {
 			version: __APP_VERSION__,
 			environment: import.meta.env.MODE,
 			recordAllSessions: true,

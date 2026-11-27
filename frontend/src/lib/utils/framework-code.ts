@@ -1,26 +1,22 @@
 import type { Framework } from '$lib/state/projects.svelte';
 import { isJsFramework } from '$lib/state/projects.svelte';
+import { normalizeBaseUrl } from './connection-string';
+import { SDK_VERSION, getStartCode, usesStartApi } from './sdk-start';
 
-// Legacy Go projects (LEGACY_GO_FRAMEWORKS) get the OpenTelemetry setup guide instead, so the retired
-// Go SDK has no install command or snippet here.
+// Legacy Go and Node.js projects (LEGACY_GO_FRAMEWORKS, LEGACY_NODE_FRAMEWORKS) get the OpenTelemetry setup
+// guide instead, so the retired Go and 1.x Node.js SDKs have no install command or snippet here.
 export function getInstallCommand(framework: Framework): string {
 	switch (framework) {
 		case 'react':
-			return 'npm install @tracewayapp/react';
+			return `npm install @tracewayapp/react@${SDK_VERSION}`;
 		case 'svelte':
-			return 'npm install @tracewayapp/svelte';
+			return `npm install @tracewayapp/svelte@${SDK_VERSION}`;
 		case 'vuejs':
-			return 'npm install @tracewayapp/vue';
+			return `npm install @tracewayapp/vue@${SDK_VERSION}`;
 		case 'nextjs':
-			return 'npm install @tracewayapp/react';
-		case 'nestjs':
-			return 'npm install @tracewayapp/nest';
-		case 'express':
-			return 'npm install @tracewayapp/express';
-		case 'remix':
-			return 'npm install @tracewayapp/remix';
+			return `npm install @tracewayapp/react@${SDK_VERSION}`;
 		case 'jquery':
-			return 'npm install @tracewayapp/jquery';
+			return `npm install @tracewayapp/jquery@${SDK_VERSION}`;
 		case 'react-native':
 			return 'npm install @tracewayapp/react-native';
 		case 'hono':
@@ -36,131 +32,27 @@ export function getInstallCommand(framework: Framework): string {
 		case 'opentelemetry':
 			return '';
 		case 'flutter':
-			// 2.x is a prerelease on pub.dev: without the constraint pub installs 1.x.
-			return `flutter pub add 'traceway:^2.0.0-beta.1'`;
+			return `flutter pub add 'traceway:^${SDK_VERSION}'`;
 		case 'android':
-			// 2.x is a beta on Maven Central; an app with minSdk below 26 also enables core library desugaring.
-			return 'implementation("com.tracewayapp:traceway:2.0.0-beta.1")';
+			// An app with minSdk below 26 also enables core library desugaring.
+			return `implementation("com.tracewayapp:traceway:${SDK_VERSION}")`;
 		case 'ios':
-			// 2.x is a beta: SwiftPM only offers prereleases to a requirement that names one.
-			return '.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "2.0.0-beta.1")';
+			return `.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "${SDK_VERSION}")`;
 		default:
 			return '';
 	}
 }
 
+// Browser and mobile projects get the start API of the 2.1 SDKs (token + baseUrl, see sdk-start.ts). React
+// Native is still on its 1.x SDK, which posts to the 1.x /api/report endpoint itself, so its snippet alone keeps
+// a connection string.
 export function getFrameworkCode(framework: Framework, token: string, backendUrl: string): string {
-	const connectionString = token
-		? `${token}@${backendUrl}/api/report`
-		: `YOUR_TOKEN@${backendUrl}/api/report`;
+	if (usesStartApi(framework)) return getStartCode(framework, backendUrl);
+
+	const base = normalizeBaseUrl(backendUrl) ?? backendUrl;
+	const connectionString = `${token || 'YOUR_TOKEN'}@${base}/api/report`;
 
 	switch (framework) {
-		case 'react':
-			return `import { TracewayProvider } from "@tracewayapp/react";
-
-function App() {
-  return (
-    <TracewayProvider connectionString="${connectionString}">
-      <YourApp />
-    </TracewayProvider>
-  );
-}
-
-export default App;`;
-
-		case 'svelte':
-			return `<!-- src/routes/+layout.svelte -->
-<script>
-  import { setupTraceway } from "@tracewayapp/svelte";
-
-  setupTraceway({
-    connectionString: "${connectionString}",
-  });
-</script>
-
-<slot />`;
-
-		case 'vuejs':
-			return `import { createApp } from "vue";
-import { createTracewayPlugin } from "@tracewayapp/vue";
-import App from "./App.vue";
-
-const app = createApp(App);
-
-app.use(createTracewayPlugin({
-  connectionString: "${connectionString}",
-}));
-
-app.mount("#app");`;
-
-		case 'nextjs':
-			return `// app/traceway-provider.tsx
-"use client";
-
-import { TracewayProvider } from "@tracewayapp/react";
-
-export function TracewayClientProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <TracewayProvider connectionString="${connectionString}">
-      {children}
-    </TracewayProvider>
-  );
-}
-
-// app/layout.tsx
-import { TracewayClientProvider } from "./traceway-provider";
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html>
-      <body>
-        <TracewayClientProvider>{children}</TracewayClientProvider>
-      </body>
-    </html>
-  );
-}`;
-
-		case 'nestjs':
-			return `import { Module } from "@nestjs/common";
-import { TracewayModule } from "@tracewayapp/nest";
-
-@Module({
-    imports: [
-        TracewayModule.forRoot({
-            connectionString: "${connectionString}",
-        }),
-    ],
-})
-export class AppModule {}`;
-
-		case 'express':
-			return `import express from "express";
-import { traceway } from "@tracewayapp/express";
-
-const app = express();
-app.use(traceway("${connectionString}"));
-
-app.get("/api/users", (req, res) => {
-    res.json({ users: [] });
-});
-
-app.listen(8080);`;
-
-		case 'remix':
-			return `import { withTraceway } from "@tracewayapp/remix";
-
-export default withTraceway({
-    connectionString: "${connectionString}",
-});`;
-
-		case 'jquery':
-			return `import { init } from "@tracewayapp/jquery";
-
-init("${connectionString}");
-
-// jQuery AJAX errors are captured automatically
-// Distributed trace headers are injected into $.ajax() requests`;
-
 		case 'react-native':
 			return `import { TracewayProvider } from "@tracewayapp/react-native";
 
@@ -238,7 +130,7 @@ $kernel->terminate($request, $response);`;
 // OTEL_METRICS_EXPORTER=otlp
 // OTEL_LOGS_EXPORTER=otlp
 // OTEL_EXPORTER_OTLP_PROTOCOL=http/json
-// OTEL_EXPORTER_OTLP_ENDPOINT=${backendUrl}/api/otel
+// OTEL_EXPORTER_OTLP_ENDPOINT=${base}/api/otel
 // OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer ${token || 'YOUR_TOKEN'}"
 //
 // Optional: send Laravel logs to Traceway via the auto-injected 'otlp' channel
@@ -258,7 +150,7 @@ $kernel->terminate($request, $response);`;
 # OTEL_METRICS_EXPORTER=otlp
 # OTEL_LOGS_EXPORTER=otlp
 # OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-# OTEL_EXPORTER_OTLP_ENDPOINT=${backendUrl}/api/otel
+# OTEL_EXPORTER_OTLP_ENDPOINT=${base}/api/otel
 # OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20${token || 'YOUR_TOKEN'}
 # OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
 
@@ -280,63 +172,6 @@ $kernel->terminate($request, $response);`;
 
 		case 'opentelemetry':
 			return '';
-
-		case 'flutter':
-			return `import 'package:flutter/material.dart';
-import 'package:traceway/traceway.dart';
-
-void main() {
-  Traceway.run(
-    connectionString: '${connectionString}',
-    options: TracewayOptions(
-      screenCapture: true,
-      version: '1.0.0',
-    ),
-    child: MyApp(),
-  );
-}`;
-
-		case 'android':
-			return `import android.app.Application
-import com.tracewayapp.traceway.Traceway
-import com.tracewayapp.traceway.TracewayOptions
-
-class MyApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        Traceway.init(
-            application = this,
-            connectionString = "${connectionString}",
-            options = TracewayOptions(
-                version = "1.0.0",
-                screenCapture = true,
-            ),
-        )
-    }
-}`;
-
-		case 'ios':
-			return `import SwiftUI
-import Traceway
-
-@main
-struct MyApp: App {
-    init() {
-        Traceway.initialize(
-            connectionString: "${connectionString}",
-            options: TracewayOptions(
-                version: "1.0.0",
-                screenCapture: true
-            )
-        )
-    }
-
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
-    }
-}`;
 
 		default:
 			return '';
@@ -543,17 +378,32 @@ export function getFrameworkLabel(framework: Framework): string {
 	return labels[framework] || framework;
 }
 
-export function getCodeLanguage(
-	framework: Framework
-): 'go' | 'javascript' | 'bash' | 'php' | 'python' {
+export type CodeLanguage =
+	| 'go'
+	| 'javascript'
+	| 'bash'
+	| 'php'
+	| 'python'
+	| 'dart'
+	| 'kotlin'
+	| 'swift';
+
+export function getCodeLanguage(framework: Framework): CodeLanguage {
 	if (framework === 'symfony') return 'php';
 	if (framework === 'laravel') return 'php';
 	if (framework === 'django') return 'python';
 	if (framework === 'opentelemetry') return 'go';
 	if (framework === 'hono') return 'javascript';
 	if (framework === 'cloudflare') return 'javascript';
-	if (framework === 'flutter') return 'javascript'; // closest to Dart syntax highlighting
-	if (framework === 'android') return 'javascript'; // closest to Kotlin syntax highlighting
-	if (framework === 'ios') return 'javascript';
+	if (framework === 'flutter') return 'dart';
+	if (framework === 'android') return 'kotlin';
+	if (framework === 'ios') return 'swift';
 	return isJsFramework(framework) ? 'javascript' : 'go';
+}
+
+/** The install line is Gradle Kotlin on Android and a Package.swift entry on iOS; a shell command elsewhere. */
+export function getInstallLanguage(framework: Framework): 'bash' | 'kotlin' | 'swift' {
+	if (framework === 'android') return 'kotlin';
+	if (framework === 'ios') return 'swift';
+	return 'bash';
 }

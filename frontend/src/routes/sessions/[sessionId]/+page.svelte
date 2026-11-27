@@ -40,6 +40,7 @@
 		type SessionBreadcrumbs
 	} from '$lib/utils/session-timeline';
 	import { cleanRecording } from '$lib/utils/session-recording';
+	import { replayImageDataLabel, replayImagesLabel } from '$lib/utils/session-overview';
 
 	type Session = {
 		recordingReasons?: Array<{
@@ -72,9 +73,10 @@
 
 	let session = $state<Session | null>(null);
 	let exceptions = $state<SessionException[]>([]);
-	let recordingEvents = $state<SessionReplayEvent[] | null>(null);
-	let recordingLogs = $state<SessionLogEvent[]>([]);
-	let recordingActions = $state<SessionActionEvent[]>([]);
+	// A recording is tens of megabytes of events that are only ever replaced as a whole, so it is not proxied.
+	let recordingEvents = $state.raw<SessionReplayEvent[] | null>(null);
+	let recordingLogs = $state.raw<SessionLogEvent[]>([]);
+	let recordingActions = $state.raw<SessionActionEvent[]>([]);
 	let recordingTruncated = $state(false);
 	let timeline = $state<SessionBreadcrumbs | null>(null);
 	let recordingLoading = $state(false);
@@ -202,6 +204,9 @@
 				? `${SDK_PLATFORM_NAMES[platform]} v1 · legacy ingestion`
 				: 'Not reported'
 	);
+	// The replay-image policy the SDK applied and the image data it sent, shown only when the session reported them.
+	const replayImages = $derived(replayImagesLabel(session?.attributes));
+	const replayImageData = $derived(replayImageDataLabel(session?.attributes));
 	// A device keeps its instance id across sessions, so capturing it also covers the visits that follow.
 	const captureTarget = $derived(
 		session?.attributes?.['service.instance.id']
@@ -280,6 +285,12 @@
 						label="Diagnostic events dropped"
 						value={session.attributes?.['traceway.collection.dropped'] ?? 'Not reported'}
 					/>
+					{#if replayImages}
+						<LabelValue label="Replay images" value={replayImages} />
+					{/if}
+					{#if replayImageData}
+						<LabelValue label="Image data" value={replayImageData} />
+					{/if}
 				{/if}
 			</Card.Content>
 		</Card.Root>

@@ -18,6 +18,7 @@ import {
 	sdkPlatform,
 	SDK_PLATFORM_NAMES,
 	signalsFor,
+	suggestedKeysFor,
 	SIGNALS,
 	summarizeConditions,
 	summarizeSettings,
@@ -52,6 +53,20 @@ describe('sdk-config helpers', () => {
 				triggers: [{}, {}]
 			})
 		).toBe('network: off, replay: stream, 2 triggers');
+	});
+
+	it('names a minimum severity in the summary', () => {
+		expect(
+			summarizeSettings({ signals: { console: { mode: 'buffer', minSeverity: 'warn' } } })
+		).toBe('console: buffer (warn or worse)');
+		expect(summarizeSettings({ signals: { console: { minSeverity: 'error' } } })).toBe(
+			'console: error or worse'
+		);
+		expect(
+			summarizeSettings({
+				signals: { console: { mode: 'stream' }, messages: { mode: 'off', minSeverity: 'info' } }
+			})
+		).toBe('messages: off (info or worse), console: stream');
 	});
 
 	it('names the replay type in the summary', () => {
@@ -155,8 +170,9 @@ describe('sdk-config helpers', () => {
 		expect(Object.values(REPLAY_IMAGES_LABELS)).toEqual(['Off', 'Wi‑Fi only', 'Always']);
 	});
 
-	it('describes replay images in the terms of each app SDK', () => {
-		expect(REPLAY_IMAGES_HINTS.flutter).toBe('Network images by URL; nothing is uploaded');
+	it('describes replay images in the terms of each SDK', () => {
+		expect(REPLAY_IMAGES_HINTS.browser).toBe('Off hides pictures; Always adds small copies');
+		expect(REPLAY_IMAGES_HINTS.flutter).toBe('Small pictures of images, never a screenshot');
 		expect(REPLAY_IMAGES_HINTS.ios).toBe('Pictures of image views, never a screenshot');
 		expect(REPLAY_IMAGES_HINTS.android).toBe(REPLAY_IMAGES_HINTS.ios);
 	});
@@ -227,6 +243,14 @@ describe('log-line triggers', () => {
 		}
 	});
 
+	it('suggests the attributes the project’s SDK reports', () => {
+		expect(suggestedKeysFor('browser')).toContain('browser.name');
+		for (const platform of ['flutter', 'ios', 'android'] as const) {
+			const keys = suggestedKeysFor(platform);
+			expect(keys.some((key) => key.startsWith('browser.'))).toBe(false);
+			expect(keys).toEqual(expect.arrayContaining(['os.name', 'device.form_factor', 'user.id']));
+		}
+	});
 	it('offers a Flutter project only the signals its SDK reports, in its terms', () => {
 		expect(signalsFor('browser')).toBe(SIGNALS);
 		const flutter = signalsFor('flutter');
@@ -242,7 +266,7 @@ describe('log-line triggers', () => {
 		expect(flutter.find((signal) => signal.key === 'userActions')?.hint).toBe('Taps');
 		expect(SIGNALS.find((signal) => signal.key === 'userActions')?.hint).toBe('Clicks');
 		const browserOnly = TRIGGER_TEMPLATES.filter((t) => t.browserOnly).map((t) => t.trigger.id);
-		expect(browserOnly).toEqual(['error-log-burst', 'frozen-page', 'slow-route-change']);
+		expect(browserOnly).toEqual(['frozen-page', 'slow-route-change']);
 	});
 
 	it('offers an iOS project the app signals, in its terms', () => {
@@ -250,7 +274,9 @@ describe('log-line triggers', () => {
 		expect(ios.map((signal) => signal.key)).toEqual(
 			signalsFor('flutter').map((signal) => signal.key)
 		);
-		expect(ios.find((signal) => signal.key === 'console')?.hint).toBe('Traceway.log lines');
+		expect(ios.find((signal) => signal.key === 'console')?.hint).toBe(
+			'os_log, Logger and NSLog lines, Traceway.log, and print with captureStdout'
+		);
 		expect(ios.find((signal) => signal.key === 'network')?.hint).toBe('URLSession requests');
 		expect(sdkPlatform('ios')).toBe('ios');
 		expect(sdkPlatform('flutter')).toBe('flutter');
@@ -264,7 +290,7 @@ describe('log-line triggers', () => {
 			signalsFor('flutter').map((signal) => signal.key)
 		);
 		expect(android.find((signal) => signal.key === 'console')?.hint).toBe(
-			'System.out/err lines and Traceway.log'
+			'Logcat lines with the Gradle plugin, System.out/err and Traceway.log'
 		);
 		expect(android.find((signal) => signal.key === 'network')?.hint).toBe(
 			'OkHttp calls and startRequest/endRequest'

@@ -1,5 +1,5 @@
 import type { SdkPlatform } from '$lib/components/sdk-config/sdk-config';
-import type { SessionActionEvent } from '$lib/types/exceptions';
+import type { SessionActionEvent, SessionNavigationEvent } from '$lib/types/exceptions';
 
 function text(value: unknown): string {
 	return typeof value === 'string' ? value.trim() : '';
@@ -11,15 +11,37 @@ function text(value: unknown): string {
  * The data is a click row of the session timeline: `selector`, `tag`, `id`, `text`, `label`, `screen`.
  */
 export function tapSummary(data: Record<string, unknown> | undefined): string {
+	return clickSummary(data, 'Tap');
+}
+
+/**
+ * A click row in one line, `Tap …` from an app SDK and `Click …` from the browser SDK, which stamps the page it was
+ * on in the same `screen` field.
+ */
+export function clickSummary(
+	data: Record<string, unknown> | undefined,
+	verb: 'Tap' | 'Click'
+): string {
 	const selector =
 		text(data?.selector) || text(data?.tag) || (text(data?.id) && `#${text(data?.id)}`);
-	const parts = ['Tap'];
+	const parts: string[] = [verb];
 	if (selector) parts.push(selector);
 	const shown = text(data?.text) || text(data?.label);
 	if (shown && !selector.includes(shown)) parts.push(`“${shown}”`);
 	const screen = text(data?.screen);
 	if (screen) parts.push(`on ${screen}`);
 	return parts.join(' ');
+}
+
+/**
+ * A navigation in one line, with the route template of the screen or page it reached when the SDK knows it and it
+ * says more than the path: `push: /orders → /orders/42 (/orders/:id)`.
+ */
+export function navigationSummary(n: SessionNavigationEvent): string {
+	const from = text(n.from) || '?';
+	const to = text(n.to) || '?';
+	const route = text(n.route);
+	return `${text(n.action) || 'navigate'}: ${from} → ${to}${route && route !== to ? ` (${route})` : ''}`;
 }
 
 /**

@@ -6,7 +6,12 @@
 	import { Input } from '$lib/components/ui/input';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { getFrameworkLabel } from '$lib/state/projects.svelte';
-	import type { SetupDraft } from '$lib/utils/setup-plan';
+	import {
+		uploadTokenEnvFile,
+		uploadTokenEnvVar,
+		urlEnvVar,
+		type SetupDraft
+	} from '$lib/utils/setup-plan';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
 
 	let { draft, onDecided }: { draft: SetupDraft; onDecided: () => void } = $props();
@@ -71,6 +76,8 @@
 
 		<ul class="space-y-2">
 			{#each draft.payload.projects as project (project.name)}
+				{@const uploadFile = uploadTokenEnvFile(project)}
+				{@const urlVar = project.envFile ? urlEnvVar(project, draft.backendUrl) : null}
 				<li class="rounded-md border px-3 py-2.5">
 					<div class="flex items-center gap-3">
 						<FrameworkIcon framework={project.framework} class="size-5 shrink-0" />
@@ -81,7 +88,7 @@
 							</div>
 						</div>
 					</div>
-					{#if project.envFile || project.deployment}
+					{#if project.envFile || project.deployment || uploadFile}
 						<div class="mt-2 ml-8 space-y-1 text-xs text-muted-foreground">
 							{#if project.envFile}
 								<div>
@@ -90,6 +97,19 @@
 									>
 									as
 									<code class="rounded bg-muted px-1 py-0.5">{project.envVar}</code>
+									{#if urlVar}
+										, this server's URL as
+										<code class="rounded bg-muted px-1 py-0.5">{urlVar}</code>
+									{/if}
+								</div>
+							{/if}
+							{#if uploadFile}
+								<div>
+									Upload token written to <code class="rounded bg-muted px-1 py-0.5"
+										>{uploadFile}</code
+									>
+									as
+									<code class="rounded bg-muted px-1 py-0.5">{uploadTokenEnvVar(project)}</code>
 								</div>
 							{/if}
 							{#if project.deployment}

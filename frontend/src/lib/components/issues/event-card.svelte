@@ -27,6 +27,8 @@
 		type SessionBreadcrumbs
 	} from '$lib/utils/session-timeline';
 	import { cleanRecording, recordingOrigin } from '$lib/utils/session-recording';
+	import { formatElapsed, formatViewport, hangDetails, screenContext } from '$lib/utils/app-issue';
+	import { sdkPlatform } from '$lib/components/sdk-config/sdk-config';
 
 	interface Props {
 		occurrence: ExceptionOccurrence;
@@ -55,6 +57,12 @@
 	} as const;
 
 	const tz = $derived(timezone ?? getTimezone());
+	// Every SDK stamps where the app or page was; shown whenever the occurrence carries it.
+	const screen = $derived(screenContext(occurrence.attributes));
+	const screenNoun = $derived(
+		sdkPlatform(projectsState.currentProject?.framework) === 'browser' ? 'Page' : 'Screen'
+	);
+	const hang = $derived(hangDetails(occurrence.stackTrace, occurrence.attributes));
 	const isFrontend = $derived(
 		projectsState.currentProject?.framework
 			? isFrontendFramework(projectsState.currentProject.framework)
@@ -306,6 +314,55 @@
 				</div>
 			{/if}
 		</div>
+
+		{#if hang}
+			<hr class="border-border" />
+			<div>
+				<p class="mb-3 text-sm font-medium">App Hang</p>
+				<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+					<LabelValue
+						label="Main thread blocked for"
+						value={hang.durationMs !== null ? formatElapsed(hang.durationMs) : null}
+						mono
+					/>
+					<LabelValue
+						label="Fatal"
+						value={hang.fatal
+							? 'Yes, the app was terminated during the hang'
+							: 'No, the app recovered'}
+						valueClass={hang.fatal ? 'font-medium text-rose-600 dark:text-rose-400' : ''}
+					/>
+				</div>
+			</div>
+		{/if}
+
+		{#if screen}
+			<hr class="border-border" />
+			<div>
+				<p class="mb-3 text-sm font-medium">{screenNoun}</p>
+				<div class="grid grid-cols-2 gap-4 md:grid-cols-5">
+					{#if screen.name}
+						<LabelValue label={screenNoun} value={screen.name} mono />
+					{/if}
+					{#if screen.route}
+						<LabelValue label="Route" value={screen.route} mono />
+					{/if}
+					{#if screen.previous}
+						<LabelValue label="Previous {screenNoun.toLowerCase()}" value={screen.previous} mono />
+					{/if}
+					{#if screen.durationMs !== undefined}
+						<LabelValue
+							label="Time on {screenNoun.toLowerCase()}"
+							value={formatElapsed(screen.durationMs)}
+							mono
+						/>
+					{/if}
+					{#if screen.viewport}
+						<LabelValue label="Viewport" value={formatViewport(screen.viewport)} mono />
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		<!-- AttributesGrid -->
 		{#if occurrence.attributes && Object.keys(occurrence.attributes).length > 0}

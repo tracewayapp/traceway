@@ -76,6 +76,16 @@ describe('session recording clean-up', () => {
 		});
 	});
 
+	it('plays the video when the rrweb events before it cannot play', () => {
+		expect(replayEvents([meta(1), video])).toEqual({
+			kind: 'video',
+			video: [video],
+			rrweb: [],
+			playable: false
+		});
+		expect(replayEvents([full(1), move(2), video]).kind).toBe('rrweb');
+	});
+
 	it('counts a recording from its start, else its earliest event', () => {
 		const startedAt = '2026-11-27T10:00:00.000Z';
 		const t = Date.parse(startedAt);

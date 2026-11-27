@@ -82,6 +82,8 @@ export function replayEvents(events: unknown): ReplayEvents {
 	if (kind === 'video') return { kind, video, rrweb: [], playable: false };
 	rrweb.sort((a, b) => a.timestamp - b.timestamp);
 	const playable = rrweb.length >= 2 && rrweb.some((event) => event.type === FULL_SNAPSHOT);
+	// A wireframe part that cannot play (a lone event before the mode changed) must not hide the video after it.
+	if (!playable && video.length > 0) return { kind: 'video', video, rrweb: [], playable: false };
 	return { kind, video: [], rrweb, playable };
 }
 

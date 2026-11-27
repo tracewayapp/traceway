@@ -28,7 +28,7 @@
 	let notFound = $state(false);
 	let total = $state(0);
 	let linkedTrace = $state<LinkedTrace | null>(null);
-	let sessionRecording = $state<SessionRecording | null>(null);
+	let sessionRecording = $state.raw<SessionRecording | null>(null);
 	let sessionId = $state<string | null>(null);
 	let showArchiveDialog = $state(false);
 	let archiving = $state(false);

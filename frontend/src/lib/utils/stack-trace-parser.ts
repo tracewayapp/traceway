@@ -3,6 +3,8 @@ export type StackFrame = {
 	location: string;
 	isLibrary: boolean;
 	packageHint?: string;
+	/** A line the runtime printed under the frame, such as the lock an ANR's main thread waits for. */
+	note?: string;
 };
 
 export type FrameGroup =
@@ -59,6 +61,99 @@ function javaPackageLabel(fqn: string): string {
 		return `${segs[0]}.${segs[1]}`;
 	}
 	return segs[0] || 'system';
+}
+
+// An Android native frame, from a tombstone or an ANR dump (`native:` there):
+// `#00 pc 000000000004f8c8  /apex/com.android.runtime/lib64/bionic/libc.so (abort+164) (BuildId: 1c3a…)`.
+const nativeFramePattern = /^\s*(?:native:\s*)?#\d+\s+pc\s+([0-9a-fA-F]+)\s+(.+?)\s*$/;
+const javaMethodPattern = /^[\w$]+(?:\.[\w$<>-]+)+$/;
+const javaThreadNotePattern =
+	/^\s*- (?:waiting to lock|waiting on|locked|sleeping on|parking to wait for|waiting to acquire)\b.*$/;
+
+export type NativeFrame = {
+	pc: string;
+	/** The mapped file: a library, an APK, `[anon:dalvik-jit-code-cache]`. */
+	path: string;
+	symbol: string | null;
+	/** The offset into the symbol, in bytes. */
+	offset: string | null;
+};
+
+function matchingOpenParen(s: string): number {
+	let depth = 0;
+	for (let i = s.length - 1; i >= 0; i--) {
+		if (s[i] === ')') depth++;
+		else if (s[i] === '(' && --depth === 0) return i;
+	}
+	return -1;
+}
+
+/**
+ * Reads a native frame. The unwinder appends parenthesised groups after the mapped file, read here from the end:
+ * `(BuildId: …)`, `(symbol+offset)`, `(offset 0x…)` and a file's own `(deleted)`; a C++ symbol has parentheses
+ * of its own (`android::Looper::pollInner(int)+184`).
+ */
+export function parseNativeFrame(line: string): NativeFrame | null {
+	const m = line.match(nativeFramePattern);
+	if (!m) return null;
+	let rest = m[2].trim();
+	let symbol: string | null = null;
+	let offset: string | null = null;
+	while (rest.endsWith(')')) {
+		const open = matchingOpenParen(rest);
+		if (open <= 0) break;
+		const group = rest.slice(open + 1, -1).trim();
+		const before = rest.slice(0, open).trim();
+		if (group.startsWith('BuildId:') || group.startsWith('offset 0x') || group === 'deleted') {
+			rest = before;
+			continue;
+		}
+		if (symbol !== null) break;
+		const withOffset = group.match(/^(.*)\+((?:0x)?[0-9a-fA-F]+)$/);
+		symbol = withOffset ? withOffset[1] : group;
+		offset = withOffset ? withOffset[2] : null;
+		rest = before;
+	}
+	return { pc: m[1], path: rest, symbol: symbol || null, offset };
+}
+
+export function looksLikeNative(raw: string): boolean {
+	return raw.split('\n').some((line) => nativeFramePattern.test(line));
+}
+
+// The app's own native code is installed under /data (`/data/app/~~…/lib/arm64/libpayments.so`); /apex, /system and
+// /vendor hold the platform's.
+function isAppNativePath(path: string): boolean {
+	return path.startsWith('/data/') || path.startsWith('/mnt/expand/');
+}
+
+function nativeLibraryName(path: string): string {
+	if (path.startsWith('[') || path.startsWith('<')) return path;
+	const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('!'));
+	return cut >= 0 && cut + 1 < path.length ? path.slice(cut + 1) : path;
+}
+
+function nativeStackFrame(frame: NativeFrame): StackFrame {
+	const pc = frame.pc.replace(/^0+(?=.)/, '');
+	// Compiled or JIT-compiled Java code names its method; the class says whose it is.
+	if (frame.symbol && javaMethodPattern.test(frame.symbol)) {
+		const lib = isJavaSystemClass(frame.symbol);
+		return {
+			functionName: frame.symbol + (frame.offset ? `+${frame.offset}` : ''),
+			location: frame.path,
+			isLibrary: lib,
+			packageHint: lib ? javaPackageLabel(frame.symbol) : undefined
+		};
+	}
+	const lib = !isAppNativePath(frame.path);
+	return {
+		functionName: frame.symbol
+			? frame.symbol + (frame.offset ? `+${frame.offset}` : '')
+			: `pc ${pc}`,
+		location: frame.path,
+		isLibrary: lib,
+		packageHint: lib ? nativeLibraryName(frame.path) : undefined
+	};
 }
 
 const goLocationPattern = /^[ \t]+(.+\.go):(\d+)(?:\s+\+0x[0-9a-fA-F]+)?\s*$/;
@@ -184,6 +279,15 @@ const IOS_SYSTEM_IMAGES = new Set([
 	'dyld'
 ]);
 
+// The iOS SDK's frame before symbolication, `#00 <image uuid> 0x<offset in the image> <image>`; MetricKit's image
+// UUIDs have dashes.
+const iosWireFramePattern =
+	/^\s*#\d+\s+[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}\s+0x([0-9a-fA-F]+)\s*(.*)$/;
+// What the iOS SDK writes between the error line and the frames.
+const iosPreamblePattern = /^\s*(?:\*{3}(?:\s+\*{3})*|os:\s*\S+\s+arch:\s*\S+)\s*$/;
+// The thread state lines of an ART dump (`| sysTid=8123 nice=-10 …`), noise above an ANR's frames.
+const artThreadDetailPattern = /^\s*\|\s/;
+
 function isIOSSystemImage(image: string): boolean {
 	const img = image.trim();
 	if (img === '' || img === '<unknown>') return true;
@@ -225,7 +329,7 @@ function extractPackageName(location: string): string {
 
 export function parseStackTrace(
 	raw: string,
-	opts: { ios?: boolean; java?: boolean; go?: boolean } = {}
+	opts: { ios?: boolean; java?: boolean; go?: boolean; native?: boolean } = {}
 ): ParsedStackTrace {
 	const lines = raw.split('\n');
 	const frames: StackFrame[] = [];
@@ -239,7 +343,40 @@ export function parseStackTrace(
 	const iosUnresolvedPattern = /^\s*#\d+\s+(.+?)\+0x[0-9a-fA-F]+\s*$/;
 
 	for (let i = 0; i < lines.length; i++) {
+		if (opts.native) {
+			const native = parseNativeFrame(lines[i]);
+			if (native) {
+				if (firstFrameIndex === -1) {
+					firstFrameIndex = i;
+					messageEndIndex = i;
+				}
+				frames.push(nativeStackFrame(native));
+				continue;
+			}
+		}
+
+		if (opts.java && frames.length > 0 && javaThreadNotePattern.test(lines[i])) {
+			const last = frames[frames.length - 1];
+			const note = lines[i].trim().replace(/^- /, '');
+			last.note = last.note ? `${last.note}\n${note}` : note;
+			continue;
+		}
+
 		if (opts.ios) {
+			const iosWire = lines[i].match(iosWireFramePattern);
+			if (iosWire) {
+				const image = iosWire[2].trim() || '<unknown>';
+				if (firstFrameIndex === -1) {
+					firstFrameIndex = i;
+					messageEndIndex = i;
+				}
+				frames.push({
+					functionName: null,
+					location: `${image}+0x${iosWire[1].toLowerCase()}`,
+					isLibrary: isIOSSystemImage(image)
+				});
+				continue;
+			}
 			const iosResolved = lines[i].match(iosResolvedPattern);
 			if (iosResolved) {
 				const fn = iosResolved[1].trim();
@@ -384,7 +521,12 @@ export function parseStackTrace(
 			? raw.trim()
 			: lines
 					.slice(0, messageEndIndex)
-					.filter((l) => !goroutineHeaderPattern.test(l))
+					.filter(
+						(l) =>
+							!goroutineHeaderPattern.test(l) &&
+							!(opts.ios && iosPreamblePattern.test(l)) &&
+							!((opts.java || opts.native) && artThreadDetailPattern.test(l))
+					)
 					.join('\n')
 					.trim();
 

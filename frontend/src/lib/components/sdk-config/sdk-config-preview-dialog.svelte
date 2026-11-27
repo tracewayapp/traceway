@@ -30,6 +30,7 @@
 		{
 			flutter: 'service.version=2.4.0\nos.name=android\nuser.id=',
 			ios: 'service.version=2.4.0\nos.name=ios\nuser.id=',
+			android: 'service.version=2.4.0\nos.name=android\nuser.id=',
 			browser: 'service.version=2.4.0\nbrowser.name=Chrome\nuser.id='
 		}[sdkPlatform(projectsState.currentProject?.framework)]
 	);

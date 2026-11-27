@@ -540,10 +540,10 @@ var frontendJsFrameworks = map[string]bool{
 }
 
 // IsFrontendFramework reports whether a project's telemetry comes from an end user's device. OTLP ingest then
-// keeps the resource's device and user attributes on issues and does not turn spans into endpoints. Flutter and
-// iOS count since their SDKs moved to OpenTelemetry.
+// keeps the resource's device and user attributes on issues and does not turn spans into endpoints. Flutter, iOS
+// and Android count since their SDKs moved to OpenTelemetry.
 func IsFrontendFramework(framework string) bool {
-	return frontendJsFrameworks[framework] || framework == "flutter" || framework == "ios"
+	return frontendJsFrameworks[framework] || framework == "flutter" || framework == "ios" || framework == "android"
 }
 
 var ClientController = clientController{}

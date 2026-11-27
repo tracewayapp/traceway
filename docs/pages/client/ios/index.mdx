@@ -1,29 +1,31 @@
 # iOS Quick Start
 
-Integrate Traceway into your native iOS application with the [`traceway-ios`](https://github.com/tracewayapp/traceway-ios) Swift package. Pure Swift, zero third-party dependencies. It captures errors and crashes only (no metrics, no transactions, no session replay) and speaks the same `/api/report` wire format as the other SDKs, so a single Traceway backend handles iOS alongside everything else.
+Integrate Traceway into your iOS app with the [`traceway-ios`](https://github.com/tracewayapp/traceway-ios) Swift package. The SDK is built on the official OpenTelemetry Swift SDK ([`opentelemetry-swift`](https://github.com/open-telemetry/opentelemetry-swift)): crashes, errors, logs and request spans leave as OTLP/HTTP, and the SDK polls Traceway over [OpAMP](https://opentelemetry.io/docs/specs/opamp/) for its collection settings, like the [browser SDK](/client/js-sdk) 2.x and the [Flutter SDK](/client/flutter) 2.x. Session replay records the view hierarchy as a wireframe that the dashboard replays in the same player as a browser session.
+
+> **2.0 is a beta.** It needs a Traceway server that accepts iOS projects on its OTLP and OpAMP endpoints; there is no fallback to the 1.x `/api/report` protocol. On an older server stay on 0.1.x. See [Migrating from 1.x](#migrating-from-1x).
 
 ## Requirements
 
-- iOS 13.0+
-- Swift 5.9+ / Xcode 15+
+- iOS 13.0 or later
+- Xcode 26.4 or later (Swift 6.3). The OpenTelemetry Swift packages need Swift 6, and the `swift-log` release SwiftPM resolves for them needs the Swift 6.3 compiler.
 
 ## Installation
 
-Install with Swift Package Manager. In Xcode, choose **File > Add Package Dependencies** and enter the repository URL:
+Install with Swift Package Manager. In Xcode, choose **File > Add Package Dependencies**, enter the repository URL and ask for `2.0.0-beta.1` or later:
 
 ```
 https://github.com/tracewayapp/traceway-ios.git
 ```
 
-Or add it directly to your `Package.swift`:
+Or add it to your `Package.swift`. SwiftPM only offers a prerelease to a requirement that names one:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "0.1.0"),
+    .package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "2.0.0-beta.1"),
 ],
 ```
 
-Then add the `Traceway` product to your target's dependencies. The package identity is `traceway-ios` and the library product is `Traceway`, so the two names differ and SwiftPM needs the explicit `.product(name:package:)` form:
+The package identity is `traceway-ios` and the library product is `Traceway`, so a target needs the explicit form:
 
 ```swift
 .target(
@@ -32,9 +34,11 @@ Then add the `Traceway` product to your target's dependencies. The package ident
 ),
 ```
 
+The package brings in `opentelemetry-swift-core`, `opentelemetry-swift` and `swift-protobuf`. SwiftPM also resolves, but does not build, the gRPC and NIO packages `opentelemetry-swift` declares.
+
 ## Setup
 
-Call `Traceway.start(connectionString:options:)` as early as possible so it is installed before any code that might crash. In SwiftUI, do it from your `App.init`:
+Start the SDK as early as possible, so it is installed before any code that might crash. In SwiftUI, do it in your `App` initializer:
 
 ```swift
 import SwiftUI
@@ -44,102 +48,398 @@ import Traceway
 struct MyApp: App {
     init() {
         Traceway.start(
-            connectionString: "your-token@https://cloud.tracewayapp.com/api/report",
-            options: TracewayOptions(version: "1.0.0")
+            connectionString: "your-token@https://traceway.example.com",
+            options: TracewayOptions(
+                version: "1.0.0",
+                screenCapture: true
+            )
         )
     }
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
+        WindowGroup { ContentView() }
     }
 }
 ```
 
-In UIKit, do it from `application(_:didFinishLaunchingWithOptions:)`:
+In UIKit, do it in `application(_:didFinishLaunchingWithOptions:)`:
 
 ```swift
-import UIKit
-import Traceway
-
-@main
-class AppDelegate: UIResponder, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
-    ) -> Bool {
-        Traceway.start(
-            connectionString: "your-token@https://cloud.tracewayapp.com/api/report",
-            options: TracewayOptions(version: "1.0.0")
-        )
-        return true
-    }
+func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+) -> Bool {
+    Traceway.start(
+        connectionString: "your-token@https://traceway.example.com",
+        options: TracewayOptions(version: "1.0.0", screenCapture: true)
+    )
+    return true
 }
 ```
 
-## What Gets Captured Automatically
-
-After `Traceway.start(...)` runs, the following sources are captured with no additional configuration:
-
-- **Uncaught NSExceptions**: ObjC / UIKit exceptions that escape to the top of the stack.
-- **Fatal signals**: Swift runtime traps such as force-unwrapping a `nil`, array out-of-bounds access, `fatalError()`, and integer overflow, surfacing as `SIGTRAP`, `SIGILL`, `SIGABRT`, or `SIGSEGV`.
-
-Hard crashes are persisted to disk and uploaded on the **next launch**, so a crash that takes the process down still reaches your dashboard.
+The connection string is the project token and the server URL, as the project's **Connection** page shows it. The 1.x form ending in `/api/report` works too; every endpoint is derived from it. An invalid connection string or `telemetry` setting does not take the app down: `start` returns `nil`, logs why, and the app runs without the SDK. To send telemetry to another OpenTelemetry backend as well, or only there, see [Setups](#setups).
 
 ## Capture Errors Manually
 
 ```swift
 import Traceway
 
-// Capture any Swift Error
+// Any Swift error
 do {
-    try riskyOperation()
+    try checkout()
 } catch {
-    Traceway.capture(error)
+    Traceway.capture(error, attributes: ["order": order.id])
 }
 
-// Capture an NSError
+// An NSError
 Traceway.capture(error: nsError)
 
-// Capture a message
+// A message
 Traceway.capture(message: "User completed onboarding")
 
-// Force send pending reports (seconds; nil waits indefinitely)
+// A named product event; triggers can match it by name
+Traceway.track("checkout_failed", attributes: ["reason": "card_declined"])
+
+// Breadcrumbs for the session timeline
+Traceway.log("Loaded 12 items")
+Traceway.log("Payment retried", severity: .warn)
+Traceway.recordAction(category: "cart", name: "add_item", data: ["sku": "SKU-123", "qty": 2])
+
+// An attribute on every later record, also used to target this user or
+// device from the dashboard
+Traceway.setAttribute("user.id", user.id)
+
+// Send what is ready now (seconds; nil waits until done)
 Traceway.flush(timeout: 5)
 ```
 
-## With Options
+`Traceway` also has `setAttributes`, `removeAttribute`, `clearAttributes`, `refreshConfig()` (poll for collection settings now), `instanceId` (the installation id, `service.instance.id`), `sessionId`, `shutdown()` and `tracer`, the SDK's OpenTelemetry tracer for spans of your own. When the app has not set up OpenTelemetry itself, Traceway's providers also become the global ones (`OpenTelemetry.instance`), so instrumentation that uses them joins the session.
 
-`TracewayOptions` accepts the following parameters. Field names mirror the other SDKs so configuration can be ported directly.
+## Setups
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `sampleRate` | `1.0` | Fraction of exceptions to keep (0.0 to 1.0) |
-| `debug` | `false` | Log SDK activity via `NSLog` |
-| `version` | `""` | App version, sent as `appVersion` |
-| `debounceMs` | `1500` | Delay before batching and uploading |
-| `retryDelayMs` | `10000` | Delay before retrying a failed upload |
-| `maxPendingExceptions` | `5` | In-memory cap; oldest dropped when exceeded |
-| `persistToDisk` | `true` | Persist pending reports so they survive restarts |
-| `maxLocalFiles` | `5` | Max persisted report files |
-| `localFileMaxAgeHours` | `12` | Delete unsynced files older than this |
+The SDK runs in one of three ways. The first needs nothing beyond the connection string.
+
+### Everything on Traceway
 
 ```swift
 Traceway.start(
-    connectionString: "your-token@https://cloud.tracewayapp.com/api/report",
+    connectionString: "your-token@https://traceway.example.com",
+    options: TracewayOptions(serviceName: "shop-app", environment: "production")
+)
+```
+
+The app polls Traceway for its collection settings, sends logs and request spans to Traceway's OTLP endpoints, and uploads replays to the same host. What it collects is changed on the project's **Data Collection** page; see [Remote Config](#remote-config).
+
+### Issues and replays on Traceway, other telemetry elsewhere
+
+Add `telemetry` to send ordinary logs and request spans to another OTLP/HTTP receiver, such as an OpenTelemetry Collector in front of a Grafana stack:
+
+```swift
+Traceway.start(
+    connectionString: "your-token@https://traceway.example.com",
     options: TracewayOptions(
-        sampleRate: 0.5,
-        debug: true,
-        version: "2.1.0",
-        debounceMs: 2000
+        serviceName: "shop-app",
+        collection: ["signals": ["console": ["mode": "stream"], "network": ["mode": "stream"]]],
+        telemetry: TracewayTelemetry(
+            url: "https://collector.example.com/otlp",
+            headers: ["x-ingest-key": "app-ingest-key"]
+        )
     )
 )
 ```
 
+A shared `url` gets `/v1/logs` and `/v1/traces` appended. Each signal (`logs`, `traces`) can override it with a `TracewayTelemetryEndpoint(url:headers:)` whose URL is used as given; without a shared `url`, the signals you do not list keep their Traceway destination. Signal headers override the shared `headers` key by key; Traceway's token is never sent to the receiver.
+
+When logs are redirected, exceptions, messages and the SDK's session and control records (`session.start`, `session.end`, `traceway.session.update`, fired triggers, started captures, applied config) still go to Traceway, and only there. Ordinary logs (`Traceway.log`, navigation, taps, `recordAction`, `track`) go to the logs receiver, request spans to the traces receiver. Remote config and replays keep using the connection string. Both destinations carry `session.id` for correlation. Batches that failed are kept on disk per destination and sent again later. Any key built into the app can be read out of it: use an ingestion key that can only write.
+
+### Standalone, without a Traceway server
+
+```swift
+Traceway.start(
+    connectionString: nil,
+    options: TracewayOptions(
+        serviceName: "shop-app",
+        collection: ["signals": ["console": ["mode": "stream"], "network": ["mode": "stream"]]],
+        telemetry: TracewayTelemetry(url: "https://collector.example.com/otlp")
+    )
+)
+```
+
+No Traceway server, account or token is required. `telemetry` must have a shared `url` or both signal endpoints. Standalone mode turns off remote config, replay uploads and session records. Exceptions are ordinary OTLP log records with the event name `exception` (messages carry `traceway.message`), sent to your collector, and the built-in exception trigger still uploads the buffered breadcrumbs.
+
+## Options
+
+`TracewayOptions` accepts the following parameters. The `capture*` options, `screenCapture` and `sessions` are ceilings: remote settings can lower what is collected but never raise it.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `sampleRate` | `Double` | `1.0` | Share of exceptions and messages that are reported (0.0 to 1.0) |
+| `debug` | `Bool` | `false` | Log SDK activity with `NSLog` |
+| `version` | `String` | bundle version | App version, sent as `service.version` |
+| `serviceName` | `String?` | bundle identifier | Sent as `service.name` |
+| `environment` | `String?` | none | Sent as `deployment.environment.name` |
+| `attributes` | `[String: String]` | `[:]` | Attributes attached to every record, also used for remote-config targeting |
+| `screenCapture` | `Bool` | `false` | Record a wireframe replay: the last seconds go up with an exception, and captures can stream it |
+| `fps` | `Int` | `4` | Most wireframe frames captured per second (1 to 15); a frame is kept only when the screen changed |
+| `maxBufferFrames` | `Int` | `150` | Frames in the replay ring; the upper bound of every clip |
+| `persistToDisk` | `Bool` | `true` | Keep SDK state (instance id, last remote config, session, ring buffer) and undelivered telemetry on disk; record hard crashes |
+| `captureLogs` | `Bool` | `true` | Record `Traceway.log` lines |
+| `captureNetwork` | `Bool` | `true` | Record every URLSession request as a client span |
+| `captureNavigation` | `Bool` | `true` | Record screens (view controllers, `.tracewayScreen`, `Traceway.recordNavigation`) |
+| `captureUserActions` | `Bool` | `true` | Record taps with the selector of the view, and feed them to recording triggers |
+| `recordAllSessions` | `Bool` | `false` | Stream breadcrumbs and the replay all the time instead of keeping them for errors |
+| `baselineSampleRate` | `Double` | `0` | Share of sessions whose breadcrumbs are sent continuously, not only around errors |
+| `sessions` | `Bool` | `true` | Send session records (`session.start` / `session.end`) |
+| `remoteConfig` | `Bool` | `true` | Poll the server for collection settings over OpAMP |
+| `collection` | `[String: Any]?` | none | Local collection settings, the same document as a remote-config rule (see [Local config](#local-config)) |
+| `exportDelayMs` | `Int` | `1000` | How long finished records wait to be sent as one batch |
+| `propagateTraceHeaderUrls` | `[String]` | `[]` | URL prefixes whose requests carry a W3C `traceparent` header (see [Connect requests to backend traces](#connect-requests-to-backend-traces)) |
+| `telemetry` | `TracewayTelemetry?` | none | Send logs and spans to another OTLP/HTTP receiver (see [Setups](#setups)) |
+
+## How Collection Works
+
+Every record is an OpenTelemetry log record or span and belongs to a *signal*. Each signal is in one of three modes: `stream` sends it as soon as it is produced, `buffer` keeps it in a ring buffer on the device (2 MB / 10 minutes by default) until a trigger or a capture uploads it, and `off` drops it.
+
+| Signal | Source | Default |
+|--------|--------|---------|
+| `errors` | crashes, uncaught `NSException`s, `Traceway.capture` | stream |
+| `messages` | `Traceway.capture(message:)` | stream |
+| `console` | `Traceway.log` | buffer |
+| `network` | URLSession requests (client spans) | buffer |
+| `navigation` | view controllers that appear, `.tracewayScreen`, `Traceway.recordNavigation` | buffer |
+| `userActions` | taps (`browser.user_action.click`) | buffer |
+| `custom` | `Traceway.recordAction`, `Traceway.track`, your own spans | buffer |
+| replay | wireframe screen recording | buffer |
+
+The built-in trigger fires on every exception: it uploads the buffered breadcrumbs of the last 10 minutes and a replay clip of the last 30 seconds. An app that never throws sends only its session start and end. Clips are rationed to one per 5 seconds and 20 per session; breadcrumbs are still sent for the exceptions in between.
+
+`recordAllSessions: true` streams every breadcrumb signal and the replay instead. `baselineSampleRate` streams the breadcrumbs of a share of sessions, chosen by session ID.
+
+The ring buffer is saved to disk when the app goes to the background and at shutdown, and restored when the same session goes on after a restart, so a session that continues after the system killed the app still has its breadcrumbs. Exceptions are written to disk before they are sent, and telemetry that failed to send is kept on disk and retried.
+
+The signal names, modes, triggers and limits are the browser and Flutter SDKs', so one rule can target all of them. See the [settings reference](/learn/remote-config/reference#the-settings-document). The iOS SDK sends no app performance metrics, so a rule's `metrics` section does not apply to it.
+
+## Remote Config
+
+The SDK polls the server over OpAMP (plain HTTP, protobuf): at start, every 5 minutes by default (the server sets the interval), when the app returns to the foreground, and about 2 seconds after `Traceway.setAttribute` or a new session, so a rule targeting an attribute applies soon. It applies the collection settings you define under **Data Collection** in the project's sidebar: signal modes and sample rates, buffer sizes, extra triggers and on-demand captures of one user or device. See [Remote SDK Config](/learn/remote-config/setup) for a walkthrough.
+
+- The `capture*` options, `screenCapture` and `sessions` are **ceilings**. Remote settings can lower what is collected but never raise it: with `captureNetwork: false` no rule can turn network capture on, and without `screenCapture: true` nothing is recorded. `sampleRate`, `baselineSampleRate` and `recordAllSessions` are defaults: a rule can change them in either direction.
+- The last applied settings are cached, so they are in effect from the first moment of the next start.
+- Set `remoteConfig: false` to never poll. Standalone (no connection string) the SDK never polls either.
+
+### Local config
+
+`collection` takes the same settings document a rule holds and lays it over the built-in defaults, so an app can define its own policy and triggers without the server. With `remoteConfig: true` the server's rules apply on top of it; with `remoteConfig: false` it is the whole policy.
+
+```swift
+Traceway.start(
+    connectionString: "your-token@https://traceway.example.com",
+    options: TracewayOptions(
+        screenCapture: true,
+        remoteConfig: false,
+        collection: [
+            "signals": ["network": ["mode": "stream"]],
+            "buffer": ["maxAgeSeconds": 300],
+            "triggers": [[
+                "id": "checkout-failed-twice",
+                "steps": [[
+                    "match": ["key": "event.name", "op": "eq", "value": "checkout_failed"],
+                    "count": 2, "periodSeconds": 60,
+                ]],
+                "actions": [[
+                    "type": "capture", "durationSeconds": 300, "lookbackSeconds": 120, "replay": true,
+                ]],
+            ]],
+        ]
+    )
+)
+```
+
+An invalid document is ignored with a console warning, and the defaults apply. Triggers merge by `id`; see the [trigger reference](/learn/remote-config/reference#triggers).
+
+## Captures
+
+A capture uploads what the device holds from its lookback window and then streams the selected signals, and the replay when it asks for it, until it ends. Records sent under a capture carry its ID (`traceway.capture.ids`), so the dashboard shows when it is collecting.
+
+- **From the dashboard**: the Capture button on a session or an issue targets one installation (`service.instance.id`), user (`user.id`) or session. The device starts it at its next poll; cancelling it stops the streaming at the poll after that.
+- **From a trigger** (a `capture` action): started on the device the moment the trigger fires. It survives app restarts until it ends; firing again only extends it.
+
+While a capture streams replay, the recording leaves as consecutive segments that each start with a full snapshot of the screen; the session player plays them back to back. An exception during a streaming capture still gets a clip of its own.
+
+### Recording triggers
+
+The dashboard's [recording trigger](/learn/remote-config/trigger-sequences) steps work on iOS. The builder labels them **Tap**, **Navigation** and **Log**:
+
+| Step | Matches |
+|------|---------|
+| `{"event": {"type": "click", "value": "<selector>"}}` | a tap on a view the selector matches, or inside one |
+| `{"event": {"type": "navigation", "value": "/users/{id}"}}` | arriving at a screen; `{id}` is one non-empty segment |
+| `{"event": {"type": "log", "value": "Profile loaded", "mode": "contains"}}` | a `Traceway.log` line or a `capture(message:)` (`exact` by default) |
+
+A `hover` step never matches: a touch screen has no hover. Steps match in order, each within its `withinSeconds` of the previous one; progress survives an app restart within the session. When a trigger that asks for replay fires, the session lists it as a recording reason with its sequence.
+
+The step format is the browser SDK's, so the dashboard builds and validates both the same way. What a selector and a route pattern are compared with is different, because an iOS app has no DOM and no URL. The two sections below are the whole of that difference.
+
+#### Element selectors: naming views
+
+A click step takes a selector in CSS syntax. When a finger lifts, the SDK finds the view it touched: the view UIKit's hit-testing returns, and below it the topmost visible subview under the finger, because labels and image views do not take touches but are what a user sees and taps. It takes the chain from that view up to its window and runs the selector over the chain. A tap matches when the view under the finger or any of its superviews matches, the way a browser click matches its target or an ancestor.
+
+Each part of the syntax reads one property of a view:
+
+| Selector | Browser equivalent | Matches a view that |
+|----------|--------------------|---------------------|
+| `UIButton`, `CheckoutButton` | tag name | is of that class. The module and generic arguments are left out (`Shop.CheckoutButton<Int>` is `CheckoutButton`), and case is ignored; `*` is any view |
+| `#checkout` | `id` attribute | has `accessibilityIdentifier = "checkout"` |
+| `.button` | class | has that role, from its accessibility traits or its class: `button`, `link`, `header`, `image` (also any `UIImageView`), `textField` (`UITextField`, `UITextView`, the search field trait), `slider` (`UISlider`, the adjustable trait), `toggle` (`UISwitch`, the toggle button trait on iOS 17), `selected` |
+| `[key="42"]` | attribute | has `tag = 42` |
+| `[identifier="..."]` | attribute | has that `accessibilityIdentifier` |
+| `[label="Delete"]` | attribute | has that `accessibilityLabel`: its own, else the first one directly below it, as long as each view down there has a single subview (an icon button's image view) |
+| `[text="Pay"]` | none | shows that text: a label's text or a button's title, else the text of up to three labels under it, joined by a space. Never the content of a text field or text view |
+| `[type="_Private"]` | none | is of a class that cannot be written as a tag |
+
+Only these five attribute names exist. A view has no `data-*` attributes; give it an `accessibilityIdentifier` instead.
+
+```swift
+// #pay, or UIButton#pay
+payButton.accessibilityIdentifier = "pay"
+
+// UIButton[label="Delete"]
+deleteButton.accessibilityLabel = "Delete"
+
+// UIButton[text="Pay now"], when nothing better exists
+payButton.setTitle("Pay now", for: .normal)
+
+// #cart UIButton: any button inside the view identified as cart
+cartView.accessibilityIdentifier = "cart"
+```
+
+The rules the dashboard and the SDK both apply:
+
+- Attribute values take `=`, `^=` (starts with), `$=` (ends with), `*=` (contains), `~=` (one of its words) and `|=`. Quote a value that is not a plain name: `[key="42"]`, not `[key=42]`.
+- A selector is at most 256 characters and cannot contain `:`, `,` or `\`, also inside a quoted value. Pseudo-classes and selector lists are therefore not available, and `[text="Total: 5"]` is refused: match the start instead, `[text^="Total"]`.
+- Combinators are descendant (space), child (`>`), adjacent (`+`) and general (`~`) sibling, over the view hierarchy: siblings are subviews of the same superview, in their order. A `UIButton` holds its title in a label and, with a configuration, background views, so use the descendant combinator (`#cart UIButton`) rather than `>` across them.
+- A selector that names text depends on the copy: it stops matching when the wording changes or the app runs in another language. `accessibilityIdentifier`s, the handles UI tests already use, are the stable choice.
+- **SwiftUI** draws its controls without views of their own. A tap on a SwiftUI button finds the hosting view, so a selector cannot name one SwiftUI control, and `.accessibilityIdentifier` on a SwiftUI view is not read. Target SwiftUI journeys with navigation steps (`.tracewayScreen`) and log steps instead. UIKit views inside SwiftUI (`UIViewRepresentable`) are views like any other.
+- `captureUserActions: false` turns taps off, and click steps with them.
+
+You rarely write a selector by hand. Every tap is recorded as `browser.user_action.click` with the selector of the view that handled it (`browser.css_selector`), and the **Actions** list of a session shows it, for example `UIButton#pay` or `UIButton[text="Pay now"]`. Copy it into a click step as it is: the SDK only records a selector it has checked against the tapped view. The view that handled the tap is the nearest control above the finger (a `UIControl`, a table or collection view cell, or a view with its own tap or long-press gesture recognizer; a view controller's root view does not count), else the nearest label or image view, else the view under the finger. Its selector is the first of these that exists and matches: an `accessibilityIdentifier` (its own, a wrapper's up to six levels above, or one inside it), its `tag`, the text it shows (up to 40 characters), its label, a role, the class with the nearest identified superview in front (`#cart UIButton`), and the class alone. The record also carries `app.widget.name` (the class), `app.widget.id`, `app.widget.text`, `app.widget.label` and `app.screen.name`. The text and the label of a view inside a [privacy mask](#privacy-masking), or of a secure text field, are never sent.
+
+#### Navigation: naming screens
+
+A navigation step is compared with the path of the screen the user arrives at. The SDK records a screen each time a view controller appears, and the app can report screens no view controller names:
+
+| In the app | Reported path | A step that matches |
+|------------|---------------|---------------------|
+| `CheckoutViewController` appears | `/CheckoutViewController` | `/CheckoutViewController` |
+| `UIHostingController(rootView: ProfileView())` appears | `/ProfileView` | `/ProfileView` |
+| `OrderView(order: order).tracewayScreen("/orders/\(order.id)")` | `/orders/8841` | `/orders/{id}` |
+| `Traceway.recordNavigation("/orders/8841?tab=items")` | `/orders/8841?tab=items` | `/orders/{id}` |
+
+Navigation, tab, split and page view controllers are containers, not screens, and neither are child view controllers embedded in another screen or the system's own controllers (alerts, the keyboard's). A SwiftUI app that navigates inside one hosting controller (`NavigationStack`) reports one screen unless its views call `.tracewayScreen`, which records the path each time the view appears.
+
+How a pattern is compared:
+
+- Only the path counts. A query string and a fragment are dropped before matching, and a pattern cannot contain `?`, `#` or `*`.
+- A pattern starts with `/` and must have the same number of segments as the path. `/users/{id}` does not match `/users/42/edit`.
+- `{name}` stands for exactly one non-empty segment and must be the whole segment. Every other segment compares as written, case-sensitively.
+- `captureNavigation: false` turns navigation off, and navigation steps with it.
+
+The same path is shown on each navigation row of the session timeline and as the address of the replay.
+
+## Breadcrumbs
+
+Breadcrumbs are OpenTelemetry records held in the ring buffer and shown on the session timeline next to the exception that flushed them:
+
+- **Logs**: every `Traceway.log` line, with its severity (`.trace`, `.debug`, `.info`, `.warn`, `.error`, `.fatal`). `print`, `NSLog` and `os_log` output is not captured.
+- **Network**: every URLSession request as a client span (method, URL, status, duration, `error.type`) by the official `URLSessionInstrumentation` of `opentelemetry-swift`, with the stable HTTP semantic conventions. The SDK's own requests are never recorded.
+- **Navigation**: view controllers that appear, `.tracewayScreen` and `Traceway.recordNavigation`; see [naming screens](#navigation-naming-screens).
+- **Taps**: every tap, with the selector, class, identifier, shown text and label of the view, and the screen (`browser.user_action.click`, with the OpenTelemetry `app.widget.*` and `app.screen.*` attributes).
+- **Custom**: `Traceway.recordAction` and `Traceway.track`, and spans you make with `Traceway.tracer`.
+
+### Connect requests to backend traces
+
+`propagateTraceHeaderUrls` lists the URL prefixes whose requests carry a W3C `traceparent` header naming the request's client span, so the backend's spans join the app's trace in Traceway or any OpenTelemetry backend:
+
+```swift
+TracewayOptions(propagateTraceHeaderUrls: ["https://api.example.com/"])
+```
+
+It is empty by default, because a header a server does not expect can break a strict request-signature check. Requests to Traceway and to the `telemetry` receivers never carry it. The backend must extract `traceparent`, as any OpenTelemetry HTTP instrumentation does; see [distributed tracing](/client/js-sdk/distributed-tracing) for the same mechanism in the browser SDK.
+
+### Disabling channels
+
+Each channel can be turned off in `TracewayOptions`. No remote setting can turn it back on:
+
+```swift
+TracewayOptions(
+    captureLogs: false,         // Traceway.log
+    captureNetwork: false,      // URLSession requests
+    captureNavigation: false,   // screens
+    captureUserActions: false   // taps
+)
+```
+
+## Session Replay
+
+```swift
+TracewayOptions(screenCapture: true)
+```
+
+The SDK records the view hierarchy, never pixels. Up to `fps` times a second it walks the app's windows and turns what they show into HTML: views with their background colors, corners, borders, shadows, opacity, clipping, transforms and scroll positions; labels with their font size, weight, style and color, alignment, line breaking, and rich text runs; buttons, text fields and text views; and switches, sliders, segmented controls, steppers, progress views, page controls and activity indicators drawn from their state. SF Symbols and template images keep their shape, monochrome symbols in their tint and palette or multicolor symbols in their own colors. What changes from one frame to the next becomes an rrweb mutation, so the dashboard replays the session with the same player as a browser session, taps and drags included, and a frame is kept only when the screen changed. iOS 26's Liquid Glass bars, buttons, alerts and sheets are drawn as frosted shapes.
+
+- **Small and cheap.** Nothing is drawn or encoded: a segment is a few kilobytes of JSON, and the walk runs on the main thread only to read properties UIKit already holds.
+- **Not pixel-exact.** Text is drawn in the browser's system font. Photos and other images are placeholders. Views that draw themselves in `draw(_:)` are dashed outlines, and web views, maps, video, camera and Metal views are labeled placeholders.
+- **SwiftUI** draws most of its content without views of its own. Its colors, shapes, gradients and symbols are recorded from its layers, and UIKit controls it hosts (a `Toggle`'s switch) as UIKit. Its text is readable only through accessibility, which iOS fills in while an assistive technology such as VoiceOver runs. Otherwise each `Text` is a neutral bar where its lines are, the way masked text would be.
+- **Privacy.** Text typed into fields is replaced with `*` unless a rule sets `replay.maskAllInputs: false`; secure fields always show bullets. The keyboard is a plain box, never its keys. See [Privacy Masking](#privacy-masking).
+
+Clips follow the same rules as breadcrumbs: the last `maxBufferFrames` frames stay on the device, an exception uploads the clip of the last 30 seconds, linked to the exception, and captures stream the session as segments. Replays always go to Traceway, also when `telemetry` sends the other signals elsewhere. Standalone, nothing is recorded. A replay always is a wireframe: a rule's `replay.captureMode` is for the Flutter SDK and is ignored.
+
+## Privacy Masking
+
+Masks hide content in session replays only; the app itself shows no change. The text and the label of a masked view are also left out of recorded taps.
+
+```swift
+// UIKit
+cardNumberLabel.tracewayPrivacyMask = .blank()                 // a black box; nothing inside is recorded
+profileView.tracewayPrivacyMask = .blur                        // the layout stays; text becomes *, images placeholders
+balanceView.tracewayPrivacyMask = .blank(color: .systemGray5)  // a box of another color
+
+// SwiftUI
+Text(card.number).tracewayPrivacyMask(.blank(color: .gray))
+ProfileView().tracewayPrivacyMask()                            // .blur
+```
+
+A SwiftUI mask covers whatever is drawn under its frame, so it also hides SwiftUI content that has no view of its own.
+
+## What Gets Captured Automatically
+
+After `Traceway.start(...)`:
+
+- **Uncaught `NSException`s**, the Objective-C and UIKit exceptions that escape to the top of the stack: written to disk on the crashing thread and sent for up to two seconds before the app ends.
+- **Fatal signals**: Swift runtime traps such as force-unwrapping `nil`, an out-of-bounds index, `fatalError()` and integer overflow, and bad memory access (`SIGTRAP`, `SIGILL`, `SIGABRT`, `SIGSEGV`, `SIGBUS`, `SIGFPE`). An async-signal-safe handler writes them to disk, and they are reported on the **next launch**, with the session they happened in.
+
+Stack traces carry the binary images' UUIDs and offsets, which the server symbolicates; see [Release Symbolication](#release-symbolication-dsym-upload).
+
+## Release Symbolication (dSYM upload)
+
+A release build ships stripped, so crash traces arrive as bare image offsets with no function names or line numbers. Upload the build's `.dSYM` and Traceway symbolicates those traces server-side, turning each frame into `function (file:line:col)`, for errors and crashes alike.
+
+The SDK ships an uploader script. Add an Xcode **Run Script** build phase that invokes it:
+
+```sh
+"$SRCROOT/path/to/Scripts/upload_symbols.sh"
+```
+
+The script no-ops on non-Release builds and when the token is unset, so it is safe to leave in place. Set two environment variables for the phase:
+
+- `TRACEWAY_UPLOAD_TOKEN`: your project's **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your connection string.
+- `TRACEWAY_URL`: your Traceway base URL (or `/api/report` URL); the script derives the upload URL from it.
+
+See [iOS symbolication](/symbolicator/ios) for the full reference: the script flags, the raw HTTP upload contract for CI without Xcode, and how a non-symbolicated frame resolves into source. Symbolication happens on Traceway, so exceptions sent only to another backend in [standalone mode](#standalone-without-a-traceway-server) keep their raw traces.
+
 ## Test Your Integration
 
-Start with a caught error. It uploads immediately and works with the Xcode debugger attached, so it is the fastest way to confirm the wiring:
+Start with a caught error. It uploads immediately and works with the Xcode debugger attached:
 
 ```swift
 import SwiftUI
@@ -157,7 +457,7 @@ struct TracewayTestView: View {
 }
 ```
 
-Tap it and check your Traceway dashboard. The error should appear on the Issues page within a few seconds.
+Tap it and check your Traceway dashboard: the error appears on the Issues page within a few seconds, with its breadcrumbs and, with `screenCapture: true`, the replay.
 
 To verify **hard-crash** capture as well, add a second button:
 
@@ -167,21 +467,14 @@ Button("Force Crash") {
 }
 ```
 
-This one does nothing while you are running from Xcode. Hard crashes are intercepted with POSIX signal handlers, and when the debugger is attached lldb intercepts the signal first, so the SDK's handler never runs. Test it **without** the debugger: install once from Xcode, stop the debugger, launch the app from the home screen, tap the button, then relaunch and watch the report upload on the next launch.
+This one does nothing while you run from Xcode: when the debugger is attached, lldb catches the signal first, so the SDK's handler never runs. Test it **without** the debugger: install once from Xcode, stop the debugger, launch the app from the home screen, tap the button, then relaunch and watch the report upload on the next launch.
 
-## Release Symbolication (dSYM upload)
+## Migrating from 1.x
 
-A release build ships stripped, so crash traces arrive as bare image offsets with no function names or line numbers. Upload the build's `.dSYM` and Traceway symbolicates those traces server-side, turning each frame into `function (file:line:col)`. You upload the raw dSYM; there is no client-side parsing.
-
-The SDK ships an uploader script. Add an Xcode **Run Script** build phase that invokes it:
-
-```sh
-"$SRCROOT/path/to/Scripts/upload_symbols.sh"
-```
-
-The script no-ops on non-Release builds and when the token is unset, so it is safe to leave in place. Set two environment variables for the phase:
-
-- `TRACEWAY_UPLOAD_TOKEN`: your project's source map / symbol **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your connection string.
-- `TRACEWAY_URL`: your Traceway base URL (or `/api/report` URL); the script derives the upload URL from it.
-
-See [iOS symbolication](/symbolicator/ios) for the full reference: the script flags, the raw HTTP upload contract for CI without Xcode, and how a non-symbolicated frame resolves into source.
+- **Server**: 2.0 sends OTLP to `/api/otel/v1/logs` and `/api/otel/v1/traces`, polls `/api/otel/v1/opamp` and uploads replays to `/api/recordings`. There is no fallback to the 1.x `/api/report` protocol.
+- **Requirements**: Xcode 26.4 (Swift 6.3) or later, for the OpenTelemetry Swift packages.
+- **Connection string**: unchanged. `token@https://host/api/report` still works; the bare server URL works too. It is now optional: without it the SDK runs [standalone](#standalone-without-a-traceway-server).
+- **Unsent reports**: 1.x reports younger than 12 hours, and crashes 1.x recorded, are sent once over OTLP on the first 2.0 start.
+- **Behaviour**: exceptions are OpenTelemetry `exception` log events (`exception.type`, `exception.message`, `exception.stacktrace`), so issues regroup once after the upgrade. Breadcrumbs and session replay are new.
+- **Removed options**: `debounceMs`, `retryDelayMs`, `maxPendingExceptions`, `maxLocalFiles` and `localFileMaxAgeHours`.
+- **API**: `Traceway.start`, `capture(_:)`, `capture(error:)`, `capture(message:)` and `flush(timeout:)` are unchanged. New: `track`, `log`, `recordAction`, `recordNavigation`, `setAttribute(s)`, `removeAttribute`, `clearAttributes`, `shutdown`, `refreshConfig`, `instanceId`, `sessionId`, `tracer`, `tracewayPrivacyMask` and `.tracewayScreen`, and the options `serviceName`, `environment`, `attributes`, `screenCapture`, `fps`, `maxBufferFrames`, `capture*`, `recordAllSessions`, `baselineSampleRate`, `sessions`, `remoteConfig`, `collection`, `exportDelayMs`, `propagateTraceHeaderUrls` and `telemetry`.

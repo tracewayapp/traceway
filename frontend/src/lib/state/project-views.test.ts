@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isProjectViewAvailable, SDK_CONFIG_FRAMEWORKS } from './projects.svelte';
 
 describe('project view availability', () => {
-	it.each(['react-native', 'android'] as const)(
+	it.each(['react-native'] as const)(
 		'keeps browser collection and full session views off %s',
 		(framework) => {
 			expect(SDK_CONFIG_FRAMEWORKS).not.toContain(framework);
@@ -31,6 +31,26 @@ describe('project view availability', () => {
 				'/data-collection',
 				'/slos',
 				'/dashboards'
+			]) {
+				expect(isProjectViewAvailable(framework, path), path).toBe(true);
+			}
+		}
+	);
+	it.each(['flutter', 'android'] as const)(
+		'enables the session, collection, dashboard and SLO views for %s',
+		(framework) => {
+			expect(SDK_CONFIG_FRAMEWORKS).toContain(framework);
+			for (const path of [
+				'/sessions',
+				'/sessions/session-id',
+				'/data-collection',
+				'/slos',
+				'/slos/slo-id',
+				'/dashboards',
+				'/logs',
+				'/spans',
+				'/issues',
+				'/connection'
 			]) {
 				expect(isProjectViewAvailable(framework, path), path).toBe(true);
 			}

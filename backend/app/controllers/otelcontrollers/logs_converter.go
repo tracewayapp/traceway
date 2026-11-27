@@ -54,6 +54,8 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 		serviceName := getStringAttribute(resource, "service.name")
 		appVersion := getStringAttribute(resource, "service.version")
 		language := getStringAttribute(resource, "telemetry.sdk.language")
+		// The R8 build an Android app's frames belong to, as on the span path.
+		proguardUuid := getStringAttribute(resource, "app.debug.proguard_uuid")
 		// An SDK that aggregates on the device sends these numbers as metrics already.
 		countEvents := clientSide && resAttrs[clientmetrics.AttrAggregated] != clientmetrics.AggregatedValue
 		resourceSchemaUrl := rl.GetSchemaUrl()
@@ -92,7 +94,8 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 				issue := logIssue{
 					ctx: ctx, project: existingProject,
 					record: record, lr: lr, resource: resource, clientResource: clientResource,
-					serviceName: serviceName, appVersion: appVersion, language: language, ingestedAt: ingestedAt,
+					serviceName: serviceName, appVersion: appVersion, language: language, proguardUuid: proguardUuid,
+					ingestedAt: ingestedAt,
 				}
 				switch eventName {
 				case eventException:
@@ -128,6 +131,7 @@ type logIssue struct {
 	serviceName    string
 	appVersion     string
 	language       string
+	proguardUuid   string
 	ingestedAt     time.Time
 }
 
@@ -136,7 +140,9 @@ type logIssue struct {
 func (l logIssue) exception(projectId uuid.UUID) models.ExceptionStackTrace {
 	attrs := l.record.LogAttributes
 	stackTrace := formatExceptionStackTrace(attrs["exception.type"], attrs["exception.message"], attrs["exception.stacktrace"])
-	// Dart symbolication reads the error line together with the frames, so it runs on the formatted trace.
+	// Dart symbolication reads the error line together with the frames, so it runs on the formatted trace; so does
+	// R8 retracing, which also restores the exception's class in that line, as on the span path.
+	stackTrace = otelSymbolicateAndroid(l.project, projectId, l.ctx, stackTrace, l.language, l.proguardUuid)
 	stackTrace = otelSymbolicateDart(l.project, projectId, l.ctx, stackTrace, l.language)
 	return l.row(projectId, stackTrace, clientcontrollers.ComputeExceptionHash(stackTrace, false), false)
 }
@@ -183,9 +189,11 @@ func (l logIssue) row(projectId uuid.UUID, stackTrace, hash string, isMessage bo
 	}
 }
 
-// tracewaySDKScopes are the instrumentation scopes of Traceway's own SDKs: the browser, Flutter and iOS SDKs. The
-// session page shows their version, which tells whether a client applies remote collection settings.
-var tracewaySDKScopes = map[string]bool{"@tracewayapp/frontend": true, "traceway-flutter": true, "traceway-ios": true}
+// tracewaySDKScopes are the instrumentation scopes of Traceway's own SDKs: the browser, Flutter, iOS and Android
+// SDKs. The session page shows their version, which tells whether a client applies remote collection settings.
+var tracewaySDKScopes = map[string]bool{
+	"@tracewayapp/frontend": true, "traceway-flutter": true, "traceway-ios": true, "traceway-android": true,
+}
 
 // sessionFromLog turns a lifecycle event into a session upsert. Every event must name the session's start: on
 // ClickHouse started_at is part of the sorting key, so an update with a different start would create a second

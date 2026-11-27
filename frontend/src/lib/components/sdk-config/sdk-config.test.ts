@@ -155,13 +155,30 @@ describe('log-line triggers', () => {
 
 	it('offers an iOS project the app signals, in its terms', () => {
 		const ios = signalsFor('ios');
-		expect(ios.map((signal) => signal.key)).toEqual(signalsFor('flutter').map((signal) => signal.key));
+		expect(ios.map((signal) => signal.key)).toEqual(
+			signalsFor('flutter').map((signal) => signal.key)
+		);
 		expect(ios.find((signal) => signal.key === 'console')?.hint).toBe('Traceway.log lines');
 		expect(ios.find((signal) => signal.key === 'network')?.hint).toBe('URLSession requests');
 		expect(sdkPlatform('ios')).toBe('ios');
 		expect(sdkPlatform('flutter')).toBe('flutter');
 		expect(sdkPlatform('react')).toBe('browser');
 		expect(SDK_PLATFORM_NAMES[sdkPlatform('ios')]).toBe('iOS');
+	});
+
+	it('offers an Android project the app signals, in its terms', () => {
+		const android = signalsFor('android');
+		expect(android.map((signal) => signal.key)).toEqual(
+			signalsFor('flutter').map((signal) => signal.key)
+		);
+		expect(android.find((signal) => signal.key === 'console')?.hint).toBe(
+			'System.out/err lines and Traceway.recordLog'
+		);
+		expect(android.find((signal) => signal.key === 'network')?.hint).toBe(
+			'OkHttp calls and startRequest/endRequest'
+		);
+		expect(sdkPlatform('android')).toBe('android');
+		expect(SDK_PLATFORM_NAMES[sdkPlatform('android')]).toBe('Android');
 	});
 
 	it('gives a template an id no other rule of the project uses', () => {

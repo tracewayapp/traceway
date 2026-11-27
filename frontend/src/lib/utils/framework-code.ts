@@ -39,7 +39,8 @@ export function getInstallCommand(framework: Framework): string {
 			// 2.x is a prerelease on pub.dev: without the constraint pub installs 1.x.
 			return `flutter pub add 'traceway:^2.0.0-beta.1'`;
 		case 'android':
-			return 'implementation("com.tracewayapp:traceway:1.0.1")';
+			// 2.x is a beta on Maven Central; an app with minSdk below 26 also enables core library desugaring.
+			return 'implementation("com.tracewayapp:traceway:2.0.0-beta.1")';
 		case 'ios':
 			// 2.x is a beta: SwiftPM only offers prereleases to a requirement that names one.
 			return '.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "2.0.0-beta.1")';
@@ -306,7 +307,10 @@ class MyApp : Application() {
         Traceway.init(
             application = this,
             connectionString = "${connectionString}",
-            options = TracewayOptions(version = "1.0.0"),
+            options = TracewayOptions(
+                version = "1.0.0",
+                screenCapture = true,
+            ),
         )
     }
 }`;

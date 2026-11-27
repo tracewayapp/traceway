@@ -4,33 +4,36 @@ iOS and other Apple apps have two integration paths. Pick by what the app is wri
 
 | App | Path |
 |---|---|
-| **Native Swift** (SwiftUI or UIKit) | The Traceway iOS SDK (below). Recommended. Native crash and error capture, reports to `/api/report` like the other Traceway mobile SDKs. |
+| **Native Swift** (SwiftUI or UIKit) | The Traceway iOS SDK (below). Recommended. Crashes and errors with their breadcrumbs, sessions, wireframe session replay, and remote collection settings. |
 | **Anything else** (Objective-C only, a cross-platform stack with no Traceway mobile SDK, or a team already standardized on OpenTelemetry) | An OpenTelemetry distribution such as Honeycomb's, with its OTLP exporter repointed at Traceway. See "Non-Swift apps" at the bottom. |
-
-The Traceway iOS SDK reports **errors and crashes only**. There is no session or video replay (unlike Flutter). It speaks the same `/api/report` wire format as the Android, Flutter, and JS SDKs, so the backend ingests it with no server changes.
 
 ## Swift apps: the Traceway iOS SDK
 
-The SDK lives at `github.com/tracewayapp/traceway-ios`. Pure Swift, zero third-party dependencies, distributed via Swift Package Manager.
+The SDK lives at `github.com/tracewayapp/traceway-ios` and is distributed with Swift Package Manager. Docs (2.x): https://docs.tracewayapp.com/client/ios
 
-### Requirements
+### Choose the version
 
-- iOS 13.0+
-- Swift 5.9+ / Xcode 15+
+There are two generations with the same entry point (`Traceway.start`) and connection string:
+
+- **0.1.x** (the stable release): errors and crashes only, sent to `/api/report`, no third-party dependencies.
+- **2.x** (the 2.x prerelease, `2.0.0-beta.N`): rebuilt on the official OpenTelemetry Swift SDK. Logs and spans go as OTLP/HTTP to `/api/otel/v1/logs` and `/api/otel/v1/traces`, wireframe replays to `/api/recordings`, and the SDK polls `/api/otel/v1/opamp` for the iOS project's **Data Collection** rules. It needs Xcode 26.4 (Swift 6.3) or later and a Traceway server that accepts iOS projects on those endpoints; there is no fallback to `/api/report`. It sends no app performance metrics.
+
+Read the resolved version from `Package.resolved`. Keep an existing app on its major, and move a 0.1.x app to 2.x only when the user asks for it or for something only 2.x has (breadcrumbs, sessions, session replay, remote config, captures and recording triggers, network spans and trace propagation, sending telemetry to another OpenTelemetry backend). A new integration installs the 2.x prerelease, the line the project's Connection page shows, when the Traceway server accepts iOS projects on OTLP and OpAMP and the team builds with Xcode 26.4 or later; otherwise it installs 0.1.x. Moving to 2.x removes the options `debounceMs`, `retryDelayMs`, `maxPendingExceptions`, `maxLocalFiles` and `localFileMaxAgeHours`; delete them from the call. Unsent 0.1.x reports younger than 12 hours are sent once on the first 2.0 start.
 
 ### Install (Swift Package Manager)
 
-In Xcode: **File > Add Package Dependencies...** and enter `https://github.com/tracewayapp/traceway-ios.git`, or add it to `Package.swift`:
+In Xcode: **File > Add Package Dependencies...**, enter `https://github.com/tracewayapp/traceway-ios.git` and ask for `2.0.0-beta.1` or later, or add it to `Package.swift` (SwiftPM only offers a prerelease to a requirement that names one):
 
 ```swift
-.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "0.1.0"),
+.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "2.0.0-beta.1"),   // 2.x
+.package(url: "https://github.com/tracewayapp/traceway-ios.git", from: "0.1.0"),          // 0.1.x
 ```
 
-then add `"Traceway"` to the app target's dependencies.
+then add the `Traceway` product to the app target: `.product(name: "Traceway", package: "traceway-ios")` (the package identity and the product name differ).
 
 ### Initialize
 
-Call `Traceway.start` as early as possible, in the `App` initializer (SwiftUI) or `application(_:didFinishLaunchingWithOptions:)` (UIKit). The connection string format is `<project-token>@https://<instance>/api/report`, identical to the other mobile SDKs.
+Call `Traceway.start` as early as possible, in the `App` initializer (SwiftUI) or `application(_:didFinishLaunchingWithOptions:)` (UIKit). The connection string is `<project-token>@https://<instance>`; the 1.x form ending in `/api/report` works too.
 
 **SwiftUI:**
 
@@ -42,8 +45,11 @@ import Traceway
 struct MyApp: App {
     init() {
         Traceway.start(
-            connectionString: "<project-token>@https://<instance>/api/report",
-            options: TracewayOptions(version: "1.0.0")
+            connectionString: "<project-token>@https://<instance>",
+            options: TracewayOptions(
+                version: "1.0.0",
+                screenCapture: true   // 2.x: wireframe session replay
+            )
         )
     }
 
@@ -66,8 +72,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
         Traceway.start(
-            connectionString: "<project-token>@https://<instance>/api/report",
-            options: TracewayOptions(version: "1.0.0")
+            connectionString: "<project-token>@https://<instance>",
+            options: TracewayOptions(version: "1.0.0", screenCapture: true)
         )
         return true
     }
@@ -76,12 +82,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
 Wire the token through a build setting or `Info.plist` value, not a committed literal. `Traceway.start` returns `nil` and no-ops on a malformed connection string, so a bad value fails quietly rather than crashing the host app.
 
-### What gets captured automatically
+### What gets captured automatically (2.x)
 
 After `start`:
 
-- **Uncaught `NSException`s** (Objective-C / UIKit).
-- **Fatal signals**: Swift runtime traps such as force-unwrapping `nil`, array out-of-bounds, `fatalError()`, integer overflow (surface as `SIGTRAP`, `SIGILL`, `SIGABRT`, `SIGSEGV`, ...). Hard crashes are persisted to disk and uploaded on the **next launch**, not at crash time.
+- **Uncaught `NSException`s** (Objective-C / UIKit), written to disk and sent before the app ends.
+- **Fatal signals**: Swift runtime traps such as force-unwrapping `nil`, array out-of-bounds, `fatalError()`, integer overflow (surface as `SIGTRAP`, `SIGILL`, `SIGABRT`, `SIGSEGV`, ...). Hard crashes are persisted to disk and uploaded on the **next launch**, with the session they happened in.
+- **Breadcrumbs**, kept in a ring buffer on the device and uploaded with an exception: URLSession requests (OpenTelemetry client spans), screens (view controllers that appear, `.tracewayScreen("/path")` on SwiftUI views, `Traceway.recordNavigation`), taps with the CSS-like selector of the view (`UIButton#pay`), and `Traceway.log` lines. `print` and `NSLog` are not captured.
+- **Sessions** and, with `screenCapture: true`, a **wireframe replay** of the last 30 seconds before an exception: the view hierarchy as HTML, never pixels; typed text is masked, `tracewayPrivacyMask` hides views.
 
 ### Manual capture
 
@@ -94,29 +102,31 @@ do {
 
 Traceway.capture(error: nsError)       // NSError
 Traceway.capture(message: "User completed onboarding")
+Traceway.log("Loaded 12 items")                         // 2.x breadcrumb
+Traceway.track("checkout_failed", attributes: ["reason": "card_declined"])
+Traceway.setAttribute("user.id", user.id)               // 2.x: on every later record, targetable from the dashboard
+Traceway.flush(timeout: 5)                              // send what is ready now; seconds
 ```
 
-### Forcing a flush
+Name the views users tap with `accessibilityIdentifier` (`#pay` in a recording trigger's click step) and report SwiftUI screens with `.tracewayScreen("/checkout")`; selectors and screen paths are in the docs' "Recording triggers" section.
 
-Managed (in-process) reports are batched and sent after `debounceMs`. To send immediately, for example before a known exit:
-
-```swift
-Traceway.flush(timeout: 5) // seconds; nil = wait indefinitely
-```
-
-### Options (`TracewayOptions`)
+### Options (`TracewayOptions`, 2.x)
 
 | Option | Default | Description |
 |---|---|---|
-| `sampleRate` | `1.0` | Fraction of exceptions to keep (0.0 to 1.0). |
+| `sampleRate` | `1.0` | Fraction of exceptions and messages to report (0.0 to 1.0). |
 | `debug` | `false` | Log SDK activity via `NSLog`. |
-| `version` | `""` | App version, sent as `appVersion` (enables release comparison). |
-| `debounceMs` | `1500` | Delay before batching and uploading. |
-| `retryDelayMs` | `10000` | Delay before retrying a failed upload. |
-| `maxPendingExceptions` | `5` | In-memory cap; oldest is dropped when exceeded. |
-| `persistToDisk` | `true` | Persist pending reports so they survive restarts (required for hard-crash capture). |
-| `maxLocalFiles` | `5` | Max persisted report files. |
-| `localFileMaxAgeHours` | `12` | Delete unsynced files older than this. |
+| `version` | bundle version | App version, sent as `service.version` (enables release comparison). |
+| `serviceName` / `environment` | bundle id / none | `service.name` and `deployment.environment.name`. |
+| `screenCapture` | `false` | Wireframe session replay. |
+| `persistToDisk` | `true` | Keep state, the ring buffer and undelivered telemetry on disk (required for hard-crash capture). |
+| `captureLogs` / `captureNetwork` / `captureNavigation` / `captureUserActions` | `true` | Ceilings for `Traceway.log`, URLSession requests, screens and taps; no remote rule can turn one back on. |
+| `remoteConfig` | `true` | Poll OpAMP for the Data Collection rules. |
+| `collection` | none | Local collection settings, the same document as a rule. |
+| `propagateTraceHeaderUrls` | `[]` | URL prefixes whose requests carry W3C `traceparent`. |
+| `telemetry` | none | Send ordinary logs and spans to another OTLP/HTTP receiver too; without a connection string, only there. |
+
+0.1.x has `sampleRate`, `debug`, `version`, `persistToDisk` and its batching options `debounceMs`, `retryDelayMs`, `maxPendingExceptions`, `maxLocalFiles`, `localFileMaxAgeHours`.
 
 ### Testing crash capture (debugger caveat)
 
@@ -124,7 +134,7 @@ Hard crashes are intercepted with POSIX signal handlers. When the **Xcode debugg
 
 ### Symbolication: upload dSYMs
 
-Release crash reports arrive as bare instruction addresses against each loaded binary image. They stay unreadable until Traceway resolves them server-side against the build's **dSYM** debug symbols (the Apple equivalent of JavaScript source maps). Upload the dSYMs on every release build; a crash only resolves against the exact build it came from.
+Release crash reports arrive as bare instruction addresses against each loaded binary image. They stay unreadable until Traceway resolves them server-side against the build's **dSYM** debug symbols (the Apple equivalent of JavaScript source maps), for errors and crashes alike and with both SDK generations. Upload the dSYMs on every release build; a crash only resolves against the exact build it came from.
 
 **Token.** Symbol uploads authenticate with the dedicated **upload token** (Connection page > Source Maps / Symbol Upload), NOT the project token from the connection string. It is a CI secret, never committed. `readonly` members cannot generate one. The upload endpoint is `https://<instance>/api/symbols/upload`.
 
@@ -162,7 +172,7 @@ Self-hosted instances must have blob storage (S3 or a persistent volume) configu
 
 ### Verify
 
-1. In a Debug build, tap a button that calls `Traceway.capture(SomeError())`, then `Traceway.flush(timeout: 5)`, and confirm it appears on the Issues page within a few seconds.
+1. In a Debug build, tap a button that calls `Traceway.capture(SomeError())`, then `Traceway.flush(timeout: 5)`, and confirm it appears on the Issues page within a few seconds. With 2.x, open the issue: its breadcrumbs and, with `screenCapture: true`, the replay are there, and the project's **Sessions** page lists the session.
 2. For hard crashes: build a Release configuration, run it **without the debugger** (home-screen launch), trigger a crash (force-unwrap `nil`, `fatalError()`, ...), relaunch the app, and confirm the crash shows up on Issues.
 3. After uploading dSYMs for that Release build, confirm the crash stack trace shows real symbol names and `file:line`, not bare addresses.
 
@@ -202,4 +212,4 @@ No Honeycomb API key is needed. `build()` only demands one when the resolved end
 
 Constraints are the backend OTLP rules: OTLP/HTTP only (protobuf or JSON), OTLP/gRPC is NOT supported, gzip is fine, max request body 10 MB.
 
-How the data shows up follows the standard classification in `data-model.md`: recorded `exception` events become **Issues**, instrumented network calls and screen transitions become spans, and any span carrying HTTP attributes that looks like a root request becomes an **Endpoint**. Verify on the Issues page first: throw or record a test error and confirm it appears.
+How the data shows up follows the standard classification in `data-model.md`: recorded `exception` events become **Issues**, and instrumented network calls and screen transitions become spans. An iOS project treats its telemetry as an end user's device: issues keep the resource's device and user attributes, and spans stay spans instead of becoming **Endpoints**. Verify on the Issues page first: throw or record a test error and confirm it appears.

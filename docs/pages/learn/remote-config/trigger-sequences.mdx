@@ -2,11 +2,11 @@
 
 Build an ordered sequence of clicks, hovers, navigations and log messages in **Data Collection → New Rule → Add recording trigger**. When a browser completes the sequence, it requests a replay capture. Sessions show the trigger name and a readable sequence, so you can find the visits that followed that journey.
 
-Recording triggers need browser SDK 2.0 or later (`@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version) or the Flutter SDK 2.x, where click and hover steps match widgets and navigation steps match routes (see [Recording triggers](/client/flutter#recording-triggers)). The SDK advertises `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client the rule matches gets it. An SDK that cannot read one of these event matchers drops the whole trigger, and the legacy 1.x SDK never polls for rules, so [upgrade](/client/js-sdk/migration) the browser integration before relying on one; the Flutter SDK 1.x never polls either. The builder is shown for browser projects (React, Vue, Svelte, jQuery) and Flutter projects.
+Recording triggers need browser SDK 2.0 or later (`@tracewayapp/frontend`, or the React, Vue, Svelte or jQuery wrapper of the same version) or the Flutter SDK 2.x, where click and hover steps match widgets and navigation steps match routes (see [Recording triggers](/client/flutter#recording-triggers)), or the Android SDK 2.x, where they match views and Compose nodes and navigation steps match screens (see [Recording triggers](/client/android#recording-triggers)), or the iOS SDK 2.x, where click steps match views and navigation steps match screens (see [Recording triggers](/client/ios#recording-triggers)). The SDK advertises `io.traceway.sdk.sequence-triggers/v1` over OpAMP, but the server does not act on it: every client the rule matches gets it. An SDK that cannot read one of these event matchers drops the whole trigger, and the legacy 1.x SDK never polls for rules, so [upgrade](/client/js-sdk/migration) the browser integration before relying on one; the Flutter, iOS and Android SDKs 1.x never poll either. The builder is shown for browser projects (React, Vue, Svelte, jQuery), Flutter, iOS and Android projects.
 
 ## Build a sequence without writing a query
 
-1. Select the browser or Flutter project and open **Data Collection** in its sidebar.
+1. Select the browser, Flutter, iOS or Android project and open **Data Collection** in its sidebar.
 2. Create a Rule. Use the rule's targeting controls to choose the release, environment or cohort that should receive it.
 3. Add a recording trigger and give it a recognizable name, such as **Open user journey**.
 4. Add **Click** with `#open-user`, **Navigation** with `/users/{id}`, and **Log** with `User loaded`. Choose exact or contains matching for the log.
@@ -51,9 +51,52 @@ A navigation step for `/users/{id}` matches a route named `/users/42`. A route w
 
 You do not have to work a selector out: open a session of the app and copy it from the **Actions** list, where every tap is shown with the selector the SDK recorded for it. The full rules, with Dart examples, are in the Flutter guide: [element selectors](/client/flutter#element-selectors-naming-widgets) and [navigation](/client/flutter#navigation-naming-routes).
 
+### In an Android app
+
+An Android project's builder also labels the steps **Tap**, **Hover**, **Navigation** and **Log**, and compares them with the views on screen:
+
+| Event | Browser | Android |
+| --- | --- | --- |
+| Click (Tap) | The clicked element or an ancestor matches the CSS selector | The view or Compose node under the finger, or one of its parents, matches the selector |
+| Hover | A pointer enters a matching element | A mouse or trackpad pointer enters a matching view (ChromeOS, tablets with a mouse); fingers and styluses do not hover |
+| Navigation | The pathname of the page's URL | The screen on top: `/` and the activity's or AndroidX fragment's class, such as `/CheckoutActivity`, or the path the app reports with `Traceway.recordNavigation` |
+| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `System.out` (info) or `System.err` (error) line, a `Traceway.recordLog` line at its level, or a `captureMessage` |
+
+A view selector uses the same syntax, read against views and Compose semantics nodes:
+
+| Selector | In a browser | In Android |
+| --- | --- | --- |
+| `button`, `MaterialButton` | Tag name | View class, or a superclass of it (`Button` matches a `MaterialButton`); a Compose node's role (`Button`, `Checkbox`, `Switch`, `Tab`, `Image`) or kind (`Text`, `TextField`, `Slider`) |
+| `#pay` | `id="pay"` | `android:id="@+id/pay"` or `Modifier.testTag("pay")` |
+| `.button` | Class | Role: `button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected` |
+| `[name="value"]` | Any attribute, such as `data-action` | One of `key` (`android:tag`), `identifier`, `label` (content description or tooltip), `text` (the text shown) and `type` (a class name) |
+
+A navigation step for `/users/{id}` matches a screen reported as `/users/42`. Copy selectors from a session's **Actions** list, where each tap shows the one the SDK recorded. The full rules, with Kotlin examples, are in the Android guide: [element selectors](/client/android#element-selectors-naming-views) and [navigation](/client/android#navigation-naming-screens).
+
+### In an iOS app
+
+An iOS project's builder labels the steps **Tap**, **Navigation** and **Log**. It offers no **Hover**: a touch screen has none, and a hover step never matches on iOS. Steps are compared with the views on screen:
+
+| Event | Browser | iOS |
+| --- | --- | --- |
+| Click (Tap) | The clicked element or an ancestor matches the CSS selector | The view under the finger, or one of its superviews, matches the selector |
+| Navigation | The pathname of the page's URL | The screen: `/` and the class of the view controller that appeared, such as `/CheckoutViewController`, or the path the app reports with `.tracewayScreen` or `Traceway.recordNavigation` |
+| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `Traceway.log` line at its severity, or a `Traceway.capture(message:)` |
+
+A view selector uses the same syntax, read against the view hierarchy:
+
+| Selector | In a browser | In iOS |
+| --- | --- | --- |
+| `button`, `UIButton` | Tag name | The view's class, without its module (`CheckoutButton` for `Shop.CheckoutButton`); any case |
+| `#pay` | `id="pay"` | `accessibilityIdentifier = "pay"` |
+| `.button` | Class | A role from the view's accessibility traits or class: `button`, `link`, `header`, `image`, `textField`, `slider`, `toggle`, `selected` |
+| `[name="value"]` | Any attribute, such as `data-action` | One of `key` (the view's `tag`), `identifier`, `label` (`accessibilityLabel`), `text` (the text a label or button shows) and `type` (a class name) |
+
+SwiftUI draws its controls without views of their own, so a selector can name a SwiftUI screen's hosting view but not one SwiftUI button. Copy selectors from a session's **Actions** list, where each tap shows the one the SDK recorded, such as `UIButton#pay`. The full rules, with Swift examples, are in the iOS guide: [element selectors](/client/ios#element-selectors-naming-views) and [navigation](/client/ios#navigation-naming-screens).
+
 One event advances at most one step. Unrelated events do not complete the next step, and they do not undo progress either: when the first step happens again in the middle of a sequence (the user hovers the menu a second time, an error storm continues), the sequence already under way keeps going and a second one starts beside it. Each later step has a timeout measured from the step before it; progress older than that is dropped. A path is matched as it reads, so `/café` matches the address the browser reports as `/caf%C3%A9`. A new trigger defaults to a 60-second lookback, 30-second capture, 60-second cooldown and three fires per session. The lookback can include only replay already present in the bounded local buffer.
 
-Pending progress is stored in **sessionStorage**, scoped to the project token and session. A same-origin full-page navigation in the same tab can continue it after remote settings load. It does not join journeys across tabs, origins or sessions. Changed steps or actions invalidate pending progress. If storage is unavailable, the current page still evaluates the sequence but reload recovery is unavailable. A Flutter app keeps pending progress on disk, so a sequence continues after the app restarts within the same session.
+Pending progress is stored in **sessionStorage**, scoped to the project token and session. A same-origin full-page navigation in the same tab can continue it after remote settings load. It does not join journeys across tabs, origins or sessions. Changed steps or actions invalidate pending progress. If storage is unavailable, the current page still evaluates the sequence but reload recovery is unavailable. A Flutter, iOS or Android app keeps pending progress on disk, so a sequence continues after the app restarts within the same session.
 
 ## Find sessions by recording trigger
 

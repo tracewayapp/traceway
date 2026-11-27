@@ -151,7 +151,8 @@
 									class="h-9 w-full rounded-md border bg-background px-2 text-sm"
 									bind:value={step.match.event.type}
 									{disabled}
-									><option value="click">{app ? 'Tap' : 'Click'}</option>{#if platform !== 'ios' || step.match.event.type === 'hover'}<option
+									><option value="click">{app ? 'Tap' : 'Click'}</option
+									>{#if platform !== 'ios' || step.match.event.type === 'hover'}<option
 											value="hover">Hover</option
 										>{/if}<option value="navigation">Navigation</option><option value="log"
 										>Log</option
@@ -166,7 +167,7 @@
 											? 'Log message'
 											: platform === 'flutter'
 												? 'Widget selector'
-												: platform === 'ios'
+												: platform === 'ios' || platform === 'android'
 													? 'View selector'
 													: 'CSS selector'}</Label
 								><Input
@@ -180,7 +181,9 @@
 												? '#pay or ElevatedButton[text="Pay now"]'
 												: platform === 'ios'
 													? '#pay or UIButton[text="Pay now"]'
-													: '#someId .some-class'}
+													: platform === 'android'
+														? '#pay or MaterialButton[text="Pay now"]'
+														: '#someId .some-class'}
 									{disabled}
 								/>
 							</div>
@@ -273,8 +276,8 @@
 	{#if platform === 'ios'}
 		<p class="text-xs text-muted-foreground">
 			Selectors name views with CSS syntax: a class such as <code>UIButton</code>,
-			<code>#pay</code> for an <code>accessibilityIdentifier</code>, <code>[text="Pay now"]</code> for
-			the text a label or button shows, <code>[label="Delete"]</code> for an
+			<code>#pay</code> for an <code>accessibilityIdentifier</code>, <code>[text="Pay now"]</code>
+			for the text a label or button shows, <code>[label="Delete"]</code> for an
 			<code>accessibilityLabel</code>, <code>.button</code> for accessibility traits,
 			<code>[key="42"]</code> for a <code>tag</code>, and combinators; pseudo-classes and selector
 			lists are not supported. A tap matches the view under the finger or any of its superviews; iOS
@@ -283,6 +286,21 @@
 			<code>.tracewayScreen</code> or <code>Traceway.recordNavigation</code>, like
 			<code>/users/&lbrace;id&rbrace;</code>; a parameter matches one path segment. Replay needs the
 			SDK's <code>screenCapture</code> option.
+		</p>
+	{:else if platform === 'android'}
+		<p class="text-xs text-muted-foreground">
+			Selectors name views and Compose nodes with CSS syntax: a class such as
+			<code>MaterialButton</code> (subclasses match, so <code>Button</code> does too),
+			<code>#pay</code> for <code>R.id.pay</code> or <code>Modifier.testTag("pay")</code>,
+			<code>[text="Pay now"]</code> for the text a view shows, <code>[label="Delete"]</code> for a
+			content description, <code>.button</code> for a role, <code>[key="42"]</code> for an
+			<code>android:tag</code>, and combinators; pseudo-classes and selector lists are not
+			supported. A tap matches the view under the finger or any of its parents. Hover fires when a
+			mouse pointer enters a matching view. Route patterns match the screen path:
+			<code>/CheckoutActivity</code>,
+			<code>/CartFragment</code>, or a path the app reports with
+			<code>Traceway.recordNavigation</code>, like <code>/users/&lbrace;id&rbrace;</code>; a
+			parameter matches one path segment. Replay needs the SDK's <code>screenCapture</code> option.
 		</p>
 	{:else if platform === 'flutter'}
 		<p class="text-xs text-muted-foreground">

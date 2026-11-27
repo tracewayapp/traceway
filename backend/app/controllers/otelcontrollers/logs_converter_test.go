@@ -124,6 +124,39 @@ func TestConvertLogs_SymbolicatesIosStacktrace(t *testing.T) {
 	}
 }
 
+// The Android SDK sends an exception as a log event; with the build's R8 mapping uploaded, the issue carries the
+// original class, method and file names, as on the span path.
+func TestConvertLogs_RetracesAndroidStacktrace(t *testing.T) {
+	projectId := uuid.MustParse("00000000-0000-0000-0000-0000000000ad")
+	const proguardUuid = "6A8CB813-45F6-3652-AD33-778FD1EAB196"
+	setFakeStore(t, map[string][]byte{
+		services.AndroidMappingKey(projectId, proguardUuid): androidConvFixture(t, "r8", "mapping.txt"),
+	})
+	req := logsRequest("java", "traceway-android",
+		strKV("event.name", "exception"),
+		strKV("exception.type", "a.b"),
+		strKV("exception.message", "card declined for $30.59"),
+		strKV("exception.stacktrace", string(androidConvFixture(t, "r8", "obfuscated.txt"))),
+	)
+	req.ResourceLogs[0].Resource.Attributes = append(req.ResourceLogs[0].Resource.Attributes,
+		strKV("app.debug.proguard_uuid", proguardUuid))
+	project := tokenProject(projectId)
+	project.Framework = "android"
+	converted := convertLogs(context.Background(), project, projectId, "", req)
+	if len(converted.Exceptions) != 1 {
+		t.Fatalf("expected one issue, got %d", len(converted.Exceptions))
+	}
+	got := converted.Exceptions[0].StackTrace
+	if strings.Contains(got, "a.a.a(") {
+		t.Errorf("trace still obfuscated:\n%s", got)
+	}
+	for _, want := range []string{"com.example.demo.Checkout.chargeCard", "Checkout.java", "PaymentDeclinedException"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in the retraced issue:\n%s", want, got)
+		}
+	}
+}
+
 func TestConvertLogs_ScopeNameDetectsJs(t *testing.T) {
 	projectId := uuid.MustParse("00000000-0000-0000-0000-0000000000ab")
 	setFakeStore(t, nil)

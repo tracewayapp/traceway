@@ -430,9 +430,33 @@ func TestOpampServesIosProjects(t *testing.T) {
 	}
 }
 
+// The Android SDK's OpAMP codec is checked against opamp-go with the same AgentToServer bytes.
+func TestOpampServesAndroidProjects(t *testing.T) {
+	f := newOpampFixture(t)
+	f.project.Framework = "android"
+	f.rule("stream app logs", `{}`, `{"signals":{"console":{"mode":"stream"}},"replay":{"mode":"stream"}}`)
+	body, err := hex.DecodeString(flutterAgentToServerHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The bytes name this instance.
+	response := f.post(body, map[string]string{instanceUidHeader: "0195f2a0-0000-7000-8000-000000000001"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", response.Code, response.Body.String())
+	}
+	var resp protobufs.ServerToAgent
+	if err := proto.Unmarshal(response.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	doc := resp.GetRemoteConfig().GetConfig().GetConfigMap()["traceway"]
+	if doc == nil || !strings.Contains(string(doc.GetBody()), `"console":{"mode":"stream"`) {
+		t.Fatalf("an Android project must receive its remote settings, got %s", doc.GetBody())
+	}
+}
+
 func TestOpampRejectsUnsupportedProjects(t *testing.T) {
 	f := newOpampFixture(t)
-	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "android", ""} {
+	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", ""} {
 		t.Run(framework, func(t *testing.T) {
 			f.project.Framework = framework
 			response := f.post(nil, nil)

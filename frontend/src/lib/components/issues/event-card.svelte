@@ -130,7 +130,7 @@
 		replayRef?.seek(offsetMs);
 	}
 
-	// The OpenTelemetry SDKs (browser, Flutter, iOS) report whole sessions, so an occurrence links to its session
+	// The OpenTelemetry SDKs (browser, Flutter, iOS, Android) report whole sessions, so an occurrence links to its session
 	// page.
 	const hasFullSessions = $derived(
 		!!projectsState.currentProject &&

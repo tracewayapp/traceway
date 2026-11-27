@@ -245,7 +245,7 @@
 			<p
 				class="text-sm text-muted-foreground"
 				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; {platform ===
-				'flutter'
+					'flutter' || platform === 'android'
 					? 'performance metrics are'
 					: platform === 'ios'
 						? 'errors are'

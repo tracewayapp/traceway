@@ -25,7 +25,7 @@
 
 	let { open = $bindable(), kind = 'instance', value = '', onCreated }: Props = $props();
 	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
-	// An app SDK (Flutter, iOS): apps poll when they come back to the foreground and upload screen recordings.
+	// An app SDK (Flutter, iOS, Android): apps poll when they come back to the foreground and upload screen recordings.
 	const app = $derived(platform !== 'browser');
 
 	const kindLabels: Record<TargetKind, string> = {

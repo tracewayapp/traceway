@@ -765,7 +765,8 @@
 							bind:value={metricName}
 							placeholder={!isFrontendProject
 								? 'system.cpu.utilization'
-								: projectsState.currentProject?.framework === 'flutter'
+								: projectsState.currentProject?.framework === 'flutter' ||
+									  projectsState.currentProject?.framework === 'android'
 									? 'app.start.duration'
 									: 'browser.web_vital.lcp'}
 							disabled={loading}

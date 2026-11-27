@@ -48,7 +48,7 @@
 	let { open = $bindable(), rule, otherTriggerIds = [], onSaved }: Props = $props();
 	let platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
 	let flutter = $derived(platform === 'flutter');
-	// An app SDK (Flutter, iOS): taps, screens and app logs instead of clicks, pages and console calls.
+	// An app SDK (Flutter, iOS, Android): taps, screens and app logs instead of clicks, pages and console calls.
 	let app = $derived(platform !== 'browser');
 	// Recorded sequences match clicks, hovers and navigation, which the browser and app SDKs report.
 	let recordsSequences = $derived(
@@ -507,7 +507,7 @@
 									<div class="text-xs text-muted-foreground">
 										{flutter
 											? 'Screen recording'
-											: platform === 'ios'
+											: platform === 'ios' || platform === 'android'
 												? 'Wireframe of the view hierarchy'
 												: 'rrweb recording'}
 									</div>
@@ -608,10 +608,10 @@
 								Try 1% for a stable sample of session breadcrumbs and request spans. {platform ===
 								'ios'
 									? 'Errors stay on'
-									: flutter
+									: flutter || platform === 'android'
 										? 'Errors and performance metrics stay on'
-										: 'Errors and web vitals stay on'}; replay stays error-triggered unless configured
-								separately.
+										: 'Errors and web vitals stay on'}; replay stays error-triggered unless
+								configured separately.
 							</p>
 						</div>
 						<div class="space-y-2">

@@ -1,7 +1,7 @@
-# Browser and Flutter SDK collection over OpAMP
+# Browser, Flutter, iOS and Android SDK collection over OpAMP
 
 
-Use this for an **existing browser frontend project** (React, Svelte, Vue or jQuery) running the JavaScript SDK v2 with remote config enabled (the default), or a **Flutter project** running the Flutter SDK 2.x prerelease with a connection string. SDK v2 is the stable browser release (npm `latest`, `@2`); 1.x clients never poll, so they ignore these rules, and so does a standalone Flutter app. It changes the backend's stored collection rules; it does not require a setup plan, a new project, a new ingest token, or edits to the app's connection string. Backend projects and React Native, Android and iOS projects reject remote config. Servers released before these agent routes reject them; upgrade the server instead of bypassing a 403. Targeted captures remain dashboard-only.
+Use this for an **existing browser frontend project** (React, Svelte, Vue or jQuery) running the JavaScript SDK v2 with remote config enabled (the default), a **Flutter project** running the Flutter SDK 2.x prerelease with a connection string, an **iOS project** running the iOS SDK 2.x prerelease with a connection string, or an **Android project** running the Android SDK 2.x prerelease with a connection string. SDK v2 is the stable browser release (npm `latest`, `@2`); 1.x clients never poll, so they ignore these rules, and so does a standalone Flutter app. It changes the backend's stored collection rules; it does not require a setup plan, a new project, a new ingest token, or edits to the app's connection string. Backend projects and React Native projects reject remote config. Servers released before these agent routes reject them; upgrade the server instead of bypassing a 403. Targeted captures remain dashboard-only.
 
 1. Select the project, then `traceway-write opamp rules list --output json` (`list_sdk_config_rules`). Keep the existing rule documents, ids and `updatedAt`. Inspect the order, conditions, triggers and kill switches before writing. Later matching rules override earlier ones; a newly created rule is appended.
 2. State the requested scope: which clients, signals, sampling rates, replay and input masking. Empty `conditions: {}` matches all browsers. Target releases or cohorts with `{"all":[{"key":"service.version","op":"eq","value":"2.0.0"}],"rollout":{"percent":25,"by":"instance"}}`. Rollout is sticky per browser instance; no rollout means 100%. Do not broaden a targeted request to every client or remove masking unless explicitly requested.
@@ -9,7 +9,7 @@ Use this for an **existing browser frontend project** (React, Svelte, Vue or jQu
 4. Verify with `opamp rules list`, then `opamp preview --file client.json` (`preview_sdk_config`). A preview file is `{"attributes":{"service.version":"2.0.0"},"instanceUid":"<browser-instance-UUID>"}`; omit instanceUid when rollout identity is irrelevant. Preview evaluates **saved** rules and applies plan limits. It returns settings, matchedRules, matchedCaptures, configHash and heartbeatIntervalSeconds. It is not a dry-run of an unsaved rule and does not prove any browser has applied it or uploaded data.
 5. Report the saved rule id, effective settings and remaining verification. Browsers pick up changes at their next poll (normally 5 minutes) or SDK refresh. Developer ceilings and plan limits still apply. Do not promise every byte or session arrived merely because the rule saved.
 
-For RUM requests, read [rum.md](rum.md). Aggregated metrics (stable SDK 2.0.0 and later) are independent of diagnostic signal modes. Do not enable full-session replay just to obtain Web Vitals. Check the installed SDK version; a browser `2.0.0-beta.N` prerelease ignores the metrics settings, while the Flutter 2.x prerelease applies `metrics.enabled`, `metrics.sampleRate` and `metrics.flushSeconds`.
+For RUM requests, read [rum.md](rum.md). Aggregated metrics (stable SDK 2.0.0 and later) are independent of diagnostic signal modes. Do not enable full-session replay just to obtain Web Vitals. Check the installed SDK version; a browser `2.0.0-beta.N` prerelease ignores the metrics settings, while the Flutter and Android 2.x prereleases apply `metrics.enabled`, `metrics.sampleRate` and `metrics.flushSeconds`.
 
 A metrics-only policy overlay is `"settings":{"schemaVersion":1,"metrics":{"enabled":true,"sampleRate":1,"flushSeconds":300}}`. `sampleRate` accepts 0 or 0.001..1; `flushSeconds` accepts 30..3600. Counts are inverse-weighted estimates when sampled. Preserve existing signal/replay/buffer/trigger settings on replacement. Developer `captureMetrics: false` cannot be raised remotely. Verify an actual metrics upload and dashboard result after preview.
 
@@ -42,7 +42,7 @@ For a request to stream every session, breadcrumb and replay, retain masking and
 }
 ```
 
-Signals support `off`, `buffer` and `stream`; sample rates are 0..1. `sessions.baselineSampleRate` samples healthy breadcrumbs/network, **not replay**. Replay needs its own mode and sessionSampleRate. In a Flutter project `replay.captureMode` picks how replay is recorded, `video` (MP4 from the hardware encoder) or `wireframe` (the widget tree, replayed as HTML), and overrides the app's `screenCaptureMode`; unset keeps the app's choice, and browser SDKs ignore it. Linux and Windows have no video encoder and record a wireframe whatever it says. A change applies at once unless the session already uploaded replay in the other mode; then it applies from the next session. `settings.enabled: false` is a collection kill switch; `enabled: false` on the rule only skips that rule. Never send server-owned `limits` or `captures` in settings. Settings can also carry `buffer` and `triggers`; preserve them when changing an existing rule.
+Signals support `off`, `buffer` and `stream`; sample rates are 0..1. `sessions.baselineSampleRate` samples healthy breadcrumbs/network, **not replay**. Replay needs its own mode and sessionSampleRate. In a Flutter project `replay.captureMode` picks how replay is recorded, `video` (MP4 from the hardware encoder) or `wireframe` (the widget tree, replayed as HTML), and overrides the app's `screenCaptureMode`; unset keeps the app's choice, and browser SDKs ignore it. The Android SDK always records a wireframe (its views and Compose screens) and ignores it too. Linux and Windows have no video encoder and record a wireframe whatever it says. A change applies at once unless the session already uploaded replay in the other mode; then it applies from the next session. `settings.enabled: false` is a collection kill switch; `enabled: false` on the rule only skips that rule. Never send server-owned `limits` or `captures` in settings. Settings can also carry `buffer` and `triggers`; preserve them when changing an existing rule.
 
 ## Recording triggers: steps, selectors and routes
 
@@ -65,7 +65,7 @@ A recording trigger is a `triggers[]` entry whose steps are event matchers. The 
 
 An event `type` is `click`, `hover`, `navigation` or `log`; `value` is 1 to 256 characters; `mode` (`exact`, the default, or `contains`) applies to `log`. A trigger has at most five steps, and `withinSeconds` is measured from the step before. Give the trigger an `id` no other rule of the project uses.
 
-The server checks the syntax only and answers 422 otherwise. A click or hover `value` is a selector made of tags, `#id`, `.class`, `[name]` or `[name="value"]` (operators `=`, `^=`, `$=`, `*=`, `~=`, `|=`) and the descendant, `>`, `+` and `~` combinators. It cannot contain a colon, a comma or a backslash, also inside a quoted value, and a value that is not a plain name must be quoted. A navigation `value` starts with `/`, has no `?`, `#` or `*`, and uses `{name}` only as a whole segment. The server cannot tell whether the selector or the route exists in the app, and the same document means different things in a browser and in a Flutter project. Check the project's framework before writing one.
+The server checks the syntax only and answers 422 otherwise. A click or hover `value` is a selector made of tags, `#id`, `.class`, `[name]` or `[name="value"]` (operators `=`, `^=`, `$=`, `*=`, `~=`, `|=`) and the descendant, `>`, `+` and `~` combinators. It cannot contain a colon, a comma or a backslash, also inside a quoted value, and a value that is not a plain name must be quoted. A navigation `value` starts with `/`, has no `?`, `#` or `*`, and uses `{name}` only as a whole segment. The server cannot tell whether the selector or the route exists in the app, and the same document means different things in a browser, a Flutter and an Android project. Check the project's framework before writing one.
 
 | Step | Browser project | Flutter project |
 |---|---|---|
@@ -102,6 +102,44 @@ Do not invent a selector. Take it from one of these:
 - Type-based paths are minified in `--obfuscate` builds. A route a trigger should match needs a name.
 
 **Flutter logs have no level.** Every `print` line is recorded at info, so a trigger condition on `severity` above info never matches there. `captureUserActions: false`, `captureNavigation: false` and `captureLogs: false` in the app switch tap, navigation and `print`-line steps off, and replay needs `screenCapture: true` (video on Android, iOS or macOS; a wireframe on every platform).
+
+**Android selectors name views and Compose nodes.** The same syntax reads the views (and Jetpack Compose semantics nodes) under the finger:
+
+| Selector | Matches a view or Compose node that |
+|---|---|
+| `MaterialButton` | is of that class or a subclass (simple name, any case): `Button` matches a `MaterialButton`. A Compose node's type is its role (`Button`, `Checkbox`, `Switch`, `RadioButton`, `Tab`, `Image`, `DropdownList`) or its kind (`Text`, `TextField`, `Slider`, `ProgressIndicator`); `*` is any element |
+| `#pay` | has `android:id="@+id/pay"` (the resource entry name), or `Modifier.testTag("pay")` |
+| `.button` | has that role: `button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected` |
+| `[key="42"]` | has the string tag `42` (`android:tag`), or that id or test tag |
+| `[identifier="x"]` | the same values as `key` |
+| `[label="Delete"]` | has that content description or tooltip, its own or the first one below it along single children |
+| `[text="Pay now"]` | shows that text, its own or that of the views under it. An input's hint counts, its content never |
+| `[type="..."]` | is of that full or simple class name, for a class that cannot be written as a tag |
+
+A tap matches the view under the finger or one of its parents (the `MaterialButton` around the `TextView` that was hit). Combinators walk the view tree, so `#cart MaterialButton` works where `#cart > MaterialButton` may not. Prefer ids and test tags: class names are renamed in R8-minified builds (a renamed class is named by its nearest superclass that kept its name), while ids, test tags, roles, labels and text survive. Inside a privacy mask (`Traceway.mask`, `Modifier.tracewayMask()`) a tap records neither text nor label. Take selectors from the app's layouts and composables or from recorded taps: each is a `browser.user_action.click` record whose `browser.css_selector` the SDK checked against the tapped view (`MaterialButton#pay`, or `MaterialButton[text="Pay now"]` without an id), with `app.widget.name`, `app.widget.id`, `app.widget.text`, `app.widget.label` and `app.screen.name` beside it.
+
+**Android navigation names screens.** A navigation step is compared with the screen the user arrives at: `/` and the class of the resumed activity (`/CheckoutActivity`) or of an AndroidX fragment that became visible (`/CartFragment`), or the path the app reports with `Traceway.recordNavigation("/orders/8841")`, which Compose Navigation apps call from their `NavController` listener. Matching is case-sensitive and by segment, as above. Recorded navigations are `browser.navigation` records whose `url.full` is the path; read real paths there before writing a pattern. Class-based paths are renamed in minified builds unless the class keeps its name; report a stable path for a screen a trigger must match.
+
+**Android logs have levels.** `System.out` lines are info and `System.err` lines error; `Traceway.recordLog(message, severity)` takes a level (a Timber tree can forward Logcat lines). `android.util.Log` calls are not captured on their own. `captureUserActions`, `captureNavigation` and `captureLogs` set to false in `TracewayOptions` switch the matching steps off, and replay needs `screenCapture = true`.
+
+**iOS selectors name views.** The same syntax reads the UIKit views under the finger; there is no hover on iOS, so a hover step never matches:
+
+| Selector | Matches a view that |
+|---|---|
+| `UIButton`, `CheckoutButton` | is of that class: the name without module or generic arguments, any case; `*` is any view |
+| `#pay` | has `accessibilityIdentifier` `pay` (the identifier UI tests use) |
+| `.button` | has that role, from its accessibility traits or class: `button`, `link`, `header`, `image`, `textField`, `slider`, `toggle`, `selected` |
+| `[key="42"]` | has `tag` 42 |
+| `[identifier="x"]` | has that `accessibilityIdentifier` |
+| `[label="Delete"]` | has that `accessibilityLabel`, its own or the first one below it along single subviews |
+| `[text="Pay now"]` | shows that text: a label's, a button's title, or that of up to three labels under it; never what is typed into a field |
+| `[type="..."]` | is of that class, for a class that cannot be written as a tag |
+
+A tap matches the view under the finger or one of its superviews (the `UIButton` around the label that was hit). SwiftUI draws its controls without views of their own: a tap on a SwiftUI button names the hosting view, so target SwiftUI screens through navigation steps instead. Inside a privacy mask (`tracewayPrivacyMask`) or a secure text field a tap records neither text nor label. Take selectors from recorded taps: each is a `browser.user_action.click` record whose `browser.css_selector` the SDK checked against the tapped view (`UIButton#pay`, or `UIButton[text="Pay now"]` without an identifier), with `app.widget.name`, `app.widget.id`, `app.widget.text`, `app.widget.label` and `app.screen.name` beside it.
+
+**iOS navigation names screens.** A navigation step is compared with the screen the user arrives at: `/` and the class of the view controller that appeared (`/CheckoutViewController`; a hosting controller is its SwiftUI root view, `/ContentView`), or the path the app reports with `.tracewayScreen("/checkout")` on a SwiftUI view or `Traceway.recordNavigation("/orders/8841")`. Containers (navigation, tab, split and page controllers), child view controllers and the system's own controllers are not screens. Matching is case-sensitive and by segment, as above.
+
+**iOS logs have levels.** `Traceway.log(message, severity:)` takes a level (info by default); `print` and `NSLog` are not captured. `Traceway.capture(message:)` is a message log step too. `captureUserActions`, `captureNavigation` and `captureLogs` set to false in `TracewayOptions` switch the matching steps off, and replay (a wireframe of the view hierarchy) needs `screenCapture: true`.
 
 After saving, say which widget and route the trigger names and that it is unverified until the journey is performed on a device: a fired trigger sends a `traceway.trigger.fired` log record and, when it asked for replay, the session lists it under **Recording triggers**.
 

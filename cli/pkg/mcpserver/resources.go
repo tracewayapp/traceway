@@ -113,7 +113,7 @@ var writeResources = []struct {
 	{uri: "traceway://knowledge/oncall-configuration", file: "oncall-configuration.md", name: "Configure on-call", description: "Teams, membership, schedules, rotations, overrides and escalation policy definitions."},
 	{uri: "traceway://knowledge/personal-notifications", file: "personal-notifications.md", name: "Personal notification delivery", description: "Own contact methods, SMS verification and high/low urgency notification chains."},
 	{uri: "traceway://knowledge/incident-actions", file: "incident-actions.md", name: "Incident actions", description: "Issue archiving, page acknowledgment/resolution, monitor runs, post-mortems and slow endpoints."},
-	{uri: "traceway://knowledge/sdk-configuration", file: "sdk-configuration.md", name: "SDK configuration", description: "Browser and Flutter collection rules, targeting, sampling, replay, configuration preview, and how to write recording trigger steps: CSS selectors and URL paths in a browser, widget selectors and route names in Flutter."},
+	{uri: "traceway://knowledge/sdk-configuration", file: "sdk-configuration.md", name: "SDK configuration", description: "Browser, Flutter, iOS and Android collection rules, targeting, sampling, replay, configuration preview, and how to write recording trigger steps: CSS selectors and URL paths in a browser, widget selectors and route names in Flutter, view selectors and screen paths in iOS and Android."},
 
 	{
 		uri: "traceway://knowledge/dashboard-building", file: "dashboard-building.md", name: "Build dashboards from code",

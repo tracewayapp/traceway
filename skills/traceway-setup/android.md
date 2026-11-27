@@ -1,8 +1,8 @@
 # Android SDK Reference
 
-Native Android apps (Kotlin or Java) use the Traceway Android SDK, `com.tracewayapp:traceway`, published on Maven Central. It reports **errors and crashes only**: there is no session or video replay (unlike Flutter). It speaks the same `/api/report` wire format as the iOS, Flutter, and JS SDKs, so the backend ingests it with no server changes.
+Native Android apps (Kotlin or Java) use the Traceway Android SDK, `com.tracewayapp:traceway`, published on Maven Central. **2.x** (the prerelease, `2.0.0-beta.1`) is built on the official OpenTelemetry Java SDK, like the browser SDK 2.x and the Flutter SDK 2.x: it exports exceptions, logs, request spans and `app.*` performance metrics through OTLP (`/api/otel/v1/logs`, `/traces`, `/metrics`), uploads wireframe session replays of the app's views and Jetpack Compose screens to `/api/recordings`, and polls OpAMP (`/api/otel/v1/opamp`) for the Android project's **Data Collection** rules. It needs a Traceway server that accepts Android projects on those endpoints. **1.x** (`1.0.1`) reports errors and crashes only over `/api/report`; keep an existing 1.x app on 1.x unless the user asks to move or needs a 2.x feature (sessions, replay, remote config, captures, performance metrics, trace propagation, another OpenTelemetry backend).
 
-For a cross-platform stack with no native code (React Native, or a team standardized on OpenTelemetry) use that platform's path instead; this file is for apps with a real Android (Kotlin/Java) module.
+For a cross-platform stack with no native code (React Native, Flutter) use that platform's path instead; this file is for apps with a real Android (Kotlin/Java) module.
 
 ## Install
 
@@ -10,11 +10,20 @@ Add the dependency to the app module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.tracewayapp:traceway:1.0.1")
+    implementation("com.tracewayapp:traceway:2.0.0-beta.1")
 }
 ```
 
-Maven Central is enabled by default in modern Android projects, so no extra `repositories { ... }` entry is needed. Minimum SDK is API 21.
+Maven Central is enabled by default in modern Android projects. Minimum SDK is API 21. OpenTelemetry Java needs `java.time` and `java.util.function`, so an app whose `minSdk` is below 26 must enable core library desugaring:
+
+```kotlin
+android {
+    compileOptions { isCoreLibraryDesugaringEnabled = true }
+}
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+}
+```
 
 ## Initialize
 
@@ -30,8 +39,11 @@ class MyApp : Application() {
         super.onCreate()
         Traceway.init(
             application = this,
-            connectionString = "<project-token>@https://<instance>/api/report",
-            options = TracewayOptions(version = "1.0.0"),
+            connectionString = "<project-token>@https://<instance>",
+            options = TracewayOptions(
+                version = BuildConfig.VERSION_NAME,
+                screenCapture = true, // wireframe session replay
+            ),
         )
     }
 }
@@ -47,9 +59,9 @@ Register the `Application` class in `AndroidManifest.xml`, or `onCreate()` never
 </manifest>
 ```
 
-No permission entry is needed. The SDK's own manifest inside the AAR already declares `INTERNET` and `ACCESS_NETWORK_STATE`, and the Android manifest merger folds both into the app. Re-declaring `INTERNET` yourself is harmless if the app already has it.
+No permission entry is needed. The SDK's own manifest inside the AAR already declares `INTERNET` and `ACCESS_NETWORK_STATE`, and the Android manifest merger folds both into the app.
 
-Wire the token through a build setting or `BuildConfig` field, not a committed literal. The connection string format is `<project-token>@https://<instance>/api/report`, identical to the other mobile SDKs.
+Wire the token through a build setting or `BuildConfig` field, not a committed literal. The connection string is `<project-token>@https://<instance>`, as the Connection page shows it; the 1.x form ending in `/api/report` works too. An invalid connection string makes `Traceway.init` log an error (tag `Traceway`) and return `null`; the app keeps running.
 
 ## Manual capture
 
@@ -57,22 +69,25 @@ Wire the token through a build setting or `BuildConfig` field, not a committed l
 try {
     riskyOperation()
 } catch (e: Throwable) {
-    Traceway.captureException(e)
+    Traceway.captureException(e, mapOf("checkout.step" to "pay"))
 }
 
 Traceway.captureMessage("User completed onboarding")
-Traceway.flush()   // force-send pending events
+Traceway.track("checkout_failed", mapOf("reason" to "card_declined"))
+Traceway.setAttribute("user.id", user.id)   // targets rules and captures at this user
+Traceway.flush()   // blocks; call off the main thread
 ```
 
 ## What gets captured automatically
 
 After `init`, with no extra wiring:
 
-- **Uncaught Java/Kotlin exceptions** on every thread, via `Thread.setDefaultUncaughtExceptionHandler`.
-- **View click handler throws**, **background thread throws**, and **main `Handler.post` throws**.
-- **Activity lifecycle transitions** recorded as navigation actions.
+- **Uncaught Java/Kotlin exceptions** on every thread, via the default `UncaughtExceptionHandler`: the exception, its breadcrumbs and its replay clip are written to disk before the process ends and sent at once or at the next start.
+- **Sessions**, and as breadcrumbs kept in an on-device ring buffer and uploaded with each error: `System.out` / `System.err` lines, screens (activities and AndroidX fragments as `/ClassName`), taps with a CSS-like selector of the view (`MaterialButton#pay`), and custom events.
+- **App performance metrics**: start time, time to initial and full display, slow and frozen frames, hangs, crashes, sessions and users, HTTP requests.
+- With `screenCapture = true`, a **wireframe replay** of the windows (views and Compose semantics as HTML, typed text masked) for the seconds before each error.
 
-The last ~10 seconds of logs and actions ride along with each captured exception. `println` / `System.out` / `System.err` are mirrored automatically; `android.util.Log` lines are not, so install a Timber tree that calls `TracewayClient.instance?.recordLog(...)` if you need Logcat. Full option list (`sampleRate`, `debug`, channel toggles, on-disk persistence) is at https://docs.tracewayapp.com/client/android.
+Two things need wiring: HTTP calls are recorded through `OkHttpClient.Builder().addInterceptor(TracewayOkHttpInterceptor())` (other stacks call `startRequest` / `endRequest`), and `android.util.Log` lines are not mirrored, so forward them from a Timber tree with `Traceway.recordLog(message, level)`. Compose Navigation reports its routes with `Traceway.recordNavigation("/$route")` from a destination listener. Mask sensitive views with `Traceway.mask(view)`, `android:tag="traceway-mask"` or `Modifier.tracewayMask()`. What is sent, buffered or dropped is changed on the project's Data Collection page; full options and selector rules are at https://docs.tracewayapp.com/client/android.
 
 ## Symbolication: upload R8 `mapping.txt` with the Gradle plugin
 
@@ -122,9 +137,10 @@ Order matters in the `plugins { }` block. Gradle applies entries top to bottom, 
 ```kotlin
 Traceway.init(
     application = this,
-    connectionString = "<project-token>@https://<instance>/api/report",
+    connectionString = "<project-token>@https://<instance>",
     options = TracewayOptions(
-        version = "1.0.0",
+        version = BuildConfig.VERSION_NAME,
+        screenCapture = true,
         proguardUuid = BuildConfig.TRACEWAY_PROGUARD_UUID,
     ),
 )
@@ -155,7 +171,7 @@ The `proguard_uuid` must match the value the SDK sends. Self-hosted instances mu
 
 ## Verify
 
-1. Add a button that throws (`throw RuntimeException("Test error from Traceway")`), tap it, and confirm the error appears on the Issues page within a few seconds with its full stack trace.
+1. Add a button that throws (`throw RuntimeException("Test error from Traceway")`), tap it, open the app again, and confirm the error appears on the Issues page with its full stack trace, the breadcrumbs before it and, with `screenCapture = true`, the replay. The Sessions page lists the session with **Android SDK** and its version.
 2. For a minified release build: trigger a crash, then after `uploadReleaseTracewaySymbols` has run for that build, confirm the stack trace on Issues shows real class, method, and `file:line` rather than obfuscated `a.a.a(SourceFile)` frames.
 
 For the symbolicator internals (how a trace is recognized, the retrace, and the `.tw` cache), see https://docs.tracewayapp.com/symbolicator/android.

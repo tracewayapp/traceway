@@ -97,13 +97,13 @@ export const BROWSER_ONLY_SIGNALS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The SDK that takes a project's settings: the browser SDK, or one of the app SDKs (Flutter, iOS), which share the
- * settings document but report taps, screens and app logs instead of clicks, pages and console calls.
+ * The SDK that takes a project's settings: the browser SDK, or one of the app SDKs (Flutter, iOS, Android), which
+ * share the settings document but report taps, screens and app logs instead of clicks, pages and console calls.
  */
-export type SdkPlatform = 'browser' | 'flutter' | 'ios';
+export type SdkPlatform = 'browser' | 'flutter' | 'ios' | 'android';
 
 export function sdkPlatform(framework: string | undefined | null): SdkPlatform {
-	if (framework === 'flutter' || framework === 'ios') return framework;
+	if (framework === 'flutter' || framework === 'ios' || framework === 'android') return framework;
 	return 'browser';
 }
 
@@ -111,7 +111,8 @@ export function sdkPlatform(framework: string | undefined | null): SdkPlatform {
 export const SDK_PLATFORM_NAMES: Record<SdkPlatform, string> = {
 	browser: 'JavaScript',
 	flutter: 'Flutter',
-	ios: 'iOS'
+	ios: 'iOS',
+	android: 'Android'
 };
 
 const APP_SIGNAL_HINTS: Record<Exclude<SdkPlatform, 'browser'>, Record<string, string>> = {
@@ -124,11 +125,18 @@ const APP_SIGNAL_HINTS: Record<Exclude<SdkPlatform, 'browser'>, Record<string, s
 		network: 'URLSession requests',
 		console: 'Traceway.log lines',
 		userActions: 'Taps'
+	},
+	android: {
+		network: 'OkHttp calls and startRequest/endRequest',
+		console: 'System.out/err lines and Traceway.recordLog',
+		userActions: 'Taps'
 	}
 };
 
 /** The signals a project's SDK reports, described in its terms. */
-export function signalsFor(platform: SdkPlatform): Array<{ key: string; label: string; hint: string }> {
+export function signalsFor(
+	platform: SdkPlatform
+): Array<{ key: string; label: string; hint: string }> {
 	if (platform === 'browser') return SIGNALS;
 	const hints = APP_SIGNAL_HINTS[platform];
 	return SIGNALS.filter((signal) => !BROWSER_ONLY_SIGNALS.has(signal.key)).map((signal) => ({

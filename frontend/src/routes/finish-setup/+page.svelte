@@ -20,6 +20,7 @@
 	import { themeState } from '$lib/state/theme.svelte';
 	import { consumeSsoReturnTo, gotoHref, safeLocalPath } from '$lib/utils/navigation';
 	import SetupProjectsStep from '$lib/components/setup/setup-projects-step.svelte';
+	import SignupExtensionSlot from '$lib/components/signup-extension-slot.svelte';
 
 	let phase = $state<'organization' | 'projects'>('organization');
 	let organizationName = $state('');
@@ -142,6 +143,7 @@
 							</Select.Content>
 						</Select.Root>
 					</div>
+					<SignupExtensionSlot />
 					<Button type="submit" disabled={loading} class="mt-2 w-full">
 						{#if loading}
 							Finishing setup...

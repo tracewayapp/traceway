@@ -5,9 +5,11 @@ package controllers
 import (
 	"database/sql"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/tracewayapp/traceway/backend/v2/app/config"
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
@@ -194,6 +196,36 @@ func TestCreateOrganizationRunsPostRegistrationHooks(t *testing.T) {
 	}
 	if gotUser.Id != userId {
 		t.Errorf("hook got user %d, want %d", gotUser.Id, userId)
+	}
+}
+
+func TestCreateOrganizationRunsPostRegistrationRequestHooks(t *testing.T) {
+	tx, userId := newOrgTestUser(t, "request-hooks@example.com")
+
+	var gotCookie string
+	var gotOrg *models.Organization
+	prev := PostRegistrationRequestHooks
+	PostRegistrationRequestHooks = []func(*gin.Context, *sql.Tx, *models.Organization, *models.User) error{
+		func(c *gin.Context, _ *sql.Tx, org *models.Organization, _ *models.User) error {
+			gotCookie, _ = c.Cookie("tw_ref")
+			gotOrg = org
+			return nil
+		},
+	}
+	t.Cleanup(func() { PostRegistrationRequestHooks = prev })
+
+	c, recorder := newControllerTestContext(t, tx, userId, "POST", "/organizations", `{"name":"Referred Org"}`)
+	c.Request.AddCookie(&http.Cookie{Name: "tw_ref", Value: "partner"})
+	OrganizationController.Create(c)
+
+	if recorder.Code != 201 {
+		t.Fatalf("expected 201, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	if gotOrg == nil || gotOrg.Name != "Referred Org" {
+		t.Fatalf("request hook got org %+v", gotOrg)
+	}
+	if gotCookie != "partner" {
+		t.Errorf("request hook read cookie %q, want %q", gotCookie, "partner")
 	}
 }
 

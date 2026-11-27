@@ -18,6 +18,25 @@ import (
 
 var PostRegistrationHooks []func(tx *sql.Tx, org *models.Organization, user *models.User) error
 
+// PostRegistrationRequestHooks run after PostRegistrationHooks, with the
+// request that created the organization, for extensions that need its cookies
+// or headers.
+var PostRegistrationRequestHooks []func(c *gin.Context, tx *sql.Tx, org *models.Organization, user *models.User) error
+
+func runPostRegistrationHooks(c *gin.Context, tx *sql.Tx, org *models.Organization, user *models.User) error {
+	for _, hook := range PostRegistrationHooks {
+		if err := hook(tx, org, user); err != nil {
+			return err
+		}
+	}
+	for _, hook := range PostRegistrationRequestHooks {
+		if err := hook(c, tx, org, user); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 const passwordLoginDisabledMessage = "Password login is disabled. Please use SSO to sign in."
 
 type authController struct{}
@@ -178,11 +197,9 @@ func (a authController) Register(c *gin.Context) {
 		return
 	}
 
-	for _, hook := range PostRegistrationHooks {
-		if err := hook(tx, org, user); err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
-		}
+	if err := runPostRegistrationHooks(c, tx, org, user); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
 
 	wantsProject := request.ProjectName != "" || request.Framework != ""

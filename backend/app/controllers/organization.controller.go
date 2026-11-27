@@ -240,11 +240,9 @@ func (c *organizationController) Create(ctx *gin.Context) {
 		return
 	}
 
-	for _, hook := range PostRegistrationHooks {
-		if err := hook(tx, org, user); err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("post-registration hook failed: %w", err))
-			return
-		}
+	if err := runPostRegistrationHooks(ctx, tx, org, user); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("post-registration hook failed: %w", err))
+		return
 	}
 
 	ctx.JSON(http.StatusCreated, models.UserOrganizationResponse{

@@ -744,7 +744,7 @@ The OpenTelemetry browser SDK (`@tracewayapp/frontend` 2.x, package `@tracewayap
 **Organization Management**
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
-| POST | `/api/organizations` | App | Create an organization owned by the caller; the recovery path for a user removed from their last organization (self-hosted: 422 once one exists; cloud: `OrganizationLimitHook`). Runs `PostRegistrationHooks` like register and SSO finish-setup |
+| POST | `/api/organizations` | App | Create an organization owned by the caller; the recovery path for a user removed from their last organization (self-hosted: 422 once one exists; cloud: `OrganizationLimitHook`). Runs `PostRegistrationHooks`, then `PostRegistrationRequestHooks` (the same, plus the `*gin.Context`, for extensions that need the request's cookies or headers), like register and SSO finish-setup |
 | GET | `/api/organizations/:orgId/settings` | Admin | Get org settings |
 | PUT | `/api/organizations/:orgId/settings` | Admin | Update org settings |
 | PUT | `/api/organizations/:orgId/agent-access` | Admin | `{agentWriteEnabled}`: allow agent write credentials to write in this org (settings GET returns the flag) |

@@ -100,6 +100,7 @@
 	let sidebarOpen = $state(dashboardStorage()?.getItem(SIDEBAR_OPEN_KEY) !== 'false');
 	let CrossSiteNotificationBanner = $state<Component<{ organizationId: number }> | null>(null);
 	let OverlaySlot = $state<Component | null>(null);
+	let GlobalSlot = $state<Component | null>(null);
 
 	const contextOrganizationId = $derived(
 		organizationContext.active
@@ -269,6 +270,16 @@
 			.catch(() => {
 				// Billing extension not available - expected for open source builds
 			});
+
+		if (!statusDomainSlug) {
+			import('$billing/global-slot.svelte')
+				.then((module) => {
+					GlobalSlot = module.default;
+				})
+				.catch(() => {
+					// Billing extension not available - expected for open source builds
+				});
+		}
 	});
 
 	function handleLogout() {
@@ -414,3 +425,7 @@
 		</main>
 	{/if}
 </Tooltip.Provider>
+
+{#if GlobalSlot}
+	<GlobalSlot />
+{/if}

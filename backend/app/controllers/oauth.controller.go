@@ -286,11 +286,9 @@ func (a oauthController) FinishSetup(c *gin.Context) {
 		return
 	}
 
-	for _, hook := range PostRegistrationHooks {
-		if err := hook(tx, org, user); err != nil {
-			c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: post-registration hook: %w", err))
-			return
-		}
+	if err := runPostRegistrationHooks(c, tx, org, user); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, traceway.NewStackTraceErrorf("FinishSetup: post-registration hook: %w", err))
+		return
 	}
 
 	var projectWithUrl *models.ProjectWithBackendUrl

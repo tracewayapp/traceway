@@ -11,3 +11,20 @@ declare module '$billing/overlay-slot.svelte' {
 	const component: Component;
 	export default component;
 }
+
+// Mounted inside the two forms that create an account's first organization (register and SSO
+// finish-setup), above the submit button, for an extension's own optional fields. Core sends none
+// of it: the extension carries what it collects to its own hooks, for example in a cookie.
+declare module '$billing/signup-slot.svelte' {
+	import type { Component } from 'svelte';
+	const component: Component;
+	export default component;
+}
+
+// Mounted once on every dashboard page, signed in or not (never on a status domain or the embed
+// page), for extension code that has to run before sign-in.
+declare module '$billing/global-slot.svelte' {
+	import type { Component } from 'svelte';
+	const component: Component;
+	export default component;
+}

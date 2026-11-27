@@ -23,6 +23,7 @@
 	import TurnstileWidget from '$lib/components/turnstile-widget.svelte';
 	import OauthButtons from '$lib/components/oauth-buttons.svelte';
 	import SetupProjectsStep from '$lib/components/setup/setup-projects-step.svelte';
+	import SignupExtensionSlot from '$lib/components/signup-extension-slot.svelte';
 
 	const DEFAULT_FRAMEWORK: Framework = 'opentelemetry';
 
@@ -252,6 +253,8 @@
 								</Select.Content>
 							</Select.Root>
 						</div>
+
+						<SignupExtensionSlot />
 
 						{#if captchaEnabled}
 							<div class="mt-2 flex flex-col space-y-1.5">

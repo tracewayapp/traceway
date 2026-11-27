@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
+import { withReferral } from "@/lib/referral";
 
 export function HeroEmailCTA({
   placeholder = "Email Address",
@@ -16,7 +17,7 @@ export function HeroEmailCTA({
     const trimmed = email.trim();
     const base = "https://cloud.tracewayapp.com/register";
     const url = trimmed ? `${base}?email=${encodeURIComponent(trimmed)}` : base;
-    window.location.href = url;
+    window.location.href = withReferral(url);
   }
 
   return (

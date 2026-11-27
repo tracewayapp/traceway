@@ -2,6 +2,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { MotionPolish } from "@/components/motion-polish";
 import { CookieConsent } from "@/components/cookie-consent";
+import { ReferralCapture } from "@/components/referral-capture";
 import { HARVEST_SEASON_SCRIPT } from "@/components/harvest";
 import type { Metadata } from "next";
 import "@fontsource-variable/jetbrains-mono/wght.css";
@@ -45,6 +46,7 @@ export default function RootLayout({
         {children}
         <SiteFooter />
         <MotionPolish />
+        <ReferralCapture />
         <CookieConsent />
       </body>
     </html>

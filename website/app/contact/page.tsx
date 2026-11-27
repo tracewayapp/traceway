@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { Eyebrow } from "@/components/eyebrow";
 import { getCalendlyUrl, hasCalendly } from "@/lib/calendly";
+import { withReferral } from "@/lib/referral";
 
 const COMPANY_SIZES = [
   "Just me",
@@ -58,7 +59,7 @@ export default function Contact() {
         ? `${REGISTER_URL}?email=${encodeURIComponent(trimmed)}`
         : REGISTER_URL;
     }
-    window.location.href = url;
+    window.location.href = withReferral(url);
   }
 
   const inputStyle: React.CSSProperties = {

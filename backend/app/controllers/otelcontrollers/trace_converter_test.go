@@ -850,6 +850,33 @@ func TestConvertTraces_NestedServerSpanIsOneRequest(t *testing.T) {
 
 // --- Helpers ---
 
+func TestBuildAiTraceCachedAndReasoningTokens(t *testing.T) {
+	cases := []struct {
+		name  string
+		attrs []*commonpb.KeyValue
+	}{
+		{"semantic conventions", []*commonpb.KeyValue{
+			intKV("gen_ai.usage.cache_read.input_tokens", 40),
+			intKV("gen_ai.usage.reasoning.output_tokens", 15),
+		}},
+		{"openrouter", []*commonpb.KeyValue{
+			intKV("gen_ai.usage.input_tokens.cached", 40),
+			intKV("gen_ai.usage.output_tokens.reasoning", 15),
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := buildAiTrace(uuid.New(), testProjectId, &tracepb.Span{Name: "chat", Status: &tracepb.Status{}}, tc.attrs, nil, time.Now(), time.Second, "", "")
+			if trace.CachedTokens != 40 {
+				t.Errorf("CachedTokens = %d, want 40", trace.CachedTokens)
+			}
+			if trace.ReasoningTokens != 15 {
+				t.Errorf("ReasoningTokens = %d, want 15", trace.ReasoningTokens)
+			}
+		})
+	}
+}
+
 func makeAttrs(key, val string) []*commonpb.KeyValue {
 	return []*commonpb.KeyValue{strKV(key, val)}
 }

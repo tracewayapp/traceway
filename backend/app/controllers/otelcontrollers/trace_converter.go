@@ -647,8 +647,14 @@ func buildAiTrace(
 	if !hasTotalTokens {
 		totalTokens = inputTokens + outputTokens
 	}
-	cachedTokens, _ := getIntAttribute(attrs, "gen_ai.usage.input_tokens.cached")
-	reasoningTokens, _ := getIntAttribute(attrs, "gen_ai.usage.output_tokens.reasoning")
+	cachedTokens, hasCachedTokens := getIntAttribute(attrs, "gen_ai.usage.cache_read.input_tokens")
+	if !hasCachedTokens {
+		cachedTokens, _ = getIntAttribute(attrs, "gen_ai.usage.input_tokens.cached")
+	}
+	reasoningTokens, hasReasoningTokens := getIntAttribute(attrs, "gen_ai.usage.reasoning.output_tokens")
+	if !hasReasoningTokens {
+		reasoningTokens, _ = getIntAttribute(attrs, "gen_ai.usage.output_tokens.reasoning")
+	}
 
 	inputCost := getFloatAttribute(attrs, "gen_ai.usage.input_cost")
 	outputCost := getFloatAttribute(attrs, "gen_ai.usage.output_cost")

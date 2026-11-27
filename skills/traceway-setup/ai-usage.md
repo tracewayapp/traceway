@@ -122,8 +122,6 @@ Follow the spec for everything not listed here.
 |---|---|---|---|
 | Content | `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.system_instructions` | `gen_ai.prompt` and `gen_ai.completion`, as JSON strings in the provider's own shape (below). Do not also send the spec attributes. | No chat view, 0 tool calls, no content flagging. Sending the content under both sets of keys duplicates it on the exported span. |
 | Cost | Nothing | `gen_ai.usage.input_cost`, `gen_ai.usage.output_cost` (USD, doubles). `gen_ai.usage.total_cost` is their sum unless you set it. | Every cost figure is 0.00. Traceway has no price list. |
-| Cached input tokens | `gen_ai.usage.cache_read.input_tokens` | The same number on `gen_ai.usage.input_tokens.cached` | Cached tokens show 0 |
-| Reasoning tokens | `gen_ai.usage.reasoning.output_tokens` | The same number on `gen_ai.usage.output_tokens.reasoning` | Reasoning tokens show 0 |
 | Grouping | Span name `{operation} {model}` | Keep that span name, and add `trace.name` with the feature or agent name | `/ai-traces` groups by span name, so every feature using one model collapses into a row called `chat gpt-4o` |
 | End user | Nothing in the GenAI spec (`user.id` is a general attribute) | `user.id` on every model-call span | The Users tab is empty |
 | Tool execution | An `execute_tool {tool}` span with `gen_ai.operation.name` and `gen_ai.tool.*` | The same span name and kind (`INTERNAL`), with no attribute starting with `gen_ai.`. Use `tool.name`, `tool.call.id`. | Each tool run becomes its own AI Trace row with 0 tokens, an extra turn in its conversation, and a tool call counted a second time |
@@ -152,8 +150,8 @@ One span per provider request, started before the request and ended when the res
 | `gen_ai.response.finish_reasons` | String array, e.g. `["stop"]`, `["tool_calls"]` | |
 | `gen_ai.usage.input_tokens` | Integer, including cached tokens | Anthropic reports cache reads and cache writes separately from `input_tokens`: add all three |
 | `gen_ai.usage.output_tokens` | Integer | |
-| `gen_ai.usage.input_tokens.cached` | Integer, when the provider reports cache reads | Traceway's name, see the table above |
-| `gen_ai.usage.output_tokens.reasoning` | Integer, when the provider reports reasoning tokens | Traceway's name |
+| `gen_ai.usage.cache_read.input_tokens` | Integer, when the provider reports cache reads | `gen_ai.usage.input_tokens.cached` is read too |
+| `gen_ai.usage.reasoning.output_tokens` | Integer, when the provider reports reasoning tokens | `gen_ai.usage.output_tokens.reasoning` is read too |
 | `gen_ai.usage.input_cost` / `gen_ai.usage.output_cost` | Doubles, USD | From your price map |
 | `trace.name` | Stable feature or agent name | No ids, no model names, no timestamps |
 | `gen_ai.conversation.id` | The app's own chat or thread id | Only when the call belongs to a conversation. Never invent one per request: without it Traceway falls back to `session.id` on the span or resource, then to the trace id. |
@@ -222,8 +220,8 @@ function recordCompletion(span: Span, requestModel: string, completion: OpenAI.C
     "gen_ai.response.finish_reasons": completion.choices.map((c) => c.finish_reason),
     "gen_ai.usage.input_tokens": input,
     "gen_ai.usage.output_tokens": output,
-    "gen_ai.usage.input_tokens.cached": cached,
-    "gen_ai.usage.output_tokens.reasoning": reasoning,
+    "gen_ai.usage.cache_read.input_tokens": cached,
+    "gen_ai.usage.reasoning.output_tokens": reasoning,
   });
   if (price) {
     span.setAttributes({
@@ -337,7 +335,7 @@ def _finish(span, request_model, response):
         "gen_ai.response.finish_reasons": [response.stop_reason or ""],
         "gen_ai.usage.input_tokens": usage.input_tokens + cache_read + cache_write,
         "gen_ai.usage.output_tokens": usage.output_tokens,
-        "gen_ai.usage.input_tokens.cached": cache_read,
+        "gen_ai.usage.cache_read.input_tokens": cache_read,
     })
     price = PRICES.get(response.model) or PRICES.get(request_model)
     if price:

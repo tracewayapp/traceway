@@ -173,7 +173,7 @@ When a dashboard column is blank, work backwards from here.
 | Model / Response model | `gen_ai.request.model` / `gen_ai.response.model` | attribute unset |
 | Provider | `gen_ai.provider.name` (the older `gen_ai.system` wins when both are set) | neither set |
 | Tokens | `gen_ai.usage.input_tokens` / `.output_tokens` (integers only); `total_tokens` defaults to their sum | unset, or sent as a string |
-| Cached / Reasoning tokens | `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.output_tokens.reasoning` | unset, or only the conventions' `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.reasoning.output_tokens` were sent |
+| Cached / Reasoning tokens | `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.reasoning.output_tokens` (`gen_ai.usage.input_tokens.cached` / `gen_ai.usage.output_tokens.reasoning` are read too) | unset, or sent as a string |
 | Cost | `gen_ai.usage.input_cost` / `.output_cost` (doubles); `total_cost` defaults to their sum | you did not compute pricing |
 | Finish reason | `gen_ai.response.finish_reasons` (array, joined with commas); a scalar `gen_ai.response.finish_reason` wins when both are set | unset |
 | Conversation id | `gen_ai.conversation.id`, then `session.id` (span), then `session.id` (resource), then the trace id as a UUID | never blank |

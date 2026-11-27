@@ -185,8 +185,10 @@ The package re-exports the rest of the browser SDK's API, on the npm build and o
 | `flush(timeoutMs?)` | Send everything that is queued for sending. Buffered telemetry stays on the device. See [Flush](/client/js-sdk/flush) |
 | `shutdown()` | Flush, remove the instrumentations and stop recording. `init()` may be called again afterwards |
 | `getInstanceId()` | The id this browser profile reports as `service.instance.id`, which a dashboard capture can target |
+| `log(message, level?, attributes?)` | Record a log line of your own, handled like a `console.*` line (releases after 2.0.3). See [Logs](/client/js-sdk#logs) |
+| `currentSessionId()` | The current session's id (`session.id`), or `null` before `init()` and between sessions (releases after 2.0.3) |
 
-`recordAction` is not exported by this package; use `track()` for app events. See [Client Metrics](/learn/client-metrics) for the custom metric rules.
+`recordAction`, `DEFAULT_IGNORE_PATTERNS`, `trackRouter` and `routeFromParams` are not exported by this package; use `track()` for app events, and import `DEFAULT_IGNORE_PATTERNS` from `@tracewayapp/frontend` to extend the default `ignoreErrors`. See [Client Metrics](/learn/client-metrics) for the custom metric rules.
 
 ## Distributed Tracing
 

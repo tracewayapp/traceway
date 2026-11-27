@@ -322,7 +322,7 @@ import Traceway
 @main
 struct MyApp: App {
     init() {
-        Traceway.start(
+        Traceway.initialize(
             connectionString: "${connectionString}",
             options: TracewayOptions(
                 version: "1.0.0",
@@ -398,7 +398,7 @@ throw RuntimeException("Test error from Traceway integration")`;
 	if (framework === 'ios') {
 		return `// Send a test error (a caught one works with the debugger attached)
 struct TestError: Error {}
-Traceway.capture(TestError())
+Traceway.captureException(TestError())
 Traceway.flush(timeout: 5)`;
 	}
 	if (framework && isJsFramework(framework)) {
@@ -421,7 +421,7 @@ export function getTestingRouteCode2(framework?: Framework): string {
 	if (framework === 'flutter') {
 		return `import 'package:traceway/traceway.dart';
 
-TracewayClient.instance?.captureException(
+Traceway.captureException(
   Exception('Test error'),
   StackTrace.current,
 );`;
@@ -441,7 +441,7 @@ try {
 do {
     try riskyOperation()
 } catch {
-    Traceway.capture(error)
+    Traceway.captureException(error)
 }`;
 	}
 	if (framework && isJsFramework(framework)) {

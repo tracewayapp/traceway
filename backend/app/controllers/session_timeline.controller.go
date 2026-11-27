@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -67,6 +68,22 @@ var timelineSkippedEvents = func() map[string]bool {
 var timelineContextKeys = map[string]bool{
 	"session.id": true, "event.name": true, "url": true, "path": true, "referrer": true, "userAgent": true,
 	"language": true, "platform": true, "viewport": true, "screen": true, "timezone": true,
+	// Earlier 2.x app SDK builds stamped the session's start on every record.
+	"traceway.session.started_at": true,
+	// The app SDKs stamp every record with the dashboard captures running while it was made.
+	"traceway.capture.ids": true,
+}
+
+// clickDataKeys maps the data of a click row to the record attributes it comes from. The app SDKs (Flutter, iOS,
+// Android) report a tap as a click and add what the tapped control shows and the screen it was on, so the row can
+// read "Tap MaterialButton#pay “Pay now” on /Checkout" instead of a bare selector.
+var clickDataKeys = map[string]string{
+	"selector": "browser.css_selector",
+	"tag":      "browser.tag_name",
+	"id":       "app.widget.id",
+	"text":     "app.widget.text",
+	"label":    "app.widget.label",
+	"screen":   "app.screen.name",
 }
 
 // Timeline answers the breadcrumbs of a browser session in a time window: its console lines, navigation, clicks
@@ -179,7 +196,7 @@ func BuildSessionTimeline(records []models.LogRecord, spans []shared.SessionSpan
 			lastURL = to
 		case "browser.user_action.click":
 			data := map[string]any{}
-			for key, attr := range map[string]string{"selector": "browser.css_selector", "tag": "browser.tag_name"} {
+			for key, attr := range clickDataKeys {
 				if v := attrs[attr]; v != "" {
 					data[key] = v
 				}
@@ -193,10 +210,11 @@ func BuildSessionTimeline(records []models.LogRecord, spans []shared.SessionSpan
 			timeline.Actions = append(timeline.Actions, timelineAction{Type: "custom", Timestamp: record.Timestamp,
 				Category: attrs["traceway.action.category"], Name: attrs["traceway.action.name"], Data: data})
 		default:
+			// The first 20 of the event's own attributes by name, so a wide event reads the same on every load.
 			data := map[string]any{}
-			for key, value := range attrs {
+			for _, key := range slices.Sorted(maps.Keys(attrs)) {
 				if !timelineContextKeys[key] && len(data) < 20 {
-					data[key] = value
+					data[key] = attrs[key]
 				}
 			}
 			timeline.Actions = append(timeline.Actions, timelineAction{Type: "custom", Timestamp: record.Timestamp, Category: "event", Name: event, Data: data})

@@ -25,7 +25,8 @@ export default defineConfig({
 			),
 			$lib: path.resolve('./src/lib'),
 			'$app/paths': path.resolve('./node_modules/@sveltejs/kit/src/runtime/app/paths/client.js'),
-			'$app/navigation': path.resolve('./src/test/mocks/app-navigation.ts')
+			'$app/navigation': path.resolve('./src/test/mocks/app-navigation.ts'),
+			'$app/state': path.resolve('./src/test/mocks/app-state.ts')
 		}
 	},
 	test: {

@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/tracewayapp/traceway/backend/v2/app/db"
 	"github.com/tracewayapp/traceway/backend/v2/app/middleware"
@@ -74,25 +72,18 @@ func (c *dashboardTemplateController) List(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"templates": items})
 }
 
-func uniqueDashboardName(existing []*models.Dashboard, base string) string {
-	base = dashboardsvc.TruncateName(strings.TrimSpace(base), maxDashboardNameLength)
-	if !dashboardNameTaken(existing, base, 0) {
-		return base
-	}
-	for i := 2; ; i++ {
-		suffix := " " + strconv.Itoa(i)
-		candidate := dashboardsvc.TruncateName(base, maxDashboardNameLength-utf8.RuneCountInString(suffix)) + suffix
-		if !dashboardNameTaken(existing, candidate, 0) {
-			return candidate
-		}
-	}
+func uniqueDashboardName(existing []*models.Dashboard, base string, projectName string) string {
+	taken := func(name string) bool { return dashboardNameTaken(existing, name, 0) }
+	return dashboardsvc.UniqueName(taken, base, projectName, maxDashboardNameLength)
 }
 
 var errTemplateInvalid = errors.New("invalid dashboard template")
 
 var errDashboardNameTaken = errors.New("dashboard name already exists")
 
-func installDashboardTemplateTx(tx *sql.Tx, template *models.DashboardTemplate, organizationId int, createdBy *int) (*models.Dashboard, error) {
+// installDashboardTemplateTx names the copy after projectName when the template's name is taken in the organization;
+// an empty projectName (a gallery install for any number of projects) numbers it instead.
+func installDashboardTemplateTx(tx *sql.Tx, template *models.DashboardTemplate, organizationId int, createdBy *int, projectName string) (*models.Dashboard, error) {
 	def, err := dashboardsvc.ParseDefinition(template.Definition)
 	if err != nil {
 		return nil, traceway.NewStackTraceErrorf("failed to parse template %s definition: %w (%w)", template.Key, err, errTemplateInvalid)
@@ -116,7 +107,7 @@ func installDashboardTemplateTx(tx *sql.Tx, template *models.DashboardTemplate, 
 	if err != nil {
 		return nil, traceway.NewStackTraceErrorf("failed to list dashboards: %w", err)
 	}
-	name := uniqueDashboardName(existing, template.Name)
+	name := uniqueDashboardName(existing, template.Name, projectName)
 
 	templateKey := template.Key
 	now := time.Now().UTC()
@@ -141,14 +132,14 @@ func installDashboardTemplateTx(tx *sql.Tx, template *models.DashboardTemplate, 
 	return dashboard, nil
 }
 
-func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.DashboardTemplate, organizationId int) *models.Dashboard {
+func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.DashboardTemplate, organizationId int, projectName string) *models.Dashboard {
 	userId := middleware.GetUserId(ctx)
 	var createdBy *int
 	if userId > 0 {
 		createdBy = &userId
 	}
 
-	dashboard, err := installDashboardTemplateTx(tx, template, organizationId, createdBy)
+	dashboard, err := installDashboardTemplateTx(tx, template, organizationId, createdBy, projectName)
 	if err != nil {
 		if errors.Is(err, errDashboardNameTaken) {
 			ctx.JSON(http.StatusUnprocessableEntity, gin.H{"error": "A dashboard with this name already exists."})
@@ -161,10 +152,10 @@ func installDashboardTemplate(ctx *gin.Context, tx *sql.Tx, template *models.Das
 }
 
 // populateDashboardsOnCreate installs a new project's default dashboards on the paths a person creates it from (the
-// project page, registration, OAuth signup). React Native, Android and iOS projects have no Dashboards page and their
-// SDKs send no app.* metrics yet, so they get nothing there; the batch path keeps installing theirs.
+// project page, registration, OAuth signup). React Native projects have no Dashboards page and their SDK sends no
+// app.* metrics yet, so they get nothing there; the batch path keeps installing theirs.
 func populateDashboardsOnCreate(tx *sql.Tx, project *models.Project, createdBy *int) error {
-	if mobileFrameworks[project.Framework] && project.Framework != "flutter" {
+	if project.Framework == "react-native" {
 		return nil
 	}
 	return populateDefaultDashboards(tx, project, createdBy)
@@ -205,7 +196,7 @@ func populateDefaultDashboards(tx *sql.Tx, project *models.Project, createdBy *i
 			continue
 		}
 
-		dashboard, err := installDashboardTemplateTx(tx, template, *project.OrganizationId, createdBy)
+		dashboard, err := installDashboardTemplateTx(tx, template, *project.OrganizationId, createdBy, project.Name)
 		if err != nil {
 			if errors.Is(err, errTemplateInvalid) {
 				traceway.CaptureException(err)
@@ -258,7 +249,7 @@ func (c *dashboardTemplateController) Install(ctx *gin.Context) {
 		return
 	}
 
-	dashboard := installDashboardTemplate(ctx, tx, template, organizationId)
+	dashboard := installDashboardTemplate(ctx, tx, template, organizationId, "")
 	if dashboard == nil {
 		return
 	}
@@ -355,7 +346,7 @@ func (c *dashboardsController) PopulateDefaults(ctx *gin.Context) {
 			continue
 		}
 
-		dashboard := installDashboardTemplate(ctx, tx, template, *project.OrganizationId)
+		dashboard := installDashboardTemplate(ctx, tx, template, *project.OrganizationId, project.Name)
 		if dashboard == nil {
 			return
 		}

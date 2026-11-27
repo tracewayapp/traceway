@@ -182,15 +182,10 @@
 				<p class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
 					{#if platform === 'flutter'}
 						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
-						breadcrumbs, and the last seconds of the screen recording when screen capture is on, are
-						uploaded on an error. Sessions and performance metrics stay on; healthy-session sampling
-						is off. Explicit SDK options can override these defaults.
-					{:else if platform === 'ios'}
-						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
-						breadcrumbs, and a 30-second wireframe replay clip when screen capture is on, are
-						uploaded on an error. Sessions stay on; healthy-session sampling is off. Explicit SDK
-						options can override these defaults.
-					{:else if platform === 'android'}
+						breadcrumbs, and the last seconds of the replay (screen recording or wireframe) when
+						screen capture is on, are uploaded on an error. Sessions and performance metrics stay
+						on; healthy-session sampling is off. Explicit SDK options can override these defaults.
+					{:else if platform === 'ios' || platform === 'android'}
 						No rules: errors are sent with duplicate and burst protection. Up to 10 minutes of
 						breadcrumbs, and a 30-second wireframe replay clip when screen capture is on, are
 						uploaded on an error. Sessions and performance metrics stay on; healthy-session sampling

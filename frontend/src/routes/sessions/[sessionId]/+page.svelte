@@ -39,6 +39,7 @@
 		pickBreadcrumbs,
 		type SessionBreadcrumbs
 	} from '$lib/utils/session-timeline';
+	import { cleanRecording } from '$lib/utils/session-recording';
 
 	type Session = {
 		recordingReasons?: Array<{
@@ -74,6 +75,7 @@
 	let recordingEvents = $state<SessionReplayEvent[] | null>(null);
 	let recordingLogs = $state<SessionLogEvent[]>([]);
 	let recordingActions = $state<SessionActionEvent[]>([]);
+	let recordingTruncated = $state(false);
 	let timeline = $state<SessionBreadcrumbs | null>(null);
 	let recordingLoading = $state(false);
 	let recordingError = $state('');
@@ -107,11 +109,13 @@
 		recordingLoading = true;
 		recordingError = '';
 		try {
-			const recording = await request;
+			// The segments hold what the SDK uploaded.
+			const recording = cleanRecording(await request);
 			if (generation !== loadGeneration) return;
 			recordingEvents = recording?.events ?? [];
 			recordingLogs = recording?.logs ?? [];
 			recordingActions = recording?.actions ?? [];
+			recordingTruncated = recording?.truncated ?? false;
 		} catch (e) {
 			if (generation !== loadGeneration) return;
 			recordingError = getErrorMessage(e) || 'Failed to load the replay';
@@ -146,6 +150,7 @@
 		recordingEvents = null;
 		recordingLogs = [];
 		recordingActions = [];
+		recordingTruncated = false;
 		timeline = null;
 
 		const startedAt = pageState.url.searchParams.get('t');
@@ -189,12 +194,13 @@
 	);
 	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
 	const sdkVersion = $derived(session?.attributes?.['traceway.sdk.version']);
+	// The row's label says "SDK", so the value names only the platform and version: "iOS 2.0.0-beta.1".
 	const sdkLabel = $derived(
 		sdkVersion
-			? `${platform === 'browser' ? 'JS' : SDK_PLATFORM_NAMES[platform]} SDK v${sdkVersion}`
+			? `${SDK_PLATFORM_NAMES[platform]} ${sdkVersion}`
 			: session?.attributes?.['traceway.sdk.generation'] === '1'
-				? 'V1 · legacy ingestion'
-				: 'Unknown · not reported'
+				? `${SDK_PLATFORM_NAMES[platform]} v1 · legacy ingestion`
+				: 'Not reported'
 	);
 	// A device keeps its instance id across sessions, so capturing it also covers the visits that follow.
 	const captureTarget = $derived(
@@ -245,11 +251,9 @@
 			<p
 				class="text-sm text-muted-foreground"
 				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; {platform ===
-					'flutter' || platform === 'android'
-					? 'performance metrics are'
-					: platform === 'ios'
-						? 'errors are'
-						: 'web vitals are'} collected independently."
+				'browser'
+					? 'web vitals are'
+					: 'performance metrics are'} collected independently."
 			>
 				Session requests are diagnostic samples, not overall performance statistics.
 			</p>
@@ -263,7 +267,7 @@
 				<LabelValue label="Duration" value={sessionDurationLabel(session)} />
 				<LabelValue label="App version" value={session.appVersion || '—'} />
 				{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
-					<LabelValue label={`${SDK_PLATFORM_NAMES[platform]} SDK`} value={sdkLabel} />
+					<LabelValue label="SDK" value={sdkLabel} />
 					<LabelValue
 						label="Failed replay uploads"
 						value={session.attributes?.['traceway.replay.failed_segments'] ?? 'Not reported'}
@@ -325,6 +329,11 @@
 			<Card.Root class="pb-0">
 				<Card.Header class="gap-0">
 					<Card.Title>Session Replay</Card.Title>
+					{#if recordingTruncated}
+						<Card.Description>
+							This recording is longer than can be shown at once, so the replay stops early.
+						</Card.Description>
+					{/if}
 				</Card.Header>
 				<Card.Content class="p-0">
 					{#key recordingEvents}

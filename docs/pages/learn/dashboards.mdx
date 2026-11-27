@@ -8,6 +8,8 @@ Dashboards visualize your metrics as tabs of chart widgets. A dashboard belongs 
 
 React, Vue, Svelte and jQuery projects receive **Web Performance** immediately when created. It includes LCP, INP and CLS, rating shares, page and release breakdowns, route timings, blocking time, request metrics and user-impact counts. Existing browser projects receive missing defaults through a one-time migration; custom dashboards remain intact. See the [RUM walkthrough](/learn/rum) for the workflow and fresh screenshots.
 
+Flutter projects receive **Flutter Performance** when created, and Android and iOS projects **Mobile Performance**. Both chart the `app.*` [client metrics](/learn/client-metrics) of the 2.x SDKs: app start, screen display times, slow and frozen frames, hangs, crashes, sessions, users, peak memory and requests. Mobile Performance also has ANR and out-of-memory series, which stay empty because no SDK measures them yet. React Native projects have no Dashboards page.
+
 Client projects filter by release, OS and country, rather than backend instance. Use a **Rating Bar** for experience quality and a **Breakdown Table** for whole-window comparisons; line charts show the trend. Show observation counts beside percentiles.
 
 ## The Dashboards page
@@ -152,7 +154,8 @@ Templates are ready-made dashboards you install and then customize freely. The m
 | Template | Category | Source of the metrics |
 | --- | --- | --- |
 | Web Performance | browser | Browser SDK: Web Vitals, route timings, blocking, requests and user impact |
-| Mobile Performance | mobile | Mobile SDK: app start, screen timing and app metrics |
+| Mobile Performance | mobile | Android and iOS SDKs: app start, screen display times, frames, hangs and ANRs, crashes and out-of-memory kills, sessions, users, memory and requests |
+| Flutter Performance | mobile | Flutter SDK: app start, screen display times, slow and frozen frames, janky screens, hangs, unhandled errors, sessions, users, memory and requests |
 | OTelemetry Server Agent | server | [Traceway OTel Agent](/learn/otel-agent) host CPU, memory, disk and network metrics |
 | Go Application | go | Go runtime and process metrics (goroutines, heap, GC, CPU, memory) |
 | Traceway ClickHouse | traceway | A monitored Traceway instance's `traceway.ch.*` metrics |

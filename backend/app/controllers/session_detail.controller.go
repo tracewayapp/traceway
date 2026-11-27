@@ -48,6 +48,9 @@ type SessionRecordingPayload struct {
 	Actions   []json.RawMessage `json:"actions,omitempty"`
 	StartedAt *time.Time        `json:"startedAt,omitempty"`
 	EndedAt   *time.Time        `json:"endedAt,omitempty"`
+	// Truncated says the recording stops early: it holds more than one read returns (maxSessionRecordingBytes,
+	// maxSessionRecordingSegments).
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 func (s sessionDetailController) GetSessionDetail(c *gin.Context) {
@@ -152,30 +155,60 @@ func (s sessionDetailController) GetSessionRecording(c *gin.Context) {
 	segments = uniqueSegmentFiles(shared.SegmentsWithinSession(segments, session.CutoffAt))
 
 	_, span = traceway.StartSpan(c, "reading session segments")
-	bodies := readSegments(c.Request.Context(), segments)
+	payload := buildSessionRecording(c.Request.Context(), segments)
 	span.End()
 
+	c.JSON(http.StatusOK, payload)
+}
+
+// maxSessionRecordingSegments and maxSessionRecordingBytes bound one read of a session's recording, which holds its
+// files several times over while it decodes and encodes them. The SDKs stop a session's replay at 50 MiB, but the
+// server stores whatever segments it is sent; past either cap the recording ends at a segment boundary.
+var (
+	maxSessionRecordingSegments = 2000
+	maxSessionRecordingBytes    = 64 << 20
+)
+
+// buildSessionRecording reads the segments, in their order, into one recording. They are read a window of
+// segmentReadConcurrency at a time, so what is in memory stays within the byte cap plus one window.
+func buildSessionRecording(ctx context.Context, segments []models.SessionRecording) SessionRecordingPayload {
 	payload := SessionRecordingPayload{
 		Events: []json.RawMessage{},
 	}
-	for _, body := range bodies {
-		if body == nil {
-			continue
-		}
-		payload.Events = append(payload.Events, body.events...)
-		payload.Logs = append(payload.Logs, body.logs...)
-		payload.Actions = append(payload.Actions, body.actions...)
-		if body.StartedAt != nil && (payload.StartedAt == nil || body.StartedAt.Before(*payload.StartedAt)) {
-			t := *body.StartedAt
-			payload.StartedAt = &t
-		}
-		if body.EndedAt != nil && (payload.EndedAt == nil || body.EndedAt.After(*payload.EndedAt)) {
-			t := *body.EndedAt
-			payload.EndedAt = &t
+	if len(segments) > maxSessionRecordingSegments {
+		segments = segments[:maxSessionRecordingSegments]
+		payload.Truncated = true
+	}
+	budget := maxSessionRecordingBytes
+	for start := 0; start < len(segments); start += segmentReadConcurrency {
+		window := segments[start:min(start+segmentReadConcurrency, len(segments))]
+		for _, body := range readSegments(ctx, window) {
+			if body == nil {
+				continue
+			}
+			if body.size > budget {
+				payload.Truncated = true
+				return payload
+			}
+			budget -= body.size
+			payload.add(body)
 		}
 	}
+	return payload
+}
 
-	c.JSON(http.StatusOK, payload)
+func (payload *SessionRecordingPayload) add(body *segmentBody) {
+	payload.Events = append(payload.Events, body.events...)
+	payload.Logs = append(payload.Logs, body.logs...)
+	payload.Actions = append(payload.Actions, body.actions...)
+	if body.StartedAt != nil && (payload.StartedAt == nil || body.StartedAt.Before(*payload.StartedAt)) {
+		t := *body.StartedAt
+		payload.StartedAt = &t
+	}
+	if body.EndedAt != nil && (payload.EndedAt == nil || body.EndedAt.After(*payload.EndedAt)) {
+		t := *body.EndedAt
+		payload.EndedAt = &t
+	}
 }
 
 func findSession(ctx context.Context, projectId, sessionId uuid.UUID, startedAt *time.Time) (*models.Session, error) {
@@ -198,6 +231,8 @@ type segmentBody struct {
 	events  []json.RawMessage
 	logs    []json.RawMessage
 	actions []json.RawMessage
+	// size is the length of the stored file.
+	size int
 }
 
 // uniqueSegmentFiles keeps one row per stored file. A retried upload, or a segment uploaded both as an exception's
@@ -237,6 +272,7 @@ func readSegments(ctx context.Context, segments []models.SessionRecording) []*se
 			body.logs = decodeArray(body.Logs)
 			body.actions = decodeArray(body.Actions)
 			body.Events, body.Logs, body.Actions = nil, nil, nil
+			body.size = len(raw)
 			bodies[i] = &body
 			return nil
 		})
@@ -286,6 +322,8 @@ func timeVideoEvents(events []json.RawMessage, startedAt, endedAt *time.Time) []
 	return events
 }
 
+// decodeArray reads the items of a stored events, logs or actions array. Only objects are kept: the dashboard reads
+// every item as one, and a file holds whatever an SDK, or anyone with the ingest token, sent before ingest checked it.
 func decodeArray(raw json.RawMessage) []json.RawMessage {
 	if len(raw) == 0 {
 		return nil
@@ -294,7 +332,13 @@ func decodeArray(raw json.RawMessage) []json.RawMessage {
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil
 	}
-	return items
+	kept := items[:0]
+	for _, item := range items {
+		if trimmed := bytes.TrimSpace(item); len(trimmed) > 0 && trimmed[0] == '{' {
+			kept = append(kept, item)
+		}
+	}
+	return kept
 }
 
 var SessionDetailController = sessionDetailController{}

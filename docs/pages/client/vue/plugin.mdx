@@ -108,7 +108,7 @@ A thrown value that is not an `Error` is reported as a message, with `captureMes
 
 Uncaught errors and unhandled promise rejections outside Vue are captured by the SDK's own global handlers, see [Auto-Capture Behavior](/client/js-sdk/initialization#auto-capture-behavior).
 
-Vue has a single `app.config.errorHandler` slot, and the plugin assigns it. If your app assigns its own handler after `app.use(createTracewayPlugin(...))`, it replaces Traceway's and component errors stop reaching the dashboard. To keep both, capture the error yourself inside your handler:
+Vue has a single `app.config.errorHandler` slot, and the plugin assigns it. A handler assigned before `app.use(createTracewayPlugin(...))` keeps being called after Traceway has captured the error. During server-side rendering the plugin leaves the slot alone. If your app assigns its own handler after `app.use(createTracewayPlugin(...))`, it replaces Traceway's and component errors stop reaching the dashboard. To keep both, capture the error yourself inside your handler:
 
 ```javascript
 import { captureException, captureMessage } from "@tracewayapp/vue";

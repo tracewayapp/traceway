@@ -2,8 +2,10 @@ package telemetry
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
+	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
 	"testing"
 	"time"
 )
@@ -67,6 +69,27 @@ func TestSessionRecordingReasons(t *testing.T) {
 		rows, total, err := SessionRepository.FindAll(ctx, project, now.Add(-time.Minute), now.Add(time.Minute), 1, 10, "started_at", "asc", "", []SessionAttributeFilter{{Key: "__recording_trigger", Value: tc.id}})
 		if err != nil || total != tc.want || int64(len(rows)) != tc.want {
 			t.Fatalf("filter %s: total %d rows %d err %v", tc.id, total, len(rows), err)
+		}
+	}
+}
+
+func TestStepLabelNamesConditionSteps(t *testing.T) {
+	cases := map[string]string{
+		`{"event":{"type":"click","value":"#pay"}}`:                                                            "click(#pay)",
+		`{"key":"event.name","op":"eq","value":"exception"}`:                                                   "exception",
+		`{"key":"attributes.http.response.status_code","op":"gte","value":500}`:                                "attributes.http.response.status_code gte 500",
+		`{"key":"severity.text","op":"in","values":["ERROR","FATAL"]}`:                                         "severity.text in [ERROR FATAL]",
+		`{"key":"attributes.user.id","op":"exists"}`:                                                           "attributes.user.id exists",
+		`{"not":{"key":"event.name","op":"eq","value":"traceway.message"}}`:                                    "not traceway.message",
+		`{"any":[{"key":"event.name","op":"eq","value":"exception"},{"event":{"type":"log","value":"boom"}}]}`: "(exception or log(boom))",
+	}
+	for raw, want := range cases {
+		var m sdkconfig.Matcher
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			t.Fatal(err)
+		}
+		if got := stepLabel(&m); got != want {
+			t.Errorf("stepLabel(%s) = %q, want %q", raw, got, want)
 		}
 	}
 }

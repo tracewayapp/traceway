@@ -190,23 +190,29 @@ With a connection string, ordinary logs (print, navigation, taps, `track`, `reco
 
 With `screenCapture: true`, the SDK wraps the app in a `RepaintBoundary`, captures frames at ~15 fps, and on exception encodes the last ~10 seconds to MP4 and sends it with the report (1.x) or uploads it to `/api/recordings` linked to the exception (2.x; a capture that asks for replay also streams the session as consecutive MP4 segments). Touch positions are rendered as blue circles on the captured frames only; the live app is unaffected.
 
-Mask sensitive content with `TracewayPrivacyMask` (applies to recorded frames only):
+Mask sensitive content with `TracewayMask` (it changes the replay and tap records only, never the live app):
 
 ```dart
-TracewayPrivacyMask(
+TracewayMask(
   child: Text('4242 4242 4242 4242'),
 )
 
-TracewayPrivacyMask(
+TracewayMask(
   mode: TracewayMaskMode.blur(ratio: 0.5),
   child: CreditCardWidget(),
 )
 
-TracewayPrivacyMask(
+TracewayMask(
   mode: TracewayMaskMode.blank(color: Color(0xFF000000)),
   child: SensitiveDataWidget(),
 )
+
+// No wrapper: a marker key (blur, or a black blank box)
+Text(card.number, key: const ValueKey('traceway-mask'))
+ListTile(key: const ValueKey('traceway-blank'), title: Text(account.iban))
 ```
+
+A marker key replaces the widget's own key, and the children of one `Row`, `Column` or `Stack` need distinct keys, so mark at most one of them that way and wrap the others in `TracewayMask`. On 1.x and 2.0.0-beta.1 the widget is called `TracewayPrivacyMask` (now a deprecated alias with the same parameters), and marker keys do not exist.
 
 ## Logs and actions (1.x)
 

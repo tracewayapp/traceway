@@ -36,7 +36,7 @@ The same four steps work in a Flutter project, where the builder labels them **T
 | Click (Tap) | The clicked element or an ancestor matches the CSS selector | The widget under the finger or a widget above it matches the selector |
 | Hover | A pointer enters a matching element | A mouse pointer enters a matching widget (desktop) |
 | Navigation | The pathname of the page's URL | The path of the route on top: its name, else `/` and the page widget's type |
-| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `print` or `debugPrint` line or a `captureMessage`. Every line is at info, so there is no level to filter on |
+| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `Traceway.log` line or a `package:logging` record at its level, a `print` or `debugPrint` line (info), or a `captureMessage` |
 
 A widget selector uses the same syntax, read against widgets instead of elements:
 
@@ -45,11 +45,11 @@ A widget selector uses the same syntax, read against widgets instead of elements
 | `button`, `ElevatedButton` | Tag name | Widget type |
 | `#pay` | `id="pay"` | `Key('pay')` or `Semantics(identifier: 'pay')` |
 | `.button` | Class | `Semantics` role (`button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected`) |
-| `[name="value"]` | Any attribute, such as `data-action` | One of `key`, `identifier`, `label` (semantics label or tooltip), `text` (the text shown) and `type` |
+| `[name="value"]` | Any attribute, such as `data-action` | One of `key`, `identifier`, `id` (the string key, else the semantics identifier), `label` (semantics label or tooltip), `text` (the text shown) and `type` |
 
 A navigation step for `/users/{id}` matches a route named `/users/42`. A route without a name is reported as `/` and the type of its page widget, such as `/CheckoutPage`, and the app can report a location itself with `Traceway.recordNavigation`. Navigation is reported by `Traceway.navigatorObserver`, so the app must attach it to its navigators.
 
-You do not have to work a selector out: open a session of the app and copy it from the **Actions** list, where every tap is shown with the selector the SDK recorded for it. The full rules, with Dart examples, are in the Flutter guide: [element selectors](/client/flutter#element-selectors-naming-widgets) and [navigation](/client/flutter#navigation-naming-routes).
+You do not have to work a selector out: open a session of the app and copy it from the **Actions** list, where every tap is shown with the selector the SDK recorded for it. The full rules, with Dart examples, are in the Flutter guide: [element selectors](/client/flutter#naming-views) and [navigation](/client/flutter#naming-screens).
 
 ### In an Android app
 
@@ -60,7 +60,7 @@ An Android project's builder also labels the steps **Tap**, **Hover**, **Navigat
 | Click (Tap) | The clicked element or an ancestor matches the CSS selector | The view or Compose node under the finger, or one of its parents, matches the selector |
 | Hover | A pointer enters a matching element | A mouse or trackpad pointer enters a matching view (ChromeOS, tablets with a mouse); fingers and styluses do not hover |
 | Navigation | The pathname of the page's URL | The screen on top: `/` and the activity's or AndroidX fragment's class, such as `/CheckoutActivity`, or the path the app reports with `Traceway.recordNavigation` |
-| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `System.out` (info) or `System.err` (error) line, a `Traceway.recordLog` line at its level, or a `captureMessage` |
+| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `System.out` (info) or `System.err` (error) line, a `Traceway.log` line at its level, or a `captureMessage` |
 
 A view selector uses the same syntax, read against views and Compose semantics nodes:
 
@@ -69,9 +69,9 @@ A view selector uses the same syntax, read against views and Compose semantics n
 | `button`, `MaterialButton` | Tag name | View class, or a superclass of it (`Button` matches a `MaterialButton`); a Compose node's role (`Button`, `Checkbox`, `Switch`, `Tab`, `Image`) or kind (`Text`, `TextField`, `Slider`) |
 | `#pay` | `id="pay"` | `android:id="@+id/pay"` or `Modifier.testTag("pay")` |
 | `.button` | Class | Role: `button`, `link`, `header`, `image`, `textField`, `slider`, `checkbox`, `toggle`, `selected` |
-| `[name="value"]` | Any attribute, such as `data-action` | One of `key` (`android:tag`), `identifier`, `label` (content description or tooltip), `text` (the text shown) and `type` (a class name) |
+| `[name="value"]` | Any attribute, such as `data-action` | One of `key` and `identifier` (`android:tag`, the resource id or the test tag), `id` (the resource id or test tag), `label` (content description or tooltip), `text` (the text shown) and `type` (a class name) |
 
-A navigation step for `/users/{id}` matches a screen reported as `/users/42`. Copy selectors from a session's **Actions** list, where each tap shows the one the SDK recorded. The full rules, with Kotlin examples, are in the Android guide: [element selectors](/client/android#element-selectors-naming-views) and [navigation](/client/android#navigation-naming-screens).
+A navigation step for `/users/{id}` matches a screen reported as `/users/42`. Copy selectors from a session's **Actions** list, where each tap shows the one the SDK recorded. The full rules, with Kotlin examples, are in the Android guide: [element selectors](/client/android#naming-views) and [navigation](/client/android#naming-screens).
 
 ### In an iOS app
 
@@ -81,7 +81,7 @@ An iOS project's builder labels the steps **Tap**, **Navigation** and **Log**. I
 | --- | --- | --- |
 | Click (Tap) | The clicked element or an ancestor matches the CSS selector | The view under the finger, or one of its superviews, matches the selector |
 | Navigation | The pathname of the page's URL | The screen: `/` and the class of the view controller that appeared, such as `/CheckoutViewController`, or the path the app reports with `.tracewayScreen` or `Traceway.recordNavigation` |
-| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `Traceway.log` line at its severity, or a `Traceway.capture(message:)` |
+| Log | A console call, an OpenTelemetry log record or a Traceway message, with a level | A `Traceway.log` line at its level, or a `Traceway.captureMessage` |
 
 A view selector uses the same syntax, read against the view hierarchy:
 
@@ -90,9 +90,9 @@ A view selector uses the same syntax, read against the view hierarchy:
 | `button`, `UIButton` | Tag name | The view's class, without its module (`CheckoutButton` for `Shop.CheckoutButton`); any case |
 | `#pay` | `id="pay"` | `accessibilityIdentifier = "pay"` |
 | `.button` | Class | A role from the view's accessibility traits or class: `button`, `link`, `header`, `image`, `textField`, `slider`, `toggle`, `selected` |
-| `[name="value"]` | Any attribute, such as `data-action` | One of `key` (the view's `tag`), `identifier`, `label` (`accessibilityLabel`), `text` (the text a label or button shows) and `type` (a class name) |
+| `[name="value"]` | Any attribute, such as `data-action` | One of `key` (the view's `tag`), `identifier` and `id` (`accessibilityIdentifier`), `label` (`accessibilityLabel`), `text` (the text a label or button shows) and `type` (a class name) |
 
-SwiftUI draws its controls without views of their own, so a selector can name a SwiftUI screen's hosting view but not one SwiftUI button. Copy selectors from a session's **Actions** list, where each tap shows the one the SDK recorded, such as `UIButton#pay`. The full rules, with Swift examples, are in the iOS guide: [element selectors](/client/ios#element-selectors-naming-views) and [navigation](/client/ios#navigation-naming-screens).
+SwiftUI draws its controls without views of their own, so a selector can name a SwiftUI screen's hosting view but not one SwiftUI button. Copy selectors from a session's **Actions** list, where each tap shows the one the SDK recorded, such as `UIButton#pay`. The full rules, with Swift examples, are in the iOS guide: [element selectors](/client/ios#naming-views) and [navigation](/client/ios#naming-screens).
 
 One event advances at most one step. Unrelated events do not complete the next step, and they do not undo progress either: when the first step happens again in the middle of a sequence (the user hovers the menu a second time, an error storm continues), the sequence already under way keeps going and a second one starts beside it. Each later step has a timeout measured from the step before it; progress older than that is dropped. A path is matched as it reads, so `/café` matches the address the browser reports as `/caf%C3%A9`. A new trigger defaults to a 60-second lookback, 30-second capture, 60-second cooldown and three fires per session. The lookback can include only replay already present in the bounded local buffer.
 

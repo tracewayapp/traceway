@@ -73,7 +73,7 @@ describe('project view availability', () => {
 			expect(isProjectViewAvailable('flutter', path), path).toBe(true);
 		}
 	});
-	it('enables the session and collection views for ios, without metric dashboards or SLOs', () => {
+	it('enables the session, collection, dashboard and SLO views for ios', () => {
 		expect(SDK_CONFIG_FRAMEWORKS).toContain('ios');
 		for (const path of [
 			'/sessions',
@@ -86,9 +86,8 @@ describe('project view availability', () => {
 		]) {
 			expect(isProjectViewAvailable('ios', path), path).toBe(true);
 		}
-		// The iOS SDK sends no app performance metrics.
 		for (const path of ['/slos', '/slos/slo-id', '/dashboards']) {
-			expect(isProjectViewAvailable('ios', path), path).toBe(false);
+			expect(isProjectViewAvailable('ios', path), path).toBe(true);
 		}
 	});
 	it.each(['opentelemetry', 'gin', 'nestjs', 'nextjs', 'remix'] as const)(

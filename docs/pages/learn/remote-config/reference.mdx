@@ -6,7 +6,7 @@ Every field of the settings document a rule can set, the attributes rules can ta
 
 ## The settings document
 
-A rule stores a **partial** document: only what it changes. The server merges the matching rules in order and sends the browser that overlay; the SDK lays it over its built-in defaults. Unknown fields are rejected when you save a rule (422), and the browser ignores fields it does not know, so a newer server can add settings without breaking older SDKs.
+A rule stores a **partial** document: only what it changes. The server merges the matching rules in order and sends the client that overlay; the SDK lays it over its built-in defaults. Unknown fields are rejected when you save a rule (422), and the SDK ignores fields it does not know, so a newer server can add settings without breaking older SDKs.
 
 ```json
 {
@@ -18,7 +18,7 @@ A rule stores a **partial** document: only what it changes. The server merges th
     "console":  { "mode": "buffer", "minSeverity": "warn" }
   },
   "sessions": { "enabled": true, "baselineSampleRate": 0 },
-  "replay":   { "mode": "buffer", "sessionSampleRate": 1, "maskAllInputs": true },
+  "replay":   { "mode": "buffer", "sessionSampleRate": 1, "maskAllInputs": true, "images": "wifi" },
   "buffer":   { "maxBytes": 2097152, "maxAgeSeconds": 600, "replayMaxBytes": 8388608, "persist": true },
   "triggers": [ { "id": "default-exception", "enabled": true } ]
 }
@@ -57,8 +57,19 @@ A rule stores a **partial** document: only what it changes. The server merges th
 | `sessionSampleRate` | 0 to 1 | Share of sessions that may stream replay, decided per session id, so a session is all or nothing |
 | `maskAllInputs` | boolean | Mask every input field in the recording (default `true`) |
 | `captureMode` | `video`, `wireframe` | Flutter SDK only, see below; browser SDKs ignore it, and the iOS and Android SDKs always record a wireframe |
+| `images` | `off`, `wifi`, `always` | When a wireframe replay may carry pictures (default `wifi`); Flutter, iOS and Android SDKs, see below. The browser SDK ignores it |
 
-`captureMode` picks how a Flutter app records replay, overriding its `TracewayOptions.screenCaptureMode`: `video` is MP4 clips from the device's hardware encoder, `wireframe` the widget tree recorded as rrweb HTML and mutations. Leaving it unset keeps the app's choice. Video needs a hardware encoder (Android, iOS, macOS); on Linux and Windows the SDK records a wireframe whatever the setting says. A change applies at once unless the current session already uploaded replay in the other mode; then it applies from the next session, so one session's replay is all video or all wireframe. On an app's first launch the session starts in the app's mode, because the rule only arrives with the first poll; see [Wireframe recording](/client/flutter#wireframe-recording).
+`captureMode` picks how a Flutter app records replay, overriding its `TracewayOptions.screenCaptureMode`: `video` is MP4 clips from the device's hardware encoder, `wireframe` the widget tree recorded as rrweb HTML and mutations. Leaving it unset keeps the app's choice. Video needs a hardware encoder (Android, iOS, macOS); on Linux and Windows the SDK records a wireframe whatever the setting says. A change applies at once unless the current session already uploaded replay in the other mode; then it applies from the next session, so one session's replay is all video or all wireframe. On an app's first launch the session starts in the app's mode, because the rule only arrives with the first poll; see [Wireframe](/client/flutter#wireframe).
+
+`images` sets when a wireframe replay may show pictures instead of grey placeholders. The SDK default is `wifi`, and the app's `replayImages` option (`off`, `wifi` or `always`, default `always`) is a ceiling: the SDK applies the lower of the two, in the order `off` < `wifi` < `always`. A rule merges it like `maskAllInputs`, and a plan without replay switches replay off and images with it.
+
+| Value | Android and iOS | Flutter |
+|---|---|---|
+| `off` | Image views are placeholders | Network images are placeholders |
+| `wifi` | Pictures only on an unmetered connection, decided when the frame is captured. Android checks that the active network is not metered; iOS treats cellular, a personal hotspot and Low Data Mode as metered | Network images are referenced by URL, as with `always`; the SDK has no network type to check |
+| `always` | Pictures on any connection | Network images are referenced by URL |
+
+On Android and iOS a picture is the bitmap an image view shows, never a screenshot of the window: downscaled to 1.5 times its displayed size and at most 512 px on its longest side, encoded as JPEG at quality 0.6 (PNG for a small image with transparency), dropped if it is still over 96 KiB at half size, and at most 4 MiB of pictures per session; past that the replay shows placeholders. An image under a blur or blank privacy mask is never captured, and Jetpack Compose images are always placeholders, since Compose exposes no pixels. The first frame that shows an image has its placeholder, a later frame the picture. The Flutter SDK uploads no pixels at all: the replay loads a network image from its URL when it plays, and memory and asset images are placeholders. Video replay is not affected. Each session event reports the policy the session started with as `traceway.replay.images`; on Android and iOS it also carries the bytes of pictures uploaded so far as `traceway.replay.image_bytes`.
 
 ### Buffer
 
@@ -66,10 +77,10 @@ A rule stores a **partial** document: only what it changes. The server merges th
 |---|---|---|---|
 | `maxBytes` | 2 MiB | 1 B to 64 MiB | Size of the on-device buffer for log records and spans |
 | `maxAgeSeconds` | 600 | 1 to 86400 | Records older than this are dropped from the buffer |
-| `replayMaxBytes` | 8 MiB | 1 B to 64 MiB | Size of the buffered replay segments |
-| `persist` | `true` | | Keep telemetry in IndexedDB, with a sessionStorage navigation checkpoint; does not persist rrweb replay |
+| `replayMaxBytes` | 8 MiB | 1 B to 64 MiB | Size of the buffered replay segments. Browser SDK only: the Flutter, Android and iOS SDKs ignore it and bound replay by their `maxBufferFrames` option |
+| `persist` | `true` | | Browser: keep telemetry in IndexedDB, with a sessionStorage navigation checkpoint; does not persist rrweb replay. Flutter, Android and iOS: keep the buffered records on disk across app restarts (needs `persistToDisk`); `false` deletes them |
 
-Persistence is best effort when browser storage is unavailable or full. Restored and new telemetry share `maxBytes` and `maxAgeSeconds`; the byte budget accounts for complete serialized records. The SDK writes the buffer once when the page is hidden or unloads, and on `flush()`, never on a timer: serializing the whole buffer is a long task on a phone. IndexedDB writes alone may not finish during unload, so the current tab also keeps a synchronous sessionStorage checkpoint. Replay stays in memory and does not survive a full page navigation.
+The rest of this section describes the browser SDK. Persistence is best effort when browser storage is unavailable or full. Restored and new telemetry share `maxBytes` and `maxAgeSeconds`; the byte budget accounts for complete serialized records. The SDK writes the buffer once when the page is hidden or unloads, and on `flush()`, never on a timer: serializing the whole buffer is a long task on a phone. IndexedDB writes alone may not finish during unload, so the current tab also keeps a synchronous sessionStorage checkpoint. Replay stays in memory and does not survive a full page navigation.
 
 Failed OTLP batches retry in the current page with increasing delays, on `online`, on visibility changes, and after startup. The outbox prunes batches after 8 attempts or 24 hours and keeps the newest 200 on a drain. `buffer.persist: false` stops durable retries and removes stored telemetry and navigation checkpoints for this project token. It does not disable collection or the configuration cache.
 
@@ -77,7 +88,7 @@ Changing input masking restarts rrweb and discards incompatible buffered or queu
 
 ## Defaults
 
-What the 2.x SDK does with no rules.
+What the 2.x SDKs do with no rules. The browser, Flutter, Android and iOS SDKs share these defaults; the mobile SDKs have no source for `webVitals`, `resourceTiming`, `longTasks` and `routeTiming`.
 
 | Signal | Default | With `recordAllSessions: true` |
 |---|---|---|
@@ -90,13 +101,13 @@ What the 2.x SDK does with no rules.
 
 The performance signals that are off are still measured on the page, so a rule can switch one on for a cohort, a trigger can match it while it is off, and a trigger or capture that names it streams it for a while. See [Performance signals](#performance-signals).
 
-Production defaults send session lifecycle metadata and the aggregated [performance metrics](/learn/client-metrics), and keep healthy breadcrumbs, web vital events and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
+Production defaults send session lifecycle metadata and the aggregated [performance metrics](/learn/client-metrics), and keep healthy breadcrumbs, web vital events and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. On Flutter, Android and iOS the clip is also bounded by the replay ring (`maxBufferFrames`, 150 frames by default), so it can be shorter. Error clips have a 5-second cooldown and a limit of 20 per session.
 
-Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. Configure `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` to tune these limits; they reset when the SDK is recreated.
+Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. In the browser SDK, `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` in `init()` tunes these limits; they reset when the SDK is recreated. The Flutter, Android and iOS SDKs use the same two limits with fixed values, and treat an error as a duplicate when its type and message equal those of the error before it.
 
 For an optional stable sample of healthy-session breadcrumbs and request spans, use `baselineSampleRate: 0.01` (1%). The default is 0. Selection uses the session ID and persists across page reloads within that session. It does not enable replay or override explicitly disabled signals, signal filters, or exporter limits. Performance metrics are uploaded independently of it, so performance diagnosis is not restricted to sessions with errors.
 
-Set `sessions.baselineSampleRate: 0.01` in a rule (or use **Use 1% baseline** in the rule editor) to enable that sample remotely. Targeted captures remain separate: duration is limited to 24 hours, lookback to 24 hours of locally retained data, and each project can have at most 20 active captures. Local buffers default to 2 MiB of telemetry and 8 MiB of replay; collection also respects developer ceilings and plan limits. These bounds are not a total upload-byte budget.
+Set `sessions.baselineSampleRate: 0.01` in a rule (or use **Use 1% baseline** in the rule editor) to enable that sample remotely. Targeted captures remain separate: duration is limited to 24 hours, lookback to 24 hours of locally retained data, and each project can have at most 20 active captures. Local buffers default to 2 MiB of telemetry and, in the browser, 8 MiB of replay; collection also respects developer ceilings and plan limits. These bounds are not a total upload-byte budget.
 
 Console's `minSeverity` defaults to `info`. One trigger is built in:
 
@@ -183,7 +194,7 @@ A step's matcher is a condition with a `key`, or exactly one of `all`, `any` (ea
 
 `signals` lists signal names or `"*"` (the default when omitted). An explicit `[]` selects no telemetry signals; replay is controlled separately. Durations are at most 86400 seconds.
 
-A `capture` action uploads its lookback, sends the record that fired it, and streams for `durationSeconds`. Its `"*"` also brings back signals a rule switched off: every signal the defaults collect; `resourceTiming`, `longTasks` and `routeTiming` only if named. It is stored in `localStorage` (`traceway:local-captures:<token>`), so later pages keep streaming until it ends; the same trigger firing again extends it instead of uploading again. Each start emits `traceway.capture.started` with `traceway.capture.source: trigger`.
+A `capture` action uploads its lookback, sends the record that fired it, and streams for `durationSeconds`. Its `"*"` also brings back signals a rule switched off: every signal the defaults collect; `resourceTiming`, `longTasks` and `routeTiming` only if named. It is stored in `localStorage` (`traceway:local-captures:<token>`; on Flutter, Android and iOS in the SDK's state on disk), so later pages and later starts of the app keep streaming until it ends; the same trigger firing again extends it instead of uploading again. Each start emits `traceway.capture.started` with `traceway.capture.source: trigger`.
 
 ## Performance signals
 
@@ -262,6 +273,7 @@ These stream unless the kill switch is on; session events additionally respect `
 | `traceway.trigger.fired` | `traceway.trigger.id`, `traceway.trigger.name` |
 | `traceway.capture.started` | `traceway.capture.id`; for a trigger's capture also `traceway.capture.source: trigger`, `traceway.trigger.id`, `traceway.capture.until` |
 | `session.start`, `traceway.session.update`, `session.end` | `session.id`, `traceway.session.started_at` and the session's attributes |
+| `traceway.collection.health` | `traceway.collection.bytes`, `.events`, `.dropped`, `.max_bytes`, `.max_events`, `traceway.error.suppressed_total`, `traceway.context.evicted`, `traceway.replay.failed_segments`. Sent after the SDK dropped or suppressed data: 1 second after the first drop, then with the delay doubling up to 5 minutes |
 
 ## The OpAMP endpoint
 
@@ -284,7 +296,7 @@ These stream unless the kill switch is on; session events additionally respect `
 
 Errors back off from 30 seconds to 30 minutes. The heartbeat is never shorter than 30 seconds.
 
-A server that predates remote config has no such route and answers 404 (the SDK treats 405 and 501 the same way). The SDK then stops polling and, unless `init()` sets `transport: "otlp"`, goes back to its defaults and sends its data through the legacy protocol that server understands. While the endpoint cannot be reached at all and no poll has succeeded yet, the SDK also sends through the legacy protocol; it keeps polling and switches back once a poll is answered. `transport: "legacy"` skips polling altogether.
+A server that predates remote config has no such route and answers 404 (the SDK treats 405 and 501 the same way). The SDK then stops polling. The Flutter, Android and iOS SDKs keep the settings they have and still send OTLP. The browser SDK, unless `init()` sets `transport: "otlp"`, goes back to its defaults and sends its data through the legacy protocol that server understands. While the endpoint cannot be reached at all and no poll has succeeded yet, the browser SDK also sends through the legacy protocol; it keeps polling and switches back once a poll is answered. `transport: "legacy"` skips polling altogether.
 
 <Callout type="info">
   The endpoint uses the protobuf types of [opamp-go](https://github.com/open-telemetry/opamp-go) and is tested against opamp-go's own HTTP client, so other OpAMP clients can poll it too.

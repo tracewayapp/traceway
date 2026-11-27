@@ -275,13 +275,16 @@
 		>{/if}
 	{#if platform === 'ios'}
 		<p class="text-xs text-muted-foreground">
-			Selectors name views with CSS syntax: a class such as <code>UIButton</code>,
-			<code>#pay</code> for an <code>accessibilityIdentifier</code>, <code>[text="Pay now"]</code>
-			for the text a label or button shows, <code>[label="Delete"]</code> for an
-			<code>accessibilityLabel</code>, <code>.button</code> for accessibility traits,
-			<code>[key="42"]</code> for a <code>tag</code>, and combinators; pseudo-classes and selector
-			lists are not supported. A tap matches the view under the finger or any of its superviews; iOS
-			has no hover. Route patterns match the screen path, such as
+			Selectors name views with CSS syntax: a class such as <code>UIButton</code>;
+			<code>#pay</code> for an <code>accessibilityIdentifier</code>;
+			<code>[text="Pay now"]</code> for the text a label or button shows, or
+			<code>[text^="Pay"]</code> for its start; <code>[label="Delete"]</code> for an
+			<code>accessibilityLabel</code>; <code>[key="42"]</code> for a <code>tag</code>;
+			<code>[identifier="order.42"]</code> for an identifier <code>#</code> cannot spell;
+			<code>[type="_PayButton"]</code> for a class a tag cannot spell; <code>.button</code> for a
+			role from the accessibility traits; and combinators, such as <code>#cart UIButton</code>.
+			Pseudo-classes and selector lists are not supported. A tap matches the view under the finger
+			or any of its superviews; iOS has no hover. Route patterns match the screen path, such as
 			<code>/CheckoutViewController</code> or a path the app reports with
 			<code>.tracewayScreen</code> or <code>Traceway.recordNavigation</code>, like
 			<code>/users/&lbrace;id&rbrace;</code>; a parameter matches one path segment. Replay needs the
@@ -290,29 +293,37 @@
 	{:else if platform === 'android'}
 		<p class="text-xs text-muted-foreground">
 			Selectors name views and Compose nodes with CSS syntax: a class such as
-			<code>MaterialButton</code> (subclasses match, so <code>Button</code> does too),
-			<code>#pay</code> for <code>R.id.pay</code> or <code>Modifier.testTag("pay")</code>,
-			<code>[text="Pay now"]</code> for the text a view shows, <code>[label="Delete"]</code> for a
-			content description, <code>.button</code> for a role, <code>[key="42"]</code> for an
-			<code>android:tag</code>, and combinators; pseudo-classes and selector lists are not
-			supported. A tap matches the view under the finger or any of its parents. Hover fires when a
-			mouse pointer enters a matching view. Route patterns match the screen path:
-			<code>/CheckoutActivity</code>,
+			<code>MaterialButton</code> (subclasses match, so <code>Button</code> does too);
+			<code>#pay</code> for <code>R.id.pay</code> or <code>Modifier.testTag("pay")</code>;
+			<code>[text="Pay now"]</code> for the text a view shows, or <code>[text^="Pay"]</code> for its
+			start; <code>[label="Delete"]</code> for a content description;
+			<code>[key="42"]</code> for an <code>android:tag</code>;
+			<code>[identifier="order.42"]</code> for a tag, id or test tag <code>#</code> cannot spell;
+			<code>[type="com.example.PayButton"]</code> for a class by its full name;
+			<code>.button</code> for a role; and combinators, such as <code>#cart MaterialButton</code>.
+			Pseudo-classes and selector lists are not supported. A tap matches the view under the finger
+			or any of its parents. Hover fires when a mouse pointer enters a matching view. Route patterns
+			match the screen path: <code>/CheckoutActivity</code>,
 			<code>/CartFragment</code>, or a path the app reports with
 			<code>Traceway.recordNavigation</code>, like <code>/users/&lbrace;id&rbrace;</code>; a
 			parameter matches one path segment. Replay needs the SDK's <code>screenCapture</code> option.
 		</p>
 	{:else if platform === 'flutter'}
 		<p class="text-xs text-muted-foreground">
-			Selectors name widgets with CSS syntax: a widget type such as <code>ElevatedButton</code>,
-			<code>#pay</code> for <code>Key('pay')</code> or a semantics identifier,
-			<code>[text="Pay now"]</code> for the text a widget shows, <code>[label="Delete"]</code> for a
-			semantics label or tooltip (<code>IconButton[label="Delete"]</code>), and combinators;
-			pseudo-classes and selector lists are not supported. A tap matches the widget under the finger
-			or any widget above it. Hover fires when a mouse pointer enters a matching widget. Route
-			patterns match the route name, such as <code>/users/&lbrace;id&rbrace;</code>; a parameter
-			matches one path segment. Replay needs the SDK's <code>screenCapture</code> option and remains subject
-			to developer limits and available buffer.
+			Selectors name widgets with CSS syntax: a widget type such as <code>ElevatedButton</code>;
+			<code>#pay</code> for <code>Key('pay')</code> or a semantics identifier;
+			<code>[text="Pay now"]</code> for the text a widget shows, or <code>[text^="Pay"]</code> for
+			its start; <code>[label="Delete"]</code> for a semantics label or tooltip;
+			<code>[key="42"]</code> for a <code>ValueKey(42)</code>;
+			<code>[identifier="order.42"]</code> for a <code>Semantics.identifier</code>
+			<code>#</code> cannot spell; <code>[type="_PayButton"]</code> for a type a tag cannot spell;
+			<code>.button</code>
+			for a semantics role; and combinators, such as
+			<code>#cart ElevatedButton</code>. Pseudo-classes and selector lists are not supported. A tap
+			matches the widget under the finger or any widget above it. Hover fires when a mouse pointer
+			enters a matching widget. Route patterns match the route name, such as
+			<code>/users/&lbrace;id&rbrace;</code>; a parameter matches one path segment. Replay needs the
+			SDK's <code>screenCapture</code> option and remains subject to developer limits and available buffer.
 		</p>
 	{:else}
 		<p class="text-xs text-muted-foreground">

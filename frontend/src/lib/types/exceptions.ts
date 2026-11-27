@@ -119,7 +119,10 @@ export interface FlutterVideoEvent {
 export type SessionReplayEvent = (eventWithTime & { data?: { href?: string } }) | FlutterVideoEvent;
 
 export interface SessionRecording {
-	/** rrweb events (web SDKs) or MP4 chunk descriptors (Flutter SDK). */
+	/**
+	 * rrweb events (the browser SDK's DOM recording, or the wireframe of the Flutter, iOS and Android SDKs) or MP4
+	 * chunk descriptors (the Flutter SDK's video mode). One session's replay is all one or the other.
+	 */
 	events?: SessionReplayEvent[];
 	/** Console output snapshotted at exception capture (last ~10s, ≤200). */
 	logs?: SessionLogEvent[];
@@ -129,5 +132,7 @@ export interface SessionRecording {
 	startedAt?: string;
 	/** ISO 8601 timestamp of the last frame / last event. */
 	endedAt?: string;
+	/** The session's recording held more than one read returns, so it stops early. */
+	truncated?: boolean;
 }
 import type { eventWithTime } from '@rrweb/types';

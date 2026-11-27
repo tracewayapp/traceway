@@ -42,7 +42,7 @@ The script no-ops on non-Release builds and when the token is unset, so it is sa
 | Instance URL | `--url` | `TRACEWAY_URL` | Traceway Cloud |
 | dSYM directory | `--dsym-dir` | | Xcode's `DWARF_DSYM_FOLDER_PATH` |
 
-`TRACEWAY_UPLOAD_TOKEN` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your `Traceway.start()` connection string. `TRACEWAY_URL` is your Traceway base URL (or the `/api/report` URL); the script derives the upload endpoint from it.
+`TRACEWAY_UPLOAD_TOKEN` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your `Traceway.initialize()` connection string. `TRACEWAY_URL` is your Traceway base URL (or the `/api/report` URL); the script derives the upload endpoint from it.
 
 The script finds dSYM binaries at `*.dSYM/Contents/Resources/DWARF/*` and POSTs each one. Pass `--dry-run` to resolve the config and list what would be uploaded without sending.
 

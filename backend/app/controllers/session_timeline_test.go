@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"fmt"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -63,5 +65,100 @@ func TestTrimToCoveredWindow(t *testing.T) {
 			t.Errorf("%s: logs %v spans %v truncated %v, want %v %v %v", tc.name,
 				logSeconds(records), spanSeconds(spans), truncated, tc.wantLogs, tc.wantSpans, tc.wantTruncated)
 		}
+	}
+}
+
+func TestTimelineKeepsWhatATapShows(t *testing.T) {
+	at := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	click := func(attrs map[string]string) models.LogRecord {
+		attrs["event.name"] = "browser.user_action.click"
+		attrs["session.id"] = "s"
+		return models.LogRecord{Timestamp: at, LogAttributes: attrs}
+	}
+	timeline := BuildSessionTimeline([]models.LogRecord{
+		click(map[string]string{"browser.css_selector": "#checkout .pay", "browser.tag_name": "button", "url.full": "https://shop.test/cart"}),
+		click(map[string]string{
+			"browser.css_selector": "MaterialButton#pay", "browser.tag_name": "MaterialButton",
+			"app.widget.name": "MaterialButton", "app.widget.id": "pay", "app.widget.text": "Pay now",
+			"app.widget.label": "Pay", "app.screen.name": "/CheckoutActivity",
+			"app.screen.coordinate.x": "120", "app.screen.coordinate.y": "640",
+		}),
+		click(map[string]string{"browser.css_selector": "UIButton[label=\"Delete\"]", "browser.tag_name": "UIButton", "app.widget.label": "Delete", "app.widget.text": ""}),
+	}, nil)
+
+	want := []map[string]any{
+		{"selector": "#checkout .pay", "tag": "button"},
+		{"selector": "MaterialButton#pay", "tag": "MaterialButton", "id": "pay", "text": "Pay now", "label": "Pay", "screen": "/CheckoutActivity"},
+		{"selector": `UIButton[label="Delete"]`, "tag": "UIButton", "label": "Delete"},
+	}
+	if len(timeline.Actions) != len(want) {
+		t.Fatalf("actions = %+v", timeline.Actions)
+	}
+	for i, action := range timeline.Actions {
+		if action.Type != "custom" || action.Category != "ui" || action.Name != "click" || !maps.Equal(action.Data, want[i]) {
+			t.Errorf("action %d = %+v, want data %v", i, action, want[i])
+		}
+	}
+}
+
+// TW-8: the SDKs send traceway.collection.health with their other control events; it describes the SDK, not the
+// user, and is left out of the timeline and of the SQL read that counts against the breadcrumb limit.
+func TestTimelineSkipsCollectionHealth(t *testing.T) {
+	at := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	timeline := BuildSessionTimeline([]models.LogRecord{{Timestamp: at, LogAttributes: map[string]string{
+		"event.name": "traceway.collection.health", "traceway.collection.dropped": "12",
+	}}}, nil)
+	if len(timeline.Actions) != 0 || len(timeline.Logs) != 0 {
+		t.Fatalf("health report shown on the timeline: %+v", timeline)
+	}
+	if !slices.Contains(shared.SessionTimelineSkippedEvents, "traceway.collection.health") {
+		t.Fatal("traceway.collection.health is not filtered in SQL")
+	}
+}
+
+// TW-9: an app event row carries the event's own attributes, without the capture ids the SDKs stamp on every
+// record during a dashboard capture, and the same ones on every read when it has more than fit.
+func TestTimelineEventDataIsTheEventsOwnAndStable(t *testing.T) {
+	at := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	checkout := models.LogRecord{Timestamp: at, LogAttributes: map[string]string{
+		"event.name": "checkout", "session.id": "s", "traceway.capture.ids": `["0195"]`, "cart.total": "30",
+	}}
+	timeline := BuildSessionTimeline([]models.LogRecord{checkout}, nil)
+	if len(timeline.Actions) != 1 || !maps.Equal(timeline.Actions[0].Data, map[string]any{"cart.total": "30"}) {
+		t.Fatalf("checkout row = %+v", timeline.Actions)
+	}
+
+	wide := map[string]string{"event.name": "wide", "traceway.capture.ids": `["0195"]`}
+	for i := range 30 {
+		wide[fmt.Sprintf("a%02d", i)] = "v"
+	}
+	var want []string
+	for i := range 20 {
+		want = append(want, fmt.Sprintf("a%02d", i))
+	}
+	for range 20 {
+		row := BuildSessionTimeline([]models.LogRecord{{Timestamp: at, LogAttributes: wide}}, nil).Actions[0]
+		keys := slices.Sorted(maps.Keys(row.Data))
+		if !slices.Equal(keys, want) {
+			t.Fatalf("data keys = %v, want %v", keys, want)
+		}
+	}
+}
+
+// Crash safety: records from any SDK build map onto timeline rows without panicking.
+func TestTimelineSurvivesMalformedRecords(t *testing.T) {
+	at := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	records := []models.LogRecord{
+		{Timestamp: at},
+		{Timestamp: at, LogAttributes: map[string]string{"event.name": "traceway.action", "traceway.action.data": `[1,2]`}},
+		{Timestamp: at, LogAttributes: map[string]string{"event.name": "traceway.action", "traceway.action.data": `{"a":`}},
+		{Timestamp: at, LogAttributes: map[string]string{"event.name": "browser.navigation"}},
+		{Timestamp: at, LogAttributes: map[string]string{"event.name": "exception"}},
+		{Timestamp: at, LogAttributes: map[string]string{"event.name": "browser.user_action.click"}},
+	}
+	spans := []shared.SessionSpan{{SpanId: "a", StartTime: at, HTTPStatus: "abc"}, {SpanId: "b", StartTime: at, HTTPStatus: "99999999999999999999"}}
+	timeline := BuildSessionTimeline(records, spans)
+	if len(timeline.Logs)+len(timeline.Actions) != len(records)+len(spans) {
+		t.Errorf("timeline = %+v", timeline)
 	}
 }

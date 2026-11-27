@@ -190,7 +190,7 @@ function AppShell({ user }) {
 
 ## Without a Hook
 
-Everything on the hook, and the rest of the SDK's API, is also exported from `@tracewayapp/react` as plain functions. Use them in utilities, stores and other modules outside the React tree, with no second dependency on `@tracewayapp/frontend`:
+Everything on the hook, and the SDK functions in the table below, are also exported from `@tracewayapp/react` as plain functions (`init` and `getClient` are not: the provider starts the SDK). Use them in utilities, stores and other modules outside the React tree, with no second dependency on `@tracewayapp/frontend`:
 
 ```javascript
 import { captureException, track, metric, count, flush } from "@tracewayapp/react";
@@ -203,6 +203,7 @@ count("cart.item_added");
 | Export | Purpose |
 |--------|---------|
 | `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` | The same functions `useTraceway` returns |
+| `log(message, level?, attributes?)` | A log line of your own, handled like a `console.*` line (releases after 2.0.3). See [Logs](/client/js-sdk#logs) |
 | `track(eventName, attributes?)` | A named app event. Buffered like a breadcrumb; a trigger can match it |
 | `metric(name, value, dims?)`, `count(name, n?, dims?)` | Custom [performance metrics](/learn/client-metrics), aggregated on the device |
 | `setMetricDimension(key, value)` | A dimension of your own on every performance metric; `null` removes it |
@@ -214,6 +215,7 @@ count("cart.item_added");
 | `refreshConfig()` | Fetch this client's remote collection settings now instead of at the next poll |
 | `flush(timeoutMs?)`, `shutdown()` | See [Flush & Lifecycle](/client/js-sdk/flush) |
 | `getInstanceId()` | The id this browser profile reports as `service.instance.id` |
+| `currentSessionId()` | The current session's id (`session.id`), or `null` before the provider mounts and between sessions (releases after 2.0.3) |
 | `DEFAULT_IGNORE_PATTERNS` | The built-in `ignoreErrors` list |
 
 The functions do nothing until a `TracewayProvider` has mounted.

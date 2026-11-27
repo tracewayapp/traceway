@@ -22,9 +22,10 @@ function App() {
 |------|------|----------|-------------|
 | `connectionString` | `string \| StandaloneOptions` | Yes | Your Traceway connection string. An options object with `telemetry` instead runs the SDK against your own OpenTelemetry collector, see [Local configuration without OpAMP](/client/js-sdk/initialization#standalone-without-a-traceway-server) |
 | `options` | `TracewayFrontendOptions` | No | Configuration options, passed to `init()` |
+| `router` | `object` | No | A React Router data router or a TanStack Router, passed to `trackRouter()` (2.0.1 and later), see [Options](#options) |
 | `children` | `ReactNode` | Yes | Child components |
 
-The provider calls `init()` once, in its constructor, so both props are read when it mounts. Changing them later has no effect.
+The provider calls `init()` once, in its constructor, so `connectionString`, `options` and `router` are read when it mounts. Changing them later has no effect.
 
 ## Options
 

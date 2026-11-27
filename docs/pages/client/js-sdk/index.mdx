@@ -4,7 +4,7 @@ import BrowserSdkV1 from "../../../components/BrowserSdkV1";
 
 <BrowserSdkV1 href="/client/js-sdk/v1" />
 
-This reference covers the 2.x browser SDK and its framework wrappers. It uses OpenTelemetry and supports [remote collection settings](/learn/remote-config). Version 2.0.2 is the current release on npm, so a plain `npm install` gets it. Coming from 1.x? Follow [Migrating from 1.x to 2.x](/client/js-sdk/migration).
+This reference covers the 2.x browser SDK and its framework wrappers. It uses OpenTelemetry and supports [remote collection settings](/learn/remote-config). Version 2.0.3 is the current release on npm, so a plain `npm install` gets it. Coming from 1.x? Follow [Migrating from 1.x to 2.x](/client/js-sdk/migration).
 
 The Traceway JavaScript SDK is the browser side of [Real User Monitoring](/learn/rum). It captures exceptions and messages, measures web vitals, route changes and requests as [performance metrics](/learn/client-metrics), reports sessions, and keeps breadcrumbs and session replay on the device until an error, a trigger or a capture asks for them.
 
@@ -99,6 +99,19 @@ try {
 captureMessage("User completed checkout");
 ```
 
+## Logs
+
+From releases after 2.0.3, `log(message, level?, attributes?)` records a log line of your own. The level is a `TracewayLogLevel`: `"trace"`, `"debug"`, `"info"` (the default), `"warn"`, `"error"` or `"fatal"`. Attribute values are strings, numbers or booleans.
+
+```javascript
+import { log } from "@tracewayapp/frontend";
+
+log("cart synced", "debug", { items: 3 });
+log("payment provider slow", "warn", { provider: "stripe" });
+```
+
+A `log()` line is handled like a `console.*` line. It belongs to the console signal, so it is kept on the device by default and uploaded with an error, the console `minSeverity` applies (default `info`: the `debug` line above is dropped), remote rules can stream it or switch it off, and `captureLogs: false` turns it off. On the wire it is an OpenTelemetry log record without an event name: the body is the message, the severity number and text come from the level (trace 1 `TRACE`, debug 5 `DEBUG`, info 9 `INFO`, warn 13 `WARN`, error 17 `ERROR`, fatal 21 `FATAL`), and the attributes are the global ones, then yours, then `log.source = "api"`. Use [`captureMessage`](/client/js-sdk/messages) for a line that should open an issue.
+
 ## Features
 
 - **Automatic batching**: Logs and spans go out in OTLP batches, by default about a second apart (`exportDelayMs`)
@@ -106,6 +119,45 @@ captureMessage("User completed checkout");
 - **Stack trace capture**: Full stack traces are captured for exceptions
 - **Custom attributes**: Attach metadata to exceptions for better debugging
 - **Distributed tracing**: Records `fetch` and `XMLHttpRequest` calls as spans and sends the W3C `traceparent` header, so a browser request and the backend work it caused share one trace. This covers `$.ajax()` and browser Axios with no extra setup (see [Distributed Tracing](/client/js-sdk/distributed-tracing))
-- **Performance metrics**: web vitals, route changes and requests are aggregated on the device and sent as histograms. A poor LCP, INP or CLS names the element behind it, and from releases after 2.0.2 a slow interaction also reports which part took the time (see [Performance Metrics](/learn/client-metrics) and [stable element names](/learn/rum-best-practices#10-give-the-controls-people-use-a-stable-name))
-- **Session replay and breadcrumbs**: kept on the device and uploaded with an error, a trigger or a capture (see [Session Replay](/client/js-sdk/session-replay))
+- **Performance metrics**: web vitals, route changes and requests are aggregated on the device and sent as histograms. A poor LCP, INP or CLS names the element behind it, and since 2.0.3 a slow interaction also reports which part took the time (see [Performance Metrics](/learn/client-metrics) and [stable element names](/learn/rum-best-practices#10-give-the-controls-people-use-a-stable-name))
+- **Session replay and breadcrumbs**: kept on the device and uploaded with an error, a trigger or a capture. Input values are masked by default, and from releases after 2.0.3 `class="traceway-mask"` or `class="traceway-blank"` hides other parts of the page (see [Session Replay](/client/js-sdk/session-replay#privacy))
 - **Remote collection settings**: change what browsers send from the **Data Collection** page, without a release (see [Remote SDK Config](/learn/remote-config))
+
+## API
+
+The functions `@tracewayapp/frontend` exports:
+
+| Function | Description |
+|----------|-------------|
+| `init(connectionString, options?)` | Start the SDK (a second call is a no-op until `shutdown()`). `init(options)` with a single options object starts standalone mode. See [Initialization](/client/js-sdk/initialization) |
+| `captureException(error, attributes?)` | Capture an error, optionally with string attributes. See [Exceptions](/client/js-sdk/exceptions) |
+| `captureExceptionWithAttributes(error, attributes?)` | Same as `captureException` |
+| `captureMessage(message, attributes?)` | Capture a message issue. See [Messages](/client/js-sdk/messages) |
+| `log(message, level?, attributes?)` | Record a log line; `level` is `"trace"`, `"debug"`, `"info"` (default), `"warn"`, `"error"` or `"fatal"`. See [Logs](#logs) |
+| `recordAction(category, name, data?)` | Record a breadcrumb triggers can match |
+| `track(eventName, attributes?)` | Record a named app event triggers can match |
+| `metric(name, value, dims?)` | Record one observation of a custom distribution; at most two dimensions |
+| `count(name, n?, dims?)` | Add to a custom counter |
+| `setRoute(template)` | Name the page by its route template, e.g. `/orders/:id`; `null` goes back to the router's name or the normalized path |
+| `trackRouter(router)` | Name every page from this router's route templates. See [Client Metrics](/learn/client-metrics#dimensions) |
+| `routeFromParams(pathname, params)` | Rebuild a route template from a path and the params a router matched in it |
+| `setMetricDimension(key, value)` | Set a dimension of your own on every performance metric from now on; `null` removes it |
+| `startInteraction(name)` | Start a span for one user action; returns `{ traceId, run, bind, captureException, end }`, or `undefined` before `init()`. See [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
+| `setAttribute(key, value)` / `setAttributes(map)` | Attach attributes to every later exception and message and to the session; also used to target remote rules |
+| `removeAttribute(key)` / `clearAttributes()` | Drop global attributes |
+| `refreshConfig()` | Fetch remote settings now, e.g. right after login |
+| `flush(timeoutMs?)` | Send what is queued, including pending metrics; buffered telemetry stays on the device. See [Flush & Lifecycle](/client/js-sdk/flush) |
+| `shutdown()` | Flush, remove all instrumentation and stop recording; `init()` may be called again afterwards |
+| `getInstanceId()` | This browser profile's id (`service.instance.id`), which the dashboard can capture |
+| `currentSessionId()` | The current session's id (`session.id`), or `null` before `init()` and between sessions. Releases after 2.0.3 |
+| `getClient()` | The running `TracewayFrontendClient`, or `null` before `init()` |
+
+Also exported: `DEFAULT_IGNORE_PATTERNS`, `SDK_VERSION`, the `TracewayFrontendClient` class, and the types `TracewayFrontendOptions`, `StandaloneOptions`, `TelemetryOptions`, `TelemetryEndpoint`, `CapturedException`, `TracewayLogLevel`, `RouteParams`, `CollectionSettings`, `Settings`, `Trigger`, `TriggerAction`, `Capture`, `Mode`, `SignalName`, `TracewayEvent`, `LogEvent`, `NetworkEvent`, `NavigationEvent` and `CustomEvent`.
+
+## Platform differences
+
+The browser SDK and the Traceway app SDKs ([Flutter](/client/flutter), [Android](/client/android), [iOS](/client/ios)) use the same names and send the same records. What differs:
+
+- **Only in the browser**: replay is an rrweb recording of the page's DOM, where the apps record wireframes of their views (Flutter can also record video). Masks are classes in the markup (`traceway-mask`, `traceway-blank`, rrweb's `rr-*`), not a mask API with `TracewayMaskMode`. Navigation is recorded from the History API and route templates are read from the app's router (`trackRouter`, `routeFromParams`), so there is no `recordNavigation`. `console.*` is captured automatically. Web vital, resource timing, long task and route change timing events, `captureHttpServerErrors`, `startInteraction(name).bind`, and `transport` with its `/api/report` fallback for older servers exist only here.
+- **Only in the apps**: process-ending crash capture with native symbolication, `recordNavigation`, `reportFullyDisplayed()` and the `app.*` performance metrics (app start, slow and frozen frames, hangs), the mask API (`TracewayMask`, `View.tracewayMask`, `UIView.tracewayMask`, `.tracewayMask(_:)`) with its blur and blank modes, the replay image policy (`replayImages`, `replay.images`, which the browser ignores), the frame options (`screenCapture`, `fps`, `maxBufferFrames`), and `legacyConnectionString`, which delivers reports a 1.x app left on the device.
+- **Same feature, browser idiom**: the start call is `init` (Flutter `Traceway.run`, iOS `Traceway.initialize`); `getInstanceId()` and `currentSessionId()` are functions (iOS has the properties `instanceId` and `currentSessionId`); `flush(timeoutMs?)` takes milliseconds (Swift `flush(timeout:)` takes seconds); cross-origin trace headers are set with `propagateTraceHeaderCorsUrls` (apps: `propagateTraceHeaderUrls`).

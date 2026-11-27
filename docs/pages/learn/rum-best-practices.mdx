@@ -61,7 +61,7 @@ An exception is a single failure with a stack trace. Traceway groups identical e
 
 Logs and events are the steps of a visit:
 
-- **Console output**: what your app writes to the console at info level and above. `console.debug` lines are left out by default.
+- **Console output**: what your app writes to the console, and its `log()` lines, at info level and above. `console.debug` lines are left out by default.
 - **Clicks and page changes**: recorded automatically.
 - **Requests**: every `fetch` and XHR call with its duration and status. Each one links to the trace of the backend work it caused.
 - **Your own events**: `track("checkout_failed", { step: "payment" })` marks a moment that matters in your app.

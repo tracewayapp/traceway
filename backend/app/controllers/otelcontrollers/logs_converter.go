@@ -110,6 +110,13 @@ func convertLogs(ctx context.Context, existingProject *models.Project, projectId
 						result.Sessions = mergeSession(result.Sessions, sessions, session)
 					}
 				}
+				// The issue retraces its own formatted trace, as on the span path, so the record is retraced only after
+				// the issue was built from what the SDK sent: a trace retraced twice can map its frames again.
+				if retraceAndroidRecord(existingProject, projectId, ctx, record.LogAttributes, language, proguardUuid) && eventName == eventException {
+					if excType, ok := record.LogAttributes["exception.type"]; ok {
+						result.Exceptions[len(result.Exceptions)-1].Attributes["exception.type"] = excType
+					}
+				}
 				if countEvents {
 					result.Observations = append(result.Observations, browserObservations(eventName, record)...)
 				}
@@ -145,6 +152,34 @@ func (l logIssue) exception(projectId uuid.UUID) models.ExceptionStackTrace {
 	stackTrace = otelSymbolicateAndroid(l.project, projectId, l.ctx, stackTrace, l.language, l.proguardUuid)
 	stackTrace = otelSymbolicateDart(l.project, projectId, l.ctx, stackTrace, l.language)
 	return l.row(projectId, stackTrace, clientcontrollers.ComputeExceptionHash(stackTrace, false), false)
+}
+
+// retraceAndroidRecord restores the classes and frames of an R8-obfuscated Android exception on the stored record,
+// which the Logs page, the session timeline and trace correlation read. The type goes on a line of its own above
+// the frames, so one retrace restores both.
+func retraceAndroidRecord(project *models.Project, projectId uuid.UUID, ctx context.Context, attrs map[string]string, language, proguardUuid string) bool {
+	stackTrace := attrs["exception.stacktrace"]
+	if stackTrace == "" || !isAndroidLanguage(language) {
+		return false
+	}
+	excType := attrs["exception.type"]
+	if strings.ContainsAny(excType, "\r\n") {
+		excType = ""
+	}
+	text := excType + "\n" + stackTrace
+	retraced := otelSymbolicateAndroid(project, projectId, ctx, text, language, proguardUuid)
+	if retraced == text {
+		return false
+	}
+	typeLine, trace, ok := strings.Cut(retraced, "\n")
+	if !ok || trace == "" {
+		return false
+	}
+	attrs["exception.stacktrace"] = trace
+	if excType != "" && typeLine != "" {
+		attrs["exception.type"] = typeLine
+	}
+	return true
 }
 
 func (l logIssue) message(projectId uuid.UUID) (models.ExceptionStackTrace, bool) {
@@ -209,7 +244,7 @@ func sessionFromLog(eventName string, lr *logspb.LogRecord, resource []*commonpb
 	}
 	eventTime, _, _ := shared.OtelStorageTimes(ts, ingestedAt)
 
-	startedAt, ok := sessionStartedAt(lr.Attributes)
+	startedAt, ok := sessionStartedAt(lr.Attributes, eventTime)
 	if !ok {
 		if eventName != eventSessionStart {
 			return models.Session{}, false
@@ -253,7 +288,24 @@ func sessionFromLog(eventName string, lr *logspb.LogRecord, resource []*commonpb
 	return session, true
 }
 
-func sessionStartedAt(attrs []*commonpb.KeyValue) (time.Time, bool) {
+// sessionStartBefore and sessionStartAfter bound how far a session's start may lie from the time of an event of
+// it, on the device's own clock. Sessions last about an hour (shared.SessionMaxSpan); a start outside the bounds
+// is a unit slip in an SDK, such as microseconds sent as milliseconds, and would be stored as is, past what
+// ClickHouse's 32-bit started_at holds.
+const (
+	sessionStartBefore = 24 * time.Hour
+	sessionStartAfter  = 5 * time.Minute
+)
+
+func sessionStartedAt(attrs []*commonpb.KeyValue, eventTime time.Time) (time.Time, bool) {
+	startedAt, ok := rawSessionStartedAt(attrs)
+	if !ok || startedAt.Before(eventTime.Add(-sessionStartBefore)) || startedAt.After(eventTime.Add(sessionStartAfter)) {
+		return time.Time{}, false
+	}
+	return startedAt, true
+}
+
+func rawSessionStartedAt(attrs []*commonpb.KeyValue) (time.Time, bool) {
 	if ms, ok := getIntAttribute(attrs, attrSessionStarted); ok && ms > 0 {
 		return time.UnixMilli(ms).UTC(), true
 	}

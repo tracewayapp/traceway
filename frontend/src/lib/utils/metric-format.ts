@@ -79,6 +79,18 @@ export function formatMetricValue(value: number, unit: string): FormatResult {
 	return { text: value.toFixed(1), unit };
 }
 
+/**
+ * A unit as a widget title names it: OpenTelemetry's "By" reads "bytes", "1" a percent and "{requests}"
+ * "requests"; other units are already readable ("ms", "MB").
+ */
+export function metricUnitLabel(unit: string): string {
+	if (unit.length > 2 && unit.endsWith('/s')) return `${metricUnitLabel(unit.slice(0, -2))}/s`;
+	if (unit === 'By' || unit === 'B') return 'bytes';
+	if (unit === '1') return '%';
+	if (unit.length > 2 && unit.startsWith('{') && unit.endsWith('}')) return unit.slice(1, -1);
+	return unit;
+}
+
 export function formatMetricLabel(value: number, unit: string): string {
 	const result = formatMetricValue(value, unit);
 	if (!result.unit) return result.text;

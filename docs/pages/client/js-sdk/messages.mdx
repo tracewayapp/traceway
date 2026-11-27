@@ -85,7 +85,7 @@ function processData(data) {
 4. **Use sparingly**: Messages add overhead; don't log every action
 5. **Mind the error filters**: `ignoreErrors` patterns and `beforeCapture` apply to messages too, so with the default patterns a text containing "timeout" or "Failed to fetch" is dropped. See [Error Filtering](/client/js-sdk/initialization#error-filtering)
 
-Messages are sent right away and each one is an issue occurrence. For an event that should only appear as a breadcrumb on the session timeline, use `recordAction(category, name, data)`; the 2.x SDK also has `track(name, attributes)` for named events a trigger can match. In 2.x both are buffered on the device by default.
+Messages are sent right away and each one is an issue occurrence. For an event that should only appear as a breadcrumb on the session timeline, use `recordAction(category, name, data)`; the 2.x SDK also has `track(name, attributes)` for named events a trigger can match, and releases after 2.0.3 have [`log(message, level, attributes)`](/client/js-sdk#logs) for a log line. In 2.x all three are buffered on the device by default.
 
 ## Viewing Messages
 

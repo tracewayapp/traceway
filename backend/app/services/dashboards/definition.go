@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
@@ -50,6 +52,31 @@ func TruncateName(name string, maxRunes int) string {
 	}
 	runes := []rune(name)
 	return string(runes[:maxRunes])
+}
+
+// UniqueName picks the name of a dashboard installed for a project. Names are unique per organization, so when the
+// template's name is taken the dashboard is named after its project ("Mobile Performance · Android App"), which tells
+// the copies apart in an organization-wide list where a number would not. A numeral follows only when that is taken
+// too, or when there is no project name.
+func UniqueName(taken func(name string) bool, base string, projectName string, maxRunes int) string {
+	name := TruncateName(strings.TrimSpace(base), maxRunes)
+	if !taken(name) {
+		return name
+	}
+	if projectName = strings.TrimSpace(projectName); projectName != "" {
+		name = strings.TrimSpace(TruncateName(name+" · "+projectName, maxRunes))
+		if !taken(name) {
+			return name
+		}
+	}
+	stem := name
+	for n := 2; ; n++ {
+		suffix := " " + strconv.Itoa(n)
+		name = TruncateName(stem, maxRunes-utf8.RuneCountInString(suffix)) + suffix
+		if !taken(name) {
+			return name
+		}
+	}
 }
 
 func NewWidgetId() string {

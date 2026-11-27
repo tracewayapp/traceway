@@ -100,6 +100,10 @@
 	const isFrontendProject = $derived(
 		!!projectsState.currentProject && isFrontendFramework(projectsState.currentProject.framework)
 	);
+	// Flutter, Android and iOS projects chart app.* metrics, not web vitals.
+	const isAppProject = $derived(
+		['flutter', 'android', 'ios'].includes(projectsState.currentProject?.framework ?? '')
+	);
 	const defaultKind = $derived<SliKind>(isFrontendProject ? 'session' : 'endpoint');
 	const kindOptions = $derived.by(() => {
 		const kinds = isFrontendProject ? FRONTEND_SLI_KINDS : BACKEND_SLI_KINDS;
@@ -765,8 +769,7 @@
 							bind:value={metricName}
 							placeholder={!isFrontendProject
 								? 'system.cpu.utilization'
-								: projectsState.currentProject?.framework === 'flutter' ||
-									  projectsState.currentProject?.framework === 'android'
+								: isAppProject
 									? 'app.start.duration'
 									: 'browser.web_vital.lcp'}
 							disabled={loading}
@@ -867,8 +870,14 @@
 						</div>
 						{#if metricAggregation === 'distribution'}
 							<p class="pt-7 text-xs text-muted-foreground">
-								Each observation is an event: "75% of page views have an LCP at most 2500 ms". Needs
-								a distribution metric.
+								{#if isAppProject}
+									Each observation is an event: "75% of app starts take at most 2000 ms"
+									(app.start.duration) or "95% of screens display within 1000 ms" (app.screen.ttid).
+									Needs a distribution metric.
+								{:else}
+									Each observation is an event: "75% of page views have an LCP at most 2500 ms".
+									Needs a distribution metric.
+								{/if}
 							</p>
 						{:else}
 							<label class="flex cursor-pointer items-center gap-2 pt-7 text-sm">

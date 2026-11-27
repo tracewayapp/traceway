@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { locate, placeSegments, playerTimeAt, wallTimeAt } from './video-segments';
+import {
+	FIRST_FRAME_SECONDS,
+	loadedSeekSeconds,
+	locate,
+	placeSegments,
+	playerTimeAt,
+	wallTimeAt
+} from './video-segments';
 
 const at = (seconds: number) => new Date(Date.UTC(2026, 10, 18, 10, 0, seconds)).toISOString();
 const ms = (seconds: number) => Date.UTC(2026, 10, 18, 10, 0, seconds);
@@ -95,5 +102,36 @@ describe('video segments', () => {
 		expect(timeline).toEqual({ segments: [], totalMs: 0, timed: false });
 		expect(locate(timeline, 1_000)).toEqual({ position: 0, localMs: 0 });
 		expect(wallTimeAt(timeline, 1_000)).toBe(1_000);
+	});
+});
+
+// TW-6: a fragmented or damaged MP4 reports an Infinity or NaN duration, and setting currentTime to it throws.
+describe('loadedSeekSeconds', () => {
+	it('seeks within what the video reports', () => {
+		expect(loadedSeekSeconds({ localMs: 0, play: false, toEnd: true }, 8.4, 8_000)).toBe(8.4);
+		expect(loadedSeekSeconds({ localMs: 9_000, play: true, toEnd: false }, 8.4, 8_000)).toBe(8.4);
+		expect(loadedSeekSeconds({ localMs: 2_000, play: true, toEnd: false }, 8.4, 8_000)).toBe(2);
+		expect(loadedSeekSeconds({ localMs: 0, play: true, toEnd: false }, 8.4, 8_000)).toBeNull();
+		expect(loadedSeekSeconds({ localMs: 0, play: false, toEnd: false }, 8.4, 8_000)).toBe(
+			FIRST_FRAME_SECONDS
+		);
+	});
+
+	it('falls back to the declared duration when the video reports none', () => {
+		for (const duration of [Infinity, Number.NaN, 0]) {
+			expect(loadedSeekSeconds({ localMs: 0, play: false, toEnd: true }, duration, 8_000)).toBe(8);
+			expect(
+				loadedSeekSeconds({ localMs: 9_000, play: false, toEnd: false }, duration, 8_000)
+			).toBe(8);
+			expect(
+				loadedSeekSeconds({ localMs: 0, play: false, toEnd: true }, duration, Number.NaN)
+			).toBe(FIRST_FRAME_SECONDS);
+			expect(loadedSeekSeconds({ localMs: 1_500, play: true, toEnd: false }, duration, 0)).toBe(
+				1.5
+			);
+			expect(
+				loadedSeekSeconds({ localMs: Number.NaN, play: true, toEnd: false }, duration, 0)
+			).toBeNull();
+		}
 	});
 });

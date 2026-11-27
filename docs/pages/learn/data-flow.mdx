@@ -32,7 +32,7 @@ Here's how the concepts connect in a typical scheduled or queued job:
 
 Traces, metrics and logs arrive over OTLP/HTTP at `/api/otel/v1/traces`, `/api/otel/v1/metrics` and `/api/otel/v1/logs`. Each request authenticates with the project token. Stack traces are symbolicated at ingest, and everything lands in the same telemetry store.
 
-Browser and mobile apps use the Traceway SDK for their platform, which sends the native JSON collection-frame format to `/api/report` and adds session replay and on-device crash capture. Traceway builds canonical spans from those frames and keeps the API’s native UUID identities; OTLP export maps span and parent IDs to eight bytes and includes the available attributes and service metadata. Pick yours under [Docs](/client).
+Browser and mobile apps use the Traceway SDK for their platform, which adds session replay and on-device crash capture. The 2.x browser SDK and the Flutter, Android and iOS SDKs 2.x send OTLP/HTTP to the same three endpoints, upload replay to `/api/recordings` and poll `/api/otel/v1/opamp` for [remote config](/learn/remote-config). The legacy 1.x browser SDK, the mobile SDKs 1.x and the React Native SDK send the native JSON collection-frame format to `/api/report`; Traceway builds canonical spans from those frames and keeps the API’s native UUID identities; OTLP export maps span and parent IDs to eight bytes and includes the available attributes and service metadata. Pick yours under [Docs](/client).
 
 ## After the data collection
 

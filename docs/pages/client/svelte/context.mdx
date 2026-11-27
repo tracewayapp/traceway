@@ -215,6 +215,7 @@ The rest of the browser SDK's API is re-exported from `@tracewayapp/svelte`, so 
 
 | Function | Description |
 |----------|-------------|
+| `log(message, level?, attributes?)` | Record a log line of your own, e.g. `log("cart synced", "debug", { items: 3 })`, handled like a `console.*` line (releases after 2.0.3). See [Logs](/client/js-sdk#logs) |
 | `track(eventName, attributes?)` | Record a named app event, e.g. `track("checkout_failed", { step: "payment" })`. Buffered on the device by default |
 | `metric(name, value, dims?)` | Record one observation of a custom distribution, e.g. `metric("checkout.duration", 840, { plan: "pro" })`. Aggregated on the device; at most two dimensions are kept |
 | `count(name, n?, dims?)` | Add to a custom counter, e.g. `count("cart.item_added")` |
@@ -225,6 +226,7 @@ The rest of the browser SDK's API is re-exported from `@tracewayapp/svelte`, so 
 | `flush(timeoutMs?)` | Send everything that is queued for sending. Buffered telemetry stays on the device. See [Flush](/client/js-sdk/flush) |
 | `shutdown()` | Flush, remove the instrumentations and stop recording. `setupTraceway` may run again afterwards |
 | `getInstanceId()` | The id this browser profile reports as `service.instance.id`, which a dashboard capture can target |
+| `currentSessionId()` | The current session's id (`session.id`), or `null` before `setupTraceway` and between sessions (releases after 2.0.3) |
 
 `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` and `DEFAULT_IGNORE_PATTERNS` are exported the same way. See [Client Metrics](/learn/client-metrics) for the custom metric rules.
 

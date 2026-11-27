@@ -108,12 +108,12 @@ export function isBrowserFramework(fw: Framework): boolean {
 }
 
 // The Flutter, iOS and Android 2.x SDKs report like the browser SDK: sessions, replay, logs and spans, and the
-// Flutter and Android SDKs the app.* client metrics too. The other mobile SDKs do not send these yet.
+// app.* client metrics too. React Native does not send these yet.
 export function isProjectViewAvailable(fw: Framework, pathname: string): boolean {
 	const view = pathname.split('/')[1];
 	if (view === 'data-collection' || view === 'sessions') return SDK_CONFIG_FRAMEWORKS.includes(fw);
 	if (view === 'slos' || view === 'dashboards')
-		return !isMobileFramework(fw) || fw === 'flutter' || fw === 'android';
+		return !isMobileFramework(fw) || fw === 'flutter' || fw === 'android' || fw === 'ios';
 	return true;
 }
 

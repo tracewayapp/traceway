@@ -42,6 +42,39 @@ func isEmptyRaw(r json.RawMessage) bool {
 		bytes.Equal(trimmed, []byte("{}"))
 }
 
+// objectItems keeps the JSON objects of an uploaded events, logs or actions array: the dashboard reads every item
+// as an object, so a null, a number or a nested array would break the replay and the breadcrumb tables of the
+// session until the file expires. A value that is not an array holds no items. The shape of an object is left to
+// the dashboard, and an array of objects is stored exactly as sent.
+func objectItems(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil
+	}
+	kept := items[:0]
+	for _, item := range items {
+		if isJSONObject(item) {
+			kept = append(kept, item)
+		}
+	}
+	if len(kept) == len(items) {
+		return raw
+	}
+	out, err := json.Marshal(kept)
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+func isJSONObject(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) > 0 && trimmed[0] == '{'
+}
+
 // buildRecordingJob turns one uploaded segment into its storage job. exceptionId is the server-side id of the
 // exception the segment is a clip of, or uuid.Nil; a segment with neither an exception nor a session is unreachable.
 func buildRecordingJob(c *gin.Context, projectId uuid.UUID, sr *clientmodels.ClientSessionRecording, exceptionId uuid.UUID, resolveJs bool, debugIds map[string]string) (recordings.Job, bool) {
@@ -54,6 +87,7 @@ func buildRecordingJob(c *gin.Context, projectId uuid.UUID, sr *clientmodels.Cli
 	if exceptionId == uuid.Nil && sessionPtr == nil {
 		return recordings.Job{}, false
 	}
+	sr.Events, sr.Logs, sr.Actions = objectItems(sr.Events), objectItems(sr.Logs), objectItems(sr.Actions)
 	if isEmptyRaw(sr.Events) && isEmptyRaw(sr.Logs) && isEmptyRaw(sr.Actions) {
 		return recordings.Job{}, false
 	}

@@ -2,17 +2,17 @@
 
 import { Callout } from "nextra/components";
 
-The browser SDK decides, on every device, what to send right away, what to keep on the device in case it is needed, and what to drop. Traceway tells it how, for each group of clients, while the app runs. From the dashboard you change what one release, one browser, one user or a tenth of your traffic sends, without shipping a build. Telemetry can wait on the device and leave only when something goes wrong, or when someone asks for it.
+The Traceway SDK decides, on every device, what to send right away, what to keep on the device in case it is needed, and what to drop. Traceway tells it how, for each group of clients, while the app runs. From the dashboard you change what one release, one browser, one user or a tenth of your traffic sends, without shipping a build. Telemetry can wait on the device and leave only when something goes wrong, or when someone asks for it.
 
 <Callout type="info">
   Remote config needs an OpenTelemetry-based Traceway SDK, either the browser SDK `@tracewayapp/frontend` 2.0 or later (or the React, Vue, Svelte or jQuery wrapper of the same version) the [Flutter SDK](/client/flutter) 2.x, the [iOS SDK](/client/ios) 2.x or the [Android SDK](/client/android) 2.x, and a Traceway server with the **Data Collection** page. The page is in the sidebar of browser projects (React, Vue, Svelte and jQuery), Flutter, iOS and Android projects. Setup steps are on [Set up remote config](/learn/remote-config/setup); every field is in the [settings reference](/learn/remote-config/reference).
 </Callout>
 
-Remote configuration is available for browser projects (React, Svelte, Vue and jQuery), Flutter, iOS and Android projects. A Flutter app takes the settings from the Flutter SDK 2.0 beta on; the 1.x SDK never polls, and neither does a 2.x app that runs [standalone](/client/flutter#standalone-without-a-traceway-server). A Flutter project's rules offer the Flutter SDK's signals (`errors`, `messages`, `console`, `network`, `navigation`, `userActions`, `custom` and replay, as video or as a [wireframe](/client/flutter#wireframe-recording) of the widget tree), and its click and hover steps match widgets; see [Recording triggers](/client/flutter#recording-triggers). An Android app takes the settings from the Android SDK 2.0 beta on (the 1.x SDK never polls, nor does a 2.x app without a connection string); its rules offer the same app signals, with replay as a [wireframe](/client/android#wireframe-session-replay) of the app's views and Compose screens, and its click and hover steps match views and Compose nodes; see [Recording triggers](/client/android#recording-triggers). An iOS app takes the settings from the iOS SDK 2.0 beta on (the 1.x SDK never polls, nor does a 2.x app without a connection string); its rules offer the same app signals, with replay as a [wireframe](/client/ios#session-replay) of the view hierarchy, and its click steps match views (iOS has no hover); see [Recording triggers](/client/ios#recording-triggers). Backend projects and React Native projects have no Data Collection page, and the server rejects their OpAMP polls and config requests. For a full-stack app, use its separate browser project.
+Remote configuration is available for browser projects (React, Svelte, Vue and jQuery), Flutter, iOS and Android projects. A Flutter app takes the settings from the Flutter SDK 2.0 beta on; the 1.x SDK never polls, and neither does a 2.x app that runs [standalone](/client/flutter#standalone-without-a-traceway-server). A Flutter project's rules offer the Flutter SDK's signals (`errors`, `messages`, `console`, `network`, `navigation`, `userActions`, `custom` and replay, as video or as a [wireframe](/client/flutter#wireframe) of the widget tree), and its click and hover steps match widgets; see [Recording triggers](/client/flutter#recording-triggers). An Android app takes the settings from the Android SDK 2.0 beta on (the 1.x SDK never polls, nor does a 2.x app without a connection string); its rules offer the same app signals, with replay as a [wireframe](/client/android#wireframe) of the app's views and Compose screens, and its click and hover steps match views and Compose nodes; see [Recording triggers](/client/android#recording-triggers). An iOS app takes the settings from the iOS SDK 2.0 beta on (the 1.x SDK never polls, nor does a 2.x app without a connection string); its rules offer the same app signals, with replay as a [wireframe](/client/ios#session-replay) of the view hierarchy, and its click steps match views (iOS has no hover); see [Recording triggers](/client/ios#recording-triggers). Backend projects and React Native projects have no Data Collection page, and the server rejects their OpAMP polls and config requests. For a full-stack app, use its separate browser project.
 
-Production defaults send session lifecycle metadata and the aggregated [performance metrics](/learn/client-metrics), and keep healthy breadcrumbs, web vital events and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. Error clips have a 5-second cooldown and a limit of 20 per session.
+Production defaults send session lifecycle metadata and the aggregated [performance metrics](/learn/client-metrics), and keep healthy breadcrumbs, web vital events and replay buffered locally. An accepted exception uploads up to 10 minutes of buffered breadcrumbs and a 30-second replay clip; no full-session replay is uploaded by default. On Flutter, Android and iOS the clip is also bounded by the replay ring (`maxBufferFrames`, 150 frames by default), so it can be shorter. Error clips have a 5-second cooldown and a limit of 20 per session.
 
-Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. Configure `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` to tune these limits; they reset when the SDK is recreated.
+Errors are not sampled by default. Duplicate exceptions (same type, message and stack) within 1 second are suppressed, and each running client accepts at most 60 errors in a rolling minute. The next accepted error carries the aggregate `traceway.error.suppressed_count`. In the browser SDK, `errorLimits: { maxPerMinute: 60, duplicateWindowMs: 1000 }` in `init()` tunes these limits; they reset when the SDK is recreated. The Flutter, Android and iOS SDKs use the same two limits with fixed values, and treat an error as a duplicate when its type and message equal those of the error before it.
 
 For an optional stable sample of healthy-session breadcrumbs and request spans, use `baselineSampleRate: 0.01` (1%). The default is 0. Selection uses the session ID and persists across page reloads within that session. It does not enable replay or override explicitly disabled signals, signal filters, or exporter limits. Performance metrics are uploaded independently of it, so performance diagnosis is not restricted to sessions with errors.
 
@@ -31,8 +31,8 @@ The browser talks to Traceway over three channels, all authenticated with the pr
 
 | Channel | Endpoint | Format | Carries |
 |---|---|---|---|
-| Telemetry | `POST /api/otel/v1/logs`, `POST /api/otel/v1/traces` | OTLP/HTTP | Exceptions, messages, console lines, navigation, clicks, web vitals, timings, app events and session start/end as log records; `fetch` and XHR as CLIENT spans |
-| Replay | `POST /api/recordings` | gzipped JSON | rrweb segments, nothing else |
+| Telemetry | `POST /api/otel/v1/logs`, `POST /api/otel/v1/traces`, `POST /api/otel/v1/metrics` | OTLP/HTTP | Exceptions, messages, console lines, navigation, clicks, web vitals, timings, app events and session start/end as log records; `fetch` and XHR as CLIENT spans; the aggregated [client metrics](/learn/client-metrics) |
+| Replay | `POST /api/recordings` | gzipped JSON | Replay segments (rrweb events, or MP4 clips of the Flutter SDK's video replay), nothing else |
 | Control | `POST /api/otel/v1/opamp` | OpAMP over plain HTTP | The client's attributes up, its settings document and poll interval down |
 
 Inside the SDK:
@@ -43,6 +43,8 @@ Inside the SDK:
 - **The trigger engine** sees every record, whatever its mode, and runs the triggers of the settings document.
 - **rrweb** records session replay. It is only loaded when replay is not off.
 - **The OpAMP client** polls Traceway for the settings document and remembers the last one in `localStorage`, so the next page starts with it.
+
+The Flutter, Android and iOS SDKs have the same pieces, with their own instrumentation in place of the OpenTelemetry Browser SIG's and a wireframe or video recorder in place of rrweb. They keep the ring buffer, the last settings document, trigger progress and running captures in their state on disk (unless `persistToDisk` is `false`), so the next start of the app picks them up.
 
 The OpAMP endpoint evaluates rules from each poll's complete client description, so any backend instance can answer any browser. Rules, captures, and their first delivery/application/data-receipt timestamps live in the shared main database. Compiled rules are cached per project; polls and data matching an active capture also record its progress, in the background and once per stage. A cache miss or the two-minute cache expiry reloads the configuration.
 
@@ -59,7 +61,7 @@ Every signal is in exactly one mode at any moment:
 | `errors` | Uncaught errors, unhandled rejections and `captureException` |
 | `messages` | `captureMessage` |
 | `network` | `fetch` and XHR spans |
-| `console` | `console.*` calls (with an optional minimum severity) |
+| `console` | `console.*` calls and `log()` lines (with an optional minimum severity) |
 | `navigation` | Route changes |
 | `userActions` | Clicks |
 | `webVitals` | LCP, INP, CLS and the other web vitals |
@@ -67,6 +69,8 @@ Every signal is in exactly one mode at any moment:
 | `longTasks` | Main-thread blocks of 50 ms or more, with the script that caused them where the browser tells |
 | `routeTiming` | How long single-page-app route changes take to render |
 | `custom` | `track()` and `recordAction()` events |
+
+On Flutter, Android and iOS, `errors` are uncaught exceptions and crashes, `network` the HTTP client spans, `console` the app's log lines, `navigation` screen changes and `userActions` taps. `webVitals`, `resourceTiming`, `longTasks` and `routeTiming` have no source there; the apps' performance numbers are the `app.*` [client metrics](/learn/client-metrics).
 
 Replay has the same three modes, plus a per-session sample rate. Session start and end events additionally respect `sessions.enabled`. Except when the kill switch is on, bookkeeping events of the SDK itself (`traceway.config.applied`, `traceway.trigger.fired`, `traceway.capture.started`, session events) always stream, so you can see in [Logs](/learn/logs) what the control plane did on each device.
 
@@ -102,13 +106,13 @@ A trigger keeps its progress per session and can be limited with a sample rate, 
 
 A capture makes one device upload what it was holding and stream everything for a while. It starts in one of two ways:
 
-- **From the dashboard**: a capture targets a device (`service.instance.id`, stable per browser profile), a user (`user.id`), a session, or any attribute, for 1 minute to 24 hours. It travels in the settings document of the clients it matches. A client under a capture polls every 60 seconds.
-- **From a trigger** with the `capture` action, for example when a log line repeats. The capture is stored in `localStorage`, so the pages that follow keep streaming until it ends; while it runs, the same trigger only extends it.
+- **From the dashboard**: a capture targets a device (`service.instance.id`, stable per browser profile or app install), a user (`user.id`), a session, or any attribute, for 1 minute to 24 hours. It travels in the settings document of the clients it matches. A client under a capture polls every 60 seconds.
+- **From a trigger** with the `capture` action, for example when a log line repeats. The capture is stored in `localStorage` (on mobile, in the SDK's state on disk), so the pages that follow, or the next start of the app, keep streaming until it ends; while it runs, the same trigger only extends it.
 
 For dashboard captures, each tab uploads its lookback once per capture across pages. Trigger captures persist on the device until expiry. While a capture runs, its `"*"` means every signal the SDK collects by default, including those a rule switched off for this cohort. Resource timing, long tasks and route timing, which are off by default, have to be named. When a trigger starts the capture, the record that fired it is uploaded too, so the log line that started a capture is part of it.
 
 <Callout type="info">
-  A dashboard capture reaches a browser on its next poll (5 minutes by default) or when a tab becomes visible after its polling interval has elapsed. There is no push channel: keeping a socket open per browser tab would cost more than it saves.
+  A dashboard capture reaches a browser on its next poll (5 minutes by default) or when a tab becomes visible after its polling interval has elapsed. The Android and iOS SDKs also poll each time the app returns to the foreground, and the Flutter SDK when it returns after its polling interval has elapsed. There is no push channel: keeping a socket open per browser tab would cost more than it saves.
 </Callout>
 
 ## How settings reach the browser

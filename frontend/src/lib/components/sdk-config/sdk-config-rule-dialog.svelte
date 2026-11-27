@@ -9,7 +9,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { CodeEditor } from '$lib/components/ui/code-editor';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { Check, Plus, X } from '@lucide/svelte';
+	import { Check, Info, Plus, X } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
@@ -19,10 +19,14 @@
 	import {
 		BROWSER_ONLY_SIGNALS,
 		CONDITION_OPS,
+		REPLAY_IMAGES_HINTS,
+		REPLAY_IMAGES_LABELS,
 		SIGNALS,
 		SUGGESTED_KEYS,
 		TRIGGER_TEMPLATES,
 		fitsForm,
+		jsonOnlyFields,
+		mergeFormSettings,
 		withTrigger,
 		buildRuleConditions,
 		conditionText,
@@ -33,6 +37,7 @@
 		type CaptureMode,
 		type ConditionRow,
 		type Mode,
+		type ReplayImages,
 		type SdkConfigRule,
 		type SettingsDocument
 	} from './sdk-config';
@@ -74,11 +79,16 @@
 	let replayChoice = $state<Choice>('inherit');
 	let captureModeChoice = $state<'inherit' | CaptureMode>('inherit');
 	let showCaptureMode = $state(false);
+	let imagesChoice = $state<'inherit' | ReplayImages>('inherit');
+	let showImages = $state(false);
 	let sessionsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let collectionChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let metricsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let metricsSamplePercent = $state<number | null | undefined>(undefined);
 	let settingsJson = $state('');
+	// The document the form was loaded from: saving from the form keeps the fields only the JSON tab shows.
+	let loadedSettings = $state<SettingsDocument>({ schemaVersion: 1 });
+	let jsonOnly = $derived(jsonOnlyFields(loadedSettings));
 	let saving = $state(false);
 	let dialogError = $state('');
 
@@ -93,6 +103,10 @@
 		inherit: 'Inherit',
 		video: 'Video',
 		wireframe: 'Wireframe'
+	};
+	const imagesLabels: Record<'inherit' | ReplayImages, string> = {
+		inherit: 'Inherit',
+		...REPLAY_IMAGES_LABELS
 	};
 
 	$effect(() => {
@@ -109,14 +123,14 @@
 		rolloutPercent = rule?.conditions.rollout?.percent;
 		rolloutBy = rule?.conditions.rollout?.by ?? '';
 		const settings = rule?.settings ?? { schemaVersion: 1 };
-		loadForm(settings);
-		settingsJson = JSON.stringify(settings, null, 2);
 		editAsJson = !fitsForm(settings);
+		loadForm(editAsJson ? { schemaVersion: 1 } : settings);
+		settingsJson = JSON.stringify(settings, null, 2);
 		tab = 'applies';
 	});
 
 	// The form tabs and the JSON tab edit the same settings; whichever was edited last is carried over when the
-	// tab changes. A document the form cannot show keeps the JSON tab open and says why.
+	// tab changes. Only a document that is not a settings object at all keeps the JSON tab open and says why.
 	function changeTab(next: string) {
 		const target = next as RuleTab;
 		if (target === tab) return;
@@ -141,12 +155,18 @@
 	let conditionCount = $derived(rows.filter((row) => row.key.trim() !== '').length);
 	let signalCount = $derived(
 		Object.values(signalChoices).filter((choice) => choice !== 'inherit').length +
-			[replayChoice, captureModeChoice, sessionsChoice, collectionChoice, metricsChoice].filter(
-				(choice) => choice !== 'inherit'
-			).length
+			[
+				replayChoice,
+				captureModeChoice,
+				imagesChoice,
+				sessionsChoice,
+				collectionChoice,
+				metricsChoice
+			].filter((choice) => choice !== 'inherit').length
 	);
 
 	function loadForm(settings: SettingsDocument) {
+		loadedSettings = JSON.parse(JSON.stringify(settings));
 		formTriggers = JSON.parse(JSON.stringify(settings.triggers ?? []));
 		baselinePercent =
 			settings.sessions?.baselineSampleRate === undefined
@@ -171,6 +191,9 @@
 		// Only the Flutter SDK reads the replay type, but a rule that already sets one keeps showing it, so the
 		// form can still change it.
 		showCaptureMode = flutter || captureModeChoice !== 'inherit';
+		imagesChoice = settings.replay?.images ?? 'inherit';
+		// The app SDKs read the image policy; a browser project's rule that already sets one keeps showing it.
+		showImages = app || imagesChoice !== 'inherit';
 		sessionsChoice =
 			settings.sessions?.enabled === undefined
 				? 'inherit'
@@ -185,6 +208,10 @@
 	}
 
 	function formSettings(): SettingsDocument {
+		return mergeFormSettings(loadedSettings, formFields());
+	}
+
+	function formFields(): SettingsDocument {
 		const settings: SettingsDocument = { schemaVersion: 1 };
 		if (formTriggers.length) settings.triggers = formTriggers;
 		const signals: NonNullable<SettingsDocument['signals']> = {};
@@ -195,6 +222,7 @@
 		const replay: NonNullable<SettingsDocument['replay']> = {};
 		if (replayChoice !== 'inherit') replay.mode = replayChoice;
 		if (captureModeChoice !== 'inherit') replay.captureMode = captureModeChoice;
+		if (imagesChoice !== 'inherit') replay.images = imagesChoice;
 		if (Object.keys(replay).length > 0) settings.replay = replay;
 		if (sessionsChoice !== 'inherit') settings.sessions = { enabled: sessionsChoice === 'on' };
 		const baseline = optionalNumber(baselinePercent);
@@ -223,7 +251,7 @@
 		}
 		if (!fitsForm(parsed)) {
 			dialogError =
-				'This rule sets advanced sample rates or buffer sizes, which only the JSON editor can show.';
+				'The settings must be an object whose sections are objects and whose triggers are a list.';
 			return;
 		}
 		dialogError = '';
@@ -368,6 +396,18 @@
 				</Tabs.List>
 			</Tabs.Root>
 
+			{#if !editAsJson && jsonOnly.length > 0 && (tab === 'triggers' || tab === 'signals')}
+				<p class="flex gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+					<Info class="mt-px h-3.5 w-3.5 shrink-0" />
+					<span>
+						This rule also sets <span class="font-mono">{jsonOnly.join(', ')}</span>, which only the
+						JSON tab shows. Saving from the form keeps {jsonOnly.length === 1
+							? 'it as it is'
+							: 'them as they are'}.
+					</span>
+				</p>
+			{/if}
+
 			<div>
 				{#if tab === 'applies'}
 					<div class="space-y-3">
@@ -483,7 +523,7 @@
 								<div class="flex items-center justify-between gap-3">
 									<div class="min-w-0">
 										<div class="text-sm">{signal.label}</div>
-										<div class="truncate text-xs text-muted-foreground">{signal.hint}</div>
+										<div class="text-xs text-muted-foreground">{signal.hint}</div>
 									</div>
 									<Select.Root
 										type="single"
@@ -506,7 +546,7 @@
 									<div class="text-sm">Session replay</div>
 									<div class="text-xs text-muted-foreground">
 										{flutter
-											? 'Screen recording'
+											? 'Screen recording or wireframe'
 											: platform === 'ios' || platform === 'android'
 												? 'Wireframe of the view hierarchy'
 												: 'rrweb recording'}
@@ -535,6 +575,26 @@
 										>
 										<Select.Content>
 											{#each Object.entries(captureModeLabels) as [value, label] (value)}
+												<Select.Item {value}>{label}</Select.Item>
+											{/each}
+										</Select.Content>
+									</Select.Root>
+								</div>
+							{/if}
+							{#if showImages}
+								<div class="flex items-center justify-between gap-3">
+									<div>
+										<div class="text-sm">Replay images</div>
+										<div class="text-xs text-muted-foreground">
+											{platform === 'browser'
+												? 'Flutter, iOS and Android SDKs only'
+												: REPLAY_IMAGES_HINTS[platform]}
+										</div>
+									</div>
+									<Select.Root type="single" bind:value={imagesChoice} disabled={saving}>
+										<Select.Trigger class="w-28">{imagesLabels[imagesChoice]}</Select.Trigger>
+										<Select.Content>
+											{#each Object.entries(imagesLabels) as [value, label] (value)}
 												<Select.Item {value}>{label}</Select.Item>
 											{/each}
 										</Select.Content>
@@ -606,11 +666,9 @@
 							/>
 							<p class="text-xs text-muted-foreground">
 								Try 1% for a stable sample of session breadcrumbs and request spans. {platform ===
-								'ios'
-									? 'Errors stay on'
-									: flutter || platform === 'android'
-										? 'Errors and performance metrics stay on'
-										: 'Errors and web vitals stay on'}; replay stays error-triggered unless
+								'browser'
+									? 'Errors and web vitals stay on'
+									: 'Errors and performance metrics stay on'}; replay stays error-triggered unless
 								configured separately.
 							</p>
 						</div>

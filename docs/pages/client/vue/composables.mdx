@@ -148,6 +148,7 @@ await flush(); // send everything that is queued for sending
 | Function | Description |
 |----------|-------------|
 | `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` | The same functions `useTraceway()` returns |
+| `log(message, level?, attributes?)` | Record a log line of your own, handled like a `console.*` line (releases after 2.0.3). See [Logs](/client/js-sdk#logs) |
 | `track(eventName, attributes?)` | Record a named app event. [Triggers](/learn/remote-config) can match it |
 | `metric(name, value, dims?)`, `count(name, n?, dims?)` | Custom [performance metrics](/learn/client-metrics), aggregated on the device |
 | `setMetricDimension(key, value)` | Put a dimension of your own on every performance metric; `null` removes it |
@@ -157,6 +158,7 @@ await flush(); // send everything that is queued for sending
 | `refreshConfig()` | Fetch the remote collection settings now instead of at the next poll |
 | `flush(timeoutMs?)`, `shutdown()` | See [Flush & Lifecycle](/client/js-sdk/flush) |
 | `getInstanceId()` | The id this browser profile reports as `service.instance.id` |
+| `currentSessionId()` | The current session's id (`session.id`), or `null` before the plugin is installed and between sessions (releases after 2.0.3) |
 
 ## Composable Pattern
 

@@ -58,19 +58,27 @@ The default replay buffer holds completed segments within an 8 MiB estimate and 
 
 ## Privacy
 
-The values of form inputs are masked by default (`replay.maskAllInputs: true`); 1.x masked only password inputs. `collection.replay.maskAllInputs` or a rule can change it; applying a change restarts rrweb and discards incompatible buffered or queued replay. Already-sent requests cannot be recalled. Set `sessionRecording: false` in the application when replay must never run.
+Mark the parts of the page the replay must not show with a class in your markup; no code is needed. Masking happens in the browser, before anything is uploaded. Browser SDK releases after 2.0.3 read two classes:
 
-`maskAllInputs` is the only masking setting of the SDK. For other content, rrweb's standard class hooks work without configuration, as in 1.x:
-
-| Class | Effect |
+| Class | What the replay shows |
 |---|---|
-| `rr-mask` | The text of the element and its children is replaced with asterisks |
-| `rr-block` | The element is replaced with a placeholder of the same size |
-| `rr-ignore` | Input events of the element are not recorded |
+| `traceway-mask` | The element and its layout. Text inside it is recorded with every character except whitespace replaced by `*`. `img`, `picture`, `video`, `canvas` and `svg` elements inside it, or carrying the class themselves, are recorded as empty boxes of their size, without their source URL or content |
+| `traceway-blank` | An empty box of the element's size. Nothing inside it is recorded: no text, no images, no input values or input events |
+
+```html
+<p class="traceway-mask">Card ending 4242, Alice Smith</p>
+<!-- replays as: **** ****** ***** ***** ***** -->
+<div class="traceway-mask"><img src="/avatars/42.jpg"> Alice Smith</div>
+<div class="traceway-blank"><canvas id="signature"></canvas></div>
+```
+
+rrweb's own classes keep working next to them, as in 1.x: `rr-mask` masks text like `traceway-mask` but leaves images as they are, `rr-block` records an empty box like `traceway-blank`, and `rr-ignore` stops recording an input's events. On 2.0.3 and earlier, use these.
+
+The values of form inputs are masked by default (`replay.maskAllInputs: true`); 1.x masked only password inputs. With it on, the value of every `input`, `textarea` and `select` is recorded as `*`; with it off, only passwords are. A field that must stay hidden even then belongs inside `traceway-blank`. `collection.replay.maskAllInputs` or a rule can change it; applying a change restarts rrweb and discards incompatible buffered or queued replay. Already-sent requests cannot be recalled. Images outside a mask are not uploaded: the replay loads them from their URLs when it plays. Set `sessionRecording: false` in the application when replay must never run.
 
 ## Breadcrumbs
 
-Console output, navigation, clicks and app events are OTLP log records, while requests are OTLP CLIENT spans. They carry `session.id` and are read alongside replay in the dashboard. Replay files contain rrweb events, rather than duplicate copies of these breadcrumbs.
+Console output, `log()` lines, navigation, clicks and app events are OTLP log records, while requests are OTLP CLIENT spans. They carry `session.id` and are read alongside replay in the dashboard. Replay files contain rrweb events, rather than duplicate copies of these breadcrumbs.
 
 SDK 1.x and mobile recordings that contain embedded breadcrumbs remain readable. See [Sessions](/learn/sessions) and the [remote settings reference](/learn/remote-config/reference) for collection and retention details.
 

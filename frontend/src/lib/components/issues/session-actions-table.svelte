@@ -5,6 +5,9 @@
 	import { resolveHref } from '$lib/utils/links';
 	import { spanTraceHref } from '$lib/utils/span-explorer';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
+	import { projectsState } from '$lib/state/projects.svelte';
+	import { sdkPlatform } from '$lib/components/sdk-config/sdk-config';
+	import { actionType, tapSummary } from './session-actions';
 	import type {
 		SessionActionEvent,
 		SessionNetworkEvent,
@@ -22,6 +25,9 @@
 	let { actions, startedAt, currentTimeMs, onSeek }: Props = $props();
 
 	let scrollEl: HTMLDivElement | undefined = $state();
+	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
+	// The app SDKs report a tap as a click with what the control shows and the screen it was on.
+	const app = $derived(platform !== 'browser');
 
 	function offsetMs(timestamp: string): number {
 		if (!startedAt) return 0;
@@ -73,6 +79,7 @@
 			}
 			case 'custom': {
 				const c = a as SessionCustomEvent;
+				if (app && c.category === 'ui' && c.name === 'click') return tapSummary(c.data);
 				const data = c.data ? ` ${JSON.stringify(c.data)}` : '';
 				return `${c.category}/${c.name}${data}`;
 			}
@@ -124,7 +131,9 @@
 					/>
 					<TracewayTableHeader
 						label="Type"
-						tooltip="Network / navigation / custom"
+						tooltip={app
+							? 'Network / navigation / tap / custom'
+							: 'Network / navigation / click / custom'}
 						class="w-[110px]"
 					/>
 					<TracewayTableHeader
@@ -150,7 +159,7 @@
 							{formatOffset(entry.timestamp)}
 						</Table.Cell>
 						<Table.Cell class="font-mono text-xs uppercase {typeColor(entry.type)}">
-							{entry.type}
+							{actionType(entry, platform)}
 						</Table.Cell>
 						<Table.Cell class="max-w-[600px] font-mono text-xs" title={summary(entry)}>
 							<div class="flex items-center gap-2">

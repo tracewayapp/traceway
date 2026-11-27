@@ -4,13 +4,17 @@ import {
 	conditionText,
 	conditionValue,
 	fitsForm,
+	jsonOnlyFields,
 	logLineTrigger,
+	mergeFormSettings,
 	newTriggerId,
 	triggerIdsOfRules,
 	withTrigger,
 	BUILT_IN_ERROR_TRIGGER,
 	type SdkConfigRule,
 	optionalNumber,
+	REPLAY_IMAGES_HINTS,
+	REPLAY_IMAGES_LABELS,
 	sdkPlatform,
 	SDK_PLATFORM_NAMES,
 	signalsFor,
@@ -57,21 +61,109 @@ describe('sdk-config helpers', () => {
 		);
 	});
 
-	it('only offers the form when it can show every field', () => {
+	it('opens every settings object in the form, whatever fields only the JSON tab shows', () => {
 		expect(
 			fitsForm({ schemaVersion: 1, signals: { console: { mode: 'stream' } }, enabled: false })
 		).toBe(true);
-		expect(fitsForm({ signals: { console: { mode: 'stream', minSeverity: 'warn' } } })).toBe(false);
+		expect(fitsForm({ signals: { console: { mode: 'stream', minSeverity: 'warn' } } })).toBe(true);
+		expect(fitsForm({ signals: { custom: { sampleRate: 1 } } })).toBe(true);
 		expect(fitsForm({ triggers: [] })).toBe(true);
 		expect(fitsForm({ sessions: { enabled: true, baselineSampleRate: 0.01 } })).toBe(true);
-		expect(fitsForm({ sessions: { futureSetting: true } } as never)).toBe(false);
-		expect(fitsForm({ replay: { mode: 'buffer', sessionSampleRate: 0.5 } })).toBe(false);
+		expect(fitsForm({ replay: { mode: 'buffer', sessionSampleRate: 0.5 } })).toBe(true);
+		expect(fitsForm({ buffer: { maxBytes: 1024 } })).toBe(true);
+	});
+
+	it('keeps documents that are not a settings object in the JSON tab', () => {
+		expect(fitsForm([] as never)).toBe(false);
+		expect(fitsForm({ triggers: {} } as never)).toBe(false);
+		expect(fitsForm({ replay: 'stream' } as never)).toBe(false);
+		expect(fitsForm({ signals: { custom: 'stream' } } as never)).toBe(false);
+	});
+
+	it('names the fields only the JSON tab shows', () => {
+		expect(
+			jsonOnlyFields({
+				schemaVersion: 1,
+				signals: { custom: { mode: 'stream', sampleRate: 1 }, console: { mode: 'buffer' } },
+				replay: { images: 'wifi', maskAllInputs: true },
+				buffer: { maxBytes: 1024 },
+				triggers: [{ id: 'x' }]
+			})
+		).toEqual(['signals.custom.sampleRate', 'replay.maskAllInputs', 'buffer.maxBytes']);
+		expect(
+			jsonOnlyFields({ schemaVersion: 1, enabled: false, sessions: { enabled: true } })
+		).toEqual([]);
+	});
+
+	it('saves the form over the loaded document, keeping the JSON-only fields untouched', () => {
+		const loaded = {
+			schemaVersion: 1,
+			signals: { custom: { sampleRate: 1 }, console: { mode: 'stream', minSeverity: 'warn' } },
+			sessions: { enabled: true },
+			replay: { mode: 'buffer', sessionSampleRate: 0.5 },
+			metrics: { sampleRate: 0.5, flushSeconds: 60 },
+			buffer: { maxBytes: 1024 },
+			triggers: [{ id: 'old' }]
+		} as const;
+		const form = {
+			schemaVersion: 1,
+			signals: { custom: { mode: 'off' as const } },
+			replay: { images: 'off' as const },
+			triggers: [{ id: 'new' }]
+		};
+		expect(mergeFormSettings(structuredClone(loaded) as never, form)).toEqual({
+			schemaVersion: 1,
+			signals: { custom: { sampleRate: 1, mode: 'off' }, console: { minSeverity: 'warn' } },
+			replay: { sessionSampleRate: 0.5, images: 'off' },
+			metrics: { flushSeconds: 60 },
+			buffer: { maxBytes: 1024 },
+			triggers: [{ id: 'new' }]
+		});
+	});
+
+	it('round-trips a rule saved from the form without changes', () => {
+		const loaded = {
+			schemaVersion: 1,
+			signals: { custom: { mode: 'stream' as const, sampleRate: 1 } },
+			triggers: [{ id: 'e2e' }]
+		};
+		const unchanged = {
+			schemaVersion: 1,
+			signals: { custom: { mode: 'stream' as const } },
+			triggers: [{ id: 'e2e' }]
+		};
+		expect(mergeFormSettings(loaded, unchanged)).toEqual(loaded);
+		expect(loaded.signals.custom).toEqual({ mode: 'stream', sampleRate: 1 });
+	});
+
+	it('names the replay image policy in the summary', () => {
+		expect(summarizeSettings({ replay: { images: 'off' } })).toBe('replay images off');
+		expect(summarizeSettings({ replay: { mode: 'buffer', images: 'wifi' } })).toBe(
+			'replay: buffer, replay images on Wi‑Fi only'
+		);
+		expect(summarizeSettings({ replay: { captureMode: 'wireframe', images: 'always' } })).toBe(
+			'replay as wireframe, replay images always'
+		);
+	});
+
+	it('edits the replay image policy in the form', () => {
+		expect(fitsForm({ replay: { images: 'wifi' } })).toBe(true);
+		expect(fitsForm({ replay: { mode: 'stream', captureMode: 'wireframe', images: 'off' } })).toBe(
+			true
+		);
+		expect(Object.keys(REPLAY_IMAGES_LABELS)).toEqual(['off', 'wifi', 'always']);
+		expect(Object.values(REPLAY_IMAGES_LABELS)).toEqual(['Off', 'Wi‑Fi only', 'Always']);
+	});
+
+	it('describes replay images in the terms of each app SDK', () => {
+		expect(REPLAY_IMAGES_HINTS.flutter).toBe('Network images by URL; nothing is uploaded');
+		expect(REPLAY_IMAGES_HINTS.ios).toBe('Pictures of image views, never a screenshot');
+		expect(REPLAY_IMAGES_HINTS.android).toBe(REPLAY_IMAGES_HINTS.ios);
 	});
 
 	it('shows the replay type in the form, next to the replay mode', () => {
 		expect(fitsForm({ replay: { captureMode: 'wireframe' } })).toBe(true);
 		expect(fitsForm({ replay: { mode: 'stream', captureMode: 'video' } })).toBe(true);
-		expect(fitsForm({ replay: { captureMode: 'wireframe', maskAllInputs: false } })).toBe(false);
 	});
 });
 
@@ -172,7 +264,7 @@ describe('log-line triggers', () => {
 			signalsFor('flutter').map((signal) => signal.key)
 		);
 		expect(android.find((signal) => signal.key === 'console')?.hint).toBe(
-			'System.out/err lines and Traceway.recordLog'
+			'System.out/err lines and Traceway.log'
 		);
 		expect(android.find((signal) => signal.key === 'network')?.hint).toBe(
 			'OkHttp calls and startRequest/endRequest'
@@ -321,7 +413,9 @@ describe('optionalNumber', () => {
 	it('edits the metrics block in the form and names it in the summary', () => {
 		expect(fitsForm({ metrics: { enabled: false } })).toBe(true);
 		expect(fitsForm({ metrics: { enabled: true, sampleRate: 0.1 } })).toBe(true);
-		expect(fitsForm({ metrics: { flushSeconds: 60 } })).toBe(false);
+		expect(jsonOnlyFields({ metrics: { sampleRate: 0.1, flushSeconds: 60 } })).toEqual([
+			'metrics.flushSeconds'
+		]);
 		expect(summarizeSettings({ metrics: { enabled: false } })).toBe('metrics off');
 		expect(summarizeSettings({ metrics: { sampleRate: 0.25 } })).toBe(
 			'metrics from 25% of sessions'

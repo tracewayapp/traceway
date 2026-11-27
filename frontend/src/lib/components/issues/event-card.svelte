@@ -26,6 +26,7 @@
 		pickBreadcrumbs,
 		type SessionBreadcrumbs
 	} from '$lib/utils/session-timeline';
+	import { cleanRecording, recordingOrigin } from '$lib/utils/session-recording';
 
 	interface Props {
 		occurrence: ExceptionOccurrence;
@@ -60,7 +61,9 @@
 			: false
 	);
 
-	const recordingEvents = $derived(sessionRecording?.events ?? null);
+	// The clip holds what the SDK uploaded.
+	const recording = $derived(cleanRecording(sessionRecording));
+	const recordingEvents = $derived(recording?.events ?? null);
 	const hasReplay = $derived(!!recordingEvents && recordingEvents.length > 0);
 	const replayStatus = $derived(occurrence.attributes?.['traceway.replay.status']);
 	const replayExplanation = $derived(
@@ -103,7 +106,7 @@
 			cancelled = true;
 		};
 	});
-	const breadcrumbs = $derived(pickBreadcrumbs(timeline, sessionRecording));
+	const breadcrumbs = $derived(pickBreadcrumbs(timeline, recording));
 	// A read cut short at its limit kept the latest breadcrumbs; the oldest of them is where the list becomes complete.
 	const truncationNote = $derived.by(() => {
 		const rows = [...(timeline?.logs ?? []), ...(timeline?.actions ?? [])];
@@ -114,8 +117,10 @@
 	});
 	const logs = $derived(breadcrumbs.logs);
 	const actions = $derived(breadcrumbs.actions);
-	// Without a replay to seek, times read best relative to the exception.
-	const timelineOrigin = $derived(sessionRecording?.startedAt ?? occurrence.recordedAt);
+	// The player and the tables count from the recording's start, the clip's first event when it does not say; without
+	// a recording, times read best relative to the exception.
+	const recordingStart = $derived(recordingOrigin(recording));
+	const timelineOrigin = $derived(recordingStart ?? occurrence.recordedAt);
 	const hasLogs = $derived(logs.length > 0);
 	const hasActions = $derived(actions.length > 0);
 	// Logs/actions tables are only meaningful for frontend-framework projects.
@@ -208,6 +213,7 @@
 				<SessionReplay
 					bind:this={replayRef}
 					events={recordingEvents}
+					startedAt={timelineOrigin}
 					onTimeUpdate={(ms) => (currentTimeMs = ms)}
 				/>
 			{/key}
@@ -232,7 +238,7 @@
 			<Card.Title>Session Context</Card.Title>
 			<Card.Description>
 				Console output, requests, navigation and app events in the 10 minutes before this exception.
-				Times are offsets from {hasReplay ? 'the start of the recording' : 'the exception'}.
+				Times are offsets from {recordingStart ? 'the start of the recording' : 'the exception'}.
 				{truncationNote}
 			</Card.Description>
 		</Card.Header>

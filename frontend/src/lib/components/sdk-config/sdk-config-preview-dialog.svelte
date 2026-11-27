@@ -28,7 +28,7 @@
 	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
 	let attributesText = $state(
 		{
-			flutter: 'service.version=2.4.0\nos.name=android\nuser.id=',
+			flutter: 'service.version=2.4.0\ndevice.form_factor=phone\nuser.id=',
 			ios: 'service.version=2.4.0\nos.name=ios\nuser.id=',
 			android: 'service.version=2.4.0\nos.name=android\nuser.id=',
 			browser: 'service.version=2.4.0\nbrowser.name=Chrome\nuser.id='

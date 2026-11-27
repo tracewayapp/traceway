@@ -155,6 +155,26 @@ func TestConvertLogs_RetracesAndroidStacktrace(t *testing.T) {
 			t.Errorf("missing %q in the retraced issue:\n%s", want, got)
 		}
 	}
+	// TW-11: the stored log record (Logs page, session timeline, trace correlation) is retraced too, as on iOS.
+	if len(converted.Records) != 1 {
+		t.Fatalf("expected one record, got %d", len(converted.Records))
+	}
+	record := converted.Records[0].LogAttributes
+	if st := record["exception.stacktrace"]; strings.Contains(st, "a.a.a(") || !strings.Contains(st, "com.example.demo.Checkout.chargeCard") {
+		t.Errorf("record trace not retraced:\n%s", st)
+	}
+	if typ := record["exception.type"]; !strings.HasSuffix(typ, "PaymentDeclinedException") {
+		t.Errorf("record exception.type = %q, want the original class", typ)
+	}
+	if typ := converted.Exceptions[0].Attributes["exception.type"]; !strings.HasSuffix(typ, "PaymentDeclinedException") {
+		t.Errorf("issue exception.type attribute = %q, want the original class", typ)
+	}
+	obfuscated := string(androidConvFixture(t, "r8", "obfuscated.txt"))
+	once := otelSymbolicateAndroid(project, projectId, context.Background(),
+		formatExceptionStackTrace("a.b", "card declined for $30.59", obfuscated), "java", proguardUuid)
+	if got != once {
+		t.Errorf("the issue must be retraced once, from what the SDK sent:\n got %q\nwant %q", got, once)
+	}
 }
 
 func TestConvertLogs_ScopeNameDetectsJs(t *testing.T) {
@@ -301,5 +321,33 @@ func TestSessionPreservesTracewaySDKVersion(t *testing.T) {
 				t.Fatalf("SDK version = %q, want %q", got, expected)
 			}
 		})
+	}
+}
+
+// TW-12: a session's start comes from the device as it is; one no session could have (a unit slip, such as
+// microseconds sent as milliseconds, or seconds) is ignored like a missing one instead of being stored past what
+// ClickHouse's DateTime holds.
+func TestSessionStartedAtIsBoundedByTheEventTime(t *testing.T) {
+	event := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	started := event.Add(-10 * time.Minute)
+	for name, attrs := range map[string][]*commonpb.KeyValue{
+		"ms":     {intKV(attrSessionStarted, started.UnixMilli())},
+		"string": {strKV(attrSessionStarted, fmt.Sprint(started.UnixMilli()))},
+		"rfc":    {strKV(attrSessionStarted, started.Format(time.RFC3339Nano))},
+	} {
+		if got, ok := sessionStartedAt(attrs, event); !ok || !got.Equal(started) {
+			t.Errorf("%s: got %v %v, want %v", name, got, ok, started)
+		}
+	}
+	for name, attrs := range map[string][]*commonpb.KeyValue{
+		"microseconds": {intKV(attrSessionStarted, started.UnixMicro())},
+		"seconds":      {intKV(attrSessionStarted, started.Unix())},
+		"far future":   {strKV(attrSessionStarted, "2199-01-01T00:00:00Z")},
+		"after event":  {intKV(attrSessionStarted, event.Add(time.Hour).UnixMilli())},
+		"days before":  {intKV(attrSessionStarted, event.Add(-72*time.Hour).UnixMilli())},
+	} {
+		if got, ok := sessionStartedAt(attrs, event); ok {
+			t.Errorf("%s: accepted %v", name, got)
+		}
 	}
 }

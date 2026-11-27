@@ -62,7 +62,7 @@ init("your-token@https://traceway.example.com/api/report", {
 | `recordAllSessions` | `boolean` | `false` | Stream every replay segment and every breadcrumb by default instead of keeping them for error clips |
 | `baselineSampleRate` | `number` | `0` | Share of sessions, from 0 to 1, whose buffered breadcrumbs and request spans stream; does not stream replay |
 | `collectionLimits` | `{ maxBytes?, maxEvents? }` | `{ maxBytes: 52428800, maxEvents: 10000 }` | Diagnostic upload budget of one session. It can only be lowered. See [Collection budget](/client/js-sdk/session-replay#collection-budget-and-gaps) |
-| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions`, `captureWebVitals`, `captureResourceTiming`, `captureLongTasks`, `captureRouteTiming` | `boolean` | `true` | Allow a signal at all: console output, `fetch` / XHR, navigation, clicks, web vital events, resource and navigation timing, long tasks, route change timing |
+| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions`, `captureWebVitals`, `captureResourceTiming`, `captureLongTasks`, `captureRouteTiming` | `boolean` | `true` | Allow a signal at all: console output and `log()` lines, `fetch` / XHR, navigation, clicks, web vital events, resource and navigation timing, long tasks, route change timing |
 | `captureMetrics` | `boolean` | `true` | Allow the [performance metrics](/learn/client-metrics) aggregated on the device |
 | `metricDimensions` | `Record<string, string>` | none | Up to two dimensions of your own on every performance metric, e.g. `{ plan: "pro" }`; never an id. Keys are lowercase letters, digits and `_`, starting with a letter, at most 32 characters; values are cut at 64 |
 | `detectRoutes` | `boolean` | `true` | Name each page by the route template of the app's router (`/orders/:id`) when the router can be read from the page, so performance metrics group by route. `setRoute` wins over it. Browser SDKs 2.0.1 and later. See [Client Metrics](/learn/client-metrics#dimensions) |
@@ -79,7 +79,7 @@ The 1.x options `debounceMs`, `retryDelayMs`, `eventsWindowMs` and `eventsMaxCou
 
 ## Auto-Capture Behavior
 
-`init()` installs the global handlers for you. Uncaught errors (`window.onerror`) and unhandled promise rejections (`window.onunhandledrejection`) are captured automatically in every JS SDK: plain, React, Vue, Svelte, and jQuery alike.
+`init()` installs the global handlers for you. Uncaught errors (the window's `error` event) and unhandled promise rejections (its `unhandledrejection` event) are captured automatically in every JS SDK: plain, React, Vue, Svelte, and jQuery alike. The SDK listens with `addEventListener`, so a `window.onerror` your app assigns does not replace it.
 
 ```javascript
 import { init } from "@tracewayapp/frontend";

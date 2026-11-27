@@ -52,12 +52,7 @@ func StoreSessionRecordingReasons(ctx context.Context, records []models.LogRecor
 		}
 		parts := make([]string, 0, len(steps))
 		for _, step := range steps {
-			if step.Match.Event != nil {
-				e := step.Match.Event
-				parts = append(parts, fmt.Sprintf("%s(%s)", e.Type, e.Value))
-			} else {
-				parts = append(parts, "event")
-			}
+			parts = append(parts, stepLabel(step.Match))
 		}
 		canonical, _ := json.Marshal(steps)
 		hash := sha256.Sum256(append([]byte(a["traceway.trigger.name"]+"\x00"), canonical...))
@@ -79,6 +74,39 @@ func StoreSessionRecordingReasons(ctx context.Context, records []models.LogRecor
 	return nil
 }
 
+// stepLabel names one trigger step on a session's recording-reason chip: an event step by its type and value,
+// a condition on the record's event name by that name (the built-in error clip reads `exception`), any other
+// condition by its key, operator and value, and a combination by its parts.
+func stepLabel(m *sdkconfig.Matcher) string {
+	switch {
+	case m == nil:
+		return "event"
+	case m.Event != nil:
+		return fmt.Sprintf("%s(%s)", m.Event.Type, m.Event.Value)
+	case m.Key == "event.name" && m.Op == "eq" && m.Value != nil:
+		return fmt.Sprint(m.Value)
+	case m.Key != "" && m.Value != nil:
+		return fmt.Sprintf("%s %s %v", m.Key, m.Op, m.Value)
+	case m.Key != "" && len(m.Values) > 0:
+		return fmt.Sprintf("%s %s %v", m.Key, m.Op, m.Values)
+	case m.Key != "":
+		return fmt.Sprintf("%s %s", m.Key, m.Op)
+	case m.Not != nil:
+		return "not " + stepLabel(m.Not)
+	case len(m.All) > 0 || len(m.Any) > 0:
+		parts, sep := m.All, " and "
+		if len(m.Any) > 0 {
+			parts, sep = m.Any, " or "
+		}
+		labels := make([]string, len(parts))
+		for i, part := range parts {
+			labels[i] = stepLabel(part)
+		}
+		return "(" + strings.Join(labels, sep) + ")"
+	}
+	return "event"
+}
+
 func LoadSessionRecordingReasons(ctx context.Context, project uuid.UUID, sessions []models.Session) error {
 	if len(sessions) == 0 {
 		return nil
@@ -91,7 +119,10 @@ func LoadSessionRecordingReasons(ctx context.Context, project uuid.UUID, session
 		args = append(args, s.Id)
 		index[s.Id] = i
 	}
-	rows, err := reasonQuery(ctx, "SELECT session_id, trigger_id, revision, name, sequence, MIN(fired_at) FROM session_recording_reasons WHERE project_id = ? AND session_id IN ("+strings.Join(placeholders, ",")+") GROUP BY session_id, trigger_id, revision, name, sequence ORDER BY MIN(fired_at) LIMIT 2000", args...)
+	// One reason per trigger revision, which the dashboard keys a session's chips by. The revision hashes the trigger's
+	// name and steps, not their label, so on ClickHouse (no FINAL; parts of different months never merge) a revision
+	// that fired before and after the server relabelled its steps is two rows that differ only in sequence.
+	rows, err := reasonQuery(ctx, "SELECT session_id, trigger_id, revision, MIN(name), MIN(sequence), MIN(fired_at) FROM session_recording_reasons WHERE project_id = ? AND session_id IN ("+strings.Join(placeholders, ",")+") GROUP BY session_id, trigger_id, revision ORDER BY MIN(fired_at) LIMIT 2000", args...)
 	if err != nil {
 		return err
 	}

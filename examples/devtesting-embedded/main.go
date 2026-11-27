@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
 	"math/rand/v2"
+	"mime"
 	"net/http"
 	"os"
+	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,7 +48,6 @@ var chatHTML []byte
 var staticFS embed.FS
 
 const (
-	appPort            = 8080
 	backendToken       = "backend-dev-token"
 	frontendToken      = "frontend-dev-token"
 	shopToken          = "shop-dev-token"
@@ -59,8 +62,38 @@ const (
 	backendServiceName = "backend-service"
 	workerServiceName  = "worker-service"
 
-	otlpHost = "localhost:8082"
+	// defaultTracewayHost is where the pages and the bundled jQuery SDK send their reports; served copies name
+	// the configured Traceway port instead.
+	defaultTracewayHost = "localhost:8082"
 )
+
+// envPort reads a port from the environment. Running a second instance next to one on the default ports (an e2e run
+// with its own storage, say) only needs other ports.
+func envPort(name string, fallback int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil || port <= 0 || port > 65535 {
+		panic(fmt.Errorf("%s=%q is not a port", name, raw))
+	}
+	return port
+}
+
+var (
+	appPort      = envPort("DEVTESTING_APP_PORT", 8080)
+	tracewayPort = envPort("DEVTESTING_TRACEWAY_PORT", 8082)
+	tracewayHost = fmt.Sprintf("localhost:%d", tracewayPort)
+)
+
+// withTracewayHost points a served page or script at the configured Traceway port.
+func withTracewayHost(content []byte) []byte {
+	if tracewayHost == defaultTracewayHost {
+		return content
+	}
+	return bytes.ReplaceAll(content, []byte(defaultTracewayHost), []byte(tracewayHost))
+}
 
 type otelService struct {
 	name string
@@ -79,7 +112,7 @@ func initOtelService(ctx context.Context, serviceName, token string, extraResour
 	headers := map[string]string{"Authorization": "Bearer " + token}
 
 	traceExporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint(otlpHost),
+		otlptracehttp.WithEndpoint(tracewayHost),
 		otlptracehttp.WithInsecure(),
 		otlptracehttp.WithURLPath("/api/otel/v1/traces"),
 		otlptracehttp.WithHeaders(headers),
@@ -89,7 +122,7 @@ func initOtelService(ctx context.Context, serviceName, token string, extraResour
 	}
 
 	logExporter, err := otlploghttp.New(ctx,
-		otlploghttp.WithEndpoint(otlpHost),
+		otlploghttp.WithEndpoint(tracewayHost),
 		otlploghttp.WithInsecure(),
 		otlploghttp.WithURLPath("/api/otel/v1/logs"),
 		otlploghttp.WithHeaders(headers),
@@ -150,7 +183,7 @@ func main() {
 
 	go tracewaybackend.Run(
 		tracewaybackend.WithSQLitePath("./storage/traceway.db"),
-		tracewaybackend.WithPort(8082),
+		tracewaybackend.WithPort(tracewayPort),
 		tracewaybackend.WithDefaultUser("admin@localhost.com", "admin"),
 		tracewaybackend.WithDefaultProject("Backend API", "opentelemetry", backendToken),
 		tracewaybackend.WithDefaultProject("jQuery Frontend", "jquery", frontendToken),
@@ -163,7 +196,7 @@ func main() {
 		tracewaybackend.WithDefaultProjectSourceMapToken("iOS App", iosUploadToken),
 		tracewaybackend.WithDefaultProject("Android App", "android", androidToken),
 		tracewaybackend.WithDefaultProjectSourceMapToken("Android App", androidUploadToken),
-		tracewaybackend.WithMonitoringURL(monitoringToken+"@http://localhost:8082/api/report"),
+		tracewaybackend.WithMonitoringURL(monitoringToken+"@http://"+tracewayHost+"/api/report"),
 	)
 
 	time.Sleep(2 * time.Second)
@@ -212,22 +245,31 @@ func main() {
 
 	router.Use(otelgin.Middleware(backendServiceName, otelgin.WithTracerProvider(backendSvc.tp), otelgin.WithPropagators(propagation.TraceContext{})))
 
+	index, cdn, chat := withTracewayHost(indexHTML), withTracewayHost(cdnHTML), withTracewayHost(chatHTML)
 	router.GET("/", func(c *gin.Context) {
-		c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
+		c.Data(http.StatusOK, "text/html; charset=utf-8", index)
 	})
 
 	router.GET("/cdn", func(c *gin.Context) {
-		c.Data(http.StatusOK, "text/html; charset=utf-8", cdnHTML)
+		c.Data(http.StatusOK, "text/html; charset=utf-8", cdn)
 	})
 
 	router.GET("/chat", func(c *gin.Context) {
-		c.Data(http.StatusOK, "text/html; charset=utf-8", chatHTML)
+		c.Data(http.StatusOK, "text/html; charset=utf-8", chat)
 	})
 
 	registerAIChatRoutes(router, backendSvc)
 
 	staticSub, _ := fs.Sub(staticFS, "static")
-	router.StaticFS("/static", http.FS(staticSub))
+	router.GET("/static/*file", func(c *gin.Context) {
+		name := strings.TrimPrefix(c.Param("file"), "/")
+		content, err := fs.ReadFile(staticSub, name)
+		if err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Data(http.StatusOK, mime.TypeByExtension(path.Ext(name)), withTracewayHost(content))
+	})
 
 	router.GET("/api/test-error", func(c *gin.Context) {
 		ctx := c.Request.Context()
@@ -402,7 +444,7 @@ func main() {
 	fmt.Printf("  Node build:       http://localhost:%d\n", appPort)
 	fmt.Printf("  CDN (no build):   http://localhost:%d/cdn\n", appPort)
 	fmt.Printf("  AI chat:          http://localhost:%d/chat\n", appPort)
-	fmt.Println("  Dashboard:        http://localhost:8082")
+	fmt.Printf("  Dashboard:        http://%s\n", tracewayHost)
 	fmt.Println("  Login:            admin@localhost.com / admin")
 	if os.Getenv("ORCAROUTER_API_KEY") == "" && os.Getenv("CHEAPER_INFERENCE_API_KEY") == "" && os.Getenv("UBERLLM_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") == "" {
 		fmt.Println()

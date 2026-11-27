@@ -96,4 +96,19 @@ describe('session timeline', () => {
 		);
 		expect(pickBreadcrumbs(null, null)).toEqual({ logs: [], actions: [], truncated: false });
 	});
+
+	// TW-1: a recording's logs and actions are whatever an SDK uploaded; rows that are not objects, and values that
+	// are not arrays, must not break the session and issue pages.
+	it('ignores recording breadcrumbs that are not objects', () => {
+		const timeline = { logs: [log], actions: [], truncated: false };
+		expect(() =>
+			pickBreadcrumbs(timeline, { logs: [null] as never, actions: {} as never })
+		).not.toThrow();
+		expect(() => pickBreadcrumbs(timeline, { logs: [null, null] as never })).not.toThrow();
+		expect(() =>
+			pickBreadcrumbs(timeline, { logs: null as never, actions: 5 as never })
+		).not.toThrow();
+		expect(pickBreadcrumbs(timeline, { logs: [null, 5, 'x', [log]] as never }).logs).toEqual([log]);
+		expect(pickBreadcrumbs(timeline, { actions: 'abc' as never }).actions).toEqual([]);
+	});
 });

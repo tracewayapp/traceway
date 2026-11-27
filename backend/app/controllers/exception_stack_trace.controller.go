@@ -79,12 +79,25 @@ func wrapLegacyRecording(raw []byte) json.RawMessage {
 	return json.RawMessage(raw)
 }
 
+// loadSessionRecording reads an exception's clip in the shape of a session recording. The file holds what the SDK
+// uploaded, so it is decoded like a session's segments: the items of its arrays that are not objects are left out,
+// and a file that does not parse is an error rather than JSON the response could not encode.
 func loadSessionRecording(ctx context.Context, filePath string) (json.RawMessage, error) {
 	raw, err := storage.Store.Read(ctx, filePath)
 	if err != nil {
 		return nil, err
 	}
-	return wrapLegacyRecording(raw), nil
+	var body segmentBody
+	if err := json.Unmarshal(wrapLegacyRecording(raw), &body); err != nil {
+		return nil, err
+	}
+	return json.Marshal(SessionRecordingPayload{
+		Events:    decodeArray(body.Events),
+		Logs:      decodeArray(body.Logs),
+		Actions:   decodeArray(body.Actions),
+		StartedAt: body.StartedAt,
+		EndedAt:   body.EndedAt,
+	})
 }
 
 func (e exceptionStackTraceController) FindGrouppedExceptionStackTraces(c *gin.Context) {

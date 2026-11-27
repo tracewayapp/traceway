@@ -5,7 +5,7 @@ import { Callout, Steps } from "nextra/components";
 This page takes a browser app from install to its first rule, trigger and capture. How the pieces fit together is on [Remote SDK Config](/learn/remote-config); every field of the settings document is in the [settings reference](/learn/remote-config/reference).
 
 <Callout type="info">
-  You need `@tracewayapp/frontend` 2.0 or later, or the React, Vue, Svelte or jQuery wrapper of the same version, and a React, Vue, Svelte or jQuery project in Traceway. The **Data Collection** page is shown for those project types only.
+  You need `@tracewayapp/frontend` 2.0 or later, or the React, Vue, Svelte or jQuery wrapper of the same version, and a React, Vue, Svelte or jQuery project in Traceway. The **Data Collection** page is also shown for Flutter, Android and iOS projects; those apps take the same rules from the 2.x SDKs, set up as in the [Flutter](/client/flutter#remote-config), [Android](/client/android#remote-config) and [iOS](/client/ios#remote-config) guides.
 </Callout>
 
 <Steps>
@@ -93,7 +93,7 @@ Click **New Rule**. A rule has three parts:
 
 - **Applies to**: conditions over the attributes clients report, all of which must hold. No condition matches every client. Useful keys: `service.version`, `deployment.environment.name`, `browser.name`, `browser.version`, `os.name`, `user.id`, and anything your app sets with `setAttribute`. Operators include equals, is one of, contains (also case-insensitive), starts with, matches pattern (`*` and `?`), version matches (`>=2.4 <3`), greater or less than a number (`>`, `≥`, `<`, `≤`), is set and is not set.
 - **Roll out to**: the share of matching clients the rule applies to. Each browser profile lands in a fixed bucket per rule, so the same clients stay in as you raise the percentage.
-- **Settings**: for each signal, **Inherit** (keep what earlier rules and the defaults say), **Off**, **Buffer** or **Stream**; plus session replay, session events and the kill switch. A Flutter project also has **Replay type**: **Inherit**, **Video** or **Wireframe** (`replay.captureMode`).
+- **Settings**: for each signal, **Inherit** (keep what earlier rules and the defaults say), **Off**, **Buffer** or **Stream**; plus session replay, session events and the kill switch. A Flutter project also has **Replay type**: **Inherit**, **Video** or **Wireframe** (`replay.captureMode`). Flutter, iOS and Android projects also have **Replay images**: **Inherit**, **Off**, **Wi‑Fi only** or **Always** (`replay.images`, see [the reference](/learn/remote-config/reference#replay)).
 
 <img src="/remote-config/rule-dialog-form.png" alt="The rule dialog in form mode: a condition on service.version with a version range, a rollout percentage, and Inherit, Off, Buffer and Stream for each signal" style={{ maxWidth: '100%', height: 'auto', marginTop: '16px' }} />
 
@@ -195,7 +195,7 @@ In the browser, `Traceway.getInstanceId()` returns the device id to capture or p
 
 | What | Details |
 |---|---|
-| `OPAMP_POLL_INTERVAL_SECONDS` | How often browsers poll, default `300`, between 60 and 86400. Every open tab of every instrumented app polls, so this is a load setting. Clients under a capture poll every 60 seconds whatever it says |
+| `OPAMP_POLL_INTERVAL_SECONDS` | How often browsers and mobile apps poll, default `300`, between 60 and 86400. Every open tab and running app polls, so this is a load setting. Clients under a capture poll every 60 seconds whatever it says |
 | `OPAMP_MAX_CONCURRENT` | Polls processed at once, default 4 × CPU cores (at least 8). Its own gate, so polls and ingest cannot starve each other; above it a poll answers 503 with `Retry-After: 60` and the browser keeps its settings |
 | Routes | `POST /api/otel/v1/opamp` and `POST /api/recordings`, both under `/api`, so existing proxy rules cover them |
 | Load | One small protobuf request per open tab per interval. A poll reads its rules from an in-memory cache. A capture's progress (delivered, applied, data received) is written to the main database in the background, once per stage, so polls and ingest never wait on it |
@@ -206,13 +206,13 @@ In the browser, `Traceway.getInstanceId()` returns the device id to capture or p
 
 | Symptom | Check |
 |---|---|
-| A rule does not apply | Wait for the next poll, focus the tab, or call `refreshConfig()`. Use **Preview** with the client's attributes: a condition on `user.id` only matches after `setAttribute("user.id", ...)`. Check that `init()` does not turn the signal off. A `403` on `/api/otel/v1/opamp` means the connection string carries the token of a backend project or of a React Native project, and the SDK stops polling: use the browser, Flutter, iOS or Android project's token. A `404` means the server predates remote config: the SDK stops polling and, unless `transport: "otlp"` is set, sends its data through the legacy protocol that server understands |
+| A rule does not apply | Wait for the next poll, focus the tab, or call `refreshConfig()`. Use **Preview** with the client's attributes: a condition on `user.id` only matches after `setAttribute("user.id", ...)`. Check that `init()` does not turn the signal off. A `403` on `/api/otel/v1/opamp` means the connection string carries the token of a backend project or of a React Native project, and the SDK stops polling: use the browser, Flutter, iOS or Android project's token. A `404` means the server predates remote config: the SDK stops polling, and the browser SDK, unless `transport: "otlp"` is set, sends its data through the legacy protocol that server understands |
 | A capture does not start | The target must match exactly what the browser reports: its instance id, `user.id` or session id. The capture starts at the next poll or tab focus |
 | A trigger fires but little is uploaded | A flush uploads only what was buffered: a signal that is off has nothing to upload. The buffer keeps 10 minutes or 2 MB by default (`buffer` in the [settings reference](/learn/remote-config/reference#buffer)) |
 | Nothing arrives at all | Look for a kill switch rule that matches the client, and for a plan without the data you expect. A 401 on the OpAMP endpoint stops polling: check the project token |
 
 ## Check a session’s SDK version
 
-Open a session and look for **JavaScript SDK** in its overview, separately from **App version**. V2 session logs report the exact SDK package version. Browser sessions received through legacy ingestion are labeled **V1 · legacy ingestion**. Historical sessions without version metadata show **Unknown · not reported**; missing metadata does not prove that a session used v1.
+Open a session and look for **JavaScript SDK** (**Flutter SDK**, **Android SDK** or **iOS SDK** in those projects) in its overview, separately from **App version**. V2 session logs report the exact SDK package version. Browser sessions received through legacy ingestion are labeled **V1 · legacy ingestion**. Historical sessions without version metadata show **Unknown · not reported**; missing metadata does not prove that a session used v1.
 
-OpAMP rules and targeted captures require the JavaScript SDK v2. V1 clients continue ingesting normally but do not apply remote settings.
+OpAMP rules and targeted captures require the JavaScript SDK v2, or the Flutter, Android or iOS SDK 2.x. V1 clients continue ingesting normally but do not apply remote settings.

@@ -82,7 +82,7 @@ Per-project settings open from the project switcher (**Edit Project**), not from
 - A host application can use a read token to issue an expiring dashboard link for an authorized viewer; issuing one is not an agent write. [Sharing and embedding a dashboard](metrics-and-dashboards.md#sharing-and-embedding-a-dashboard)
 - Every agent write, accepted or refused by the switch, is in the agent activity log for 90 days.
 
-The writes agents can make are archiving and unarchiving issues, acknowledging and resolving pages, enabling, disabling and snoozing alert rules, running a monitor, creating and editing post-mortems, marking an endpoint slow, and creating, replacing, reordering and deleting a browser or Flutter project's remote SDK config rules. Those rules can stream breadcrumbs for every visitor, turn on full-session replay and switch input masking off (`maskAllInputs: false`), within the app's `init()` ceilings and the plan, so an admin who turns on Agent Access allows that too. The `traceway-write` skill covers how to make these writes safely.
+The writes agents can make are archiving and unarchiving issues, acknowledging and resolving pages, enabling, disabling and snoozing alert rules, running a monitor, creating and editing post-mortems, marking an endpoint slow, and creating, replacing, reordering and deleting a browser, Flutter, iOS or Android project's remote SDK config rules. Those rules can stream breadcrumbs for every visitor, turn on full-session replay and switch input masking off (`maskAllInputs: false`), within the app's `init()` ceilings and the plan, so an admin who turns on Agent Access allows that too. The `traceway-write` skill covers how to make these writes safely.
 
 | Task | CLI | MCP tool |
 |---|---|---|

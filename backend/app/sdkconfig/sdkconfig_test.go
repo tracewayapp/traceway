@@ -37,6 +37,7 @@ func TestParseSettingsRejectsInvalidDocuments(t *testing.T) {
 		"bad mode":             `{"signals":{"console":{"mode":"sometimes"}}}`,
 		"rate above one":       `{"replay":{"sessionSampleRate":1.5}}`,
 		"bad capture mode":     `{"replay":{"captureMode":"screenshots"}}`,
+		"bad replay images":    `{"replay":{"images":"cellular"}}`,
 		"baseline above one":   `{"sessions":{"baselineSampleRate":1.1}}`,
 		"baseline negative":    `{"sessions":{"baselineSampleRate":-0.1}}`,
 		"bad severity":         `{"signals":{"console":{"minSeverity":"chatty"}}}`,
@@ -346,6 +347,53 @@ func TestReplayCaptureModeIsLaidOverLikeAnyOtherField(t *testing.T) {
 	}
 }
 
+func TestReplayImagesMergeLikeMaskAllInputs(t *testing.T) {
+	for _, policy := range []string{ReplayImagesOff, ReplayImagesWifi, ReplayImagesAlways} {
+		mustSettings(t, `{"replay":{"images":"`+policy+`"}}`)
+	}
+	for _, policy := range []string{`"WiFi"`, `"never"`, `""`, `true`} {
+		_, err := ParseSettings([]byte(`{"replay":{"images":` + policy + `}}`))
+		if _, ok := err.(*ValidationError); !ok {
+			t.Errorf("images %s: got %v, want a ValidationError", policy, err)
+		}
+	}
+	if _, err := ParseSettings([]byte(`{"replay":{"images":"metered"}}`)); err == nil || err.Error() != "replay.images must be off, wifi or always" {
+		t.Errorf("error message: %v", err)
+	}
+
+	compiled := &Compiled{Rules: []Rule{
+		{Id: "everyone", Settings: mustSettings(t, `{"replay":{"mode":"buffer","maskAllInputs":true,"images":"wifi"}}`)},
+		{Id: "kiosk", Conditions: mustConditions(t, `{"all":[{"key":"device.form_factor","op":"eq","value":"tablet"}]}`),
+			Settings: mustSettings(t, `{"replay":{"images":"always"}}`)},
+		{Id: "privacy", Conditions: mustConditions(t, `{"all":[{"key":"user.id","op":"eq","value":"u-1"}]}`),
+			Settings: mustSettings(t, `{"replay":{"maskAllInputs":false,"captureMode":"wireframe","mode":"stream"}}`)},
+	}}
+	someone := uid("0195f2a0-0000-7000-8000-000000000001")
+
+	tablet := compiled.Evaluate(map[string]string{"device.form_factor": "tablet", "user.id": "u-1"}, someone, time.Now()).Settings
+	if *tablet.Replay.Images != ReplayImagesAlways || *tablet.Replay.MaskAllInputs || *tablet.Replay.Mode != ModeStream {
+		t.Errorf("a later rule replaces the image policy, and one that leaves it out keeps it: %+v", tablet.Replay)
+	}
+	body, hash, err := Render(tablet)
+	if err != nil || !strings.Contains(string(body), `"replay":{"mode":"stream","maskAllInputs":false,"captureMode":"wireframe","images":"always"}`) {
+		t.Errorf("the image policy renders after captureMode, in struct order: %s (%v)", body, err)
+	}
+	phone := compiled.Evaluate(map[string]string{"device.form_factor": "phone", "user.id": "u-1"}, someone, time.Now()).Settings
+	if *phone.Replay.Images != ReplayImagesWifi {
+		t.Errorf("a client the tablet rule misses keeps wifi: %+v", phone.Replay)
+	}
+	_, phoneHash, _ := Render(phone)
+	if string(hash) == string(phoneHash) {
+		t.Error("documents that differ only in the image policy must not share a config hash")
+	}
+	if none := mustSettings(t, `{"replay":{"mode":"stream"}}`); none.Replay.Images != nil {
+		t.Errorf("an unset policy leaves the SDK default: %+v", none.Replay)
+	}
+	if *compiled.Rules[0].Settings.Replay.Images != ReplayImagesWifi {
+		t.Error("evaluation must not modify the compiled rules")
+	}
+}
+
 func TestPerformanceSignalsAreTargetedLikeAnyOther(t *testing.T) {
 	trigger := `{"id":"frozen-page","steps":[{"match":{"all":[{"key":"signal","op":"eq","value":"longTasks"},
 		{"key":"attributes.browser.long_task.duration","op":"gte","value":1000}]}}],
@@ -427,6 +475,47 @@ func TestBrowserSequenceMatchers(t *testing.T) {
 		_, err := ParseSettings([]byte(`{"schemaVersion":1,"triggers":[{"id":"journey","steps":[{"match":` + raw + `}],"actions":[{"type":"capture","replay":true,"durationSeconds":30}]}]}`))
 		if err == nil {
 			t.Fatalf("accepted %s", raw)
+		}
+	}
+}
+
+// The app SDKs validate selectors with the same grammar, so the forms their docs offer must pass here: class
+// names with combinators, [type] for a class a tag cannot spell, and [identifier] for an id with dots.
+func TestAppSequenceSelectors(t *testing.T) {
+	step := func(selector string) error {
+		value, _ := json.Marshal(selector)
+		_, err := ParseSettings([]byte(`{"schemaVersion":1,"triggers":[{"id":"tap","steps":[{"match":{"event":{"type":"click","value":` + string(value) + `}}}],"actions":[{"type":"capture","replay":true,"durationSeconds":30}]}]}`))
+		return err
+	}
+	for _, selector := range []string{
+		`#cart MaterialButton`,
+		`MaterialButton#pay`,
+		`[type="com.x.Pay"]`,
+		`UIButton[label="Delete"]`,
+		`ElevatedButton[text^="Yes"]`,
+		`[identifier="order.42"]`,
+		`[key="42"]`,
+		`.button`,
+		`#checkout-form > TextField + ElevatedButton`,
+		`ListView ~ FloatingActionButton`,
+		`IconButton[label$="cart"]`,
+		`*[text*="Pay"]`,
+	} {
+		if err := step(selector); err != nil {
+			t.Errorf("%s: %v", selector, err)
+		}
+	}
+	for _, selector := range []string{
+		`#order.42`,
+		`#42`,
+		`_PrivateButton`,
+		`[text="Total: 5"]`,
+		`ElevatedButton, TextButton`,
+		`[key=42]`,
+		`Shop.CheckoutButton<Int>`,
+	} {
+		if step(selector) == nil {
+			t.Errorf("accepted %s", selector)
 		}
 	}
 }

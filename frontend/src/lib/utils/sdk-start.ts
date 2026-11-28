@@ -210,8 +210,8 @@ export function getStartCode(
 	variant: StartVariant = 'vite'
 ): string {
 	const selfHosted = selfHostedBaseUrl(backendUrl) !== null;
-	const viteToken = 'import.meta.env.VITE_TRACEWAY_TOKEN';
-	const viteUrl = 'import.meta.env.VITE_TRACEWAY_URL';
+	const viteTokenExpr = 'import.meta.env.VITE_TRACEWAY_TOKEN';
+	const viteUrlExpr = 'import.meta.env.VITE_TRACEWAY_URL';
 
 	if (isNextjs(framework, variant)) {
 		return `// app/layout.tsx
@@ -237,7 +237,7 @@ ${reactProvider('process.env.NEXT_PUBLIC_TRACEWAY_TOKEN', 'process.env.NEXT_PUBL
 
 function App() {
   return (
-${reactProvider(viteToken, viteUrl, selfHosted, '    ')}
+${reactProvider(viteTokenExpr, viteUrlExpr, selfHosted, '    ')}
       <YourApp />
     </TracewayProvider>
   );
@@ -268,7 +268,7 @@ import App from "./App.vue";
 const app = createApp(App);
 
 app.use(createTracewayPlugin({
-  token: ${viteToken},${selfHosted ? `\n  baseUrl: ${viteUrl},` : ''}
+  token: ${viteTokenExpr},${selfHosted ? `\n  baseUrl: ${viteUrlExpr},` : ''}
 }));
 
 app.mount("#app");`;
@@ -279,7 +279,7 @@ import { init } from "@tracewayapp/jquery";
 
 // A bundled jQuery is not on window, so pass the one you import.
 init({
-  token: ${viteToken},${selfHosted ? `\n  baseUrl: ${viteUrl},` : ''}
+  token: ${viteTokenExpr},${selfHosted ? `\n  baseUrl: ${viteUrlExpr},` : ''}
   jQuery: $,
 });
 

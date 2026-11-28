@@ -184,7 +184,8 @@ func setupInstanceURL(serverURL, cliURL string) string {
 	if connstr.IsCloud(server) && !connstr.IsCloud(cliURL) {
 		return cliURL
 	}
-	if connstr.SameHost(server, cliURL) && !(strings.HasPrefix(server, "https://") && strings.HasPrefix(cliURL, "http://")) {
+	downgradesToHTTP := strings.HasPrefix(server, "https://") && strings.HasPrefix(cliURL, "http://")
+	if connstr.SameHost(server, cliURL) && !downgradesToHTTP {
 		return cliURL
 	}
 	return server

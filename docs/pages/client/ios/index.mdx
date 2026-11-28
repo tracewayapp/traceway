@@ -643,7 +643,7 @@ The SDK ships an uploader script, `Scripts/upload_symbols.sh`. A crash resolves 
 The script never fails a build: a Release build without a token, no dSYM found, or a failed upload (with its HTTP status) are Xcode build warnings (`warning: traceway: …`). From CI after an archive:
 
 ```sh
-TRACEWAY_UPLOAD_TOKEN="$TRACEWAY_UPLOAD_TOKEN" ./Scripts/upload_symbols.sh --dsym-dir build/MyApp.xcarchive/dSYMs
+TRACEWAY_UPLOAD_TOKEN="${TRACEWAY_UPLOAD_TOKEN}" ./Scripts/upload_symbols.sh --dsym-dir build/MyApp.xcarchive/dSYMs
 ```
 
 `--dry-run` lists what it would send. See [iOS symbolication](/symbolicator/ios) for the full reference: the script flags, the raw HTTP upload contract for CI without Xcode, and how a non-symbolicated frame resolves into source. Symbolication happens on Traceway, so exceptions sent only to another backend in [standalone mode](#standalone-without-a-traceway-server) keep their raw traces.

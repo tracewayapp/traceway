@@ -52,7 +52,7 @@ Debug builds have no dSYM (Debug Information Format is `DWARF`), and the script 
 The script finds dSYM binaries at `*.dSYM/Contents/Resources/DWARF/*` and POSTs each one. It never fails a build: a Release build without a token, no dSYM found, or a failed upload (with its HTTP status) are Xcode build warnings (`warning: traceway: …`). Pass `--dry-run` to resolve the config and list what would be uploaded without sending. After an archive in CI:
 
 ```bash
-TRACEWAY_UPLOAD_TOKEN="$TRACEWAY_UPLOAD_TOKEN" ./Scripts/upload_symbols.sh --dsym-dir build/MyApp.xcarchive/dSYMs
+TRACEWAY_UPLOAD_TOKEN="${TRACEWAY_UPLOAD_TOKEN}" ./Scripts/upload_symbols.sh --dsym-dir build/MyApp.xcarchive/dSYMs
 ```
 
 ## Uploading from CI without Xcode

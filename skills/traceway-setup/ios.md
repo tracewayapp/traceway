@@ -370,7 +370,7 @@ From CI, after archiving:
 
 ```bash
 xcodebuild -scheme MyApp -configuration Release -archivePath build/MyApp.xcarchive archive
-TRACEWAY_UPLOAD_TOKEN="$TRACEWAY_UPLOAD_TOKEN" ./Scripts/upload_symbols.sh --dsym-dir build/MyApp.xcarchive/dSYMs
+TRACEWAY_UPLOAD_TOKEN="${TRACEWAY_UPLOAD_TOKEN}" ./Scripts/upload_symbols.sh --dsym-dir build/MyApp.xcarchive/dSYMs
 ```
 
 The dashboard's Symbol Upload card shows the same upload as one `curl -X POST https://cloud.tracewayapp.com/api/symbols/upload -H "Authorization: Bearer <upload token>" -F "files=@<dSYM DWARF file>"`. Self-hosted servers need blob storage (S3 or a persistent volume), or uploaded symbols disappear when the container is recreated.

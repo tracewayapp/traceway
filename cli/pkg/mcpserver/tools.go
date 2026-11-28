@@ -102,9 +102,16 @@ func (s *server) addTools(srv *mcp.Server) {
 	}, s.getAiTrace)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:         "list_sessions",
+		OutputSchema: outSchema[client.ListSessionsResponse](),
+		Description:  "List the user sessions (browser and mobile apps) that started in a window, newest first: each with its id and startedAt (the get_session inputs), duration (nanoseconds), app version, attributes such as the user id, and hasRecording for a replay. search matches the session id, client IP or an attribute value. Empty data is not an error: widen the window or check the project.",
+		Annotations:  readOnly(),
+	}, s.listSessions)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:         "get_session",
 		OutputSchema: outSchema[client.SessionDetailResponse](),
-		Description:  "Get one user session by id plus the exceptions that fired during it. Session replay stays in the dashboard. Note the timestamp param is started_at (sessions are partitioned by start time); a linked occurrence's recordedAt falls inside the window and works.",
+		Description:  "Get one user session by id plus the exceptions that fired during it. Session replay stays in the dashboard. Pass started_at when you have it (sessions are partitioned by start time; a list_sessions row's startedAt or a linked occurrence's recordedAt works); without it the start is looked up among the sessions of the last 30 days first.",
 		Annotations:  readOnly(),
 	}, s.getSession)
 

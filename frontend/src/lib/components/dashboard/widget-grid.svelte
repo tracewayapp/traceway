@@ -18,6 +18,7 @@
 	} from '@lucide/svelte';
 	import WidgetRenderer from './widget-renderer.svelte';
 	import type { DashboardWidgetConfig } from '$lib/types/dashboard';
+	import { metricUnitLabel } from '$lib/utils/metric-format';
 
 	type Widget = {
 		id: number | string;
@@ -188,8 +189,7 @@
 							<Card.Title class="truncate text-sm font-medium"
 								>{widget.title}{#if widget.config?.unit}<span
 										class="text-xs font-normal text-muted-foreground"
-									>
-										({widget.config.unit})</span
+										>&nbsp;({metricUnitLabel(widget.config.unit)})</span
 									>{/if}{#if widgetAggregation(widget)}<span
 										class="text-xs font-normal text-muted-foreground"
 										>&nbsp;&middot; {widgetAggregation(widget)}</span

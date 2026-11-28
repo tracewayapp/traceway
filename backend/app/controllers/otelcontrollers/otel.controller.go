@@ -23,6 +23,7 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/repositories/telemetry/shared"
 	"github.com/tracewayapp/traceway/backend/v2/app/services"
 	"github.com/tracewayapp/traceway/backend/v2/app/storage"
+	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/ios"
 	"github.com/tracewayapp/traceway/backend/v2/app/symbolicator/sourcemap/jsstack"
 	"github.com/tracewayapp/traceway/backend/v2/app/traceway"
 )
@@ -62,6 +63,19 @@ func otelSymbolicateDart(existingProject *models.Project, projectId uuid.UUID, c
 		return stackTrace
 	}
 	return services.ResolveDartStackTrace(ctx, projectId, stackTrace)
+}
+
+// otelSymbolicateIos resolves an iOS trace, the binary-image offsets the iOS SDK writes for errors and crashes,
+// against the project's uploaded dSYMs, the same as the native report protocol does. A trace without such frames
+// passes through untouched.
+func otelSymbolicateIos(existingProject *models.Project, projectId uuid.UUID, ctx context.Context, stackTrace, language string) string {
+	if !ios.IsIOSLanguage(language) {
+		return stackTrace
+	}
+	if existingProject == nil || existingProject.SourceMapToken == nil {
+		return stackTrace
+	}
+	return services.ResolveIOSStackTrace(ctx, projectId, stackTrace)
 }
 
 type otelController struct{}

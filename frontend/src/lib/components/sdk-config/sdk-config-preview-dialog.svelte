@@ -9,6 +9,7 @@
 	import { api } from '$lib/api';
 	import { getErrorMessage } from '$lib/utils/errors';
 	import { projectsState } from '$lib/state/projects.svelte';
+	import { sdkPlatform } from './sdk-config';
 
 	interface Props {
 		open: boolean;
@@ -24,11 +25,14 @@
 		heartbeatIntervalSeconds: number;
 	}
 
-	const flutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
 	let attributesText = $state(
-		projectsState.currentProject?.framework === 'flutter'
-			? 'service.version=2.4.0\nos.name=android\nuser.id='
-			: 'service.version=2.4.0\nbrowser.name=Chrome\nuser.id='
+		{
+			flutter: 'service.version=2.4.0\ndevice.form_factor=phone\nuser.id=',
+			ios: 'service.version=2.4.0\nos.name=ios\nuser.id=',
+			android: 'service.version=2.4.0\nos.name=android\nuser.id=',
+			browser: 'service.version=2.4.0\nbrowser.name=Chrome\nuser.id='
+		}[sdkPlatform(projectsState.currentProject?.framework)]
 	);
 	let instanceUid = $state('');
 	let result = $state<PreviewResult | null>(null);
@@ -118,7 +122,8 @@
 						</div>
 					{/if}
 					<div class="text-muted-foreground">
-						Polls every {Math.round(result.heartbeatIntervalSeconds / 60)} min, and when {flutter
+						Polls every {Math.round(result.heartbeatIntervalSeconds / 60)} min, and when {platform !==
+						'browser'
 							? 'the app comes back to the foreground'
 							: 'the tab regains focus'}.
 					</div>

@@ -105,3 +105,79 @@ func TestLegacyRecordingKeepsBreadcrumbsWithoutReplayEvents(t *testing.T) {
 		t.Fatalf("legacy breadcrumbs changed: %s", job.Body)
 	}
 }
+
+// TW-1: the dashboard reads every item of a segment's events, logs and actions as an object. Ingest keeps the
+// objects of an array and drops a value that is no array at all; it does not judge the rrweb shape of an event.
+func TestRecordingsIngest_DropsItemsThatAreNotObjects(t *testing.T) {
+	project := &models.Project{Id: uuid.New(), Framework: "react"}
+	s := uuid.NewString()
+	body := `{"segments":[
+		{"sessionId":"` + s + `","segmentIndex":0,"events":[{"type":4,"timestamp":1,"data":{}},null,7,"x",[1]],"logs":{"level":"error"},"actions":[null,{"type":"custom","timestamp":"2026-11-27T10:00:00Z"}]},
+		{"sessionId":"` + s + `","segmentIndex":1,"events":[null,1],"logs":"abc","actions":5}
+	]}`
+	recorder, jobs := postRecordings(t, project, body)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("got %d jobs, want 1 (a segment with nothing but malformed parts is dropped)", len(jobs))
+	}
+	var stored map[string]json.RawMessage
+	if err := json.Unmarshal(jobs[0].Body, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(stored["events"]); got != `[{"type":4,"timestamp":1,"data":{}}]` {
+		t.Errorf("events = %s", got)
+	}
+	if got, ok := stored["logs"]; ok && string(got) != "null" && string(got) != "[]" {
+		t.Errorf("logs that are not an array must not be stored, got %s", got)
+	}
+	if got := string(stored["actions"]); got != `[{"type":"custom","timestamp":"2026-11-27T10:00:00Z"}]` {
+		t.Errorf("actions = %s", got)
+	}
+}
+
+// Crash safety: whatever a client sends, ingest answers 200 or 400 and never panics, and what it stores holds
+// only objects in its lists.
+func TestRecordingsIngest_NeverFailsOnHostileBodies(t *testing.T) {
+	project := &models.Project{Id: uuid.New(), Framework: "react"}
+	s := uuid.NewString()
+	for name, body := range map[string]string{
+		"null segment":       `{"segments":[null]}`,
+		"segments not array": `{"segments":"x"}`,
+		"segment not object": `{"segments":[5]}`,
+		"events object":      `{"segments":[{"sessionId":"` + s + `","events":{"a":1}}]}`,
+		"events string":      `{"segments":[{"sessionId":"` + s + `","events":"flutter_video"}]}`,
+		"nested arrays":      `{"segments":[{"sessionId":"` + s + `","events":[[[[{}]]]],"logs":[[null]],"actions":[[]]}]}`,
+		"negative index":     `{"segments":[{"sessionId":"` + s + `","segmentIndex":-1,"events":[{"type":2}]}]}`,
+		"index overflow":     `{"segments":[{"sessionId":"` + s + `","segmentIndex":99999999999,"events":[{"type":2}]}]}`,
+		"bad startedAt":      `{"segments":[{"sessionId":"` + s + `","startedAt":"yesterday","events":[{"type":2}]}]}`,
+		"log entry types":    `{"segments":[{"sessionId":"` + s + `","logs":[{"level":5,"message":{}},{"level":"error","message":null},{"level":"error"}]}]}`,
+		"not json":           `{"segments":[{"sessionId":`,
+		"debugIds wrong":     `{"debugIds":[1],"segments":[{"sessionId":"` + s + `","events":[{"type":2}]}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			recorder, jobs := postRecordings(t, project, body)
+			if recorder.Code != http.StatusOK && recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
+			}
+			for _, job := range jobs {
+				var stored clientmodels.ClientSessionRecording
+				if err := json.Unmarshal(job.Body, &stored); err != nil {
+					t.Fatalf("stored body does not parse: %s", job.Body)
+				}
+				for _, list := range []json.RawMessage{stored.Events, stored.Logs, stored.Actions} {
+					var items []json.RawMessage
+					if len(list) > 0 && json.Unmarshal(list, &items) != nil {
+						t.Errorf("stored a list that is no array: %s", list)
+					}
+					for _, item := range items {
+						if !isJSONObject(item) {
+							t.Errorf("stored an item that is no object: %s", job.Body)
+						}
+					}
+				}
+			}
+		})
+	}
+}

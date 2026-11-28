@@ -10,7 +10,7 @@ Two steps get you a chart: [add a dashboard](#step-1-add-a-dashboard), then [add
 
 ## Step 1: Add a dashboard
 
-Each tab on the **Dashboards** page is one dashboard shown in the current project. A new project starts with the one that fits it: **OTelemetry Server Agent** for an OpenTelemetry backend, **Web Performance** for a React, Vue, Svelte or jQuery project, and **Flutter Performance** for a Flutter app. React Native, iOS and Android projects have no Dashboards page. To add another:
+Each tab on the **Dashboards** page is one dashboard shown in the current project. A new project starts with the one that fits it: **OTelemetry Server Agent** for an OpenTelemetry backend, **Web Performance** for a React, Vue, Svelte or jQuery project, **Flutter Performance** for a Flutter app, and **Mobile Performance** for an Android or iOS app. React Native projects have no Dashboards page. To add another:
 
 1. Open **Dashboards** in the sidebar.
 2. Press <kbd>⌘K</kbd> (<kbd>Ctrl K</kbd> on Windows and Linux), or click **Add or find dashboards...** in the header. The **+** next to the tabs opens the same search. A project that has no dashboard yet shows a **Browse Dashboards & Templates** button instead, or in a browser or Flutter project a button that adds its default dashboard.
@@ -386,8 +386,8 @@ Templates are ready-made dashboards that you install from the search box and the
 | Template | Category | Source of the metrics |
 | --- | --- | --- |
 | Web Performance | browser | Browser SDK: web vitals, route timings, blocking, requests and user impact |
-| Flutter Performance | mobile | Flutter SDK: app start, screen display times, frames, hangs, errors, memory and requests |
-| Mobile Performance | mobile | Mobile SDK: app start, screen timing and app metrics |
+| Flutter Performance | mobile | Flutter SDK: app start, screen display times, slow and frozen frames, janky screens, hangs, unhandled errors, sessions, users, memory and requests |
+| Mobile Performance | mobile | Android and iOS SDKs: app start, screen display times, frames, hangs and ANRs (`app.anr`), crashes and out-of-memory kills (`app.oom`), sessions, users, memory and requests |
 | OTelemetry Server Agent | server | [Traceway OTel Agent](/learn/otel-agent) host CPU, memory, disk and network metrics |
 | Go Application | go | Go runtime and process metrics (goroutines, heap, GC, CPU, memory) |
 | Traceway ClickHouse | traceway | A monitored Traceway instance's `traceway.ch.*` metrics |

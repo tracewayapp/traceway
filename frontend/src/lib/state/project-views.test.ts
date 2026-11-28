@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isProjectViewAvailable, SDK_CONFIG_FRAMEWORKS } from './projects.svelte';
 
 describe('project view availability', () => {
-	it.each(['react-native', 'android', 'ios'] as const)(
+	it.each(['react-native'] as const)(
 		'keeps browser collection and full session views off %s',
 		(framework) => {
 			expect(SDK_CONFIG_FRAMEWORKS).not.toContain(framework);
@@ -36,6 +36,26 @@ describe('project view availability', () => {
 			}
 		}
 	);
+	it.each(['flutter', 'android'] as const)(
+		'enables the session, collection, dashboard and SLO views for %s',
+		(framework) => {
+			expect(SDK_CONFIG_FRAMEWORKS).toContain(framework);
+			for (const path of [
+				'/sessions',
+				'/sessions/session-id',
+				'/data-collection',
+				'/slos',
+				'/slos/slo-id',
+				'/dashboards',
+				'/logs',
+				'/spans',
+				'/issues',
+				'/connection'
+			]) {
+				expect(isProjectViewAvailable(framework, path), path).toBe(true);
+			}
+		}
+	);
 	it('enables the session, collection, dashboard and SLO views for flutter', () => {
 		expect(SDK_CONFIG_FRAMEWORKS).toContain('flutter');
 		for (const path of [
@@ -51,6 +71,23 @@ describe('project view availability', () => {
 			'/connection'
 		]) {
 			expect(isProjectViewAvailable('flutter', path), path).toBe(true);
+		}
+	});
+	it('enables the session, collection, dashboard and SLO views for ios', () => {
+		expect(SDK_CONFIG_FRAMEWORKS).toContain('ios');
+		for (const path of [
+			'/sessions',
+			'/sessions/session-id',
+			'/data-collection',
+			'/logs',
+			'/spans',
+			'/issues',
+			'/connection'
+		]) {
+			expect(isProjectViewAvailable('ios', path), path).toBe(true);
+		}
+		for (const path of ['/slos', '/slos/slo-id', '/dashboards']) {
+			expect(isProjectViewAvailable('ios', path), path).toBe(true);
 		}
 	});
 	it.each(['opentelemetry', 'gin', 'nestjs', 'nextjs', 'remix'] as const)(

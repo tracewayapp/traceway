@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/tracewayapp/traceway/cli/v2/pkg/client"
 )
 
 func TestLogsQuery_basic(t *testing.T) {
@@ -71,5 +73,56 @@ func TestLogsQuery_passesServiceFilter(t *testing.T) {
 
 	if _, _, err := runCmd(t, "", "logs", "query", "--service", "api"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLogsQuery_tableShowsEventRecords(t *testing.T) {
+	srv := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"data":[
+				{"id":"00000000-0000-0000-0000-000000000001","timestamp":"2026-05-13T12:00:00Z","severityText":"INFO","serviceName":"shop-web","body":"",
+				 "logAttributes":{"event.name":"browser.user_action.click","target":"button#add-to-cart","url":"/"}},
+				{"id":"00000000-0000-0000-0000-000000000002","timestamp":"2026-05-13T12:00:01Z","severityText":"INFO","serviceName":"shop-web","body":"",
+				 "logAttributes":{"event.name":"session.start"}},
+				{"id":"00000000-0000-0000-0000-000000000003","timestamp":"2026-05-13T12:00:02Z","severityText":"WARN","serviceName":"shop-web","body":"cart low stock\nsecond line",
+				 "logAttributes":{"event.name":"ignored.when.there.is.a.body"}},
+				{"id":"00000000-0000-0000-0000-000000000004","timestamp":"2026-05-13T12:00:03Z","severityText":"INFO","serviceName":"shop-web","body":""}
+			],
+			"pagination":{"total":4}
+		}`))
+	}))
+	defer srv.Close()
+	seedSessionFor(t, srv.URL)
+
+	stdout, _, err := runCmd(t, "", "logs", "query", "--output", "table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 5 {
+		t.Fatalf("want a header and 4 rows:\n%s", stdout.String())
+	}
+	for i, want := range []string{
+		"[browser.user_action.click] target=button#add-to-cart url=/",
+		"[session.start]",
+		"cart low stock",
+	} {
+		if !strings.HasSuffix(strings.TrimSpace(lines[i+1]), want) {
+			t.Errorf("row %d = %q, want it to end with %q", i+1, lines[i+1], want)
+		}
+	}
+	if strings.Contains(stdout.String(), "ignored.when.there.is.a.body") || strings.Contains(stdout.String(), "second line") {
+		t.Errorf("a body wins over the event name and shows its first line only:\n%s", stdout.String())
+	}
+	if !strings.HasSuffix(strings.TrimSpace(lines[4]), "-") {
+		t.Errorf("an empty record shows -: %q", lines[4])
+	}
+}
+
+func TestLogBodyCellCutsLongEvents(t *testing.T) {
+	attrs := map[string]string{"event.name": "exception", "exception.stacktrace": strings.Repeat("x", 400)}
+	got := logBodyCell(client.LogRecord{LogAttributes: attrs})
+	if len([]rune(got)) != logEventCellLimit || !strings.HasSuffix(got, "…") || !strings.HasPrefix(got, "[exception] exception.stacktrace=") {
+		t.Errorf("cell = %q (%d runes)", got, len([]rune(got)))
 	}
 }

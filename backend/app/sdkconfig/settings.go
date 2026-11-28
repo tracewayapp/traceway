@@ -100,7 +100,29 @@ type ReplaySettings struct {
 	Mode              *Mode    `json:"mode,omitempty"`
 	SessionSampleRate *float64 `json:"sessionSampleRate,omitempty"`
 	MaskAllInputs     *bool    `json:"maskAllInputs,omitempty"`
+	// CaptureMode is how the Flutter SDK records the screen: "video" (MP4 from the hardware encoder) or
+	// "wireframe" (the widget tree as rrweb HTML and mutations). It overrides the app's
+	// TracewayOptions.screenCaptureMode; the browser SDKs ignore it. A change waits for the next session when the
+	// current one already uploaded replay in the other mode, so one session's replay is all one or the other.
+	CaptureMode *string `json:"captureMode,omitempty"`
+	// Images is when a replay may carry pictures: "off", "wifi" or "always". The Android, iOS and Flutter SDKs
+	// inline small copies of the app's images, for "wifi" only on an unmetered connection (decided when the frame
+	// is captured; Flutter on a metered one keeps the URLs of network images and uploads no pixels). The browser
+	// SDK replays pictures by their URLs for "wifi" and adds small copies for "always". The app's replayImages
+	// option is a ceiling: the SDK applies the lower of the two. SDKs default to "wifi".
+	Images *string `json:"images,omitempty"`
 }
+
+const (
+	CaptureModeVideo     = "video"
+	CaptureModeWireframe = "wireframe"
+)
+
+const (
+	ReplayImagesOff    = "off"
+	ReplayImagesWifi   = "wifi"
+	ReplayImagesAlways = "always"
+)
 
 type BufferSettings struct {
 	MaxBytes       *int64 `json:"maxBytes,omitempty"`
@@ -293,6 +315,12 @@ func (s Settings) Validate() error {
 		}
 		if !validRate(s.Replay.SessionSampleRate) {
 			return invalid("replay.sessionSampleRate must be between 0 and 1")
+		}
+		if c := s.Replay.CaptureMode; c != nil && *c != CaptureModeVideo && *c != CaptureModeWireframe {
+			return invalid("replay.captureMode must be video or wireframe")
+		}
+		if i := s.Replay.Images; i != nil && *i != ReplayImagesOff && *i != ReplayImagesWifi && *i != ReplayImagesAlways {
+			return invalid("replay.images must be off, wifi or always")
 		}
 	}
 	if m := s.Metrics; m != nil {

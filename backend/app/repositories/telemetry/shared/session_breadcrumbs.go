@@ -15,7 +15,7 @@ const SessionBreadcrumbLimit = 2000
 // page metrics, rather than what the user did. The repositories filter them in SQL so they never use up the limit.
 var SessionTimelineSkippedEvents = []string{
 	"session.start", "session.end", "traceway.session.update",
-	"traceway.trigger.fired", "traceway.capture.started", "traceway.config.applied",
+	"traceway.trigger.fired", "traceway.capture.started", "traceway.config.applied", "traceway.collection.health",
 	"browser.web_vital", "browser.resource_timing", "browser.navigation_timing",
 	"browser.long_task", "browser.route_timing",
 }

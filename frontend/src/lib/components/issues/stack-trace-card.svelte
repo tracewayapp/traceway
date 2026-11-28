@@ -10,6 +10,7 @@
 		parseStackTrace,
 		looksLikeJava,
 		looksLikeGo,
+		looksLikeNative,
 		type StackFrame
 	} from '$lib/utils/stack-trace-parser';
 
@@ -45,11 +46,15 @@
 	const showStats = $derived(firstSeen && lastSeen && totalCount !== undefined);
 	const isJava = $derived(looksLikeJava(stackTrace));
 	const isGo = $derived(looksLikeGo(stackTrace));
-	const parsed = $derived(parseStackTrace(stackTrace, { ios: isIOS, java: isJava, go: isGo }));
-	const usePretty = $derived(
-		(isJavaScript || isFlutter || isIOS || isJava || isGo) && parsed.groups.length > 0
+	// Android tombstones and ANR dumps: `#00 pc … /lib/…so (symbol+offset)`.
+	const isNative = $derived(looksLikeNative(stackTrace));
+	const parsed = $derived(
+		parseStackTrace(stackTrace, { ios: isIOS, java: isJava, go: isGo, native: isNative })
 	);
-	const groupNoun = $derived(isIOS || isJava ? 'system' : 'library');
+	const usePretty = $derived(
+		(isJavaScript || isFlutter || isIOS || isJava || isGo || isNative) && parsed.groups.length > 0
+	);
+	const groupNoun = $derived(isIOS || isJava || isNative ? 'system' : 'library');
 
 	let viewMode = $state<'formatted' | 'raw'>('formatted');
 	let expandedGroups = $state<Set<number>>(new Set());
@@ -69,7 +74,15 @@
 		const withCol = frame.location.match(/^(.*):(\d+):(\d+)$/);
 		const m = withCol ?? frame.location.match(/^(.*):(\d+)$/);
 		if (!m) {
-			return { fn, dir: '', file: frame.location, lineCol: '', raw: frame.location };
+			// A native library path has no line: show its file like a source file's.
+			const slash = /^[[<]/.test(frame.location) ? -1 : frame.location.lastIndexOf('/');
+			return {
+				fn,
+				dir: slash >= 0 ? frame.location.slice(0, slash + 1) : '',
+				file: slash >= 0 ? frame.location.slice(slash + 1) : frame.location,
+				lineCol: '',
+				raw: frame.location
+			};
 		}
 		const path = m[1];
 		const lineCol = withCol ? `${m[2]}:${m[3]}` : m[2];
@@ -166,6 +179,11 @@
 										<span class="text-muted-foreground/70">at line</span>
 										<span class="font-medium text-amber-600 dark:text-amber-400">{f.lineCol}</span>
 									{/if}
+									{#if group.frame.note}
+										<span class="basis-full text-xs whitespace-pre-line text-muted-foreground"
+											>{group.frame.note}</span
+										>
+									{/if}
 								</li>
 							{:else}
 								<li>
@@ -210,6 +228,9 @@
 													{#if f.lineCol}
 														<span class="text-muted-foreground/60">at line</span>
 														<span>{f.lineCol}</span>
+													{/if}
+													{#if frame.note}
+														<span class="basis-full text-xs whitespace-pre-line">{frame.note}</span>
 													{/if}
 												</li>
 											{/each}

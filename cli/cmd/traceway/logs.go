@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -104,9 +106,41 @@ func runLogsQuery(cmd *cobra.Command, _ []string) error {
 				l.Timestamp.Format("2006-01-02 15:04:05"),
 				pickStr(l.SeverityText, "-"),
 				pickStr(l.ServiceName, "-"),
-				firstLine(l.Body),
+				logBodyCell(l),
 			)
 		}
 		return tw.Flush()
 	}
+}
+
+const logEventCellLimit = 160
+
+// logBodyCell is the record's first body line. OpenTelemetry event records (clicks, navigation, session.start, an
+// SDK's exception event) usually have no body; they show their event.name and attributes instead.
+func logBodyCell(l client.LogRecord) string {
+	if strings.TrimSpace(l.Body) != "" {
+		return firstLine(l.Body)
+	}
+	keys := make([]string, 0, len(l.LogAttributes))
+	for k := range l.LogAttributes {
+		if k != "event.name" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys)+1)
+	if name := l.LogAttributes["event.name"]; name != "" {
+		parts = append(parts, "["+name+"]")
+	}
+	for _, k := range keys {
+		parts = append(parts, k+"="+firstLine(l.LogAttributes[k]))
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	cellText := strings.Join(parts, " ")
+	if runes := []rune(cellText); len(runes) > logEventCellLimit {
+		cellText = string(runes[:logEventCellLimit-1]) + "…"
+	}
+	return cellText
 }

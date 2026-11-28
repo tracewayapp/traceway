@@ -1,5 +1,20 @@
 export type Mode = 'off' | 'buffer' | 'stream';
 
+/** Video is MP4 from the device's hardware encoder; a wireframe is the widget tree as rrweb HTML. */
+export type CaptureMode = 'video' | 'wireframe';
+
+/**
+ * When a wireframe replay may carry pictures: never, on an unmetered connection only, or always. The app's
+ * replayImages option is a ceiling; the SDK applies the lower of the two.
+ */
+export type ReplayImages = 'off' | 'wifi' | 'always';
+
+export const REPLAY_IMAGES_LABELS: Record<ReplayImages, string> = {
+	off: 'Off',
+	wifi: 'Wi‑Fi only',
+	always: 'Always'
+};
+
 export type ConditionOp =
 	| 'eq'
 	| 'neq'
@@ -34,7 +49,15 @@ export type SettingsDocument = Record<string, unknown> & {
 	enabled?: boolean;
 	signals?: Record<string, { mode?: Mode; sampleRate?: number; minSeverity?: string }>;
 	sessions?: { enabled?: boolean; baselineSampleRate?: number };
-	replay?: { mode?: Mode; sessionSampleRate?: number; maskAllInputs?: boolean };
+	replay?: {
+		mode?: Mode;
+		sessionSampleRate?: number;
+		maskAllInputs?: boolean;
+		/** How the Flutter SDK records replay; it overrides the app's screenCaptureMode. Browser SDKs ignore it. */
+		captureMode?: CaptureMode;
+		/** When a replay may carry pictures; every SDK reads it (see REPLAY_IMAGES_HINTS). */
+		images?: ReplayImages;
+	};
 	/**
 	 * The aggregates: histograms and counters built on the device and uploaded as one small payload.
 	 * The signals above govern the detailed events of the same measurements.
@@ -87,18 +110,65 @@ export const BROWSER_ONLY_SIGNALS: ReadonlySet<string> = new Set([
 	'routeTiming'
 ]);
 
-const FLUTTER_SIGNAL_HINTS: Record<string, string> = {
-	network: 'HTTP client spans',
-	console: 'print and debugPrint lines',
-	userActions: 'Taps'
+/**
+ * The SDK that takes a project's settings: the browser SDK, or one of the app SDKs (Flutter, iOS, Android), which
+ * share the settings document but report taps, screens and app logs instead of clicks, pages and console calls.
+ */
+export type SdkPlatform = 'browser' | 'flutter' | 'ios' | 'android';
+
+export function sdkPlatform(framework: string | undefined | null): SdkPlatform {
+	if (framework === 'flutter' || framework === 'ios' || framework === 'android') return framework;
+	return 'browser';
+}
+
+/** The SDK's name as the dashboard writes it: "the Flutter SDK", "the iOS SDK v2 required". */
+export const SDK_PLATFORM_NAMES: Record<SdkPlatform, string> = {
+	browser: 'JavaScript',
+	flutter: 'Flutter',
+	ios: 'iOS',
+	android: 'Android'
+};
+
+const APP_SIGNAL_HINTS: Record<Exclude<SdkPlatform, 'browser'>, Record<string, string>> = {
+	flutter: {
+		network: 'HTTP client spans',
+		console: 'print and debugPrint lines',
+		userActions: 'Taps'
+	},
+	ios: {
+		network: 'URLSession requests',
+		// The record's log.source: `oslog` (iOS 15+, on by default), `stdout` (opt-in captureStdout) and `api`.
+		console: 'os_log, Logger and NSLog lines, Traceway.log, and print with captureStdout',
+		userActions: 'Taps'
+	},
+	android: {
+		network: 'OkHttp calls and startRequest/endRequest',
+		// The record's log.source: `logcat` (Gradle plugin), `stdout`/`stderr` and `api`.
+		console: 'Logcat lines with the Gradle plugin, System.out/err and Traceway.log',
+		userActions: 'Taps'
+	}
+};
+
+/**
+ * What the "Replay images" setting does on each SDK. The app SDKs inline small pictures of image views (Flutter keeps
+ * URL references on a metered connection); the browser blocks pictures when off and adds small copies on Always.
+ */
+export const REPLAY_IMAGES_HINTS: Record<SdkPlatform, string> = {
+	browser: 'Off hides pictures; Always adds small copies',
+	flutter: 'Small pictures of images, never a screenshot',
+	ios: 'Pictures of image views, never a screenshot',
+	android: 'Pictures of image views, never a screenshot'
 };
 
 /** The signals a project's SDK reports, described in its terms. */
-export function signalsFor(flutter: boolean): Array<{ key: string; label: string; hint: string }> {
-	if (!flutter) return SIGNALS;
+export function signalsFor(
+	platform: SdkPlatform
+): Array<{ key: string; label: string; hint: string }> {
+	if (platform === 'browser') return SIGNALS;
+	const hints = APP_SIGNAL_HINTS[platform];
 	return SIGNALS.filter((signal) => !BROWSER_ONLY_SIGNALS.has(signal.key)).map((signal) => ({
 		...signal,
-		hint: FLUTTER_SIGNAL_HINTS[signal.key] ?? signal.hint
+		hint: hints[signal.key] ?? signal.hint
 	}));
 }
 
@@ -130,24 +200,29 @@ export const CONDITION_OPS: Array<{
 	{ value: 'not_exists', label: 'is not set', needsValue: 'none' }
 ];
 
-export const SUGGESTED_KEYS = [
-	'service.version',
-	'deployment.environment.name',
-	'browser.name',
-	'browser.version',
-	'browser.mobile',
-	'os.name',
-	'user.id',
-	'session.id',
-	'service.instance.id'
-];
+const CLIENT_KEYS: Record<'browser' | 'app', string[]> = {
+	browser: ['browser.name', 'browser.version', 'browser.mobile', 'os.name'],
+	app: ['os.name', 'os.version', 'device.form_factor', 'device.manufacturer']
+};
+
+/** The attributes a rule usually targets: an app reports its device where a browser reports itself. */
+export function suggestedKeysFor(platform: SdkPlatform): string[] {
+	return [
+		'service.version',
+		'deployment.environment.name',
+		...CLIENT_KEYS[platform === 'browser' ? 'browser' : 'app'],
+		'user.id',
+		'session.id',
+		'service.instance.id'
+	];
+}
 
 export const BUILT_IN_ERROR_TRIGGER = 'default-exception';
 
 export const TRIGGER_TEMPLATES: Array<{
 	label: string;
 	trigger: Record<string, unknown>;
-	/** Matches what only the browser SDK reports: a signal, or log levels (Flutter logs every line at info). */
+	/** Matches a signal only the browser SDK reports. */
 	browserOnly?: boolean;
 }> = [
 	{
@@ -200,7 +275,6 @@ export const TRIGGER_TEMPLATES: Array<{
 	},
 	{
 		label: 'Error log burst → capture',
-		browserOnly: true,
 		trigger: {
 			...logLineTrigger({
 				text: '*',
@@ -402,15 +476,31 @@ export function summarizeConditions(conditions: Conditions): string {
 	return parts.length > 0 ? parts.join(' and ') : 'All clients';
 }
 
+const REPLAY_IMAGES_SUMMARY: Record<ReplayImages, string> = {
+	off: 'replay images off',
+	wifi: 'replay images on Wi‑Fi only',
+	always: 'replay images always'
+};
+
 export function summarizeSettings(settings: SettingsDocument): string {
 	const parts: string[] = [];
 	if (settings.enabled === false) parts.push('collection off');
 	for (const signal of SIGNALS) {
 		const mode = settings.signals?.[signal.key]?.mode;
-		if (mode) parts.push(`${signal.label.toLowerCase()}: ${MODE_LABELS[mode].toLowerCase()}`);
+		const severity = settings.signals?.[signal.key]?.minSeverity;
+		const label = signal.label.toLowerCase();
+		if (mode && severity)
+			parts.push(`${label}: ${MODE_LABELS[mode].toLowerCase()} (${severity} or worse)`);
+		else if (mode) parts.push(`${label}: ${MODE_LABELS[mode].toLowerCase()}`);
+		else if (severity) parts.push(`${label}: ${severity} or worse`);
 	}
 	if (settings.replay?.mode)
 		parts.push(`replay: ${MODE_LABELS[settings.replay.mode].toLowerCase()}`);
+	if (settings.replay?.captureMode) parts.push(`replay as ${settings.replay.captureMode}`);
+	if (settings.replay?.images)
+		parts.push(
+			REPLAY_IMAGES_SUMMARY[settings.replay.images] ?? `replay images ${settings.replay.images}`
+		);
 	if (settings.sessions?.baselineSampleRate !== undefined)
 		parts.push(`${settings.sessions.baselineSampleRate * 100}% healthy session sample`);
 	if (settings.sessions?.enabled === false) parts.push('sessions off');
@@ -422,29 +512,99 @@ export function summarizeSettings(settings: SettingsDocument): string {
 	return parts.length > 0 ? parts.join(', ') : 'No changes';
 }
 
-/** Whether the form can show every field the document sets; anything more is edited as JSON. */
+type JsonObject = Record<string, unknown>;
+
+function isObject(value: unknown): value is JsonObject {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** The fields of each settings section the form edits; everything else is shown only by the JSON tab. */
+const FORM_SECTION_FIELDS: Record<'sessions' | 'replay' | 'metrics', string[]> = {
+	sessions: ['enabled', 'baselineSampleRate'],
+	replay: ['mode', 'captureMode', 'images'],
+	metrics: ['enabled', 'sampleRate']
+};
+const FORM_TOP_FIELDS = ['schemaVersion', 'enabled', 'triggers'];
+
+/**
+ * Whether the form can load the document: an object whose sections are objects and whose triggers are a list. Fields
+ * the form does not show (sample rates, buffer sizes, minimum severities) do not stop it; see mergeFormSettings.
+ */
 export function fitsForm(settings: SettingsDocument): boolean {
-	if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
-	const allowedTop = new Set([
-		'schemaVersion',
-		'triggers',
-		'enabled',
-		'signals',
-		'sessions',
-		'replay',
-		'metrics'
-	]);
-	if (Object.keys(settings).some((k) => !allowedTop.has(k))) return false;
-	for (const value of Object.values(settings.signals ?? {})) {
-		if (Object.keys(value ?? {}).some((k) => k !== 'mode')) return false;
+	if (!isObject(settings)) return false;
+	if (settings.triggers !== undefined && !Array.isArray(settings.triggers)) return false;
+	for (const section of ['signals', 'sessions', 'replay', 'metrics'] as const) {
+		if (settings[section] !== undefined && !isObject(settings[section])) return false;
 	}
-	return (
-		Object.keys(settings.sessions ?? {}).every(
-			(k) => k === 'enabled' || k === 'baselineSampleRate'
-		) &&
-		Object.keys(settings.replay ?? {}).every((k) => k === 'mode') &&
-		Object.keys(settings.metrics ?? {}).every((k) => k === 'enabled' || k === 'sampleRate')
-	);
+	return Object.values(settings.signals ?? {}).every((signal) => isObject(signal));
+}
+
+/**
+ * The document without the fields the form edits: what only the JSON tab shows. A JSON copy, not structuredClone,
+ * which throws on the $state proxy a rule arrives in.
+ */
+function jsonOnlyPart(settings: SettingsDocument): JsonObject {
+	const rest: JsonObject = JSON.parse(JSON.stringify(settings));
+	for (const key of FORM_TOP_FIELDS) delete rest[key];
+	for (const [section, fields] of Object.entries(FORM_SECTION_FIELDS)) {
+		const value = rest[section];
+		if (!isObject(value)) continue;
+		for (const field of fields) delete value[field];
+		if (Object.keys(value).length === 0) delete rest[section];
+	}
+	if (isObject(rest.signals)) {
+		const signals = rest.signals;
+		for (const { key } of SIGNALS) {
+			const signal = signals[key];
+			if (!isObject(signal)) continue;
+			delete signal.mode;
+			if (Object.keys(signal).length === 0) delete signals[key];
+		}
+		if (Object.keys(signals).length === 0) delete rest.signals;
+	}
+	return rest;
+}
+
+/** The dotted paths of the fields only the JSON tab shows, e.g. `signals.custom.sampleRate`. */
+export function jsonOnlyFields(settings: SettingsDocument): string[] {
+	const paths: string[] = [];
+	const walk = (value: unknown, path: string) => {
+		if (isObject(value) && Object.keys(value).length > 0) {
+			for (const [key, child] of Object.entries(value)) walk(child, path ? `${path}.${key}` : key);
+		} else paths.push(path);
+	};
+	if (isObject(settings)) walk(jsonOnlyPart(settings), '');
+	return paths.filter(Boolean);
+}
+
+/**
+ * Lays what the form edits over the document it was loaded from. A field only the JSON tab shows (say
+ * `signals.custom.sampleRate` next to the `mode` the form sets) is saved exactly as it was, so opening a rule in the
+ * form and saving it never drops what the form cannot show.
+ */
+export function mergeFormSettings(
+	loaded: SettingsDocument,
+	form: SettingsDocument
+): SettingsDocument {
+	const merged: JsonObject = isObject(loaded) ? jsonOnlyPart(loaded) : {};
+	for (const [key, value] of Object.entries(form)) {
+		if (value === undefined) continue;
+		const kept = merged[key];
+		if (key === 'signals' && isObject(value) && isObject(kept)) {
+			const signals: JsonObject = { ...kept };
+			for (const [name, signal] of Object.entries(value)) {
+				const before = signals[name];
+				signals[name] = isObject(before) && isObject(signal) ? { ...before, ...signal } : signal;
+			}
+			merged.signals = signals;
+		} else if (isObject(value) && isObject(kept)) {
+			merged[key] = { ...kept, ...value };
+		} else {
+			merged[key] = value;
+		}
+	}
+	const { schemaVersion, ...rest } = merged;
+	return { schemaVersion: (schemaVersion as number | undefined) ?? 1, ...rest };
 }
 
 export type ConditionRow = { key: string; op: ConditionOp; value: string; original?: Condition };

@@ -1,0 +1,5 @@
+A **Navigation** step matches the path of the page, without its query or fragment, and is case-sensitive: `/orders/{id}` matches `/orders/42`, not `/orders/42/edit` or `/Orders/42`. Navigation inside a single-page app counts, and so does a full page load in the same tab.
+
+Name pages by their route template as well. Replays, issues and log lines then say which screen the user was on (`app.screen.name`, for example `/orders/:id`), and performance metrics group by route. Route templates write a parameter as `:id`; Navigation steps write it as `{id}`.
+
+{props.children}

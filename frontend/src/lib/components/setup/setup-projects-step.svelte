@@ -12,7 +12,7 @@
 	import SetupModeTabs from './setup-mode-tabs.svelte';
 	import SetupTokenPanel from './setup-token-panel.svelte';
 	import SetupDraftReview from './setup-draft-review.svelte';
-	import SetupNextSteps from './setup-next-steps.svelte';
+	import SetupNextSteps, { hasNextSteps } from './setup-next-steps.svelte';
 	import SetupLiveProjects from './setup-live-projects.svelte';
 	import ManualProjectsEditor from './manual-projects-editor.svelte';
 	import PartyIcon from './party-icon.svelte';
@@ -20,14 +20,17 @@
 	let {
 		organizationId,
 		redirectTo = null,
-		initialFramework = 'opentelemetry'
+		initialFramework = 'opentelemetry',
+		initialMode
 	}: {
 		organizationId: number;
 		redirectTo?: string | null;
 		initialFramework?: Framework;
+		initialMode?: SetupMode;
 	} = $props();
 
-	let mode = $state<SetupMode>(getSetupMode());
+	// svelte-ignore state_referenced_locally
+	let mode = $state<SetupMode>(initialMode ?? getSetupMode());
 	let draft = $state<SetupDraft | null>(null);
 	let draftLoaded = $state(false);
 	let initialProjectIds = $state<Set<string>>(new Set());
@@ -40,11 +43,9 @@
 		projectsState.projects.filter((p) => p.organizationId === organizationId)
 	);
 	const newProjects = $derived(orgProjects.filter((p) => !initialProjectIds.has(p.id)));
-	// Deployment credentials are only shown on this page, so the auto-redirect
-	// must not run past them.
-	const hasDeploymentSteps = $derived(
-		draft?.status === 'approved' && draft.payload.projects.some((p) => p.deployment)
-	);
+	// Deployment credentials and unwritten upload tokens are handed over on this
+	// page, so the auto-redirect must not run past them.
+	const holdsPage = $derived(draft?.status === 'approved' && hasNextSteps(draft));
 
 	function destination(): string {
 		if (redirectTo) return redirectTo;
@@ -58,7 +59,7 @@
 	}
 
 	// The first created projects trigger the celebration; it redirects to the
-	// new project's dashboard unless deployment credentials still need showing.
+	// new project's dashboard unless credentials still need showing.
 	$effect(() => {
 		if (celebrated || !snapshotTaken || newProjects.length === 0) return;
 		celebrated = true;
@@ -67,7 +68,7 @@
 		setTimeout(
 			() => {
 				celebrating = false;
-				if (!hasDeploymentSteps) finish();
+				if (!holdsPage) finish();
 			},
 			reduced ? 400 : 2000
 		);
@@ -79,7 +80,7 @@
 		try {
 			const [draftResponse] = await Promise.all([
 				api.get(`/setup/drafts?organizationId=${organizationId}`),
-				projectsState.loadProjects()
+				projectsState.loadProjects().then(snapshotProjects)
 			]);
 			draft = draftResponse?.draft ?? null;
 			draftLoaded = true;
@@ -90,11 +91,18 @@
 		}
 	}
 
-	onMount(() => {
+	// The projects that were here before this setup, from the first list the
+	// server returned: the cached list can lack one created elsewhere since,
+	// which would then count as created here.
+	function snapshotProjects() {
+		if (snapshotTaken || projectsState.error) return;
 		initialProjectIds = new Set(
 			projectsState.projects.filter((p) => p.organizationId === organizationId).map((p) => p.id)
 		);
 		snapshotTaken = true;
+	}
+
+	onMount(() => {
 		refresh();
 
 		const interval = setInterval(() => {
@@ -141,7 +149,7 @@
 		{/if}
 	{/if}
 
-	{#if hasDeploymentSteps && newProjects.length > 0 && !celebrating}
+	{#if holdsPage && newProjects.length > 0 && !celebrating}
 		<div class="flex justify-end pt-2">
 			<Button onclick={finish}>
 				Continue to Dashboard

@@ -130,3 +130,32 @@ export function wallTimeAt(timeline: SegmentTimeline, playerMs: number): number 
 	const span = segment.wallEndMs! - start;
 	return segment.durationMs > 0 ? start + (localMs / segment.durationMs) * span : start;
 }
+
+/**
+ * A paused video that was never seeked can stay black until it plays (Safari, Firefox, some Chrome builds); a seek
+ * just past 0 makes the browser decode and show the first frame.
+ */
+export const FIRST_FRAME_SECONDS = 0.001;
+
+/**
+ * Where a segment that just loaded starts, in seconds: at its end, at a time into it, or on its first frame when it
+ * shows paused; null leaves it where it is. A fragmented or damaged MP4 reports a duration that is not finite, and
+ * a media element throws on such a time, so the end is then the one the SDK declared.
+ */
+export function loadedSeekSeconds(
+	next: { localMs: number; play: boolean; toEnd: boolean },
+	videoDuration: number,
+	declaredMs: number
+): number | null {
+	const duration =
+		Number.isFinite(videoDuration) && videoDuration > 0
+			? videoDuration
+			: validDuration(declaredMs)
+				? declaredMs / 1000
+				: null;
+	if (next.toEnd && duration !== null) return duration;
+	if (Number.isFinite(next.localMs) && next.localMs > 0) {
+		return duration === null ? next.localMs / 1000 : Math.min(next.localMs / 1000, duration);
+	}
+	return next.play ? null : FIRST_FRAME_SECONDS;
+}

@@ -29,7 +29,7 @@ The SLO is in the list as soon as you save it, with the status **No data**. Its 
 
 In this picture Checkout availability has not counted a request yet. Storefront availability, a monitor SLO, already has data.
 
-An endpoint is one of six things an SLO can count. To hold a queue consumer, a background task, an uptime monitor or a metric to a target, change **Indicator**: the box below it shows the fields of that kind, and [SLI kinds](#sli-kinds) says what each one counts. Browser and Flutter projects offer other indicators, described under [Frontend performance objectives](#frontend-performance-objectives).
+An endpoint is one of six things an SLO can count. To hold a queue consumer, a background task, an uptime monitor or a metric to a target, change **Indicator**: the box below it shows the fields of that kind, and [SLI kinds](#sli-kinds) says what each one counts. Browser, Flutter, Android and iOS projects offer other indicators, described under [Frontend performance objectives](#frontend-performance-objectives).
 
 ## Step 2: Get alerted when the budget burns
 
@@ -114,11 +114,11 @@ The service level indicator (SLI) is the share of good events. The kind decides 
 | Metric | Fixed time slices of a metric (1, 5, 15 or 60 minutes), optionally filtered by tags. With **Every observation** on a distribution metric, each observation is an event instead | The slice's aggregate (average, minimum, maximum, sum or last value) satisfies the comparison; with **Every observation**, the observation itself does ("75% of page views have an LCP at most 2500 ms") |
 | Session | Sessions reported by the SDK, all versions or one app version | No exception was recorded in the session; captured messages count only if you say so |
 
-Backend projects get the first five kinds. Browser projects (React, Vue, Svelte, jQuery) and Flutter projects get the session kind, the classic crash-free sessions objective, and the metric kind for their [client metrics](/learn/client-metrics). React Native, Android and iOS projects have no SLOs page in the dashboard yet.
+Backend projects get the first five kinds. Browser projects (React, Vue, Svelte, jQuery) and Flutter, Android and iOS projects get the session kind, the classic crash-free sessions objective, and the metric kind for their [client metrics](/learn/client-metrics). React Native projects have no SLOs page in the dashboard yet.
 
 Browser and mobile projects have no endpoint or span kind, because their SDKs do not report every request: the spans they send are [diagnostic samples](/learn/remote-config/reference#diagnostic-samples-and-averages), not a count. To hold the requests a browser makes to a target, put the SLO on the backend project that serves them.
 
-The session kind counts the sessions an SDK reports. The 2.x browser SDK reports every session unless `sessions: false` is set. The legacy 1.x browser SDK reports one per visit only when [always-on session recording](/client/js-sdk/v1/session-replay#always-on-session-recording) is on (`recordAllSessions: true`). A 1.x app without `recordAllSessions`, and the stable mobile SDKs today, report no sessions, so a session SLO stays at No data.
+The session kind counts the sessions an SDK reports. The 2.x browser SDK and the Flutter, Android and iOS SDKs 2.x report every session unless the `sessions` option is `false`. The legacy 1.x browser SDK reports one per visit only when always-on session recording is on (`recordAllSessions: true`). A 1.x browser app without `recordAllSessions`, the mobile SDKs 1.x and the React Native SDK report no sessions, so a session SLO stays at No data.
 
 The span kind is the general one. A queue consumer, an outbound call to a payment provider, or a GraphQL resolver can each carry their own SLO as long as the spans carry an attribute that identifies them. Endpoints and tasks are promoted from spans, so a span SLO covers them too.
 

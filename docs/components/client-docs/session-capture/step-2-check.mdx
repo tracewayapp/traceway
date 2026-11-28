@@ -1,0 +1,7 @@
+A mask that does not apply fails quietly: a misspelled class records the text as it is. Look at a real replay of every page that shows private data before you ship it:
+
+1. In a development build, add `recordAllSessions: true` to the options, so every session streams its replay.
+2. Open the pages with private data and type into their fields. Then switch to another tab, which uploads the segment in progress.
+3. In Traceway, open **Sessions**, open your session and play it. Masked text shows as `*`, blank elements are empty boxes, and typed values are `*`.
+
+Remove `recordAllSessions` before you ship. Check again after a change to those pages; to check in production, capture your own browser ([Step 5](#step-5-capture-one-user-or-device-from-the-dashboard)).

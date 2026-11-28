@@ -2,10 +2,9 @@
 	import * as Alert from '$lib/components/ui/alert';
 	import { TriangleAlert } from '@lucide/svelte';
 	import { projectsState } from '$lib/state/projects.svelte';
+	import { sdkPlatform, SDK_PLATFORM_NAMES } from './sdk-config';
 
-	const sdk = $derived(
-		projectsState.currentProject?.framework === 'flutter' ? 'Flutter' : 'JavaScript'
-	);
+	const sdk = $derived(SDK_PLATFORM_NAMES[sdkPlatform(projectsState.currentProject?.framework)]);
 </script>
 
 <Alert.Root class="border-amber-500/40 bg-amber-500/5">

@@ -1,0 +1,5 @@
+SIGILL (ILL_ILLOPC), fault addr 0x0000007a3c11d004
+    #00 pc 000000000011d004  /data/app/~~Gf3k2Lq9xT1VbN0mZ4wQyA==/com.example.shop-Hn7dR2pX5sK8LmC0vB1zQw==/base.apk!libimage.so (offset 0x2c4000) (BuildId: 3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b)
+    #01 pc 0000000000010a7c  /data/app/~~Gf3k2Lq9xT1VbN0mZ4wQyA==/com.example.shop-Hn7dR2pX5sK8LmC0vB1zQw==/base.apk!libimage.so (offset 0x2c4000) (BuildId: 3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b)
+    #02 pc 0000000000002f40  /memfd:jit-cache (deleted) (offset 0x2000000) (com.example.shop.images.Decoder.decode+512)
+    #03 pc 00000000002d4044  /apex/com.android.art/lib64/libart.so (art_quick_generic_jni_trampoline+148) (BuildId: 9e7c7dcb2a5b9f0c3e2a4f8a1b6d0c7e)

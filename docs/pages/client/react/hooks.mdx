@@ -8,22 +8,27 @@ Use the `useTraceway` hook to capture errors and messages in your React componen
 import { useTraceway } from "@tracewayapp/react";
 
 function MyComponent() {
-  const { captureException, captureExceptionWithAttributes, captureMessage, recordAction } = useTraceway();
+  const {
+    captureException,
+    captureExceptionWithAttributes,
+    captureMessage,
+    recordAction,
+  } = useTraceway();
 
   // Use these functions as needed
 }
 ```
 
-`useTraceway` throws when it is called outside a `TracewayProvider`.
+Outside a `TracewayProvider` (an app that calls `init()` itself) `useTraceway` returns the same functions instead of throwing: they report once the SDK runs and do nothing before.
 
 ## Return Value
 
-| Function | Description |
-|----------|-------------|
-| `captureException(error, attributes?)` | Capture an error with stack trace |
+| Function                                             | Description                                                                |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| `captureException(error, attributes?)`               | Capture an error with stack trace                                          |
 | `captureExceptionWithAttributes(error, attributes?)` | Capture an error with metadata. Same as `captureException` with attributes |
-| `captureMessage(message, attributes?)` | Send a custom message |
-| `recordAction(category, name, data?)` | Record a breadcrumb for the replay timeline |
+| `captureMessage(message, attributes?)`               | Send a custom message                                                      |
+| `recordAction(category, name, data?)`                | Record a breadcrumb for the replay timeline                                |
 
 ## captureException
 
@@ -82,7 +87,7 @@ function CheckoutButton({ cart }) {
   const { captureMessage } = useTraceway();
 
   function handleCheckout() {
-    captureMessage(`Checkout started: ${cart.items.length} items`);
+    captureMessage("Checkout started", { items: String(cart.items.length) });
     startCheckout(cart);
   }
 
@@ -90,7 +95,7 @@ function CheckoutButton({ cart }) {
 }
 ```
 
-`captureMessage` takes the same optional attributes as `captureException`. A message becomes an issue; for a step you only want to see next to a replay, use `recordAction`.
+`captureMessage` takes the same optional attributes as `captureException`. Messages are grouped by their exact text, so keep the text constant and put the parts that change in attributes, as above. A message becomes an issue; for a step you only want to see next to a replay, use `recordAction`.
 
 ## recordAction
 
@@ -101,7 +106,9 @@ function PayButton({ order }) {
   const { recordAction } = useTraceway();
 
   function handlePay() {
-    recordAction("checkout", "payment_submitted", { items: order.items.length });
+    recordAction("checkout", "payment_submitted", {
+      items: order.items.length,
+    });
     submitPayment(order);
   }
 
@@ -115,23 +122,21 @@ function PayButton({ order }) {
 
 [Performance metrics](/learn/client-metrics) are grouped by page, and a page is named by its route template (`/orders/:id`), not by its URL. Most routers need no code for it, because the SDK reads the router from the page:
 
-| Router | What names the route |
-| --- | --- |
-| React Router in framework mode, Remix | Nothing to do |
-| TanStack Router | Nothing to do |
-| Next.js Pages Router | Nothing to do |
-| React Router `createBrowserRouter` | `<TracewayProvider router={router}>`, or `trackRouter(router)` |
-| React Router `<BrowserRouter>` and `<Routes>` | `useTracewayRoute(useLocation().pathname, useParams())` in a layout route |
-| Next.js App Router | `useTracewayRoute(usePathname(), useParams())` in a client component of the root layout |
-
-Reading the router and the two-argument `useTracewayRoute` need a browser SDK version 2.0.1 or later; on 2.0.0 name routes with a template as shown at the end of this section.
+| Router                                        | What names the route                                                                    |
+| --------------------------------------------- | --------------------------------------------------------------------------------------- |
+| React Router in framework mode, Remix         | Nothing to do                                                                           |
+| TanStack Router                               | Nothing to do                                                                           |
+| Next.js Pages Router                          | Nothing to do                                                                           |
+| React Router `createBrowserRouter`            | `<TracewayProvider router={router}>`, or `trackRouter(router)`                          |
+| React Router `<BrowserRouter>` and `<Routes>` | `useTracewayRoute(useLocation().pathname, useParams())` in a layout route               |
+| Next.js App Router                            | `useTracewayRoute(usePathname(), useParams())` in a client component of the root layout |
 
 A router created with `createBrowserRouter` is handed over once:
 
 ```jsx
 const router = createBrowserRouter(routes);
 
-<TracewayProvider connectionString="..." router={router}>
+<TracewayProvider token={import.meta.env.VITE_TRACEWAY_TOKEN} router={router}>
   <RouterProvider router={router} />
 </TracewayProvider>;
 ```
@@ -170,7 +175,7 @@ function OrderPage() {
 }
 ```
 
-The name applies to the current view and is cleared by the next route change, so each routed component names its own. Going from one page of a route to another (`/orders/8841` to `/orders/8842`) usually keeps the component mounted, and the second page is then not named again: where the router is not read from the page, prefer the path-and-params form above, which names every page. Pass `null` to name nothing. With no router and no name the SDK replaces id-like path segments itself (`/orders/8841` becomes `/orders/:id`).
+The name applies to the current view and is cleared by the next route change, so each routed component names its own. The same template names the screen (`app.screen.name`) on the exceptions, log lines and clicks of that view. Going from one page of a route to another (`/orders/8841` to `/orders/8842`) usually keeps the component mounted, and the second page is then not named again: where the router is not read from the page, prefer the path-and-params form above, which names every page. Pass `null` to name nothing. With no router and no name the SDK replaces id-like path segments itself (`/orders/8841` becomes `/orders/:id`).
 
 ## useTracewayAttributes
 
@@ -190,33 +195,44 @@ function AppShell({ user }) {
 
 ## Without a Hook
 
-Everything on the hook, and the rest of the SDK's API, is also exported from `@tracewayapp/react` as plain functions. Use them in utilities, stores and other modules outside the React tree, with no second dependency on `@tracewayapp/frontend`:
+Everything on the hook, and the rest of the browser SDK's API, is also exported from `@tracewayapp/react` as plain functions: every value of `@tracewayapp/frontend` except `init` (the provider calls it) and the `TracewayFrontendClient` class. Use them in utilities, stores and other modules outside the React tree, with no second dependency on `@tracewayapp/frontend`:
 
 ```javascript
-import { captureException, track, metric, count, flush } from "@tracewayapp/react";
+import {
+  captureException,
+  track,
+  metric,
+  count,
+  flush,
+} from "@tracewayapp/react";
 
 track("checkout_failed", { step: "payment" });
 metric("checkout.duration", 840, { plan: "pro" });
 count("cart.item_added");
 ```
 
-| Export | Purpose |
-|--------|---------|
-| `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` | The same functions `useTraceway` returns |
-| `track(eventName, attributes?)` | A named app event. Buffered like a breadcrumb; a trigger can match it |
-| `metric(name, value, dims?)`, `count(name, n?, dims?)` | Custom [performance metrics](/learn/client-metrics), aggregated on the device |
-| `setMetricDimension(key, value)` | A dimension of your own on every performance metric; `null` removes it |
-| `setRoute(template)` | What `useTracewayRoute` calls |
-| `routeFromParams(pathname, params)` | Infer a route template from router params; used by the two-argument hook since 2.0.1 |
-| `trackRouter(router)` | Name every page from a `createBrowserRouter` or TanStack router, see [useTracewayRoute](#usetracewayroute) |
-| `setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes` | Global attributes, see [Custom Attributes](/client/react/provider#custom-attributes) |
-| `startInteraction(name)` | Trace a whole interaction, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
-| `refreshConfig()` | Fetch this client's remote collection settings now instead of at the next poll |
-| `flush(timeoutMs?)`, `shutdown()` | See [Flush & Lifecycle](/client/js-sdk/flush) |
-| `getInstanceId()` | The id this browser profile reports as `service.instance.id` |
-| `DEFAULT_IGNORE_PATTERNS` | The built-in `ignoreErrors` list |
+| Export                                                                                 | Purpose                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` | The same functions `useTraceway` returns                                                                                                                                       |
+| `log(message, level?, attributes?)`                                                    | A log line of your own, handled like a `console.*` line; `level` is a `TracewayLogLevel`. See [Logs](/client/js-sdk#logs)                                                      |
+| `track(eventName, attributes?)`                                                        | A named app event. Buffered like a breadcrumb; a trigger can match it                                                                                                          |
+| `metric(name, value, dims?)`, `count(name, n?, dims?)`                                 | Custom [performance metrics](/learn/client-metrics), aggregated on the device                                                                                                  |
+| `setMetricDimension(key, value)`                                                       | A dimension of your own on every performance metric; `null` removes it                                                                                                         |
+| `setRoute(template)`                                                                   | What `useTracewayRoute` calls                                                                                                                                                  |
+| `recordNavigation(path, action?, from?, route?)`                                       | Report a navigation the address does not show, such as a modal or a wizard step. See [Screens and navigation](/client/js-sdk#screens-and-navigation)                           |
+| `routeFromParams(pathname, params)`                                                    | Infer a route template from router params; used by the two-argument hook                                                                                                       |
+| `trackRouter(router)`                                                                  | Name every page from a `createBrowserRouter` or TanStack router, see [useTracewayRoute](#usetracewayroute)                                                                     |
+| `setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes`                  | Global attributes, see [Custom Attributes](/client/react/provider#custom-attributes)                                                                                           |
+| `startInteraction(name, attributes?)`                                                  | Trace a whole interaction; returns a `TracewayInteraction`, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly)               |
+| `tracer()`                                                                             | The SDK's OpenTelemetry tracer for spans of your own, or `undefined` before the provider mounts. See [Spans of your own](/client/js-sdk/distributed-tracing#spans-of-your-own) |
+| `refreshConfig()`                                                                      | Fetch this client's remote collection settings now instead of at the next poll                                                                                                 |
+| `flush(timeoutMs?)`, `shutdown()`                                                      | See [Flush & Lifecycle](/client/js-sdk/flush)                                                                                                                                  |
+| `getInstanceId()`                                                                      | The id this browser profile reports as `service.instance.id`                                                                                                                   |
+| `currentSessionId()`                                                                   | The current session's id (`session.id`), or `null` before the provider mounts and between sessions                                                                             |
+| `getClient()`                                                                          | The running `TracewayFrontendClient`, or `null` before the provider mounts and on the server                                                                                   |
+| `DEFAULT_IGNORE_PATTERNS`, `SDK_VERSION`                                               | The built-in `ignoreErrors` list, and the SDK's version                                                                                                                        |
 
-The functions do nothing until a `TracewayProvider` has mounted.
+The types are re-exported too: `TracewayFrontendOptions`, `TelemetryOptions`, `TelemetryEndpoint`, `TracewayCapturedError`, `TracewayInteraction`, `TracewayLogLevel`, `TracewayImagePolicy`, `ErrorLimits`, `CollectionLimits`, `CollectionSettings`, `Settings`, `Trigger`, `TriggerAction`, `Capture`, `Mode`, `SignalName`, `RouteParams` and the event types. The functions do nothing until a `TracewayProvider` has mounted.
 
 ## Custom Hook Example
 
@@ -232,20 +248,23 @@ export function useTrackedAsync(asyncFn, context = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const execute = useCallback(async (...args) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await asyncFn(...args);
-      return result;
-    } catch (err) {
-      setError(err);
-      captureExceptionWithAttributes(err, context);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [asyncFn, context, captureExceptionWithAttributes]);
+  const execute = useCallback(
+    async (...args) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await asyncFn(...args);
+        return result;
+      } catch (err) {
+        setError(err);
+        captureExceptionWithAttributes(err, context);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [asyncFn, context, captureExceptionWithAttributes],
+  );
 
   return { execute, loading, error };
 }
@@ -253,8 +272,8 @@ export function useTrackedAsync(asyncFn, context = {}) {
 // Usage
 function MyComponent() {
   const { execute, loading, error } = useTrackedAsync(
-    () => fetch("/api/data").then(r => r.json()),
-    { component: "MyComponent" }
+    () => fetch("/api/data").then((r) => r.json()),
+    { component: "MyComponent" },
   );
 
   // ...

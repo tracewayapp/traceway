@@ -28,62 +28,77 @@ Retracing reads three things from it: a class line maps the original fully quali
 
 ## Uploading symbols with the Gradle plugin
 
-The Traceway symbols Gradle plugin finds the `mapping.txt` and posts it. It's published to Maven Central, so add `mavenCentral()` to your `pluginManagement` repositories in `settings.gradle.kts`:
+The Traceway symbols Gradle plugin, `com.tracewayapp.symbols`, finds the `mapping.txt` and posts it. It shares its version with the [Android SDK](/client/android) (2.1.0) and is published to Maven Central, so add `mavenCentral()` to your `pluginManagement` repositories in `settings.gradle.kts`:
 
 ```kotlin
 pluginManagement {
   repositories {
     gradlePluginPortal()
+    google()
     mavenCentral()   // resolves com.tracewayapp.symbols
   }
 }
 ```
 
-Then apply it to your app module:
+Then apply it to your app module and configure the upload:
 
 ```kotlin
+// app/build.gradle.kts
+import java.util.Properties
+
 plugins {
-  id("com.android.application")                // must already be applied
-  id("com.tracewayapp.symbols") version "1.0.1"
+  id("com.android.application")
+  id("com.tracewayapp.symbols") version "2.1.0"
+}
+
+val localProperties = Properties().apply {
+  rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
 android {
-  buildFeatures { buildConfig = true }   // required for the injected UUID field
   buildTypes {
     release { isMinifyEnabled = true }
   }
 }
 
 traceway {
-  uploadToken = "<your project upload token>"
-  url = "https://your-traceway-host"    // instance base URL
+  // The project's upload token, not the SDK's token: from the environment on CI, else local.properties.
+  uploadToken = System.getenv("TRACEWAY_UPLOAD_TOKEN") ?: localProperties.getProperty("TRACEWAY_UPLOAD_TOKEN")
+  // A self-hosted server; blank or unset is Traceway Cloud.
+  url = System.getenv("TRACEWAY_URL") ?: localProperties.getProperty("TRACEWAY_URL", "")
   autoUpload = true                     // run after assembleRelease; default false
   // proguardUuid = "..."               // optional: pin the build UUID yourself
 }
 ```
 
-Order matters in the `plugins { }` block. Gradle applies entries top to bottom, and `com.tracewayapp.symbols` looks for the Android extension the moment it is applied, so it has to come **after** `com.android.application` (or `com.android.library`). Declared above it, the build fails at configuration time with `com.tracewayapp.symbols must be applied after an Android application/library plugin`. The app module already has the Android plugin line, so add the Traceway line under it rather than pasting a new block above it.
+Put `TRACEWAY_UPLOAD_TOKEN=YOUR_UPLOAD_TOKEN` in `local.properties` (git-ignored, next to the SDK's `TRACEWAY_TOKEN`), or set the `TRACEWAY_UPLOAD_TOKEN` environment variable on CI. Never write the token into `build.gradle.kts`, which is committed. `url` is only for a self-hosted server: an unset or blank value uploads to Traceway Cloud (`https://cloud.tracewayapp.com`), so the same line works on both.
 
-`uploadToken` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps and iOS dSYMs. It is **not** the runtime token in your SDK connection string. Using the connection-string token here is rejected with a 401.
+The plugin may be applied before or after the Android plugin. In a module that has neither `com.android.application` nor `com.android.library`, the build fails at configuration time with `com.tracewayapp.symbols needs an Android app or library module: apply com.android.application or com.android.library too`.
+
+`uploadToken` is your project's **upload token** from the dashboard (Connection page, Symbol Upload), the same one used for JavaScript source maps and iOS dSYMs. It is **not** the project token the SDK starts with; that one is rejected with a 401.
 
 With `autoUpload = true` the upload runs automatically after `assembleRelease`. The default is `false` (so a release build never depends on backend availability); upload explicitly instead, which is the better fit for CI:
 
 ```bash
-./gradlew assembleRelease uploadReleaseTracewaySymbols
+./gradlew :app:assembleRelease :app:uploadReleaseTracewaySymbols
 ```
 
-The plugin embeds a ProGuard UUID into `BuildConfig.TRACEWAY_PROGUARD_UUID` and names the uploaded mapping `<uuid>.txt`. The UUID is derived from the module path, variant, and app version (`versionName` + `versionCode`), so each released version gets its own mapping. **Bump the version each release** so a new upload doesn't overwrite a previous release's mapping (or set `proguardUuid` explicitly for full control). Pass that value to the SDK so reported crashes carry the matching UUID:
+The plugin makes a ProGuard UUID per variant and app version, writes it into the app's assets, where the SDK reads it at start and sends it as the `app.debug.proguard_uuid` resource attribute of every record, and names the uploaded mapping `<uuid>.txt`. Nothing has to be passed to `Traceway.init`. When the module builds a `BuildConfig`, the UUID is also `BuildConfig.TRACEWAY_PROGUARD_UUID`. The UUID is derived from the module path, variant, and app version (`versionName` + `versionCode`), so each released version gets its own mapping. **Bump the version each release** so a new upload doesn't overwrite a previous release's mapping (or set `proguardUuid` explicitly for full control; an app that uploads `mapping.txt` itself passes the same value as `TracewayOptions(proguardUuid = …)`). A minified build without a UUID (no plugin, no `proguardUuid`) logs one warning at start: its crashes arrive obfuscated.
+
+The same plugin also records `android.util.Log` lines (Timber's too), configured in the same `traceway { }` block:
 
 ```kotlin
-Traceway.init(
-  application = this,
-  connectionString = BuildConfig.TRACEWAY_DSN,
-  options = TracewayOptions(
-    version = "1.0.0",
-    proguardUuid = BuildConfig.TRACEWAY_PROGUARD_UUID,
-  ),
-)
+traceway {
+  logcat {
+    enabled = true                // default true
+    minLevel = "info"             // default "info": verbose, debug, info, warn, error or assert
+    includeDependencies = true    // default true: libraries' calls too (Timber lives in one)
+    disabledFor("benchmark")      // variants or build types left as they are
+  }
+}
 ```
+
+See [Automatic log capture](/client/android#automatic-log-capture) on the Android SDK page for what it rewrites.
 
 ## The upload API
 

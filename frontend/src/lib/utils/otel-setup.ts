@@ -313,7 +313,7 @@ export function register() {
 						backendUrl,
 						token,
 						[],
-						'Start your app normally with next start; no extra flags are needed.'
+						'Start the server with next start. To capture browser telemetry, create a separate React project and use its token in the browser: its Connection page has the Next.js snippet.'
 					)
 				];
 			}
@@ -575,11 +575,23 @@ const LEGACY_GO_GUIDE: Partial<Record<string, string>> = {
 	fasthttp: 'nethttp'
 };
 
-/** The language and framework the setup guide opens on for a project created for the retired Go SDK. */
+const LEGACY_NODE_GUIDE: Partial<Record<string, string>> = {
+	nextjs: 'nextjs',
+	express: 'express',
+	nestjs: 'nestjs',
+	remix: 'other'
+};
+
+/**
+ * The language and framework the setup guide opens on for a project created for the retired Go SDK or the
+ * retired 1.x Node.js SDKs.
+ */
 export function legacyOtelGuide(
 	framework: string
 ): { target: OtelTargetId; framework?: string } | null {
 	if (framework === 'custom') return { target: 'go' };
 	const goFramework = LEGACY_GO_GUIDE[framework];
-	return goFramework ? { target: 'go', framework: goFramework } : null;
+	if (goFramework) return { target: 'go', framework: goFramework };
+	const nodeFramework = LEGACY_NODE_GUIDE[framework];
+	return nodeFramework ? { target: 'nodejs', framework: nodeFramework } : null;
 }

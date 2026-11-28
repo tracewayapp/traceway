@@ -1,0 +1,9 @@
+A **Click** or **Hover** step matches when the element under the pointer, or one of its ancestors, matches the step's CSS selector, so a click on a button's icon still counts for the button. Selectors take tags, ids, classes, attributes and the descendant, child and sibling combinators. Pseudo-classes such as `:hover`, lists with commas and escaped characters are not supported.
+
+Generated ids and utility classes change between builds, so give each control a trigger needs a stable name:
+
+```html
+<button id="place-order" data-testid="place-order">Place order</button>
+```
+
+The step's selector is then `#place-order` or `[data-testid="place-order"]`. Quote attribute values, and leave out anything personal, such as a user's name. A `data-testid` also names the control in the slow-interaction metrics ([stable element names](/learn/rum-best-practices#10-give-the-controls-people-use-a-stable-name)).

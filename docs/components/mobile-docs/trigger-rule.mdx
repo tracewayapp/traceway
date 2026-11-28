@@ -1,0 +1,20 @@
+A recording trigger waits for a journey, a sequence of steps, and records the session when it happens: it uploads the replay and breadcrumbs the device holds from before the first step, then keeps recording for as long as you say. Build one on the dashboard:
+
+1. Open **Data Collection** in the project's sidebar, click **New Rule** (or edit a rule) and open the **Triggers** tab.
+2. Click **Add recording trigger** and give it a **Trigger name**.
+3. For each step, pick its **Event** and fill in what it matches: a **View selector** (or **Widget selector** in Flutter) for a tap, a **Route pattern** such as `/orders/{id}` for a navigation, or a **Log message** for a log line. **Within seconds of previous step** limits how long the user may take. **Add step** adds the next one.
+4. Set **Replay lookback (seconds)**, how much of what happened before the journey to upload, and **Continue recording (seconds)**, how long to stream after it. **Cooldown (seconds)** and **Captures per session** keep a journey the user repeats from recording again and again.
+5. Save the rule.
+
+<img
+  src="/session-capture/rule-dialog-triggers.png"
+  alt="The rule dialog's Triggers tab: a recording trigger with a tap step and a navigation step, the replay lookback, how long to continue recording, the cooldown and the captures per session"
+  style={{
+    maxWidth: "560px",
+    width: "100%",
+    height: "auto",
+    marginTop: "16px",
+  }}
+/>
+
+Steps match in order, and events in between that match no step are ignored. Progress is kept on the device, so a journey still counts when the app restarts within the session. When a trigger fires, the session lists it on the **Sessions** page as a recording reason, with the steps that matched.

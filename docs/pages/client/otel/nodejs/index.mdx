@@ -52,14 +52,14 @@ const sdk = new NodeSDK({
   }),
 
   traceExporter: new OTLPTraceExporter({
-    url: "https://your-traceway-instance.com/api/otel/v1/traces",
+    url: "https://cloud.tracewayapp.com/api/otel/v1/traces",
     headers: { Authorization: "Bearer your-project-token" },
   }),
 
   metricReaders: [
     new PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter({
-        url: "https://your-traceway-instance.com/api/otel/v1/metrics",
+        url: "https://cloud.tracewayapp.com/api/otel/v1/metrics",
         headers: { Authorization: "Bearer your-project-token" },
       }),
       exportIntervalMillis: 30_000,
@@ -69,7 +69,7 @@ const sdk = new NodeSDK({
   logRecordProcessors: [
     new BatchLogRecordProcessor({
       exporter: new OTLPLogExporter({
-        url: "https://your-traceway-instance.com/api/otel/v1/logs",
+        url: "https://cloud.tracewayapp.com/api/otel/v1/logs",
         headers: { Authorization: "Bearer your-project-token" },
       }),
       scheduledDelayMillis: 2000,
@@ -175,7 +175,7 @@ Instead of hardcoding the endpoint and token, you can use standard OTel environm
 
 ```bash
 export OTEL_SERVICE_NAME="my-service"
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-traceway-instance.com/api/otel"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://cloud.tracewayapp.com/api/otel"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
 ```
 

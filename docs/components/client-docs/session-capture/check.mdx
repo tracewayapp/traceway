@@ -1,0 +1,20 @@
+Send one test error from a development build and follow it into Traceway.
+
+1. Start the SDK with `debug: true`. The browser console then shows `Traceway: started (https://cloud.tracewayapp.com/api/otel/v1/logs), session …`, a line for each settings document applied (`Traceway: remote config applied (…)`), and every exception the SDK drops, with the reason.
+2. Open a page, click around for a few seconds, then capture an error and send it:
+
+{props.children}
+
+3. In Traceway, open **Issues**: the test error has a replay clip of the seconds before it. Open **Sessions**, then the session. The player shows the page as you saw it, with its URL above it, and your clicks, requests and console lines next to it.
+
+   <img
+     src="/session-capture/session-replay.png"
+     alt="A session page in Traceway: the replay player showing the page with its URL above it, and the session's clicks, requests and console lines beside it"
+     style={{ maxWidth: "100%", height: "auto", marginTop: "16px" }}
+   />
+
+4. A session that a trigger recorded has a **Recording triggers** card with the trigger's name and steps, and the **Sessions** list filters by it (**Recorded by**).
+5. In **Logs**, the SDK's own events show what it did: `traceway.config.applied` (a settings document was applied), `traceway.trigger.fired` (a trigger fired, with `traceway.trigger.id`) and `traceway.capture.started` (a capture started, with `traceway.capture.id`).
+6. The session's **Overview** shows **Failed replay uploads** and **Diagnostic events dropped**, and its attributes include `traceway.replay.images` and `traceway.replay.image_bytes`.
+
+To test without the dashboard, start the SDK with `remoteConfig: false` and a `collection` that holds your trigger, or with `recordAllSessions: true`. Remove both before you ship.

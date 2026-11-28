@@ -27,7 +27,7 @@ const sdk = new NodeSDK({
   logRecordProcessors: [
     new BatchLogRecordProcessor({
       exporter: new OTLPLogExporter({
-        url: "https://your-traceway-instance.com/api/otel/v1/logs",
+        url: "https://cloud.tracewayapp.com/api/otel/v1/logs",
         headers: { Authorization: "Bearer your-project-token" },
       }),
       scheduledDelayMillis: 2000,
@@ -121,7 +121,7 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 Common causes, in the order worth checking:
 
 - `BatchLogRecordProcessor` called with a positional exporter (see the warning above).
-- The URL is missing the `/v1/logs` suffix. The full path is `https://your-traceway-instance.com/api/otel/v1/logs`.
+- The URL is missing the `/v1/logs` suffix. The full path is `https://cloud.tracewayapp.com/api/otel/v1/logs`.
 - The process exited before the batch was sent. Add the `SIGTERM` handler from the [Quick Start](/client/otel/nodejs).
 - Winston records missing while Pino records arrive: install `@opentelemetry/winston-transport`.
 

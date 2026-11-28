@@ -3,7 +3,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Plus, Trash2, ArrowUp, ArrowDown } from '@lucide/svelte';
-	import { newTriggerId } from './sdk-config';
+	import { newTriggerId, type SdkPlatform } from './sdk-config';
 	type Step = {
 		match: {
 			event: {
@@ -34,13 +34,17 @@
 	let {
 		triggers = $bindable<unknown[]>([]),
 		disabled = false,
-		flutter = false
+		platform = 'browser'
 	}: {
 		triggers?: unknown[];
 		disabled?: boolean;
-		/** A Flutter project: steps name widgets and routes instead of elements and URL paths. */
-		flutter?: boolean;
+		/**
+		 * The project's SDK. An app SDK's steps name widgets or views and screens instead of elements and URL
+		 * paths; on iOS a hover never happens.
+		 */
+		platform?: SdkPlatform;
 	} = $props();
+	let app = $derived(platform !== 'browser');
 	function sequence(value: unknown): value is Sequence {
 		const t = value as Sequence;
 		return (
@@ -84,7 +88,7 @@
 	<div>
 		<h3 class="font-medium">Recording triggers</h3>
 		<p class="text-xs text-muted-foreground">
-			Match events in order {flutter ? 'in the same app session' : 'on the same tab'}, then send
+			Match events in order {app ? 'in the same app session' : 'on the same tab'}, then send
 			buffered replay and continue recording. Unrelated events are ignored, and the first step
 			happening again does not undo progress.
 		</p>
@@ -147,9 +151,11 @@
 									class="h-9 w-full rounded-md border bg-background px-2 text-sm"
 									bind:value={step.match.event.type}
 									{disabled}
-									><option value="click">{flutter ? 'Tap' : 'Click'}</option><option value="hover"
-										>Hover</option
-									><option value="navigation">Navigation</option><option value="log">Log</option
+									><option value="click">{app ? 'Tap' : 'Click'}</option
+									>{#if platform !== 'ios' || step.match.event.type === 'hover'}<option
+											value="hover">Hover</option
+										>{/if}<option value="navigation">Navigation</option><option value="log"
+										>Log</option
 									></select
 								>
 							</div>
@@ -159,9 +165,11 @@
 										? 'Route pattern'
 										: step.match.event.type === 'log'
 											? 'Log message'
-											: flutter
+											: platform === 'flutter'
 												? 'Widget selector'
-												: 'CSS selector'}</Label
+												: platform === 'ios' || platform === 'android'
+													? 'View selector'
+													: 'CSS selector'}</Label
 								><Input
 									id={`seq-value-${index}-${i}`}
 									bind:value={step.match.event.value}
@@ -169,9 +177,13 @@
 										? '/users/{id}'
 										: step.match.event.type === 'log'
 											? 'User loaded'
-											: flutter
+											: platform === 'flutter'
 												? '#pay or ElevatedButton[text="Pay now"]'
-												: '#someId .some-class'}
+												: platform === 'ios'
+													? '#pay or UIButton[text="Pay now"]'
+													: platform === 'android'
+														? '#pay or MaterialButton[text="Pay now"]'
+														: '#someId .some-class'}
 									{disabled}
 								/>
 							</div>
@@ -261,17 +273,57 @@
 	{#if triggers.length < 20}<Button type="button" variant="outline" onclick={add} {disabled}
 			><Plus class="size-4" /> Add recording trigger</Button
 		>{/if}
-	{#if flutter}
+	{#if platform === 'ios'}
 		<p class="text-xs text-muted-foreground">
-			Selectors name widgets with CSS syntax: a widget type such as <code>ElevatedButton</code>,
-			<code>#pay</code> for <code>Key('pay')</code> or a semantics identifier,
-			<code>[text="Pay now"]</code> for the text a widget shows, <code>[label="Delete"]</code> for a
-			semantics label or tooltip (<code>IconButton[label="Delete"]</code>), and combinators;
-			pseudo-classes and selector lists are not supported. A tap matches the widget under the finger
-			or any widget above it. Hover fires when a mouse pointer enters a matching widget. Route
-			patterns match the route name, such as <code>/users/&lbrace;id&rbrace;</code>; a parameter
-			matches one path segment. Replay needs the SDK's <code>screenCapture</code> option and remains subject
-			to developer limits and available buffer.
+			Selectors name views with CSS syntax: a class such as <code>UIButton</code>;
+			<code>#pay</code> for an <code>accessibilityIdentifier</code>;
+			<code>[text="Pay now"]</code> for the text a label or button shows, or
+			<code>[text^="Pay"]</code> for its start; <code>[label="Delete"]</code> for an
+			<code>accessibilityLabel</code>; <code>[key="42"]</code> for a <code>tag</code>;
+			<code>[identifier="order.42"]</code> for an identifier <code>#</code> cannot spell;
+			<code>[type="_PayButton"]</code> for a class a tag cannot spell; <code>.button</code> for a
+			role from the accessibility traits; and combinators, such as <code>#cart UIButton</code>.
+			Pseudo-classes and selector lists are not supported. A tap matches the view under the finger
+			or any of its superviews; iOS has no hover. Route patterns match the screen path, such as
+			<code>/CheckoutViewController</code> or a path the app reports with
+			<code>.tracewayScreen</code> or <code>Traceway.recordNavigation</code>, like
+			<code>/users/&lbrace;id&rbrace;</code>; a parameter matches one path segment. Replay needs the
+			SDK's <code>screenCapture</code> option.
+		</p>
+	{:else if platform === 'android'}
+		<p class="text-xs text-muted-foreground">
+			Selectors name views and Compose nodes with CSS syntax: a class such as
+			<code>MaterialButton</code> (subclasses match, so <code>Button</code> does too);
+			<code>#pay</code> for <code>R.id.pay</code> or <code>Modifier.testTag("pay")</code>;
+			<code>[text="Pay now"]</code> for the text a view shows, or <code>[text^="Pay"]</code> for its
+			start; <code>[label="Delete"]</code> for a content description;
+			<code>[key="42"]</code> for an <code>android:tag</code>;
+			<code>[identifier="order.42"]</code> for a tag, id or test tag <code>#</code> cannot spell;
+			<code>[type="com.example.PayButton"]</code> for a class by its full name;
+			<code>.button</code> for a role; and combinators, such as <code>#cart MaterialButton</code>.
+			Pseudo-classes and selector lists are not supported. A tap matches the view under the finger
+			or any of its parents. Hover fires when a mouse pointer enters a matching view. Route patterns
+			match the screen path: <code>/CheckoutActivity</code>,
+			<code>/CartFragment</code>, or a path the app reports with
+			<code>Traceway.recordNavigation</code>, like <code>/users/&lbrace;id&rbrace;</code>; a
+			parameter matches one path segment. Replay needs the SDK's <code>screenCapture</code> option.
+		</p>
+	{:else if platform === 'flutter'}
+		<p class="text-xs text-muted-foreground">
+			Selectors name widgets with CSS syntax: a widget type such as <code>ElevatedButton</code>;
+			<code>#pay</code> for <code>Key('pay')</code> or a semantics identifier;
+			<code>[text="Pay now"]</code> for the text a widget shows, or <code>[text^="Pay"]</code> for
+			its start; <code>[label="Delete"]</code> for a semantics label or tooltip;
+			<code>[key="42"]</code> for a <code>ValueKey(42)</code>;
+			<code>[identifier="order.42"]</code> for a <code>Semantics.identifier</code>
+			<code>#</code> cannot spell; <code>[type="_PayButton"]</code> for a type a tag cannot spell;
+			<code>.button</code>
+			for a semantics role; and combinators, such as
+			<code>#cart ElevatedButton</code>. Pseudo-classes and selector lists are not supported. A tap
+			matches the widget under the finger or any widget above it. Hover fires when a mouse pointer
+			enters a matching widget. Route patterns match the route name, such as
+			<code>/users/&lbrace;id&rbrace;</code>; a parameter matches one path segment. Replay needs the
+			SDK's <code>screenCapture</code> option and remains subject to developer limits and available buffer.
 		</p>
 	{:else}
 		<p class="text-xs text-muted-foreground">

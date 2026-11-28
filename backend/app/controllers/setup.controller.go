@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,6 +23,29 @@ import (
 type setupController struct{}
 
 var envVarNameRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// A Gradle local.properties or other .properties file also takes dotted keys (traceway.token).
+var propertiesKeyRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)*$`)
+
+// Bundlers put variables with these prefixes into the shipped app, so an upload token never gets one.
+var publicEnvPrefixes = []string{"VITE_", "NEXT_PUBLIC_", "PUBLIC_", "REACT_APP_", "EXPO_PUBLIC_", "NUXT_PUBLIC_", "VUE_APP_", "GATSBY_"}
+
+func validEnvVarName(name, file string) bool {
+	if strings.HasSuffix(strings.ToLower(file), ".properties") {
+		return propertiesKeyRegex.MatchString(name)
+	}
+	return envVarNameRegex.MatchString(name)
+}
+
+func hasPublicEnvPrefix(name string) bool {
+	upper := strings.ToUpper(name)
+	for _, prefix := range publicEnvPrefixes {
+		if strings.HasPrefix(upper, prefix) {
+			return true
+		}
+	}
+	return false
+}
 
 const (
 	setupEnvFormatToken            = "token"
@@ -71,9 +95,69 @@ func (s setupController) GetSession(ctx *gin.Context) {
 		OrganizationId:   orgId,
 		OrganizationName: org.Name,
 		Email:            middleware.GetUserEmail(ctx),
-		BackendUrl:       models.GetBackendUrl(),
+		BackendUrl:       instanceUrl(ctx),
 		Projects:         items,
 	})
+}
+
+// The CLI and shell fallback also write default keys when a setup plan omits them.
+// Validate those destinations before a proposal can be approved.
+type setupFileKey struct {
+	file, key string
+	serverURL bool
+}
+
+// setupPlanEnvFormat is the form the token variable takes. @tracewayapp/react-native starts only from a connection
+// string, so a React Native project gets one unless the plan says otherwise; the CLI, the shell fallback and the
+// dashboard apply the same default.
+func setupPlanEnvFormat(p *models.SetupPlanProject) string {
+	if p.EnvFormat == "" && p.Framework == "react-native" {
+		return setupEnvFormatConnectionString
+	}
+	return p.EnvFormat
+}
+
+func setupFileKeys(p *models.SetupPlanProject) []setupFileKey {
+	urlKey := p.UrlEnvVar
+	if urlKey == "" {
+		switch {
+		case strings.HasSuffix(p.EnvVar, "TOKEN"):
+			urlKey = strings.TrimSuffix(p.EnvVar, "TOKEN") + "URL"
+		case strings.HasSuffix(p.EnvVar, "token"):
+			urlKey = strings.TrimSuffix(p.EnvVar, "token") + "url"
+		case strings.Contains(p.EnvVar, "."):
+			urlKey = p.EnvVar + ".url"
+		default:
+			urlKey = p.EnvVar + "_URL"
+		}
+	}
+	var keys []setupFileKey
+	if p.EnvFile != "" && p.EnvVar != "" {
+		keys = append(keys, setupFileKey{p.EnvFile, p.EnvVar, false})
+		if setupPlanEnvFormat(p) != setupEnvFormatConnectionString {
+			keys = append(keys, setupFileKey{p.EnvFile, urlKey, true})
+		}
+	}
+	file, uploadKey := p.UploadTokenEnvFile, p.UploadTokenEnvVar
+	if file == "" && uploadKey != "" {
+		file = p.EnvFile
+	}
+	if file != "" {
+		if uploadKey == "" {
+			switch p.Framework {
+			case "react", "svelte", "vuejs", "jquery", "nextjs":
+				uploadKey = "TRACEWAY_SOURCEMAP_TOKEN"
+			default:
+				uploadKey = "TRACEWAY_UPLOAD_TOKEN"
+			}
+		}
+		uploadURL := "TRACEWAY_URL"
+		if strings.HasSuffix(strings.ToLower(file), ".properties") && strings.Contains(p.EnvVar, ".") {
+			uploadURL = urlKey
+		}
+		keys = append(keys, setupFileKey{file, uploadKey, false}, setupFileKey{file, uploadURL, true})
+	}
+	return keys
 }
 
 func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
@@ -85,6 +169,7 @@ func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
 	}
 
 	seen := map[string]bool{}
+	files := map[[2]string]bool{}
 	for i := range payload.Projects {
 		p := &payload.Projects[i]
 		p.Name = strings.TrimSpace(p.Name)
@@ -98,13 +183,43 @@ func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
 		if !validFrameworks[p.Framework] {
 			return invalidFrameworkMessage
 		}
-		if utf8.RuneCountInString(p.EnvFile) > 300 {
+		if utf8.RuneCountInString(p.EnvFile) > 300 || utf8.RuneCountInString(p.UploadTokenEnvFile) > 300 {
 			return "envFile must be 300 characters or fewer"
 		}
-		if p.EnvVar != "" && !envVarNameRegex.MatchString(p.EnvVar) {
+		if p.EnvVar != "" && !validEnvVarName(p.EnvVar, p.EnvFile) {
 			return "envVar must be a valid environment variable name"
 		}
-		if utf8.RuneCountInString(p.EnvVar) > 100 {
+		if p.UrlEnvVar != "" && !validEnvVarName(p.UrlEnvVar, p.EnvFile) {
+			return "urlEnvVar must be a valid environment variable name"
+		}
+		uploadFile := p.UploadTokenEnvFile
+		if uploadFile == "" {
+			uploadFile = p.EnvFile
+		}
+		if p.UploadTokenEnvVar != "" && !validEnvVarName(p.UploadTokenEnvVar, uploadFile) {
+			return "uploadTokenEnvVar must be a valid environment variable name"
+		}
+		if hasPublicEnvPrefix(p.UploadTokenEnvVar) {
+			return "uploadTokenEnvVar must not have a public prefix such as VITE_ or NEXT_PUBLIC_: the upload token is a secret"
+		}
+		if p.EnvFile != "" && p.EnvVar == "" {
+			return "envFile requires envVar"
+		}
+		if p.UploadTokenEnvVar != "" && uploadFile == "" {
+			return "uploadTokenEnvVar requires an uploadTokenEnvFile or envFile"
+		}
+		// Without an envFile no file key carries the pair, but a deployment still gets both names.
+		if p.EnvFile == "" && p.UrlEnvVar != "" && p.UrlEnvVar == p.EnvVar && setupPlanEnvFormat(p) != setupEnvFormatConnectionString {
+			return "urlEnvVar must differ from envVar"
+		}
+		for _, w := range setupFileKeys(p) {
+			slot := [2]string{filepath.Clean(w.file), w.key}
+			if isURL, exists := files[slot]; exists && !(isURL && w.serverURL) {
+				return "Conflicting environment variable assignments in " + w.file + ": " + w.key
+			}
+			files[slot] = w.serverURL
+		}
+		if utf8.RuneCountInString(p.EnvVar) > 100 || utf8.RuneCountInString(p.UrlEnvVar) > 100 || utf8.RuneCountInString(p.UploadTokenEnvVar) > 100 {
 			return "envVar must be 100 characters or fewer"
 		}
 		switch p.EnvFormat {
@@ -184,7 +299,7 @@ func resolvePlanResultProjects(ctx *gin.Context, plan *transactional.SetupPlanRo
 			Framework:      project.Framework,
 			Token:          project.Token,
 			SourceMapToken: project.SourceMapToken,
-			BackendUrl:     models.GetBackendUrl(),
+			BackendUrl:     instanceUrl(ctx),
 			Status:         r.Status,
 		})
 	}
@@ -219,13 +334,16 @@ func (s setupController) GetPlan(ctx *gin.Context) {
 }
 
 type SetupDraftResponse struct {
-	Id               string                     `json:"id"`
-	Status           string                     `json:"status"`
-	Payload          models.SetupPlanPayload    `json:"payload"`
-	CreatedAt        time.Time                  `json:"createdAt"`
-	RequestedByEmail string                     `json:"requestedByEmail"`
-	RejectReason     string                     `json:"rejectReason,omitempty"`
-	Projects         []BatchProjectResponseItem `json:"projects,omitempty"`
+	Id               string                  `json:"id"`
+	Status           string                  `json:"status"`
+	Payload          models.SetupPlanPayload `json:"payload"`
+	CreatedAt        time.Time               `json:"createdAt"`
+	RequestedByEmail string                  `json:"requestedByEmail"`
+	RejectReason     string                  `json:"rejectReason,omitempty"`
+	// BackendUrl lets the review name the server URL variable the plan writes off Traceway Cloud, before any
+	// project exists to carry it.
+	BackendUrl string                     `json:"backendUrl"`
+	Projects   []BatchProjectResponseItem `json:"projects,omitempty"`
 }
 
 func (s setupController) draftResponse(ctx *gin.Context, plan *transactional.SetupPlanRow) (*SetupDraftResponse, bool) {
@@ -242,6 +360,7 @@ func (s setupController) draftResponse(ctx *gin.Context, plan *transactional.Set
 		CreatedAt:        plan.CreatedAt,
 		RequestedByEmail: plan.RequestedByEmail,
 		RejectReason:     plan.RejectReason,
+		BackendUrl:       instanceUrl(ctx),
 	}
 	if plan.Status == "approved" {
 		projects, ok := resolvePlanResultProjects(ctx, plan)
@@ -351,7 +470,7 @@ func (s setupController) ApproveDraft(ctx *gin.Context) {
 	}
 
 	cacheCreatedProjectsOnCommit(ctx, results)
-	ctx.JSON(http.StatusOK, gin.H{"projects": toBatchProjectResponse(results)})
+	ctx.JSON(http.StatusOK, gin.H{"projects": toBatchProjectResponse(ctx, results)})
 }
 
 type RejectDraftRequest struct {

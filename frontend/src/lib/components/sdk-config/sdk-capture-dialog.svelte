@@ -12,6 +12,7 @@
 	import { api } from '$lib/api';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
 	import { projectsState } from '$lib/state/projects.svelte';
+	import { sdkPlatform } from './sdk-config';
 
 	type TargetKind = 'instance' | 'user' | 'session' | 'attribute';
 
@@ -23,7 +24,13 @@
 	}
 
 	let { open = $bindable(), kind = 'instance', value = '', onCreated }: Props = $props();
-	const flutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
+	// An app SDK (Flutter, iOS, Android): apps poll when they come back to the foreground. iOS and Android replay is
+	// always a wireframe; Flutter records the screen as video or a wireframe.
+	const app = $derived(platform !== 'browser');
+	const replayWords = $derived(
+		platform === 'flutter' ? 'replay (screen recording or wireframe)' : 'wireframe replay'
+	);
 
 	const kindLabels: Record<TargetKind, string> = {
 		instance: 'Device (instance id)',
@@ -99,7 +106,7 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>New Capture</AlertDialog.Title>
 			<AlertDialog.Description>
-				{#if flutter}
+				{#if app}
 					Matching apps upload the selected lookback and stream allowed signals until expiry.
 					Captures last at most 24 hours, with at most 20 active per Project. They take effect on
 					the next poll; an app coming back to the foreground polls at once.
@@ -113,12 +120,12 @@
 		<SdkVersionWarning />
 		<p
 			class="text-xs text-muted-foreground"
-			title={flutter
-				? 'Each app session can upload up to 50 MiB of screen recording, in at most 10,000 segments, across all captures and the error clips of the session. Logs, requests, errors, lifecycle metadata and performance metrics are not counted. The budget is kept across app restarts within the session.'
+			title={app
+				? `Each app session can upload up to 50 MiB and 10,000 events of ${replayWords} across all captures and the error clips of the session. ${platform === 'flutter' ? 'A screen-recording clip counts as one event; a wireframe counts each of its replay events. ' : ''}Logs, requests, errors, lifecycle metadata and performance metrics are not counted. The budget is kept across app restarts within the session.`
 				: 'Each browser session can upload up to 50 MiB and 10,000 diagnostic events, including replay events, across all captures. Developers may lower these limits. Errors, lifecycle metadata and web vitals are separate. Limits persist across page reloads when session storage is available.'}
 		>
-			{flutter
-				? 'Screen recording shares a per-session budget: 50 MiB / 10,000 segments maximum.'
+			{app
+				? `${platform === 'flutter' ? 'Replay (a screen recording or a wireframe)' : 'Wireframe replay'} shares a per-session budget: 50 MiB / 10,000 events maximum.`
 				: 'Captures respect a shared per-session diagnostic budget: 50 MiB / 10,000 events maximum.'}
 		</p>
 

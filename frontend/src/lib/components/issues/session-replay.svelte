@@ -1,9 +1,20 @@
 <script lang="ts">
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { Globe, Play, Pause, Maximize, Minimize } from '@lucide/svelte';
-	import type { FlutterVideoEvent, SessionReplayEvent } from '$lib/types/exceptions';
+	import type { SessionReplayEvent } from '$lib/types/exceptions';
 	import type { eventWithTime } from '@rrweb/types';
-	import { MIN_GAP_MS, locate, placeSegments, playerTimeAt, wallTimeAt } from './video-segments';
+	import {
+		MIN_GAP_MS,
+		loadedSeekSeconds,
+		locate,
+		placeSegments,
+		playerTimeAt,
+		wallTimeAt
+	} from './video-segments';
+	import { replayEvents } from '$lib/utils/session-recording';
+	import FrameworkIcon from '$lib/components/framework-icon.svelte';
+	import { projectsState } from '$lib/state/projects.svelte';
+	import { sdkPlatform } from '$lib/components/sdk-config/sdk-config';
 	// Static side-effect import - keeps the rrweb-player stylesheet attached
 	// to the page for the lifetime of the SPA, even across mount/unmount cycles.
 	// A dynamic import inside onMount would let Vite's HMR dispose the style
@@ -14,8 +25,9 @@
 	interface Props {
 		events: SessionReplayEvent[] | null;
 		/**
-		 * The moment the caller's time offsets count from, such as the session's start. A Flutter recording whose
-		 * segments carry their wall-clock span then seeks and reports on that clock; otherwise an offset is a time
+		 * The moment the caller's time offsets count from, such as the session's start. A Flutter video recording
+		 * whose segments carry their wall-clock span, and an rrweb recording (which may start after it, like a
+		 * replay a trigger started mid-session), then seek and report on that clock; otherwise an offset is a time
 		 * into the recording.
 		 */
 		startedAt?: string | null;
@@ -30,23 +42,35 @@
 	let lastReportedMs = -1;
 
 	export function seek(offsetMs: number) {
+		if (!Number.isFinite(offsetMs)) return;
 		const ms = Math.max(0, offsetMs);
 		if (isFlutterVideo && videoEl) {
 			seekPlayer(playerTimeForOffset(ms));
 		} else if (player) {
-			player.goto(ms, false);
+			// rrweb applies only the events strictly before the target, so a seek to an event's own time (an
+			// action row, a clip's first snapshot) would keep showing the frame before it.
+			player.goto(Math.max(0, ms - rrwebShift) + 1, false);
 		}
 	}
 
-	let isFlutterVideo = $derived(events && events.length > 0 && events[0]?.type === 'flutter_video');
+	// The events come from whatever the SDK uploaded; one the player cannot take would throw in it.
+	const replay = $derived(replayEvents(events));
+	let isFlutterVideo = $derived(replay.kind === 'video');
+	// In time order, as rrweb plays them.
+	const recording = $derived(replay.rrweb);
+	// The player failed to start on the recording.
+	let failed = $state(false);
+
+	// rrweb counts time from the recording's earliest event; the caller's offsets count from startedAt.
+	const rrwebShift = $derived.by(() => {
+		if (!startedAt || recording.length === 0) return 0;
+		const origin = Date.parse(startedAt);
+		return Number.isFinite(origin) ? recording[0].timestamp - origin : 0;
+	});
 
 	// A Flutter recording is one MP4 clip, or the consecutive segments of a streamed session. They play back to
 	// back as one recording on a player timeline; see video-segments.ts.
-	const videoEvents = $derived(
-		isFlutterVideo && events
-			? events.filter((event): event is FlutterVideoEvent => event.type === 'flutter_video')
-			: []
-	);
+	const videoEvents = $derived(replay.video);
 	// Durations the loaded videos report, by event index, over the ones the SDK declared.
 	let measuredMs = $state<Record<number, number>>({});
 	const timeline = $derived(placeSegments(videoEvents, measuredMs));
@@ -202,8 +226,8 @@
 			const next = pending;
 			pending = null;
 			if (!next) return;
-			if (next.toEnd) video.currentTime = video.duration;
-			else if (next.localMs > 0) video.currentTime = Math.min(next.localMs / 1000, video.duration);
+			const seconds = loadedSeekSeconds(next, video.duration, segment?.durationMs ?? 0);
+			if (seconds !== null) video.currentTime = seconds;
 			if (next.play) void video.play();
 		};
 		// Playback runs on into the next segment.
@@ -250,43 +274,92 @@
 		};
 	});
 
+	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
+	// The app SDKs (Flutter, iOS, Android) record rrweb as a wireframe of the screen, not a page: its Meta href is a
+	// screen path, so the header names the platform instead of showing an address bar.
+	const wireframe = $derived(!isFlutterVideo && platform !== 'browser');
+
+	// An app replay starts with no pointer: rrweb parks its desktop cursor in the top-left corner until the first
+	// pointer event moves it, so the app player hides it until then. A tap after that still shows rrweb's touch
+	// ring. rrweb moves its pointer on mouse moves (source 1), touch moves (6) and these mouse interactions (2):
+	// MouseUp 0, MouseDown 1, Click 2, TouchStart 7, TouchEnd 9.
+	const POINTER_INTERACTIONS = new Set([0, 1, 2, 7, 9]);
+	const firstPointerMs = $derived.by(() => {
+		if (!wireframe || recording.length === 0) return -Infinity;
+		const pointer = recording.find((event) => {
+			if (event.type !== 3) return false;
+			const data = event.data as { source?: number; type?: number };
+			return (
+				data.source === 1 ||
+				data.source === 6 ||
+				(data.source === 2 && POINTER_INTERACTIONS.has(data.type ?? -1))
+			);
+		});
+		return pointer ? pointer.timestamp - recording[0].timestamp : Infinity;
+	});
+	let pointerShown = $state(true);
+
 	let pageUrl = $derived.by(() => {
-		if (!events || events.length === 0 || isFlutterVideo) return '';
-		const metaEvent = (events as (eventWithTime & { data?: { href?: string } })[]).find(
-			(e) => e.type === 4
-		);
-		return metaEvent?.data?.href ?? '';
+		const href = (recording.find((e) => e.type === 4)?.data as { href?: unknown } | undefined)
+			?.href;
+		return typeof href === 'string' ? href : '';
+	});
+
+	// A recording of a phone (an rrweb wireframe from a mobile SDK) is taller than wide: its player is too, up to
+	// where the screen shows at full size.
+	const portrait = $derived.by(() => {
+		const metas = recording.filter((e) => e.type === 4);
+		const last = metas[metas.length - 1]?.data as { width?: unknown; height?: unknown } | undefined;
+		const width = typeof last?.width === 'number' ? last.width : 0;
+		const height = typeof last?.height === 'number' ? last.height : 0;
+		return width > 0 && height > width;
 	});
 
 	function getPlayerHeight(width: number): number {
+		if (portrait) return Math.round(Math.min(width * 1.1, 760));
 		return Math.round((width * 9) / 16);
 	}
 
 	onMount(async () => {
-		if (!events || events.length === 0 || isFlutterVideo) return;
+		if (replay.kind !== 'rrweb' || !replay.playable) return;
+		const ordered: eventWithTime[] = recording;
 
-		const { default: rrwebPlayer } = await import('rrweb-player');
+		try {
+			const { default: rrwebPlayer } = await import('rrweb-player');
 
-		const width = Math.round(container.clientWidth * 0.75);
+			const width = Math.round(container.clientWidth * 0.75);
 
-		const accentColor = getComputedStyle(container).getPropertyValue('--brand').trim();
+			const accentColor = getComputedStyle(container).getPropertyValue('--brand').trim();
 
-		player = new rrwebPlayer({
-			target: container,
-			props: {
-				events: events as eventWithTime[],
-				width,
-				height: getPlayerHeight(width),
-				autoPlay: false,
-				mouseTail: {
-					strokeStyle: accentColor
+			player = new rrwebPlayer({
+				target: container,
+				props: {
+					events: ordered,
+					width,
+					height: getPlayerHeight(width),
+					autoPlay: false,
+					mouseTail: {
+						strokeStyle: accentColor
+					}
 				}
-			}
-		});
+			});
+		} catch {
+			// The page keeps working without the replay.
+			player = null;
+			failed = true;
+			return;
+		}
 
-		const firstTs = (events[0] as eventWithTime).timestamp;
-		const lastTs = (events[events.length - 1] as eventWithTime).timestamp;
-		player.goto(lastTs - firstTs, true);
+		const duration = ordered[ordered.length - 1].timestamp - ordered[0].timestamp;
+		// The replayer sizes its frame to the first Meta event in a timeout; seeking before it runs would leave a
+		// recording whose viewport changed (a resized window, a rotated phone) at its first size.
+		setTimeout(() => {
+			try {
+				player?.goto(duration, true);
+			} catch {
+				// A snapshot the replayer cannot rebuild leaves the frame empty, not the page broken.
+			}
+		}, 0);
 
 		resizeObserver = new ResizeObserver((entries) => {
 			for (const entry of entries) {
@@ -303,9 +376,12 @@
 			if (!player) return;
 			try {
 				const t = player.getReplayer().getCurrentTime();
+				// rrweb applies the events strictly before the current time.
+				const shown = t > firstPointerMs;
+				if (shown !== pointerShown) pointerShown = shown;
 				if (t !== lastReportedMs) {
 					lastReportedMs = t;
-					onTimeUpdate?.(t);
+					onTimeUpdate?.(t + rrwebShift);
 				}
 			} catch {
 				// Replayer may briefly be unavailable during init/destroy
@@ -322,15 +398,15 @@
 	});
 </script>
 
-{#if events && events.length > 0}
-	<div class="player-wrapper overflow-hidden">
+{#if Array.isArray(events) && events.length > 0}
+	<div class="player-wrapper overflow-hidden" class:no-pointer={!pointerShown}>
 		{#if isFlutterVideo}
 			<div class="url-bar">
 				<img src="/flutter.png" alt="Flutter" class="flutter-icon" />
 				<span class="url-bar-text">Flutter Screen Recording</span>
 			</div>
 			<div class="flutter-video-container" bind:this={videoContainerEl}>
-				<video bind:this={videoEl} playsinline onclick={togglePlay}>
+				<video bind:this={videoEl} playsinline preload="metadata" onclick={togglePlay}>
 					<track kind="captions" />
 				</video>
 				<div class="fv-controller">
@@ -392,14 +468,23 @@
 					</div>
 				</div>
 			</div>
-		{:else}
-			{#if pageUrl}
+		{:else if replay.playable && !failed}
+			{#if wireframe}
+				<div class="url-bar">
+					<FrameworkIcon framework={platform} class="platform-icon" />
+					<span class="url-bar-label">Wireframe replay</span>
+				</div>
+			{:else if pageUrl}
 				<div class="url-bar">
 					<Globe />
 					<span class="url-bar-text">{pageUrl}</span>
 				</div>
 			{/if}
 			<div bind:this={container} class="player-container"></div>
+		{:else}
+			<p class="p-4 text-sm text-muted-foreground" role="status">
+				This replay cannot be played: its recording is incomplete or damaged.
+			</p>
 		{/if}
 	</div>
 {/if}
@@ -421,10 +506,16 @@
 		flex-shrink: 0;
 	}
 
-	.flutter-icon {
+	.flutter-icon,
+	.url-bar :global(.platform-icon) {
 		width: 14px;
 		height: 14px;
 		flex-shrink: 0;
+		object-fit: contain;
+	}
+
+	.url-bar-label {
+		font-size: 12px;
 	}
 
 	.url-bar-text {
@@ -539,8 +630,13 @@
 		border-color: var(--brand) !important;
 	}
 
+	.player-wrapper.no-pointer :global(.replayer-mouse) {
+		visibility: hidden;
+	}
+
 	/* Mouse cursor */
-	.player-wrapper :global(.replayer-mouse) {
+	/* A touch recording keeps rrweb's touch ring. */
+	.player-wrapper :global(.replayer-mouse:not(.touch-device)) {
 		background-image: url('data:image/svg+xml;charset=utf-8;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczMDBweCcgaGVpZ2h0PSczMDBweCcgdmlld0JveD0nMCAwIDUwIDUwJz48cGF0aCBkPSdNNSAyTDUgNDNMMTQuNSAzM0wyMyA0OEwzMCA0NC41TDIxLjUgMjkuNUwzNSAyOS41WicgZmlsbD0nIzAwMDAwMCcgc3Ryb2tlPScjZmZmZmZmJyBzdHJva2Utd2lkdGg9JzIuNScgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcvPjwvc3ZnPg==') !important;
 	}
 

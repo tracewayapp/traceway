@@ -1,0 +1,6 @@
+Out of the box, replay is uploaded only for sessions that had an error. The built-in trigger fires on every exception and uploads:
+
+- the replay of up to the last 30 seconds, cut to the frames the device holds, as the exception's clip;
+- the breadcrumbs of the last 10 minutes: logs, requests, screens, taps and events.
+
+Clips are rationed to one every 5 seconds and 20 per session. The exceptions in between still get their breadcrumbs. An app that never throws uploads no replay at all, only its session records and metrics.

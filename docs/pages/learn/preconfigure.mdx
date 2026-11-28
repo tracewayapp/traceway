@@ -79,7 +79,7 @@ docker run -d --name traceway \
   -v "$(pwd)/bootstrap.yaml:/etc/traceway/bootstrap.yaml:ro" \
   -e BOOTSTRAP_FILE=/etc/traceway/bootstrap.yaml \
   -e JWT_SECRET="your-jwt-secret-min-32-characters-long" \
-  -e APP_BASE_URL="https://traceway.example.com" \
+  -e APP_BASE_URL="https://traceway.mycompany.com" \
   ghcr.io/tracewayapp/traceway:duckdb
 ```
 
@@ -92,7 +92,7 @@ Add it next to the other settings, for example in the `.env` file in Traceway's 
 
 ```bash
 JWT_SECRET=your-jwt-secret-min-32-characters-long
-APP_BASE_URL=https://traceway.example.com
+APP_BASE_URL=https://traceway.mycompany.com
 SQLITE_PATH=/var/lib/traceway/traceway.db
 BOOTSTRAP_FILE=/etc/traceway/bootstrap.yaml
 ```
@@ -111,14 +111,17 @@ Because you chose the tokens, the systems that send data can be configured from 
 An OpenTelemetry SDK or Collector on a device of the Line Controllers project:
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=https://traceway.example.com/api/otel
+OTEL_EXPORTER_OTLP_ENDPOINT=https://traceway.mycompany.com/api/otel
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer plant7-line-controllers-9f2c41d07a6e
 ```
 
-A browser app in the HMI Panels project gets the token in its connection string:
+A browser app in the HMI Panels project starts with the token and the address of your server:
 
 ```javascript
-init("plant7-hmi-panels-5be3907c18d2@https://traceway.example.com/api/report");
+init({
+  token: "plant7-hmi-panels-5be3907c18d2",
+  baseUrl: "https://traceway.mycompany.com",
+});
 ```
 
 [OpenTelemetry](/client/otel) covers the exporter settings per language, [OTel Agent](/learn/otel-agent) the host Collector, and [Initialization](/client/js-sdk/initialization) the browser SDK.
@@ -134,7 +137,7 @@ init("plant7-hmi-panels-5be3907c18d2@https://traceway.example.com/api/report");
 2. Send one log line with a project's token:
 
    ```bash
-   curl -i https://traceway.example.com/api/otel/v1/logs \
+   curl -i https://traceway.mycompany.com/api/otel/v1/logs \
      -H "Authorization: Bearer plant7-line-controllers-9f2c41d07a6e" \
      -H "Content-Type: application/json" \
      -d @- <<EOF
@@ -153,7 +156,7 @@ init("plant7-hmi-panels-5be3907c18d2@https://traceway.example.com/api/report");
 
    `HTTP/1.1 200 OK` means the token was accepted. `401` means no project has that token.
 
-3. Sign in at `https://traceway.example.com` with an owner's email and password, open the **Line Controllers** project and go to **Logs**. The line from `bootstrap-check` is there.
+3. Sign in at `https://traceway.mycompany.com` with an owner's email and password, open the **Line Controllers** project and go to **Logs**. The line from `bootstrap-check` is there.
 
 ## Later starts
 
@@ -210,8 +213,8 @@ Optional. Projects can also be created later in the dashboard.
 |---|---|
 | `name` | Required. Letters, numbers, spaces, hyphens and underscores, up to 100 characters. Unique in the file, ignoring case. |
 | `framework` | `opentelemetry` (the default) for anything that sends OTLP. `react`, `svelte`, `vuejs` or `jquery` for a browser app. `flutter`, `react-native`, `android` or `ios` for a mobile app. |
-| `token` | The project token: the OTLP `Bearer` token, and the part before `@` in an SDK connection string. 16 to 64 characters of letters, digits, `.`, `_`, `~` and `-`. Left out, a token is generated and printed once in the server's log. |
-| `sourceMapToken` | The upload token for source maps and debug symbols, with the same rules. Left out, generate one later on the project's **Connection** page (`ios` projects get one automatically). |
+| `token` | The project token: the OTLP `Bearer` token, and the `token` an SDK starts with. 16 to 64 characters of letters, digits, `.`, `_`, `~` and `-`. Left out, a token is generated and printed once in the server's log. |
+| `sourceMapToken` | The upload token for source maps and debug symbols, with the same rules. Left out, a browser, Flutter, Android or iOS project gets a generated one, shown on its **Connection** page; for any other project, generate one there later. |
 
 No two tokens in the file can be the same, whether `token` or `sourceMapToken`.
 

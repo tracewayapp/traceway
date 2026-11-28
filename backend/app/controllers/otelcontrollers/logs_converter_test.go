@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"github.com/tracewayapp/traceway/backend/v2/app/models"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +84,96 @@ func TestConvertLogs_SymbolicatesExceptionStacktrace(t *testing.T) {
 	}
 	if got := records[0].LogAttributes["exception.type"]; got != "Error" {
 		t.Errorf("expected other attributes untouched, got exception.type=%q", got)
+	}
+}
+
+// The iOS SDK sends an error's frames as binary-image offsets; with the build's dSYM uploaded, the stored record
+// and the issue carry function, file and line, as on the native report protocol.
+func TestConvertLogs_SymbolicatesIosStacktrace(t *testing.T) {
+	projectId := uuid.MustParse("00000000-0000-0000-0000-0000000000ac")
+	dsym, err := os.ReadFile(filepath.Join("..", "..", "symbolicator", "ios", "fixtures", "sample", "sample.dsym"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace, err := os.ReadFile(filepath.Join("..", "..", "symbolicator", "ios", "fixtures", "sample", "trace.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	setFakeStore(t, map[string][]byte{
+		services.IOSSymbolsKey(projectId, "2dd71042118432be8f92dd4e3d3fe24a"): dsym,
+	})
+	req := logsRequest("swift", "traceway-ios",
+		strKV("event.name", "exception"),
+		strKV("exception.type", "SampleError"),
+		strKV("exception.message", "boom"),
+		strKV("exception.stacktrace", string(trace)),
+	)
+	project := tokenProject(projectId)
+	project.Framework = "ios"
+	converted := convertLogs(context.Background(), project, projectId, "", req)
+	if len(converted.Records) != 1 || len(converted.Exceptions) != 1 {
+		t.Fatalf("expected one record and one issue, got %d and %d", len(converted.Records), len(converted.Exceptions))
+	}
+	for _, got := range []string{converted.Records[0].LogAttributes["exception.stacktrace"], converted.Exceptions[0].StackTrace} {
+		if !strings.Contains(got, "leaf (sample.c:7:18)") || !strings.Contains(got, "main (sample.c:18)") {
+			t.Errorf("expected the frames resolved through the dSYM, got %q", got)
+		}
+		if !strings.HasPrefix(got, "SampleError: boom") {
+			t.Errorf("expected the error line first, got %q", got)
+		}
+	}
+}
+
+// The Android SDK sends an exception as a log event; with the build's R8 mapping uploaded, the issue carries the
+// original class, method and file names, as on the span path.
+func TestConvertLogs_RetracesAndroidStacktrace(t *testing.T) {
+	projectId := uuid.MustParse("00000000-0000-0000-0000-0000000000ad")
+	const proguardUuid = "6A8CB813-45F6-3652-AD33-778FD1EAB196"
+	setFakeStore(t, map[string][]byte{
+		services.AndroidMappingKey(projectId, proguardUuid): androidConvFixture(t, "r8", "mapping.txt"),
+	})
+	req := logsRequest("java", "traceway-android",
+		strKV("event.name", "exception"),
+		strKV("exception.type", "a.b"),
+		strKV("exception.message", "card declined for $30.59"),
+		strKV("exception.stacktrace", string(androidConvFixture(t, "r8", "obfuscated.txt"))),
+	)
+	req.ResourceLogs[0].Resource.Attributes = append(req.ResourceLogs[0].Resource.Attributes,
+		strKV("app.debug.proguard_uuid", proguardUuid))
+	project := tokenProject(projectId)
+	project.Framework = "android"
+	converted := convertLogs(context.Background(), project, projectId, "", req)
+	if len(converted.Exceptions) != 1 {
+		t.Fatalf("expected one issue, got %d", len(converted.Exceptions))
+	}
+	got := converted.Exceptions[0].StackTrace
+	if strings.Contains(got, "a.a.a(") {
+		t.Errorf("trace still obfuscated:\n%s", got)
+	}
+	for _, want := range []string{"com.example.demo.Checkout.chargeCard", "Checkout.java", "PaymentDeclinedException"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in the retraced issue:\n%s", want, got)
+		}
+	}
+	// TW-11: the stored log record (Logs page, session timeline, trace correlation) is retraced too, as on iOS.
+	if len(converted.Records) != 1 {
+		t.Fatalf("expected one record, got %d", len(converted.Records))
+	}
+	record := converted.Records[0].LogAttributes
+	if st := record["exception.stacktrace"]; strings.Contains(st, "a.a.a(") || !strings.Contains(st, "com.example.demo.Checkout.chargeCard") {
+		t.Errorf("record trace not retraced:\n%s", st)
+	}
+	if typ := record["exception.type"]; !strings.HasSuffix(typ, "PaymentDeclinedException") {
+		t.Errorf("record exception.type = %q, want the original class", typ)
+	}
+	if typ := converted.Exceptions[0].Attributes["exception.type"]; !strings.HasSuffix(typ, "PaymentDeclinedException") {
+		t.Errorf("issue exception.type attribute = %q, want the original class", typ)
+	}
+	obfuscated := string(androidConvFixture(t, "r8", "obfuscated.txt"))
+	once := otelSymbolicateAndroid(project, projectId, context.Background(),
+		formatExceptionStackTrace("a.b", "card declined for $30.59", obfuscated), "java", proguardUuid)
+	if got != once {
+		t.Errorf("the issue must be retraced once, from what the SDK sent:\n got %q\nwant %q", got, once)
 	}
 }
 
@@ -229,5 +321,33 @@ func TestSessionPreservesTracewaySDKVersion(t *testing.T) {
 				t.Fatalf("SDK version = %q, want %q", got, expected)
 			}
 		})
+	}
+}
+
+// TW-12: a session's start comes from the device as it is; one no session could have (a unit slip, such as
+// microseconds sent as milliseconds, or seconds) is ignored like a missing one instead of being stored past what
+// ClickHouse's DateTime holds.
+func TestSessionStartedAtIsBoundedByTheEventTime(t *testing.T) {
+	event := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	started := event.Add(-10 * time.Minute)
+	for name, attrs := range map[string][]*commonpb.KeyValue{
+		"ms":     {intKV(attrSessionStarted, started.UnixMilli())},
+		"string": {strKV(attrSessionStarted, fmt.Sprint(started.UnixMilli()))},
+		"rfc":    {strKV(attrSessionStarted, started.Format(time.RFC3339Nano))},
+	} {
+		if got, ok := sessionStartedAt(attrs, event); !ok || !got.Equal(started) {
+			t.Errorf("%s: got %v %v, want %v", name, got, ok, started)
+		}
+	}
+	for name, attrs := range map[string][]*commonpb.KeyValue{
+		"microseconds": {intKV(attrSessionStarted, started.UnixMicro())},
+		"seconds":      {intKV(attrSessionStarted, started.Unix())},
+		"far future":   {strKV(attrSessionStarted, "2199-01-01T00:00:00Z")},
+		"after event":  {intKV(attrSessionStarted, event.Add(time.Hour).UnixMilli())},
+		"days before":  {intKV(attrSessionStarted, event.Add(-72*time.Hour).UnixMilli())},
+	} {
+		if got, ok := sessionStartedAt(attrs, event); ok {
+			t.Errorf("%s: accepted %v", name, got)
+		}
 	}
 }

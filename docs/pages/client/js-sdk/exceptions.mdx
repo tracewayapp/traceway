@@ -16,7 +16,7 @@ try {
 }
 ```
 
-The SDK extracts the error type, message, and stack trace automatically. A call made before `init()` does nothing.
+The SDK extracts the error type, message, and stack trace automatically. A call made before `init()` does nothing, and a value the SDK cannot read never throws into your code.
 
 ## captureExceptionWithAttributes
 
@@ -38,17 +38,33 @@ try {
 
 Attributes appear as tags in the Traceway dashboard, making it easier to filter and debug issues. Attribute values are strings, so convert numbers and booleans as above.
 
+## Screen Context
+
+Every exception also says where the page was when it happened, with the keys the Android and iOS SDKs use:
+
+| Attribute                | Value                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `app.screen.name`        | The screen's route template (`setRoute`, the app's router, or `recordNavigation`'s `route`), else its path (`/orders/42`) |
+| `app.screen.route`       | The route template, when one is known                                                                                     |
+| `app.screen.previous`    | The name of the screen before                                                                                             |
+| `app.screen.duration_ms` | How long the screen had been shown                                                                                        |
+| `viewport`               | The window's size in CSS pixels, `1280x720`                                                                               |
+
+Attributes you pass yourself win over these. Name your routes so that two orders are one screen, `/orders/:id`, and not two paths; see [Screens and navigation](/client/js-sdk#screens-and-navigation).
+
 In the 2.x SDK, `captureException(error, attributes)` takes the same second argument, and the two functions are identical. In 1.x only `captureExceptionWithAttributes` takes attributes; the `{ distributedTraceId }` option both functions had in 1.x no longer exists in 2.x (see [Distributed Tracing](/client/js-sdk/distributed-tracing)).
 
 ## Attribute Best Practices
 
 **Do include:**
+
 - User identifiers (anonymized if needed)
 - Request/transaction IDs
 - Feature flags or A/B test variants
 - Relevant business context (order ID, product ID, etc.)
 
 **Avoid including:**
+
 - Sensitive data (passwords, tokens, PII)
 - Large objects or arrays
 - Circular references
@@ -98,13 +114,13 @@ captureExceptionWithAttributes(new Error("Server error"), { code: "500" });
 
 ## Filters and Limits
 
-Manual captures pass through the same filters as automatic ones: an error matching [`ignoreErrors`](/client/js-sdk/initialization#error-filtering) is dropped, and `beforeCapture` can drop it. The default patterns ignore network failures, timeouts and 4xx responses, so `captureException(new Error("Request timeout"))` is not reported unless you change `ignoreErrors`.
+Manual captures pass through the same filters as automatic ones: an error matching [`ignoreErrors`](/client/js-sdk/initialization#error-filtering) is dropped, and [`beforeCapture`](/client/js-sdk/initialization#beforecapture-callback) can drop it. Its argument carries the value you passed as `error`, so `beforeCapture: (captured) => !(captured.error instanceof ValidationError)` drops one class of errors. The default patterns ignore network failures, timeouts and 4xx responses, so `captureException(new Error("Request timeout"))` is not reported unless you change `ignoreErrors`.
 
 The 2.x SDK also protects against error storms. The same error (type, message and stack) captured again within one second is suppressed, and a running client reports at most 60 errors in a rolling minute. The next reported error carries the number suppressed as `traceway.error.suppressed_count`. Tune both with the [`errorLimits`](/client/js-sdk/initialization#production-collection-policy) option.
 
 ## Errors Inside an Interaction
 
-The 2.x SDK's `startInteraction(name)` returns an object whose `captureException(error, attributes?)` captures the error as part of that interaction's trace and marks the interaction as failed. See [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly).
+`startInteraction(name, attributes?)` returns a `TracewayInteraction` whose `captureException(error, attributes?)` captures the error as part of that interaction's trace and marks the interaction as failed. See [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly).
 
 ## React Error Boundaries
 

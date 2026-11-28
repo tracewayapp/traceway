@@ -113,7 +113,7 @@ To forward to Traceway, point the exporter at your Traceway server's OTLP base p
 ```yaml
 exporters:
   otlphttp:
-    endpoint: https://traceway.example.com/api/otel
+    endpoint: https://cloud.tracewayapp.com/api/otel   # a self-hosted server: its own address
     headers:
       Authorization: Bearer <project token>
 ```

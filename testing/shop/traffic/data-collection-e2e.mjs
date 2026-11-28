@@ -206,7 +206,7 @@ try {
     await sidebarLink('Dashboards').waitFor()
     assert.equal(await sidebarLink('Data Collection').count(), 0)
     await open('/data-collection', backendProject.id)
-    await page.getByText('Remote collection settings are available for browser and Flutter projects').waitFor()
+    await page.getByText('Remote collection settings are available for browser, Flutter, iOS and Android projects').waitFor()
     await shot(page, 'data-collection-backend-project')
   })
 

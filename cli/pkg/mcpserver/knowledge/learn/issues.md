@@ -7,11 +7,23 @@ An **issue** is a group of exceptions (or captured messages) that share one fing
 - An unhandled exception or panic during a traced request or task.
 - An error recorded on a span as an OpenTelemetry `exception` event.
 - An exception or a message captured explicitly through a Traceway SDK (browser, mobile).
+- A crash, hang or exit the mobile SDKs detect on their own (below).
 
 There are two kinds:
 
 - **Errors** have a stack trace.
 - **Messages** are captured strings with no exception. They group by their exact text, so variable data belongs in attributes. `"payment failed for order 123"` makes a new issue per order.
+
+The Android and iOS 2.x SDKs also report four issue types of their own, titled `type: message`:
+
+| Type | From | Message |
+|---|---|---|
+| `AppHang` | Android and iOS: the main thread blocked for `appHangThresholdMs` (2 s by default) in the foreground, with the main thread's stack | `Main thread blocked for 3.2 s`; a hang the app did not survive is reported at the next start as `at least …` with `app.hang.fatal: true` |
+| `ApplicationNotResponding` | Android 11+: an ANR of an earlier run, from the system's exit record, with the main thread's stack; also counted in `app.anr` | the ANR's description |
+| `NativeCrash` | Android 11+: a native crash of an earlier run (Android 12+ with the tombstone's signal and frames); iOS: a MetricKit crash the SDK's own handler did not record | the signal and exception, e.g. `SIGSEGV (EXC_BAD_ACCESS)` |
+| `WatchdogTermination` | iOS: the system ended the app for not responding (`0x8badf00d`, from MetricKit); also counted in `app.anr` | `The system ended the app for not responding in time (…)` |
+
+These four group by their type and their top five in-app frames (else the top frames, else the message without numbers), not by the whole trace, because their stacks carry per-install paths and system frames that differ on every device. The issue page shows the hang's duration and whether it was fatal. Flutter reports Dart errors only: no hang, ANR or native-crash issues (hangs are the `app.hang` metric). Find them with the issues search (`AppHang`, `NativeCrash`, …); the list has no type filter.
 
 ## Fingerprinting
 
@@ -34,9 +46,9 @@ So the same failure keeps one issue across servers, environments, versions and u
 - The stack trace with **Formatted** and **Raw** views. Formatted folds library and system frames (JavaScript, Flutter, iOS, Java, Go). A **Message** badge marks captured messages.
 - First seen, last seen, total occurrences, and the **Archive** button.
 - The on-call team that owns the project and who is on call now.
-- **Last Event**: when, server, version, trace id, attributes, and the **related endpoint, task or AI trace** it happened in, with its status, duration and a link. Browser issues show the replay clip from just before the error, or a **View full session** button.
+- **Last Event**: when, server, version, trace id, attributes, and the **related endpoint, task or AI trace** it happened in, with its status, duration and a link. Browser and app issues show the replay clip from just before the error, or a **View full session** button, and a **Page** (browser) or **Screen** (apps) section: the screen name, its route template, the screen before, the time on it and the viewport.
 - A **Distributed Trace** card when other endpoints, tasks, AI traces or exceptions share the trace id.
-- On browser issues, **Session Context**: the console logs and user actions around the error, synced to the replay.
+- On browser and app issues, **Session Context**: the log lines and user actions around the error, synced to the replay.
 - The first 10 events, then **View all N events** (`/issues/<hash>/events`, 50 per page). Each event opens its own occurrence page.
 
 **Occurrence** pages (`/issues/<hash>/<exceptionId>`) show one occurrence with the same event card. When debugging, fix the **last** occurrence, not the group: it is the one with the current code and data.

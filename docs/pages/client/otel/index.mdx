@@ -48,7 +48,7 @@ Every OTel ecosystem ships the API, the SDK and the OTLP exporter as separate pa
 
 | Setting | Value |
 |---------|-------|
-| **Endpoint** | `https://<your-instance>/api/otel` |
+| **Endpoint** | `https://cloud.tracewayapp.com/api/otel` |
 | **Traces path** | `/v1/traces` |
 | **Metrics path** | `/v1/metrics` |
 | **Logs path** | `/v1/logs` |
@@ -104,7 +104,7 @@ import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 
-const BASE = "https://your-traceway-instance.com/api/otel";
+const BASE = "https://cloud.tracewayapp.com/api/otel";
 const headers = { Authorization: "Bearer your-project-token" };
 
 const sdk = new NodeSDK({
@@ -211,7 +211,7 @@ java \
   -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=my-spring-app \
   -Dotel.exporter.otlp.protocol=http/protobuf \
-  -Dotel.exporter.otlp.endpoint=https://<your-instance>/api/otel \
+  -Dotel.exporter.otlp.endpoint=https://cloud.tracewayapp.com/api/otel \
   -Dotel.exporter.otlp.headers="Authorization=Bearer <project_token>" \
   -jar target/my-app.jar
 ```
@@ -230,7 +230,7 @@ In a container or a Kubernetes manifest, use the environment-variable form inste
 JAVA_TOOL_OPTIONS=-javaagent:/app/opentelemetry-javaagent.jar
 OTEL_SERVICE_NAME=my-spring-app
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-OTEL_EXPORTER_OTLP_ENDPOINT=https://<your-instance>/api/otel
+OTEL_EXPORTER_OTLP_ENDPOINT=https://cloud.tracewayapp.com/api/otel
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer <project_token>
 ```
 
@@ -269,7 +269,7 @@ processors:
 
 exporters:
   otlphttp:
-    endpoint: "https://your-traceway-instance.com/api/otel"
+    endpoint: "https://cloud.tracewayapp.com/api/otel"
     headers:
       Authorization: "Bearer your-project-token"
 
@@ -302,7 +302,7 @@ Traceway accepts telemetry it cannot use rather than rejecting the whole batch, 
 **Check the wire first.** Post an empty span batch and watch the status code:
 
 ```bash
-curl -i -X POST https://<your-instance>/api/otel/v1/traces \
+curl -i -X POST https://cloud.tracewayapp.com/api/otel/v1/traces \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <project_token>' \
   -d '{"resourceSpans":[]}'

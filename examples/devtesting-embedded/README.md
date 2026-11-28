@@ -13,6 +13,44 @@ Then:
 - AI chat: http://localhost:8080/chat (needs `ORCAROUTER_API_KEY`, `CHEAPER_INFERENCE_API_KEY`, `UBERLLM_API_KEY` or `OPENROUTER_API_KEY` in `.env`)
 - Dashboard: http://localhost:8082 — login `admin@localhost.com` / `admin`
 
+## Ports and storage
+
+| Variable | Default | What listens there |
+|---|---|---|
+| `DEVTESTING_APP_PORT` | `8080` | the Go demo app (`/`, `/cdn`, `/chat`, `/api/test-*`) |
+| `DEVTESTING_TRACEWAY_PORT` | `8082` | the embedded Traceway backend and its dashboard; the demo services' OTLP exporters, the self-monitoring URL and the SDK URLs in the served pages and `static/app.js` follow it |
+
+Everything is stored in `./storage/` under the working directory, and the user, projects and tokens below are
+seeded only when that database has no user yet. A second instance next to a running one needs other ports and
+another working directory:
+
+```bash
+go build -o /path/to/devtesting-embedded .
+mkdir -p /path/to/fresh-dir && cd /path/to/fresh-dir
+DEVTESTING_APP_PORT=18180 DEVTESTING_TRACEWAY_PORT=18182 /path/to/devtesting-embedded
+```
+
+A dashboard from `../../frontend` with `vite dev` reaches that backend through its `/api` proxy:
+`TRACEWAY_API_PROXY=http://localhost:18182 npx vite dev --port 15183` in `frontend/`.
+The example's own `frontend/` dev server (`npm run dev:serve`, port 5180) still proxies to the app on 8080.
+
+## Seeded projects and tokens
+
+| Project | Framework | Ingest token | Source-map / symbol upload token |
+|---|---|---|---|
+| Backend API | opentelemetry | `backend-dev-token` | – |
+| jQuery Frontend | jquery | `frontend-dev-token` | – |
+| Shoply Storefront | react | `shop-dev-token` | – |
+| Traceway Monitoring | opentelemetry | `monitoring-dev-token` (the backend reports on itself here) | – |
+| Flutter App | flutter | `flutter-dev-token` | `flutter-upload-token` |
+| iOS App | ios | `ios-dev-token` | `ios-upload-token` |
+| Android App | android | `android-dev-token` | `android-upload-token` |
+
+The mobile SDKs start with the project token and `http://<host>:8082` as their `baseUrl` (for example
+`ios-dev-token` and `http://192.168.1.20:8082` from a phone on the same network). The SDK wireframe galleries upload their recordings into the Flutter, iOS and
+Android projects as sessions in their checkers' dashboard mode (`CI/wireframe/run.py --dashboard …` in
+traceway-ios, `tools/wireframe/run.py --dashboard …` in traceway-android).
+
 ## AI chat (conversations, tool calls, sub-agents)
 
 `/chat` is a no-build chat UI backed by an OpenAI-compatible gateway, built to exercise the AI conversation analytics end to end. Configuration lives in `.env` (gitignored). Uncomment the settings for the provider you want to use:
@@ -55,12 +93,13 @@ curl -s http://localhost:8080/api/ai/chat -H 'Content-Type: application/json' -d
 
 ## What runs
 
-- **Traceway backend**, embedded on port 8082, SQLite storage in `./storage/`.
-- **Go app** on port 8080, instrumented with OpenTelemetry:
+- **Traceway backend**, embedded on port 8082 (`DEVTESTING_TRACEWAY_PORT`), SQLite storage in `./storage/`.
+- **Go app** on port 8080 (`DEVTESTING_APP_PORT`), instrumented with OpenTelemetry:
   - Traces via OTLP/HTTP → `http://localhost:8082/api/otel/v1/traces`
   - **Logs via OTLP/HTTP** → `http://localhost:8082/api/otel/v1/logs`
   - Two OTel providers in the same process to exercise the distributed-logs flow: `backend-service` and `worker-service`, both reporting to the `Backend API` project.
 - A **Shoply Storefront** React project (token `shop-dev-token`) for `testing/shop`'s storefront, which exercises remote data collection and the browser performance metrics; see that README.
+- **Flutter App**, **iOS App** and **Android App** projects for the mobile SDKs (tokens above).
 - **jQuery frontend** pages (`/` and `/cdn`) — unchanged; useful for exercising the jQuery SDK independently.
 
 ## Testing the logs feature

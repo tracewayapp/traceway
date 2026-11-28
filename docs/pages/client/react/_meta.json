@@ -1,5 +1,6 @@
 {
   "index": "Quick Start",
+  "session-capture": "Configure Session Capture",
   "provider": "TracewayProvider",
   "error-boundary": "Error Boundary",
   "hooks": "Hooks"

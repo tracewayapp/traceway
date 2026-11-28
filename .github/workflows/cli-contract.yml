@@ -3,19 +3,23 @@ name: CLI Contract
 # Boots the backend in SQLite mode and asserts the wire contract of every
 # endpoint the CLI calls (cli/test/contract). Runs on backend changes too,
 # since the point is to catch backend drift the CLI's mock-based unit tests
-# cannot. Equivalent local command: cd cli && just contract-test
+# cannot, and on setup skill changes, since the module also runs the shell
+# credential writer of skills/traceway-setup/SKILL.md.
+# Equivalent local command: cd cli && just contract-test
 on:
   push:
     branches: [main]
     paths:
       - "cli/**"
       - "backend/**"
+      - "skills/traceway-setup/**"
       - ".github/workflows/cli-contract.yml"
   pull_request:
     types: [labeled]
     paths:
       - "cli/**"
       - "backend/**"
+      - "skills/traceway-setup/**"
       - ".github/workflows/cli-contract.yml"
   workflow_dispatch:
 

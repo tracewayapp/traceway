@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { Check, LogOut, Plus } from '@lucide/svelte';
+	import { ArrowLeft, Check, LogOut, Plus } from '@lucide/svelte';
 	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -15,17 +15,27 @@
 	import { getErrorMessage } from '$lib/utils/errors';
 	import SetupProjectsStep from '$lib/components/setup/setup-projects-step.svelte';
 
+	import { setupOrganization } from './entry';
+
+	let { data } = $props();
+
 	const writableOrgs = $derived(authState.organizations.filter((o) => o.role !== 'readonly'));
 
-	let selectedOrgId = $state<number | null>(null);
-
-	$effect(() => {
-		if (selectedOrgId !== null && writableOrgs.some((o) => o.id === selectedOrgId)) return;
-		const currentOrgId = projectsState.currentProject?.organizationId;
-		selectedOrgId = writableOrgs.some((o) => o.id === currentOrgId)
-			? currentOrgId!
-			: (writableOrgs[0]?.id ?? null);
+	const requestedOrgId = $derived(data.organizationId);
+	let pickedOrgId = $state<number | null>(null);
+	$effect.pre(() => {
+		// A picker choice belongs to the current setup link.
+		void requestedOrgId;
+		pickedOrgId = null;
 	});
+	const selectedOrgId = $derived(
+		setupOrganization(
+			writableOrgs,
+			requestedOrgId,
+			projectsState.currentProject?.organizationId,
+			pickedOrgId
+		)
+	);
 
 	const selectedOrgName = $derived(writableOrgs.find((o) => o.id === selectedOrgId)?.name ?? '');
 
@@ -164,12 +174,22 @@
 			</form>
 		{/if}
 	{:else}
-		<div>
-			<h1 class="text-2xl font-bold">Set Up Projects</h1>
-			<p class="mt-1 text-sm text-muted-foreground">
-				Let your coding agent propose the project setup for your approval, or create projects
-				manually.
-			</p>
+		<div class="flex items-start justify-between gap-4">
+			<div class="min-w-0">
+				<h1 class="text-2xl font-bold">
+					{data.existingAccount ? 'Add Projects' : 'Set Up Projects'}
+				</h1>
+				<p class="mt-1 text-sm text-muted-foreground">
+					Let your coding agent propose the project setup for your approval, or create projects
+					manually.
+				</p>
+			</div>
+			{#if data.existingAccount}
+				<Button variant="outline" size="sm" class="shrink-0" onclick={() => goto(resolve('/'))}>
+					<ArrowLeft class="mr-2 size-4" />
+					Back to Dashboard
+				</Button>
+			{/if}
 		</div>
 
 		{#if writableOrgs.length === 0}
@@ -177,14 +197,14 @@
 				You need an owner, admin, or user role in an organization to create projects.
 			</p>
 		{:else}
-			{#if writableOrgs.length > 1}
+			{#if writableOrgs.length > 1 || selectedOrgId === null}
 				<div class="flex max-w-xs flex-col space-y-1.5">
 					<Label>Organization</Label>
 					<Select.Root
 						type="single"
 						value={selectedOrgId !== null ? String(selectedOrgId) : undefined}
 						onValueChange={(val) => {
-							if (val) selectedOrgId = Number(val);
+							if (val) pickedOrgId = Number(val);
 						}}
 					>
 						<Select.Trigger class="w-full">
@@ -201,7 +221,10 @@
 
 			{#if selectedOrgId !== null}
 				{#key selectedOrgId}
-					<SetupProjectsStep organizationId={selectedOrgId} />
+					<SetupProjectsStep
+						organizationId={selectedOrgId}
+						initialMode={data.existingAccount ? 'ai' : undefined}
+					/>
 				{/key}
 			{/if}
 		{/if}

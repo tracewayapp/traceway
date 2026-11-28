@@ -10,6 +10,7 @@ export default defineConfig({
 		__SVELTEKIT_PAYLOAD__: 'undefined',
 		__SVELTEKIT_APP_VERSION__: '"test"',
 		__SVELTEKIT_DEV__: 'false',
+		__SVELTEKIT_EXPERIMENTAL_EXPLICIT_ENVIRONMENT_VARIABLES__: 'false',
 		__SVELTEKIT_APP_VERSION_POLL_INTERVAL__: '0',
 		__SVELTEKIT_PATHS_BASE__: '""',
 		__SVELTEKIT_PATHS_ASSETS__: '""',
@@ -25,7 +26,8 @@ export default defineConfig({
 			),
 			$lib: path.resolve('./src/lib'),
 			'$app/paths': path.resolve('./node_modules/@sveltejs/kit/src/runtime/app/paths/client.js'),
-			'$app/navigation': path.resolve('./src/test/mocks/app-navigation.ts')
+			'$app/navigation': path.resolve('./src/test/mocks/app-navigation.ts'),
+			'$app/state': path.resolve('./src/test/mocks/app-state.ts')
 		}
 	},
 	test: {

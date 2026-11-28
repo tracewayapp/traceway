@@ -28,6 +28,8 @@ type BatchProjectInput struct {
 type BatchProjectResult struct {
 	Project *models.Project
 	Status  string
+	// UploadTokenAdded marks an existing project that got its first upload token from this batch.
+	UploadTokenAdded bool
 }
 
 type batchValidationError struct{ Message string }
@@ -56,7 +58,7 @@ func ValidateNewProject(name, framework string) string {
 	return ""
 }
 
-const invalidFrameworkMessage = "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"
+const invalidFrameworkMessage = "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, nextjs, nestjs, express, remix, jquery, react-native, hono, cloudflare, opentelemetry, symfony, laravel, django, flutter, android, ios"
 
 func batchCreateProjects(tx *sql.Tx, orgId int, createdBy int, inputs []BatchProjectInput) ([]BatchProjectResult, error) {
 	if len(inputs) == 0 {
@@ -92,7 +94,16 @@ func batchCreateProjects(tx *sql.Tx, orgId int, createdBy int, inputs []BatchPro
 			if project.Framework != input.Framework {
 				return nil, &batchValidationError{Message: "Project " + input.Name + " already exists with framework " + project.Framework + "; requested " + input.Framework}
 			}
-			results = append(results, BatchProjectResult{Project: project, Status: "existing"})
+			added := false
+			if project.SourceMapToken == nil && models.FrameworkUploadsBuildArtifacts(project.Framework) {
+				token, changed, err := transactional.EnsureSourceMapToken(tx, project.Id)
+				if err != nil {
+					return nil, err
+				}
+				project.SourceMapToken = &token
+				added = changed
+			}
+			results = append(results, BatchProjectResult{Project: project, Status: "existing", UploadTokenAdded: added})
 			continue
 		}
 
@@ -125,7 +136,8 @@ type BatchProjectResponseItem struct {
 	Status         string    `json:"status"`
 }
 
-func toBatchProjectResponse(results []BatchProjectResult) []BatchProjectResponseItem {
+func toBatchProjectResponse(ctx *gin.Context, results []BatchProjectResult) []BatchProjectResponseItem {
+	url := instanceUrl(ctx)
 	items := make([]BatchProjectResponseItem, 0, len(results))
 	for _, r := range results {
 		items = append(items, BatchProjectResponseItem{
@@ -134,7 +146,7 @@ func toBatchProjectResponse(results []BatchProjectResult) []BatchProjectResponse
 			Framework:      r.Project.Framework,
 			Token:          r.Project.Token,
 			SourceMapToken: r.Project.SourceMapToken,
-			BackendUrl:     models.GetBackendUrl(),
+			BackendUrl:     url,
 			Status:         r.Status,
 		})
 	}
@@ -143,17 +155,23 @@ func toBatchProjectResponse(results []BatchProjectResult) []BatchProjectResponse
 
 func cacheCreatedProjectsOnCommit(ctx *gin.Context, results []BatchProjectResult) {
 	created := []*models.Project{}
+	withUploadToken := []*models.Project{}
 	for _, r := range results {
 		if r.Status == "created" {
 			created = append(created, r.Project)
+		} else if r.UploadTokenAdded {
+			withUploadToken = append(withUploadToken, r.Project)
 		}
 	}
-	if len(created) == 0 {
+	if len(created) == 0 && len(withUploadToken) == 0 {
 		return
 	}
 	middleware.OnCommit(ctx, func() {
 		for _, p := range created {
 			cache.ProjectCache.AddProject(p)
+		}
+		for _, p := range withUploadToken {
+			cache.ProjectCache.UpdateSourceMapToken(p.Id, *p.SourceMapToken)
 		}
 	})
 }
@@ -196,5 +214,5 @@ func (p projectController) BatchCreateProjects(ctx *gin.Context) {
 	}
 
 	cacheCreatedProjectsOnCommit(ctx, results)
-	ctx.JSON(http.StatusCreated, gin.H{"projects": toBatchProjectResponse(results)})
+	ctx.JSON(http.StatusCreated, gin.H{"projects": toBatchProjectResponse(ctx, results)})
 }

@@ -28,4 +28,19 @@ func init() {
 	scenarios.Register("setup/monorepo-plan", func(s *seed.Scenario) error {
 		return nil
 	})
+	// The mobile cases grade files only (no toolchains in the sandbox), so
+	// their projects exist for the token the agent is handed and for
+	// no_token_literal.
+	scenarios.Register("setup/flutter", func(s *seed.Scenario) error {
+		s.Project("shop-app", seed.Mobile, "flutter")
+		return nil
+	})
+	scenarios.Register("setup/android", func(s *seed.Scenario) error {
+		s.Project("pinboard-android", seed.Mobile, "android")
+		return nil
+	})
+	scenarios.Register("setup/ios", func(s *seed.Scenario) error {
+		s.Project("shop-ios", seed.Mobile, "ios")
+		return nil
+	})
 }

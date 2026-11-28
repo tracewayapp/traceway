@@ -5,16 +5,16 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { ScrollText } from '@lucide/svelte';
-	import { logLineTrigger, type LogMatchOp } from './sdk-config';
+	import { logLineTrigger, type LogMatchOp, type SdkPlatform } from './sdk-config';
 
 	interface Props {
 		disabled?: boolean;
-		/** A Flutter project: the capture goes on across screens, not pages. */
-		flutter?: boolean;
+		/** The project's SDK: an app's capture goes on across screens, not pages. */
+		platform?: SdkPlatform;
 		onAdd: (trigger: Record<string, unknown>) => void;
 	}
 
-	let { disabled = false, flutter = false, onAdd }: Props = $props();
+	let { disabled = false, platform = 'browser', onAdd }: Props = $props();
 
 	const opLabels: Record<LogMatchOp, string> = {
 		icontains: 'contains (any case)',
@@ -79,7 +79,7 @@
 	<p class="text-xs text-muted-foreground">
 		Matched on the device against every log record, including lines that are not collected. The
 		capture uploads what the device buffered and then streams everything, also on the following
-		{flutter ? 'screens' : 'pages'}, until it ends.
+		{platform === 'browser' ? 'pages' : 'screens'}, until it ends.
 	</p>
 	<div class="grid gap-2 sm:grid-cols-[auto_1fr]">
 		<Select.Root type="single" bind:value={op} {disabled}>
@@ -97,17 +97,14 @@
 		/>
 	</div>
 	<div class="flex flex-wrap items-center gap-2 text-sm">
-		<!-- The Flutter SDK logs every line at info, so a level would never match. -->
-		{#if !flutter}
-			<Select.Root type="single" bind:value={level} {disabled}>
-				<Select.Trigger class="w-40">{levelLabels[level]}</Select.Trigger>
-				<Select.Content>
-					{#each Object.entries(levelLabels) as [value, label] (value)}
-						<Select.Item {value}>{label}</Select.Item>
-					{/each}
-				</Select.Content>
-			</Select.Root>
-		{/if}
+		<Select.Root type="single" bind:value={level} {disabled}>
+			<Select.Trigger class="w-40">{levelLabels[level]}</Select.Trigger>
+			<Select.Content>
+				{#each Object.entries(levelLabels) as [value, label] (value)}
+					<Select.Item {value}>{label}</Select.Item>
+				{/each}
+			</Select.Content>
+		</Select.Root>
 		<Input class="w-20" type="number" min="1" max="1000" bind:value={count} {disabled} />
 		<span class="text-muted-foreground">time(s)</span>
 		{#if Number(count) > 1}

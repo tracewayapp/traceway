@@ -1,9 +1,5 @@
 # Initialization
 
-import BrowserSdkV1 from "../../../components/BrowserSdkV1";
-
-<BrowserSdkV1 href="/client/js-sdk/v1/initialization" />
-
 Initialize the Traceway SDK once at application startup, before capturing any events.
 
 ## Basic Initialization
@@ -11,8 +7,10 @@ Initialize the Traceway SDK once at application startup, before capturing any ev
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report");
+init({ token: import.meta.env.VITE_TRACEWAY_TOKEN });
 ```
+
+`token` is the project token from the project's **Connection** page. The SDK sends to Traceway Cloud (`https://cloud.tracewayapp.com`); for a self-hosted server, add its address as `baseUrl`. [Token and server](/client/js-sdk#token-and-server) lists the environment variables of each build tool.
 
 `init()` runs once per page: a second call is ignored, because the instrumentations patch browser globals once. To initialize again with different options, shut the first client down and wait for it:
 
@@ -20,17 +18,21 @@ init("your-token@https://traceway.example.com/api/report");
 import { init, shutdown } from "@tracewayapp/frontend";
 
 await shutdown();
-init("your-token@https://traceway.example.com/api/report", { environment: "staging" });
+init({ token: import.meta.env.VITE_TRACEWAY_TOKEN, environment: "staging" });
 ```
 
-`init()` throws when the connection string is not in the form `token@url`, or when the `telemetry` option is invalid.
+`init()` never throws. Given options it cannot use (no token, as in a preview build without its environment variable, or `telemetry.url: "not a url"`), it logs one `console.warn` such as `Traceway: init() failed and the SDK is off: Error: init() needs a token, as in init({ token: "YOUR_TOKEN" }), and got undefined: is the environment variable set in this build? …`, and the SDK stays off: every other function does nothing until a later `init()` succeeds. Where there is no `window` (server-side rendering), `init()` does nothing.
 
 ## With Options
+
+Every option goes in the same object as the token:
 
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  baseUrl: import.meta.env.VITE_TRACEWAY_URL, // only for a self-hosted server
   debug: true,
   version: "1.2.3",
   exportDelayMs: 2000,
@@ -41,50 +43,53 @@ init("your-token@https://traceway.example.com/api/report", {
 
 ## Options Reference
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `serviceName` | `string` | the page's host name | `service.name` of this app |
-| `version` | `string` | none | `service.version`; shown on issues, and rules can target releases with it |
-| `environment` | `string` | none | `deployment.environment.name`, e.g. `"production"` |
-| `attributes` | `Record<string, string>` | `{}` | Initial global attributes, see [`setAttribute`](#custom-attributes-global-scope) |
-| `debug` | `boolean` | `false` | Log the problems the SDK would otherwise swallow: rejected remote-config credentials and a `beforeCapture` that throws |
-| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Patterns matched against `Type: message`; matching exceptions and messages are dropped |
-| `beforeCapture` | `(exception) => boolean` | none | Receives `{ type, message, stack, attributes }`; return `false` to drop |
-| `errorLimits` | `{ maxPerMinute?, duplicateWindowMs? }` | `{ maxPerMinute: 60, duplicateWindowMs: 1000 }` | Rolling error limit per running client and duplicate suppression, see [Production collection policy](#production-collection-policy) |
-| `remoteConfig` | `boolean` | `true` | Fetch collection settings from Traceway over OpAMP, so the **Data Collection** page can change what this app sends without a release |
-| `collection` | `CollectionSettings` | SDK defaults | Local collection policy: signal modes, sampling, console severity, metrics, buffer and triggers. See [Local collection settings](#local-collection-settings) |
-| `telemetry` | `TelemetryOptions` | Traceway's endpoints | OTLP/HTTP base `url`, per-signal `logs` / `traces` / `metrics` endpoints and `headers`. Required in standalone mode. See [Setups](#setups) |
-| `transport` | `"auto" \| "legacy" \| "otlp"` | `"auto"` | `"auto"` detects a Traceway server from before remote config and reports to it the 1.x way; `"legacy"` forces that without a probe; `"otlp"` never falls back. See [Older Traceway servers](#older-traceway-servers) |
-| `exportDelayMs` | `number` | `1000` | Delay between log and span exports, in milliseconds |
-| `sessions` | `boolean` | `true` | Report session start and end |
-| `sessionRecording` | `boolean` | `true` | Allow rrweb session replay at all |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | Replay segment length in milliseconds |
-| `recordAllSessions` | `boolean` | `false` | Stream every replay segment and every breadcrumb by default instead of keeping them for error clips |
-| `baselineSampleRate` | `number` | `0` | Share of sessions, from 0 to 1, whose buffered breadcrumbs and request spans stream; does not stream replay |
-| `collectionLimits` | `{ maxBytes?, maxEvents? }` | `{ maxBytes: 52428800, maxEvents: 10000 }` | Diagnostic upload budget of one session. It can only be lowered. See [Collection budget](/client/js-sdk/session-replay#collection-budget-and-gaps) |
-| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions`, `captureWebVitals`, `captureResourceTiming`, `captureLongTasks`, `captureRouteTiming` | `boolean` | `true` | Allow a signal at all: console output, `fetch` / XHR, navigation, clicks, web vital events, resource and navigation timing, long tasks, route change timing |
-| `captureMetrics` | `boolean` | `true` | Allow the [performance metrics](/learn/client-metrics) aggregated on the device |
-| `metricDimensions` | `Record<string, string>` | none | Up to two dimensions of your own on every performance metric, e.g. `{ plan: "pro" }`; never an id. Keys are lowercase letters, digits and `_`, starting with a letter, at most 32 characters; values are cut at 64 |
-| `detectRoutes` | `boolean` | `true` | Name each page by the route template of the app's router (`/orders/:id`) when the router can be read from the page, so performance metrics group by route. `setRoute` wins over it. Browser SDKs 2.0.1 and later. See [Client Metrics](/learn/client-metrics#dimensions) |
-| `captureHttpServerErrors` | `boolean` | `false` | Report `fetch` / XHR responses with status >= 500 as message issues |
-| `propagateTraceHeaderCorsUrls` | `Array<string \| RegExp>` | none | Cross-origin URLs that get the W3C `traceparent` header (same-origin requests always do). See [Distributed Tracing](/client/js-sdk/distributed-tracing) |
-| `logExporter`, `spanExporter` | OpenTelemetry `LogRecordExporter`, `SpanExporter` | none | Advanced: replace the OTLP/HTTP exporter of logs or spans, e.g. with an in-memory exporter in tests |
+| Option                                                                                                                                                            | Type                                              | Default                                         | Description                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `token`                                                                                                                                                           | `string`                                          | none                                            | The project token. Without one, `telemetry` is the only destination, see [Standalone](#standalone-without-a-traceway-server)                                                                                                                                          |
+| `baseUrl`                                                                                                                                                         | `string`                                          | `https://cloud.tracewayapp.com`                 | The Traceway server; set it only for a self-hosted one                                                                                                                                                                                                                |
+| `serviceName`                                                                                                                                                     | `string`                                          | the page's host name                            | `service.name` of this app                                                                                                                                                                                                                                            |
+| `version`                                                                                                                                                         | `string`                                          | none                                            | `service.version`; shown on issues, and rules can target releases with it                                                                                                                                                                                             |
+| `environment`                                                                                                                                                     | `string`                                          | none                                            | `deployment.environment.name`, e.g. `"production"`                                                                                                                                                                                                                    |
+| `attributes`                                                                                                                                                      | `Record<string, string>`                          | `{}`                                            | Initial global attributes, see [`setAttribute`](#custom-attributes-global-scope)                                                                                                                                                                                      |
+| `debug`                                                                                                                                                           | `boolean`                                         | `false`                                         | Explain what the SDK does with the page's own `console.warn`, which Traceway never records. See [Debug Mode](#debug-mode)                                                                                                                                             |
+| `ignoreErrors`                                                                                                                                                    | `Array<string \| RegExp>`                         | `DEFAULT_IGNORE_PATTERNS`                       | Patterns matched against `Type: message`; matching exceptions and messages are dropped                                                                                                                                                                                |
+| `beforeCapture`                                                                                                                                                   | `(captured) => boolean`                           | none                                            | Receives a `TracewayCapturedError`, `{ error, type, message, isMessage, stack, attributes }`; return `false` to drop. See [beforeCapture Callback](#beforecapture-callback)                                                                                           |
+| `errorLimits`                                                                                                                                                     | `{ maxPerMinute?, duplicateWindowMs? }`           | `{ maxPerMinute: 60, duplicateWindowMs: 1000 }` | Rolling error limit per running client and duplicate suppression, see [Production collection policy](#production-collection-policy)                                                                                                                                   |
+| `remoteConfig`                                                                                                                                                    | `boolean`                                         | `true`                                          | Fetch collection settings from Traceway over OpAMP, so the **Data Collection** page can change what this app sends without a release                                                                                                                                  |
+| `collection`                                                                                                                                                      | `CollectionSettings`                              | SDK defaults                                    | Local collection policy: signal modes, sampling, console severity, metrics, buffer, replay and triggers. See [Local collection settings](#local-collection-settings)                                                                                                  |
+| `telemetry`                                                                                                                                                       | `TelemetryOptions`                                | Traceway's endpoints                            | Send logs, traces and metrics to another OpenTelemetry provider: an OTLP/HTTP base `url`, per-signal `logs` / `traces` / `metrics` endpoints and `headers`. See [Send telemetry to another OpenTelemetry provider](#send-telemetry-to-another-opentelemetry-provider) |
+| `transport`                                                                                                                                                       |                                                   | none                                            | Deprecated and ignored, with one warning: the SDK always sends OTLP                                                                                                                                                                                                   |
+| `exportDelayMs`                                                                                                                                                   | `number`                                          | `1000`                                          | Delay between log and span exports, in milliseconds                                                                                                                                                                                                                   |
+| `sessions`                                                                                                                                                        | `boolean`                                         | `true`                                          | Report session start and end                                                                                                                                                                                                                                          |
+| `sessionRecording`                                                                                                                                                | `boolean`                                         | `true`                                          | Allow rrweb session replay at all                                                                                                                                                                                                                                     |
+| `sessionRecordingSegmentDuration`                                                                                                                                 | `number`                                          | `30000`                                         | Replay segment length in milliseconds                                                                                                                                                                                                                                 |
+| `replayImages`                                                                                                                                                    | `"off" \| "wifi" \| "always"`                     | `"always"`                                      | The most a replay records of pictures; `replay.images` from `collection` or a rule applies only up to it ([Session replay](/client/js-sdk/session-replay#replay-images))                                                                                              |
+| `recordAllSessions`                                                                                                                                               | `boolean`                                         | `false`                                         | Stream every replay segment and every breadcrumb by default instead of keeping them for error clips                                                                                                                                                                   |
+| `baselineSampleRate`                                                                                                                                              | `number`                                          | `0`                                             | Share of sessions, from 0 to 1, whose buffered breadcrumbs and request spans stream; does not stream replay                                                                                                                                                           |
+| `collectionLimits`                                                                                                                                                | `{ maxBytes?, maxEvents? }`                       | `{ maxBytes: 52428800, maxEvents: 10000 }`      | Diagnostic upload budget of one session. It can only be lowered. See [Collection budget](/client/js-sdk/session-replay#collection-budget-and-gaps)                                                                                                                    |
+| `captureLogs`, `captureNetwork`, `captureNavigation`, `captureUserActions`, `captureWebVitals`, `captureResourceTiming`, `captureLongTasks`, `captureRouteTiming` | `boolean`                                         | `true`                                          | Allow a signal at all: console output and `log()` lines, `fetch` / XHR, navigation, clicks, web vital events, resource and navigation timing, long tasks, route change timing                                                                                         |
+| `captureMetrics`                                                                                                                                                  | `boolean`                                         | `true`                                          | Allow the [performance metrics](/learn/client-metrics) aggregated on the device                                                                                                                                                                                       |
+| `metricDimensions`                                                                                                                                                | `Record<string, string>`                          | none                                            | Up to two dimensions of your own on every performance metric, e.g. `{ plan: "pro" }`; never an id. Keys are lowercase letters, digits and `_`, starting with a letter, at most 32 characters; values are cut at 64                                                    |
+| `detectRoutes`                                                                                                                                                    | `boolean`                                         | `true`                                          | Name each page by the route template of the app's router (`/orders/:id`) when the router can be read from the page, so performance metrics and the screen keys group by route. `setRoute` wins over it. See [Route names](/client/js-sdk#route-names)                 |
+| `captureHttpServerErrors`                                                                                                                                         | `boolean`                                         | `false`                                         | Report `fetch` / XHR responses with status >= 500 as message issues                                                                                                                                                                                                   |
+| `propagateTraceHeaderCorsUrls`                                                                                                                                    | `Array<string \| RegExp>`                         | none                                            | Cross-origin URLs that get the W3C `traceparent` header (same-origin requests always do). See [Distributed Tracing](/client/js-sdk/distributed-tracing)                                                                                                               |
+| `logExporter`, `spanExporter`                                                                                                                                     | OpenTelemetry `LogRecordExporter`, `SpanExporter` | none                                            | Advanced: replace the OTLP/HTTP exporter of logs or spans, e.g. with an in-memory exporter in tests                                                                                                                                                                   |
 
-The `capture*`, `sessionRecording` and `sessions` options are **ceilings**: collection settings, local or remote, can switch a signal off or
+The `capture*`, `sessionRecording`, `replayImages` and `sessions` options are **ceilings**: collection settings, local or remote, can switch a signal off or
 keep it on the device, but never turn on what `init()` turned off. A ceiling that is left on does not start a signal by itself: the events of
 resource timing, long tasks and route timing are `off` in the default collection settings until `collection`, a rule, a trigger or a capture
 turns them on. The `DEFAULT_IGNORE_PATTERNS` export contains the built-in `ignoreErrors` list.
 
-The 1.x options `debounceMs`, `retryDelayMs`, `eventsWindowMs` and `eventsMaxCount` no longer exist. `exportDelayMs` replaces `debounceMs`, the SDK manages retries itself, and retention is set with `collection.buffer.maxAgeSeconds` and `collection.buffer.maxBytes` or a rule. See the [migration guide](/client/js-sdk/migration).
+The 1.x options `debounceMs`, `retryDelayMs`, `eventsWindowMs` and `eventsMaxCount` no longer exist. `exportDelayMs` replaces `debounceMs`, the SDK manages retries itself, and retention is set with `collection.buffer.maxAgeSeconds` and `collection.buffer.maxBytes` or a rule. See [Upgrading](/client/js-sdk/migration).
 
 ## Auto-Capture Behavior
 
-`init()` installs the global handlers for you. Uncaught errors (`window.onerror`) and unhandled promise rejections (`window.onunhandledrejection`) are captured automatically in every JS SDK: plain, React, Vue, Svelte, and jQuery alike.
+`init()` installs the global handlers for you. Uncaught errors (the window's `error` event) and unhandled promise rejections (its `unhandledrejection` event) are captured automatically in every JS SDK: plain, React, Vue, Svelte, and jQuery alike. The SDK listens with `addEventListener`, so a `window.onerror` your app assigns does not replace it, and the page's own handlers still receive every error unchanged.
 
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report");
+init({ token: import.meta.env.VITE_TRACEWAY_TOKEN });
 
 // Nothing else to wire up. This is already reported:
 setTimeout(() => {
@@ -95,6 +100,8 @@ setTimeout(() => {
 > **Do not add your own `window.addEventListener("error")` or `"unhandledrejection"` listener that calls `captureException`.** The SDK's handlers are already attached. A second capture of the same error within a second is suppressed as a duplicate, so the listener adds nothing, and an error it reports later or in a different form is counted twice.
 
 The framework packages add render-time capture on top of this: React's `TracewayProvider` doubles as an error boundary, and the Vue plugin installs `app.config.errorHandler`. Manual `captureException` calls are only needed where the error never becomes uncaught, such as inside a `try`/`catch` or an event handler that swallows it.
+
+Exceptions, messages, log lines and actions carry the screen the page showed (`app.screen.name`, `app.screen.route`, `app.screen.previous`, `app.screen.duration_ms`, `viewport`); see [Screens and navigation](/client/js-sdk#screens-and-navigation).
 
 ## Error Filtering
 
@@ -114,7 +121,8 @@ The following patterns are ignored out of the box:
 To opt out of default filtering and capture everything:
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   ignoreErrors: [],
 });
 ```
@@ -124,11 +132,9 @@ init("your-token@https://traceway.example.com/api/report", {
 Pass your own patterns to replace the defaults. Strings match via `includes()`, RegExps match via `.test()`. Patterns are tested against the `Type: message` line of the error, never its stack frames:
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
-  ignoreErrors: [
-    "ResizeObserver loop",
-    /status code 5\d{2}/,
-  ],
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  ignoreErrors: ["ResizeObserver loop", /status code 5\d{2}/],
 });
 ```
 
@@ -139,46 +145,69 @@ Import `DEFAULT_IGNORE_PATTERNS` to add your own patterns on top of the defaults
 ```javascript
 import { init, DEFAULT_IGNORE_PATTERNS } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report", {
-  ignoreErrors: [
-    ...DEFAULT_IGNORE_PATTERNS,
-    "ResizeObserver loop",
-  ],
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  ignoreErrors: [...DEFAULT_IGNORE_PATTERNS, "ResizeObserver loop"],
 });
 ```
 
 ### beforeCapture Callback
 
-For fine-grained control, use the `beforeCapture` callback. It receives `{ type, message, stack, attributes }` and should return `false` to suppress:
+For fine-grained control, use the `beforeCapture` callback. It receives a `TracewayCapturedError` and returns `false` to drop the event:
+
+| Field        | Value                                                                                                                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`      | What was thrown or passed to `captureException`; `undefined` for a message                                                                                                                                          |
+| `type`       | The error's type, e.g. `TypeError`; `undefined` for a message                                                                                                                                                       |
+| `message`    | The error's message, or the message text                                                                                                                                                                            |
+| `isMessage`  | `true` for `captureMessage`                                                                                                                                                                                         |
+| `stack`      | The stack trace; `undefined` for a message                                                                                                                                                                          |
+| `attributes` | A copy of every attribute the event will carry: the ones passed with the call, the global ones (`setAttribute`), the page's (`url`, `path`, `userAgent` and the rest), the screen keys and the `exception.*` fields |
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
+import { init } from "@tracewayapp/frontend";
+
+class PaymentDeclined extends Error {}
+
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   ignoreErrors: [],
-  beforeCapture: (exception) => {
+  beforeCapture: (captured) => {
+    // An error the app expects
+    if (captured.error instanceof PaymentDeclined) return false;
+
     // Suppress 401 errors based on attributes (e.g., from jQuery AJAX capture)
-    if (exception.attributes?.status === "401") return false;
+    if (captured.attributes?.status === "401") return false;
 
     // Suppress errors from third-party scripts
-    if (exception.stack?.includes("third-party.js")) return false;
+    if (captured.stack?.includes("third-party.js")) return false;
 
     return true;
   },
 });
 ```
 
-`beforeCapture` is checked **after** `ignoreErrors`. If a pattern already suppresses the error, the callback is not called. If the callback throws, the error is captured normally (safe default).
+`beforeCapture` is checked **after** `ignoreErrors`. If a pattern already suppresses the error, the callback is not called. If the callback throws, the error is captured normally (safe default), and `debug: true` logs `Traceway: beforeCapture threw`.
 
-Both filters also see `captureMessage` calls. A message is matched by its text, and `beforeCapture` receives it with `type` and `stack` undefined.
+Both filters also see `captureMessage` calls. A message is matched by its text. `TracewayCapturedError` was called `CapturedException` in 2.0; that name stays as a deprecated alias.
 
 ## Debug Mode
 
-`debug: true` reports callback errors and rejected remote-config credentials. To verify ingestion, watch `POST /api/otel/v1/logs` and `POST /api/otel/v1/traces` in the Network tab, or call `await flush()` and open the Issues page. Replay uses `/api/recordings`.
+`debug: true` logs with the page's own `console.warn`, so Traceway never records these lines:
+
+- the start: `Traceway: started (https://cloud.tracewayapp.com/api/otel/v1/logs), session …`;
+- remote config applied (`Traceway: remote config applied (…)`), rejected, or unavailable;
+- every exception or message the SDK drops, and why: `ignoreErrors`, `beforeCapture`, `errorLimits`, or the session upload budget (`collectionLimits`);
+- a repeated `init()`, the Vue plugin's caught errors, and SDK failures it contained.
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
-  debug: process.env.NODE_ENV === "development",
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  debug: import.meta.env.DEV,
 });
 ```
+
+A setup mistake, such as a missing token or a deprecated connection string, is logged once even without `debug`. To verify ingestion, watch `POST /api/otel/v1/logs` and `POST /api/otel/v1/traces` in the Network tab, or call `await flush()` and open the Issues page. Replay uses `/api/recordings`.
 
 ## Custom Attributes (Global Scope)
 
@@ -199,47 +228,56 @@ setAttributes({ tenant: "acme", plan: "pro" });
 clearAttributes();
 ```
 
-Layering on each event: **defaults < global scope < per-call**. `captureExceptionWithAttributes(err, { … })` still wins over global keys for the specific exception.
+Layering on each event: **defaults < global scope < per-call**. `captureException(err, { … })` still wins over global keys for the specific exception.
 
 When sessions are enabled, calling `setAttribute*` mid-session also pushes a refresh upsert so the live session row picks up the new attributes immediately rather than waiting for close. See [Sessions](/learn/sessions) for the full attribute model.
 
 ## Multiple Environments
 
-For different environments, use separate project tokens:
+Give each environment its own project, and so its own token, through the build's environment variables:
+
+```bash
+# .env.production
+VITE_TRACEWAY_TOKEN=YOUR_PRODUCTION_TOKEN
+
+# .env.development
+VITE_TRACEWAY_TOKEN=YOUR_DEVELOPMENT_TOKEN
+```
 
 ```javascript
-const connectionString = process.env.NODE_ENV === "production"
-  ? "prod-token@https://traceway.example.com/api/report"
-  : "dev-token@https://traceway.example.com/api/report";
-
-init(connectionString);
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  environment: import.meta.env.MODE,
+});
 ```
 
 ## Setups
 
-The SDK runs in one of three ways. The first needs nothing beyond the connection string.
+The SDK runs in one of three ways. The first needs nothing beyond the token.
 
 ### Everything on Traceway
 
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   serviceName: "shop-web",
   environment: "production",
 });
 ```
 
-The browser polls Traceway for its collection settings, sends logs, request spans and metrics to Traceway's OTLP endpoints, and uploads replay to the same host. What browsers collect is changed on the project's **Data Collection** page; see [Remote SDK Config](/learn/remote-config/setup).
+The browser polls Traceway for its collection settings, sends logs, request spans and metrics to Traceway's OTLP endpoints, and uploads replay to the same server. What browsers collect is changed on the project's **Data Collection** page; see [Remote SDK Config](/learn/remote-config/setup).
 
-### Issues and replay on Traceway, other telemetry elsewhere
+### Send telemetry to another OpenTelemetry provider
 
-Add `telemetry` to send ordinary logs, request spans and metrics to another OTLP/HTTP receiver, such as an OpenTelemetry Collector in front of a Grafana stack:
+The `telemetry` option sends logs, traces and metrics to any OTLP/HTTP endpoint, such as an OpenTelemetry Collector in front of a Grafana stack. With a `token`, errors, replay, captures and remote config stay on Traceway:
 
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   serviceName: "shop-web",
   telemetry: {
     url: "https://collector.example.com/otlp",
@@ -254,17 +292,17 @@ init("your-token@https://traceway.example.com/api/report", {
 });
 ```
 
-A shared `telemetry.url` gets `/v1/logs`, `/v1/traces` and `/v1/metrics` appended. Each signal (`logs`, `traces`, `metrics`) can override it with `{ url, headers }`. Without a shared `url`, the signals you do not list keep their Traceway destination, so `telemetry: { metrics: { url } }` moves the metrics only. URLs must use HTTP(S), without embedded credentials, a query, or a fragment. Signal headers override the shared `telemetry.headers`; Traceway's token is never added to external requests.
+The collector hosts are examples: use your own. A shared `telemetry.url` gets `/v1/logs`, `/v1/traces` and `/v1/metrics` appended. Each signal (`logs`, `traces`, `metrics`) can override it with `{ url, headers }`. Without a shared `url`, the signals you do not list keep their Traceway destination, so `telemetry: { metrics: { url } }` moves the metrics only. URLs must use HTTP(S), without embedded credentials, a query, or a fragment. Signal headers override the shared `telemetry.headers`; Traceway's token is never added to external requests.
 
-When logs are redirected, exception events, `captureMessage` issues, and SDK control and session events still go to Traceway, and only there. Ordinary console, custom and performance logs go to the logs receiver; request spans and metrics use their own destinations. Remote config and rrweb recordings keep using the Traceway connection string. External breadcrumbs are not copied into Traceway's session timeline; both destinations carry `session.id` for correlation.
+When logs are redirected, exception events, `captureMessage` issues, and SDK control and session events still go to Traceway, and only there. Ordinary console, custom and performance logs go to the logs receiver; request spans and metrics use their own destinations. Remote config and rrweb recordings keep using the Traceway server (`baseUrl`). External breadcrumbs are not copied into Traceway's session timeline; both destinations carry `session.id` for correlation.
 
 Live exports, restored buffers, and retries use the configured signal destinations and credentials. Persistent telemetry queues and pending metric batches are kept per destination. A custom `logExporter` or `spanExporter` replaces the corresponding live exporter; Traceway's issue and session routing still applies, and persisted records use the configured HTTP destinations.
 
-The receiver must accept OTLP/HTTP JSON and allow your application's origin, POST, and the configured headers through CORS. Use browser-safe ingestion credentials or your own ingestion proxy; keep backend credentials on the collector. Metrics are delta sums and exponential histograms, so configure the downstream pipeline to accept or convert those types. `telemetry` cannot be combined with `transport: "legacy"`.
+The receiver must accept OTLP/HTTP JSON and allow your application's origin, POST, and the configured headers through CORS. Use browser-safe ingestion credentials or your own ingestion proxy; keep backend credentials on the collector. Metrics are delta sums and exponential histograms, so configure the downstream pipeline to accept or convert those types.
 
 ### Standalone, without a Traceway server
 
-Pass a single options object instead of a connection string. Every option goes in that object:
+Leave out the `token` and give a `telemetry` destination:
 
 ```javascript
 import { init, metric, count } from "@tracewayapp/frontend";
@@ -287,33 +325,34 @@ metric("checkout.duration", 840, { plan: "pro" });
 count("checkout.completed");
 ```
 
-No Traceway server, account, or token is required. `telemetry` must have a shared `url` or all three signal endpoints. Standalone mode turns off remote config, the fallback for older servers, session events, and session replay, whatever those options say. A local session ID still supports sampling and telemetry correlation. Exceptions are ordinary OTLP log records, with the event name `exception`, sent to your collector. The SDK keeps its error filters and collection defaults; set `ignoreErrors: []` to remove the built-in error filters.
+No Traceway server, account, or token is required. `telemetry` must have a shared `url` or all three signal endpoints. Standalone mode turns off remote config, session events, and session replay, whatever those options say. A local session ID still supports sampling and telemetry correlation. Exceptions are ordinary OTLP log records, with the event name `exception`, sent to your collector. The SDK keeps its error filters and collection defaults; set `ignoreErrors: []` to remove the built-in error filters.
 
-These setups apply to `@tracewayapp/frontend` and its React, Vue, Svelte, and jQuery wrappers, which take the same options. Their `connectionString` argument or prop also accepts the standalone options object.
+These setups apply to `@tracewayapp/frontend` and its React, Vue, Svelte, and jQuery wrappers, which take the same options: the wrappers take `telemetry` with their other options, and leave out `token` to run standalone.
 
 ## Local collection settings
 
 `collection` is a partial settings document (the `CollectionSettings` type), with the same schema a [Data Collection rule](/learn/remote-config/reference#the-settings-document) uses. Each signal is in one of three modes: `stream` sends it right away, `buffer` keeps it on the device until a trigger or a capture uploads it, and `off` drops it. Fields you omit keep the SDK defaults:
 
-| Field | Default | Meaning |
-|-------|---------|---------|
-| `enabled` | `true` | `false` stops collection altogether |
-| `signals.<name>.mode` | `stream` for `errors` and `messages`; `buffer` for `network`, `console`, `navigation`, `userActions`, `custom` and `webVitals`; `off` for `resourceTiming`, `longTasks` and `routeTiming` | `off`, `buffer` or `stream` |
-| `signals.<name>.sampleRate` | `1` | Share of records kept, from 0 to 1 |
-| `signals.console.minSeverity` | `"info"` | Console records below it are dropped: `trace`, `debug`, `info`, `warn`, `error` or `fatal` |
-| `sessions.enabled` | `true` | Report session start and end |
-| `sessions.baselineSampleRate` | `0` | Same as the `baselineSampleRate` option |
-| `replay.mode` | `buffer` | `off`, `buffer` or `stream` |
-| `replay.sessionSampleRate` | `1` | Share of sessions whose replay may stream; the rest keep it buffered |
-| `replay.maskAllInputs` | `true` | Mask the values of form inputs in the recording |
-| `metrics.enabled` | `true` | Aggregate and upload [performance metrics](/learn/client-metrics) |
-| `metrics.sampleRate` | `1` | Share of sessions that record metrics |
-| `metrics.flushSeconds` | `300` | Metric upload interval, held between 30 and 3600 seconds |
-| `buffer.maxBytes` | `2097152` (2 MiB) | Maximum size of the buffered telemetry; at most 64 MiB |
-| `buffer.maxAgeSeconds` | `600` | Maximum age of buffered telemetry and replay; at most 24 hours |
-| `buffer.replayMaxBytes` | `8388608` (8 MiB) | Maximum size of the buffered replay segments; at most 64 MiB |
-| `buffer.persist` | `true` | Keep buffered telemetry and failed exports in IndexedDB across page loads |
-| `triggers` | the built-in `default-exception` trigger | On-device triggers, merged by `id` |
+| Field                         | Default                                                                                                                                                                                   | Meaning                                                                                                                                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled`                     | `true`                                                                                                                                                                                    | `false` stops collection altogether                                                                                                                                                              |
+| `signals.<name>.mode`         | `stream` for `errors` and `messages`; `buffer` for `network`, `console`, `navigation`, `userActions`, `custom` and `webVitals`; `off` for `resourceTiming`, `longTasks` and `routeTiming` | `off`, `buffer` or `stream`                                                                                                                                                                      |
+| `signals.<name>.sampleRate`   | `1`                                                                                                                                                                                       | Share of records kept, from 0 to 1                                                                                                                                                               |
+| `signals.console.minSeverity` | `"info"`                                                                                                                                                                                  | Console records below it are dropped: `trace`, `debug`, `info`, `warn`, `error` or `fatal`                                                                                                       |
+| `sessions.enabled`            | `true`                                                                                                                                                                                    | Report session start and end                                                                                                                                                                     |
+| `sessions.baselineSampleRate` | `0`                                                                                                                                                                                       | Same as the `baselineSampleRate` option                                                                                                                                                          |
+| `replay.mode`                 | `buffer`                                                                                                                                                                                  | `off`, `buffer` or `stream`                                                                                                                                                                      |
+| `replay.sessionSampleRate`    | `1`                                                                                                                                                                                       | Share of sessions whose replay may stream; the rest keep it buffered                                                                                                                             |
+| `replay.maskAllInputs`        | `true`                                                                                                                                                                                    | Mask the values of form inputs in the recording                                                                                                                                                  |
+| `replay.images`               | `wifi`                                                                                                                                                                                    | What the replay shows of pictures: `off` (empty boxes), `wifi` (URL references) or `always` (URL references plus small copies). See [Replay images](/client/js-sdk/session-replay#replay-images) |
+| `metrics.enabled`             | `true`                                                                                                                                                                                    | Aggregate and upload [performance metrics](/learn/client-metrics)                                                                                                                                |
+| `metrics.sampleRate`          | `1`                                                                                                                                                                                       | Share of sessions that record metrics                                                                                                                                                            |
+| `metrics.flushSeconds`        | `300`                                                                                                                                                                                     | Metric upload interval, held between 30 and 3600 seconds                                                                                                                                         |
+| `buffer.maxBytes`             | `2097152` (2 MiB)                                                                                                                                                                         | Maximum size of the buffered telemetry; at most 64 MiB                                                                                                                                           |
+| `buffer.maxAgeSeconds`        | `600`                                                                                                                                                                                     | Maximum age of buffered telemetry and replay; at most 24 hours                                                                                                                                   |
+| `buffer.replayMaxBytes`       | `8388608` (8 MiB)                                                                                                                                                                         | Maximum size of the buffered replay segments; at most 64 MiB                                                                                                                                     |
+| `buffer.persist`              | `true`                                                                                                                                                                                    | Keep buffered telemetry and failed exports in IndexedDB across page loads                                                                                                                        |
+| `triggers`                    | the built-in `default-exception` trigger                                                                                                                                                  | On-device triggers, merged by `id`                                                                                                                                                               |
 
 With `recordAllSessions: true` the defaults of `network`, `console`, `navigation`, `userActions`, `custom` and `replay.mode` are `stream`.
 
@@ -324,22 +363,21 @@ Settings are applied in this order, each step overriding the one before:
 1. The built-in defaults, as `recordAllSessions` and `baselineSampleRate` set them.
 2. The local `collection`.
 3. The remote settings: the copy cached from an earlier page load, then the live answer from Traceway.
-4. The `capture*`, `sessions` and `sessionRecording` ceilings, lowered further by the limits of the organization's plan when Traceway sends any. Nothing can exceed them; triggers and captures respect them too.
+4. The `capture*`, `sessions`, `sessionRecording` and `replayImages` ceilings, lowered further by the limits of the organization's plan when Traceway sends any. Nothing can exceed them; triggers and captures respect them too. `replay.maskAllInputs: true` in the local `collection` is a floor in the same way: no rule unmasks inputs.
 
-To keep Traceway issues and replay with a policy that only a release can change, pass the connection string with `remoteConfig: false`. No cached remote settings are read and no remote-config request is sent:
+To keep Traceway issues and replay with a policy that only a release can change, pass the token with `remoteConfig: false`. No cached remote settings are read and no remote-config request is sent:
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
   remoteConfig: false,
   collection: { signals: { custom: { mode: "stream" } } },
 });
 ```
 
-## Older Traceway servers
+## Servers without remote config
 
-With the default `transport: "auto"`, the SDK asks the server for its remote settings before it exports logs, spans or replay. A server without that endpoint (it answers 404, 405 or 501) selects the 1.x report endpoint for exceptions, messages, sessions and replay with its breadcrumbs. So does a server that cannot be reached at the first attempt, for example because a cross-origin server has no CORS route for the request; the SDK keeps retrying, and a later successful answer switches to OTLP and remote settings. Once connected, a temporary outage keeps the last applied settings and OTLP. A rejected project token does not select the 1.x endpoint. Request spans and performance metrics are not sent while the 1.x endpoint is in use.
-
-For a server you know is older, set `transport: "legacy"` to skip the probe. `remoteConfig: false` disables the probe too, so combine it with `transport: "legacy"` on an older server. `transport: "otlp"` never falls back.
+The SDK always sends OTLP. A server without OpAMP (it answers 404, 405 or 501) turns remote config off: telemetry is still sent, and the local settings apply (`collection` and the defaults). A server that cannot be reached keeps the last applied settings while OpAMP retries with backoff, and a rejected token turns remote config off. A self-hosted Traceway server from before OTLP support receives nothing from this SDK: upgrade the server first.
 
 ## Production collection policy
 

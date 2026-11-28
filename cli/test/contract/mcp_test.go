@@ -43,7 +43,9 @@ func TestContract_mcpToolSurface(t *testing.T) {
 	}, seedMetricName)
 	call("get_task", map[string]any{"id": seedTaskID.String(), "recorded_at": at}, seedTaskID.String())
 	call("get_ai_trace", map[string]any{"id": seedAiTraceID.String(), "recorded_at": at}, seedAiTraceID.String())
+	call("list_sessions", map[string]any{"from": from, "to": to, "search": seedSessionID.String()}, seedSessionID.String())
 	call("get_session", map[string]any{"id": seedSessionID.String(), "started_at": at}, seedSessionID.String())
+	call("get_session", map[string]any{"id": seedSessionID.String()}, seedSessionID.String())
 	call("get_trace", map[string]any{"id": seedTraceID, "recorded_at": at}, seedTraceID)
 
 	call("list_pages", map[string]any{"status": "resolved"}, "pagination")

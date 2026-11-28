@@ -50,14 +50,21 @@ func TestSmokeLogsQueryBadSortDirection(t *testing.T) {
 	}
 }
 
-func TestSmokeLogsQueryZeroTraceID(t *testing.T) {
+func TestSmokeLogsQueryTraceID(t *testing.T) {
 	logsLogin(t)
-	stdout, stderr, code := runCLI(t, "",
+	_, stderr, code := runCLI(t, "",
 		"logs", "query", "--since", "1h",
 		"--trace-id", "00000000000000000000000000000000",
 		"--output", "json")
+	if code != 1 || !strings.Contains(stderr, "invalid traceId") {
+		t.Fatalf("all-zero trace ID: exit %d, stderr %s", code, stderr)
+	}
+	stdout, stderr, code := runCLI(t, "",
+		"logs", "query", "--since", "1h",
+		"--trace-id", "00000000000000000000000000000001",
+		"--output", "json")
 	if code != 0 {
-		t.Fatalf("logs query --trace-id <zeros> exit %d\nstderr: %s", code, stderr)
+		t.Fatalf("logs query with a valid trace ID: exit %d\nstderr: %s", code, stderr)
 	}
 	var resp struct {
 		Data       []map[string]any `json:"data"`
@@ -67,7 +74,7 @@ func TestSmokeLogsQueryZeroTraceID(t *testing.T) {
 		t.Fatalf("logs query stdout not JSON: %v\n%s", err, stdout)
 	}
 	if len(resp.Data) != 0 {
-		t.Errorf("zero trace-id returned %d rows, expected 0: %s", len(resp.Data), stdout)
+		t.Errorf("unmatched trace ID returned %d rows, expected 0: %s", len(resp.Data), stdout)
 	}
 }
 

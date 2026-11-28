@@ -45,6 +45,8 @@ func Merge(dst *Settings, src Settings) {
 		mergePtr(&dst.Replay.Mode, src.Replay.Mode)
 		mergePtr(&dst.Replay.SessionSampleRate, src.Replay.SessionSampleRate)
 		mergePtr(&dst.Replay.MaskAllInputs, src.Replay.MaskAllInputs)
+		mergePtr(&dst.Replay.CaptureMode, src.Replay.CaptureMode)
+		mergePtr(&dst.Replay.Images, src.Replay.Images)
 	}
 	if src.Metrics != nil {
 		if dst.Metrics == nil {

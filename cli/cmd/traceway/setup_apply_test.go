@@ -16,11 +16,18 @@ const testSetupToken = "tws_test-setup-token"
 
 func newSetupTestServer(t *testing.T, approveAfterPolls int32) *httptest.Server {
 	t.Helper()
+	return newSetupTestServerWith(t, approveAfterPolls, "https://traceway.example.com", []map[string]any{
+		{"id": "p-backend", "name": "Product Backend", "framework": "opentelemetry",
+			"token": "tok_backend-secret", "backendUrl": "https://traceway.example.com", "status": "created"},
+		{"id": "p-web", "name": "Product Web", "framework": "svelte",
+			"token": "tok_web-secret", "backendUrl": "https://traceway.example.com", "status": "created"},
+	})
+}
+
+func newSetupTestServerWith(t *testing.T, approveAfterPolls int32, sessionBackendURL string, approved []map[string]any) *httptest.Server {
+	t.Helper()
 	var polls int32
 	var submitted atomic.Bool
-
-	backendToken := "tok_backend-secret"
-	webToken := "tok_web-secret"
 
 	return newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+testSetupToken {
@@ -31,7 +38,7 @@ func newSetupTestServer(t *testing.T, approveAfterPolls int32) *httptest.Server 
 		case "GET /api/setup/session":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"organizationId": 1, "organizationName": "Acme", "email": "a@b.c",
-				"backendUrl": "https://traceway.example.com", "projects": []any{},
+				"backendUrl": sessionBackendURL, "projects": []any{},
 			})
 		case "PUT /api/setup/plan":
 			submitted.Store(true)
@@ -45,15 +52,7 @@ func newSetupTestServer(t *testing.T, approveAfterPolls int32) *httptest.Server 
 				_ = json.NewEncoder(w).Encode(map[string]any{"status": "pending"})
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"status": "approved",
-				"projects": []map[string]any{
-					{"id": "p-backend", "name": "Product Backend", "framework": "opentelemetry",
-						"token": backendToken, "backendUrl": "https://traceway.example.com", "status": "created"},
-					{"id": "p-web", "name": "Product Web", "framework": "svelte",
-						"token": webToken, "backendUrl": "https://traceway.example.com", "status": "created"},
-				},
-			})
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "approved", "projects": approved})
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -69,10 +68,15 @@ func writeSetupPlanFile(t *testing.T, dir, url string) string {
 			{"name": "Product Backend", "framework": "opentelemetry",
 				"envFile": "backend/.env", "envVar": "TRACEWAY_BACKEND_TOKEN"},
 			{"name": "Product Web", "framework": "svelte",
-				"envFile": "web/.env", "envVar": "PUBLIC_TRACEWAY_CONNECTION_STRING", "envFormat": "connectionString",
-				"deployment": map[string]any{"platform": "Vercel", "instructions": "vercel env add PUBLIC_TRACEWAY_CONNECTION_STRING <token>"}},
+				"envFile": "web/.env", "envVar": "PUBLIC_TRACEWAY_TOKEN",
+				"deployment": map[string]any{"platform": "Vercel", "instructions": "vercel env add PUBLIC_TRACEWAY_TOKEN <token>"}},
 		},
 	}
+	return writePlan(t, dir, plan)
+}
+
+func writePlan(t *testing.T, dir string, plan map[string]any) string {
+	t.Helper()
 	data, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatalf("marshal plan: %v", err)
@@ -81,12 +85,16 @@ func writeSetupPlanFile(t *testing.T, dir, url string) string {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("write plan: %v", err)
 	}
-	for _, sub := range []string{"backend", "web"} {
-		if err := os.Mkdir(filepath.Join(dir, sub), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", sub, err)
-		}
-	}
 	return path
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
 }
 
 func setupTestEnvIsolation(t *testing.T) {
@@ -123,6 +131,9 @@ func TestSetupApplyHappyPath(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Next steps") || !strings.Contains(stdout.String(), "Vercel") {
 		t.Errorf("summary missing next steps: %s", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "add PUBLIC_TRACEWAY_TOKEN and PUBLIC_TRACEWAY_URL (the server URL) to Vercel") {
+		t.Errorf("off Traceway Cloud the deployment needs the server URL next to the token: %s", stdout.String())
+	}
 	if !strings.Contains(stderr.String(), "review and approve") {
 		t.Errorf("stderr missing approval prompt: %s", stderr.String())
 	}
@@ -131,7 +142,7 @@ func TestSetupApplyHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read backend env: %v", err)
 	}
-	if string(backendEnv) != "TRACEWAY_BACKEND_TOKEN=tok_backend-secret\n" {
+	if string(backendEnv) != "TRACEWAY_BACKEND_TOKEN=tok_backend-secret\nTRACEWAY_BACKEND_URL=https://traceway.example.com\n" {
 		t.Errorf("backend env = %q", backendEnv)
 	}
 	info, err := os.Stat(filepath.Join(dir, "backend", ".env"))
@@ -146,7 +157,7 @@ func TestSetupApplyHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read web env: %v", err)
 	}
-	want := "PUBLIC_TRACEWAY_CONNECTION_STRING=tok_web-secret@https://traceway.example.com/api/report\n"
+	want := "PUBLIC_TRACEWAY_TOKEN=tok_web-secret\nPUBLIC_TRACEWAY_URL=https://traceway.example.com\n"
 	if string(webEnv) != want {
 		t.Errorf("web env = %q, want %q", webEnv, want)
 	}

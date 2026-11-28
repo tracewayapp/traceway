@@ -265,6 +265,12 @@ type StateAssert struct {
 	Project        string            `yaml:"project"`
 	Frameworks     map[string]string `yaml:"frameworks"`
 	Extra          map[string]any    `yaml:"extra"`
+	// SameFile (file kind) requires every contains regexp to match in one
+	// of the matched files, not across them.
+	SameFile bool `yaml:"same_file"`
+	// Note is appended to the assertion's failure, to say what the failure
+	// means (a deprecated API that still works, say).
+	Note string `yaml:"note"`
 }
 
 // Range is an inclusive numeric interval; a scalar YAML value sets both ends.

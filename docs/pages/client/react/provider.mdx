@@ -9,7 +9,7 @@ import { TracewayProvider } from "@tracewayapp/react";
 
 function App() {
   return (
-    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+    <TracewayProvider token={import.meta.env.VITE_TRACEWAY_TOKEN}>
       <YourApp />
     </TracewayProvider>
   );
@@ -18,46 +18,50 @@ function App() {
 
 ## Props
 
-| Prop | Type | Required | Description |
-|------|------|----------|-------------|
-| `connectionString` | `string \| StandaloneOptions` | Yes | Your Traceway connection string. An options object with `telemetry` instead runs the SDK against your own OpenTelemetry collector, see [Local configuration without OpAMP](/client/js-sdk/initialization#standalone-without-a-traceway-server) |
-| `options` | `TracewayFrontendOptions` | No | Configuration options, passed to `init()` |
-| `children` | `ReactNode` | Yes | Child components |
+| Prop       | Type                      | Required                                                | Description                                                                                                                                                                                                                 |
+| ---------- | ------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `token`    | `string`                  | Yes, unless `options.telemetry` is the only destination | The project token, from the project's **Connection** page. Without one, only a `telemetry` destination in `options` receives anything, see [Standalone](/client/js-sdk/initialization#standalone-without-a-traceway-server) |
+| `baseUrl`  | `string`                  | No                                                      | The Traceway server, only for a self-hosted one. Default `https://cloud.tracewayapp.com`                                                                                                                                    |
+| `options`  | `TracewayFrontendOptions` | No                                                      | Every other option, passed to `init()`                                                                                                                                                                                      |
+| `router`   | `object`                  | No                                                      | The app's router, to name every view by its route template: what `createBrowserRouter` (React Router) or `createRouter` (TanStack Router) returned. See [Options](#options)                                                 |
+| `children` | `ReactNode`               | Yes                                                     | Child components                                                                                                                                                                                                            |
 
-The provider calls `init()` once, in its constructor, so both props are read when it mounts. Changing them later has no effect.
+The provider calls `init()` once, in its constructor, so `token`, `baseUrl`, `options` and `router` are read when it mounts. Changing them later has no effect. A failure there never breaks the render: a build without its token renders the app as usual, with the SDK off and one console warning that says what is missing. The 2.0 `connectionString` prop still works, deprecated, with one warning; see [Upgrading from 2.0](/client/js-sdk/migration#upgrading-from-20).
 
 ## Options
 
-Since 2.0.1, the optional `router` prop accepts a React Router data router or a TanStack Router instance and names performance metrics by its route templates. See [route setup](/client/react/hooks#usetracewayroute). Pass it directly to `<TracewayProvider router={router}>`.
+The optional `router` prop accepts a React Router data router or a TanStack Router instance and names performance metrics and screens by its route templates. See [route setup](/client/react/hooks#usetracewayroute). Pass it directly to `<TracewayProvider router={router}>`.
 
 `options` is the same object `init()` of `@tracewayapp/frontend` takes. The ones used most:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `version` | `string` | none | Your application version (`service.version`). Groups releases, and remote rules can target it |
-| `serviceName` | `string` | the page's host name | `service.name` of this app |
-| `environment` | `string` | none | `deployment.environment.name`, e.g. `"production"` |
-| `attributes` | `Record<string, string>` | `{}` | Initial global attributes, see [Custom Attributes](#custom-attributes) |
-| `debug` | `boolean` | `false` | Log the problems the SDK would otherwise swallow: a rejected project token and a `beforeCapture` that throws. Captured events themselves are not logged |
-| `ignoreErrors` | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore, matched against `Type: message`. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
-| `beforeCapture` | `(exception) => boolean` | none | Receives `{ type, message, stack, attributes }`; return `false` to suppress an error. See [Error Filtering](/client/js-sdk/initialization#error-filtering) |
-| `sessionRecording` | `boolean` | `true` | Allow rrweb session replay at all |
-| `sessionRecordingSegmentDuration` | `number` | `30000` | Replay segment length in ms |
-| `recordAllSessions` | `boolean` | `false` | Stream every replay segment and breadcrumb instead of keeping them on the device for error clips. See [Session Replay](/client/js-sdk/session-replay) |
-| `sessions` | `boolean` | `true` | Record session start and end. See [Sessions](/learn/sessions) |
-| `captureLogs` | `boolean` | `true` | Allow `console.*` output as breadcrumbs |
-| `captureNetwork` | `boolean` | `true` | Allow `fetch` / `XHR` calls as CLIENT spans. `false` also stops the `traceparent` header |
-| `captureNavigation` | `boolean` | `true` | Allow History API push / replace / pop transitions as breadcrumbs |
-| `captureUserActions` | `boolean` | `true` | Allow clicks as breadcrumbs |
-| `captureMetrics` | `boolean` | `true` | Allow the [performance metrics](/learn/client-metrics) aggregated on the device |
-| `captureHttpServerErrors` | `boolean` | `false` | Report `fetch` / `XHR` responses with status >= 500 as message issues. 4xx is never included |
-| `propagateTraceHeaderCorsUrls` | `Array<string \| RegExp>` | none | Cross-origin URLs that get the W3C `traceparent` header (same-origin requests always do) |
-| `remoteConfig` | `boolean` | `true` | Fetch collection settings from Traceway, so the **Data Collection** page can change what the app sends without a release. See [Remote SDK Config](/learn/remote-config/setup) |
-| `exportDelayMs` | `number` | `1000` | Delay between exports in milliseconds |
+| Option                            | Type                      | Default                   | Description                                                                                                                                                                                                                                       |
+| --------------------------------- | ------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                         | `string`                  | none                      | Your application version (`service.version`). Groups releases, and remote rules can target it                                                                                                                                                     |
+| `serviceName`                     | `string`                  | the page's host name      | `service.name` of this app                                                                                                                                                                                                                        |
+| `environment`                     | `string`                  | none                      | `deployment.environment.name`, e.g. `"production"`                                                                                                                                                                                                |
+| `attributes`                      | `Record<string, string>`  | `{}`                      | Initial global attributes, see [Custom Attributes](#custom-attributes)                                                                                                                                                                            |
+| `debug`                           | `boolean`                 | `false`                   | Explain what the SDK does with the page's own `console.warn`: the start, remote config applied or rejected, every dropped exception or message and why, and SDK failures it contained. See [Debug Mode](/client/js-sdk/initialization#debug-mode) |
+| `ignoreErrors`                    | `Array<string \| RegExp>` | `DEFAULT_IGNORE_PATTERNS` | Error patterns to ignore, matched against `Type: message`. Pass `[]` to capture all errors. See [Error Filtering](/client/js-sdk/initialization#error-filtering)                                                                                  |
+| `beforeCapture`                   | `(captured) => boolean`   | none                      | Receives a `TracewayCapturedError`, `{ error, type, message, isMessage, stack, attributes }`; return `false` to drop it. See [beforeCapture Callback](/client/js-sdk/initialization#beforecapture-callback)                                       |
+| `sessionRecording`                | `boolean`                 | `true`                    | Allow rrweb session replay at all                                                                                                                                                                                                                 |
+| `sessionRecordingSegmentDuration` | `number`                  | `30000`                   | Replay segment length in ms                                                                                                                                                                                                                       |
+| `recordAllSessions`               | `boolean`                 | `false`                   | Stream every replay segment and breadcrumb instead of keeping them on the device for error clips. See [Configure Session Capture](/client/react/session-capture)                                                                                  |
+| `sessions`                        | `boolean`                 | `true`                    | Record session start and end. See [Sessions](/learn/sessions)                                                                                                                                                                                     |
+| `captureLogs`                     | `boolean`                 | `true`                    | Allow `console.*` output and `log()` lines as breadcrumbs                                                                                                                                                                                         |
+| `captureNetwork`                  | `boolean`                 | `true`                    | Allow `fetch` / `XHR` calls as CLIENT spans. `false` also stops the `traceparent` header                                                                                                                                                          |
+| `captureNavigation`               | `boolean`                 | `true`                    | Allow History API push / replace / pop transitions as breadcrumbs                                                                                                                                                                                 |
+| `captureUserActions`              | `boolean`                 | `true`                    | Allow clicks as breadcrumbs                                                                                                                                                                                                                       |
+| `captureMetrics`                  | `boolean`                 | `true`                    | Allow the [performance metrics](/learn/client-metrics) aggregated on the device                                                                                                                                                                   |
+| `captureHttpServerErrors`         | `boolean`                 | `false`                   | Report `fetch` / `XHR` responses with status >= 500 as message issues. 4xx is never included                                                                                                                                                      |
+| `propagateTraceHeaderCorsUrls`    | `Array<string \| RegExp>` | none                      | Cross-origin URLs that get the W3C `traceparent` header (same-origin requests always do)                                                                                                                                                          |
+| `remoteConfig`                    | `boolean`                 | `true`                    | Fetch collection settings from Traceway, so the **Data Collection** page can change what the app sends without a release. See [Remote SDK Config](/learn/remote-config/setup)                                                                     |
+| `collection`                      | `CollectionSettings`      | SDK defaults              | Local collection policy: signal modes, sampling, replay (`maskAllInputs`, `images`), buffer and triggers. See [Local collection settings](/client/js-sdk/initialization#local-collection-settings)                                                |
+| `telemetry`                       | `TelemetryOptions`        | none                      | Send logs, traces and metrics to another OpenTelemetry provider, see [below](#send-telemetry-to-another-opentelemetry-provider)                                                                                                                   |
+| `exportDelayMs`                   | `number`                  | `1000`                    | Delay between exports in milliseconds                                                                                                                                                                                                             |
 
 The `capture*`, `sessionRecording` and `sessions` options are ceilings: remote settings can restrict a signal further, but never turn on what you turned off here. By default breadcrumbs and replay stay on the device and upload with an error; errors and messages are sent as they happen.
 
-[Initialization](/client/js-sdk/initialization#options-reference) has the full list, including `collection`, `telemetry`, `transport`, `errorLimits` and `collectionLimits`. The 1.x options `debounceMs`, `retryDelayMs`, `eventsWindowMs` and `eventsMaxCount` are gone, see the [migration guide](/client/js-sdk/migration).
+[Initialization](/client/js-sdk/initialization#options-reference) has the full list, including `errorLimits` and `collectionLimits`. The 1.x options `debounceMs`, `retryDelayMs`, `eventsWindowMs` and `eventsMaxCount` are gone, see [Upgrading](/client/js-sdk/migration).
 
 ## Custom Attributes
 
@@ -67,7 +71,9 @@ Use `<TracewayAttributes>` or the `useTracewayAttributes` hook to bind a reactiv
 import { TracewayAttributes, useTracewayAttributes } from "@tracewayapp/react";
 
 // As a component:
-<TracewayAttributes attributes={user ? { "user.id": user.id, tenant: org.id } : null} />
+<TracewayAttributes
+  attributes={user ? { "user.id": user.id, tenant: org.id } : null}
+/>;
 
 // Or as a hook:
 function App() {
@@ -76,12 +82,17 @@ function App() {
 }
 ```
 
-Both accept `null` / `undefined` as "empty map", which is useful while user data loads or after logout. Values are strings (`Record<string, string>`), so pass `null` rather than a map with `undefined` values. New object reference with the same content does not trigger SDK calls. The hook removes every key it was given when it unmounts, so do not set the same key with `setAttribute` elsewhere.
+Both accept `null` / `undefined` as "empty map", which is useful while user data loads or after logout. Values are strings (`Record<string, string>`), so pass `null` rather than a map with `undefined` values. New object reference with the same content does not trigger SDK calls. The hook removes every key it was given when it unmounts, so do not set the same key with `setAttribute` elsewhere. A value the SDK cannot write is skipped; it never breaks the render.
 
 For imperative use (background workers, init scripts), the same primitives are exported as plain functions:
 
 ```javascript
-import { setAttribute, setAttributes, removeAttribute, clearAttributes } from "@tracewayapp/react";
+import {
+  setAttribute,
+  setAttributes,
+  removeAttribute,
+  clearAttributes,
+} from "@tracewayapp/react";
 
 setAttribute("build_channel", import.meta.env.VITE_CHANNEL ?? "dev");
 setAttributes({ tenant: "acme", plan: "pro" });
@@ -96,11 +107,11 @@ Remote rules can target these attributes. After login, call `refreshConfig()` (a
 
 ```jsx
 <TracewayProvider
-  connectionString="your-token@https://traceway.example.com/api/report"
+  token={import.meta.env.VITE_TRACEWAY_TOKEN}
   options={{
-    debug: process.env.NODE_ENV === "development",
-    version: process.env.REACT_APP_VERSION,
-    environment: process.env.NODE_ENV,
+    debug: import.meta.env.DEV,
+    version: import.meta.env.VITE_APP_VERSION,
+    environment: import.meta.env.MODE,
   }}
 >
   <YourApp />
@@ -113,7 +124,7 @@ By default, 4xx HTTP errors, network errors, and timeouts are ignored. To captur
 
 ```jsx
 <TracewayProvider
-  connectionString="your-token@https://traceway.example.com/api/report"
+  token={import.meta.env.VITE_TRACEWAY_TOKEN}
   options={{ ignoreErrors: [] }}
 >
   <YourApp />
@@ -122,26 +133,52 @@ By default, 4xx HTTP errors, network errors, and timeouts are ignored. To captur
 
 ## Environment-Specific Setup
 
-```jsx
-function App() {
-  const connectionString = process.env.NODE_ENV === "production"
-    ? process.env.REACT_APP_TRACEWAY_PROD
-    : process.env.REACT_APP_TRACEWAY_DEV;
+Give each environment its own project, and so its own token, through the build's environment files:
 
-  return (
-    <TracewayProvider connectionString={connectionString}>
-      <YourApp />
-    </TracewayProvider>
-  );
-}
+```bash
+# .env.production
+VITE_TRACEWAY_TOKEN=YOUR_PRODUCTION_TOKEN
+
+# .env.development
+VITE_TRACEWAY_TOKEN=YOUR_DEVELOPMENT_TOKEN
+
+# Only for a self-hosted server: its address
+# VITE_TRACEWAY_URL=
 ```
+
+```jsx
+<TracewayProvider
+  token={import.meta.env.VITE_TRACEWAY_TOKEN}
+  baseUrl={import.meta.env.VITE_TRACEWAY_URL}
+  options={{ environment: import.meta.env.MODE }}
+>
+  <YourApp />
+</TracewayProvider>
+```
+
+An unset `VITE_TRACEWAY_URL` leaves the default, Traceway Cloud. Next.js uses `NEXT_PUBLIC_TRACEWAY_TOKEN` and `NEXT_PUBLIC_TRACEWAY_URL` from `process.env`, Create React App `REACT_APP_TRACEWAY_TOKEN`.
+
+## Send telemetry to another OpenTelemetry provider
+
+The `telemetry` option sends logs, traces and metrics to any OTLP/HTTP endpoint, while errors, replay, captures and remote config stay on Traceway:
+
+```jsx
+<TracewayProvider
+  token={import.meta.env.VITE_TRACEWAY_TOKEN}
+  options={{ telemetry: { url: "https://collector.example.com" } }}
+>
+  <YourApp />
+</TracewayProvider>
+```
+
+The collector host is an example: use your own. Without a `token` the SDK runs standalone and sends only there. See [Send telemetry to another OpenTelemetry provider](/client/js-sdk/initialization#send-telemetry-to-another-opentelemetry-provider) for per-signal destinations, headers and CORS.
 
 ## Placement
 
-Place `TracewayProvider` as high as possible in your component tree, typically in your root `App` component or `index.js`:
+Place `TracewayProvider` as high as possible in your component tree, typically in your root `App` component or `main.jsx`:
 
 ```jsx
-// index.js
+// main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { TracewayProvider } from "@tracewayapp/react";
@@ -150,16 +187,18 @@ import App from "./App";
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-    <TracewayProvider connectionString="your-token@...">
+    <TracewayProvider token={import.meta.env.VITE_TRACEWAY_TOKEN}>
       <App />
     </TracewayProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );
 ```
 
+In the Next.js App Router, it goes in `app/layout.tsx`, see [Next.js App Router](/client/react#nextjs-app-router).
+
 ### A note on StrictMode
 
-`TracewayProvider` initializes the SDK in its constructor, and StrictMode double-invokes constructors in development. That is harmless: `init()` is a no-op while a client is running, so the second call does not create another client or a second set of error handlers. For the same reason a second `TracewayProvider` on the page does not start a second client; the first one's connection string and options stay in effect. The provider can sit inside or outside `<StrictMode>`.
+`TracewayProvider` initializes the SDK in its constructor, and StrictMode double-invokes constructors in development. That is harmless: `init()` is a no-op while a client is running, so the second call does not create another client or a second set of error handlers. For the same reason a second `TracewayProvider` on the page does not start a second client; the first one's token and options stay in effect. The provider can sit inside or outside `<StrictMode>`.
 
 In 1.x the double call created two clients and doubled every dev-mode error. If you moved the provider outside `<StrictMode>` to avoid that, you can leave it there or move it back.
 
@@ -177,4 +216,4 @@ function MyComponent() {
 }
 ```
 
-However, the `useTraceway` hook is preferred for most use cases.
+However, the `useTraceway` hook is preferred for most use cases. The context is `null` outside a `TracewayProvider`; `useTraceway` returns the same functions there instead.

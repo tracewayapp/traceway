@@ -347,12 +347,7 @@ func generateSecureToken() string {
 }
 
 func frameworkRequiresSymbolUpload(framework string) bool {
-	switch framework {
-	case "ios":
-		return true
-	default:
-		return false
-	}
+	return models.FrameworkUploadsBuildArtifacts(framework)
 }
 
 var ProjectRepository = projectRepository{}

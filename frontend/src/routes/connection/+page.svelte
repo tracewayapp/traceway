@@ -24,11 +24,18 @@
 	import bash from 'svelte-highlight/languages/bash';
 	import php from 'svelte-highlight/languages/php';
 	import python from 'svelte-highlight/languages/python';
+	import dart from 'svelte-highlight/languages/dart';
+	import kotlin from 'svelte-highlight/languages/kotlin';
+	import swift from 'svelte-highlight/languages/swift';
 	import {
 		getFrameworkCode,
 		getInstallCommand,
+		getInstallLanguage,
 		getFrameworkLabel
 	} from '$lib/utils/framework-code';
+	import { getStartConfigFiles, getStartVariants, type StartVariant } from '$lib/utils/sdk-start';
+	import StartConfigFiles from '$lib/components/setup/start-config-files.svelte';
+	import StartVariantTabs from '$lib/components/setup/start-variant-tabs.svelte';
 	import { getSetupMode } from '$lib/utils/setup-storage';
 	import SetupModeTabs from '$lib/components/setup/setup-mode-tabs.svelte';
 	import AiSetupSteps from '$lib/components/setup/ai-setup-steps.svelte';
@@ -41,6 +48,10 @@
 
 	let projectWithToken = $derived(projectsState.currentProject);
 	let setupMode = $state(getSetupMode());
+	let startVariant = $state<StartVariant>('vite');
+	const startVariants = $derived(
+		projectWithToken ? getStartVariants(projectWithToken.framework) : []
+	);
 
 	const isOtel = $derived(projectWithToken ? isOtelFramework(projectWithToken.framework) : false);
 	const isOtelGeneric = $derived(
@@ -96,7 +107,8 @@ service:
 			? getFrameworkCode(
 					projectWithToken.framework,
 					projectWithToken.token,
-					projectWithToken.backendUrl
+					projectWithToken.backendUrl,
+					startVariant
 				)
 			: ''
 	);
@@ -105,14 +117,32 @@ service:
 		projectWithToken ? getInstallCommand(projectWithToken.framework) : ''
 	);
 
+	const startConfig = $derived(
+		projectWithToken
+			? getStartConfigFiles(
+					projectWithToken.framework,
+					projectWithToken.token,
+					projectWithToken.backendUrl,
+					startVariant
+				)
+			: []
+	);
+
 	const highlightLanguage = $derived.by(() => {
 		if (!projectWithToken) return go;
 		const fw = projectWithToken.framework;
 		if (fw === 'symfony' || fw === 'laravel') return php;
 		if (fw === 'django') return python;
-		if (fw === 'ios' || fw === 'flutter' || fw === 'android') return javascript;
+		if (fw === 'ios') return swift;
+		if (fw === 'flutter') return dart;
+		if (fw === 'android') return kotlin;
 		if (isJsFramework(fw)) return javascript;
 		return go;
+	});
+
+	const installLanguage = $derived.by(() => {
+		const language = projectWithToken ? getInstallLanguage(projectWithToken.framework) : 'bash';
+		return language === 'kotlin' ? kotlin : language === 'swift' ? swift : bash;
 	});
 
 	const isJs = $derived(projectWithToken ? isJsFramework(projectWithToken.framework) : false);
@@ -216,9 +246,24 @@ service:
 					<CardDescription>
 						Add Traceway to your application with just a few lines of code.
 					</CardDescription>
+					{#if projectWithToken.framework === 'react-native'}
+						<p class="text-sm text-muted-foreground">
+							The React Native SDK keeps its 1.x API in 2.x: it starts from a connection string, not
+							from a token and a URL.
+						</p>
+					{/if}
 				</CardHeader>
 				<CardContent>
-					<CopyableCodeBlock code={sdkCode} language={highlightLanguage} secret />
+					<div class="space-y-4">
+						<StartVariantTabs variants={startVariants} bind:value={startVariant} />
+						<StartConfigFiles files={startConfig} />
+						<div>
+							{#if startConfig.length > 0}
+								<p class="mb-2 text-sm font-medium">Start the SDK</p>
+							{/if}
+							<CopyableCodeBlock code={sdkCode} language={highlightLanguage} secret />
+						</div>
+					</div>
 				</CardContent>
 			</Card>
 
@@ -228,7 +273,7 @@ service:
 					<CardDescription>{installDescription}</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<CopyableCodeBlock code={installCommand} language={bash} />
+					<CopyableCodeBlock code={installCommand} language={installLanguage} />
 				</CardContent>
 			</Card>
 			{#if showSymbolUpload}

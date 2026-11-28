@@ -1,0 +1,279 @@
+import ReplayCeilings from "../../../components/mobile-docs/replay-ceilings.mdx";
+import ReplayBuffer from "../../../components/mobile-docs/replay-buffer.mdx";
+import KeyboardBox from "../../../components/mobile-docs/keyboard-box.mdx";
+import CheckMask from "../../../components/mobile-docs/check-mask.mdx";
+import ImagePolicy from "../../../components/mobile-docs/image-policy.mdx";
+import ImageLimits from "../../../components/mobile-docs/image-limits.mdx";
+import DefaultUpload from "../../../components/mobile-docs/default-upload.mdx";
+import Sampling from "../../../components/mobile-docs/sampling.mdx";
+import TriggerRule from "../../../components/mobile-docs/trigger-rule.mdx";
+import DashboardCapture from "../../../components/mobile-docs/dashboard-capture.mdx";
+import DataCollectionRules from "../../../components/mobile-docs/data-collection-rules.mdx";
+import CheckItWorks from "../../../components/mobile-docs/check-it-works.mdx";
+import ReplayBudget from "../../../components/mobile-docs/replay-budget.mdx";
+
+# Configure Session Capture
+
+Session replay shows what the user saw before an error, or along a journey you care about. This page sets it up in an Android app: turn it on, hide what is private, decide which sessions upload replay, and then change all of it from the dashboard without a release. It assumes the SDK is installed and started as in the [Quick Start](/client/android).
+
+| Step                                                               | What you do                         | Where                 |
+| ------------------------------------------------------------------ | ----------------------------------- | --------------------- |
+| [1](#step-1-turn-on-replay-and-set-the-limits-in-the-app)          | Turn on replay and set its limits   | App code              |
+| [2](#step-2-hide-private-content)                                  | Hide private content                | App code and layouts  |
+| [3](#step-3-choose-whether-replays-show-images)                    | Choose whether replays show images  | Dashboard or app code |
+| [4](#step-4-choose-which-sessions-upload-replay)                   | Choose which sessions upload replay | Dashboard or app code |
+| [5](#step-5-capture-one-user-or-device-from-the-dashboard)         | Capture one user or device          | Dashboard             |
+| [6](#step-6-change-collection-remotely-with-data-collection-rules) | Change collection with rules        | Dashboard             |
+
+## Step 1: Turn on replay and set the limits in the app
+
+An Android app records a **wireframe**: after each frame that changed something, the SDK walks the app's windows (activities, dialogs, popups) and records what the views and Jetpack Compose screens show as HTML, which the dashboard replays with the same rrweb player as a browser session. No screenshot is taken and no video is encoded: a clip is tens of kilobytes.
+
+Replay is off until you turn it on with `screenCapture`:
+
+```kotlin
+Traceway.init(
+    this,
+    TracewayOptions(
+        token = BuildConfig.TRACEWAY_TOKEN,
+        screenCapture = true,
+        fps = 10,              // the default; at most 30
+        maxBufferFrames = 150, // the default; the longest clip
+    ),
+)
+```
+
+<ReplayCeilings />
+
+<ReplayBuffer />
+
+A frame is taken only when the screen changed, so 150 frames at 10 fps cover at least 15 seconds, and the whole 30 seconds unless the screen changes all the time. Streamed segments last up to 10 seconds. While the app is in the background, the replay shows a blank "App in the background" screen.
+
+## Step 2: Hide private content
+
+Masks change the recording only: the user sees no difference in the live app.
+
+### Inputs are masked by default
+
+Text typed into a field is replaced with `*`, and a password field always shows dots. Hints and floating labels are not typed text and stay readable. Only a rule that sets `replay.maskAllInputs` to `false` turns this off; turning it back on drops the frames recorded without it and the clips made from them that are not uploaded yet.
+
+<KeyboardBox />
+
+On Android 11 and later the box covers the window's keyboard inset, below that the part of the screen the keyboard hides, light or dark as the app's theme is.
+
+### Mark views with a mask
+
+A blur mask keeps the layout and replaces its text with `*` and its images with placeholders. A blank mask is a box of one color, and nothing inside it is recorded. A mask covers the view and everything inside it.
+
+```kotlin
+import android.graphics.Color
+import com.tracewayapp.traceway.TracewayMaskMode
+import com.tracewayapp.traceway.tracewayMask
+
+cardNumberView.tracewayMask = TracewayMaskMode.blur()
+profileHeader.tracewayMask = TracewayMaskMode.blank(Color.BLACK)
+cardNumberView.tracewayMask = null // no mask
+```
+
+From Java: `Traceway.mask(view, TracewayMaskMode.blur())` and `Traceway.unmask(view)`. In a layout, with no code:
+
+```xml
+<TextView
+    android:id="@+id/card_number"
+    android:tag="traceway-mask" />   <!-- blur; "traceway-blank" for a blank box -->
+```
+
+In Jetpack Compose, with the modifier or a test tag:
+
+```kotlin
+import com.tracewayapp.traceway.TracewayMaskMode
+import com.tracewayapp.traceway.compose.tracewayMask
+
+Text(address, Modifier.tracewayMask())
+Box(Modifier.tracewayMask(TracewayMaskMode.blank())) { AccountDetails() }
+Text(iban, Modifier.testTag("traceway-blank"))
+```
+
+A masked view's text and label are left out of tap records too, and a mask tag never names a view in a selector.
+
+### Check the mask before you ship
+
+<CheckMask />
+
+## Step 3: Choose whether replays show images
+
+<ImagePolicy />
+
+The ceiling in the app:
+
+```kotlin
+TracewayOptions(
+    token = BuildConfig.TRACEWAY_TOKEN,
+    screenCapture = true,
+    replayImages = TracewayImagePolicy.WIFI, // never more than Wi‑Fi only, whatever a rule says
+)
+```
+
+**What Wi‑Fi only means on Android.** A network is unmetered when `ConnectivityManager.isActiveNetworkMetered()` is false: Wi‑Fi and Ethernet, usually. On Android 7 and later the SDK follows the default network as it changes. The `ACCESS_NETWORK_STATE` permission this needs comes with the library's manifest.
+
+The size limits, the same on Android, iOS and Flutter:
+
+<ImageLimits />
+
+What is recorded on Android:
+
+- The bitmap an `ImageView` shows through a `BitmapDrawable` (the top bitmap of a layer drawable, as a Glide crossfade shows it), and bitmap backgrounds.
+- Vector drawables, shapes and small icons keep their usual look whatever the policy; animated images are not recorded frame by frame.
+- Jetpack Compose images stay placeholders: the semantics tree that Compose screens are recorded from holds no pixels.
+- A picture's style stays in the recording for 30 seconds after its view left the screen, so scrolling back does not encode it again.
+
+## Step 4: Choose which sessions upload replay
+
+### What uploads by default
+
+<DefaultUpload />
+
+### Record every session or a sample
+
+<Sampling />
+
+In the app:
+
+```kotlin
+TracewayOptions(
+    token = BuildConfig.TRACEWAY_TOKEN,
+    screenCapture = true,
+    recordAllSessions = true, // stream every session; for a debug build or a test group
+)
+```
+
+### Record a journey with a trigger
+
+<TriggerRule />
+
+On Android the **Event** of a step is **Tap**, **Hover** (a mouse entering a view, on ChromeOS or in desktop mode; never a finger), **Navigation** or **Log** (a console line: `System.out`, `Traceway.log`, Logcat with the [Gradle plugin](/client/android#automatic-log-capture), or a `captureMessage`). A trigger can also live in the app, in the `collection` document, with the same fields the dashboard writes:
+
+```kotlin
+TracewayOptions(
+    token = BuildConfig.TRACEWAY_TOKEN,
+    screenCapture = true,
+    collection = mapOf(
+        "triggers" to listOf(
+            mapOf(
+                "id" to "checkout-abandoned",
+                "name" to "Opened checkout, then went back",
+                "steps" to listOf(
+                    mapOf("match" to mapOf("event" to mapOf("type" to "navigation", "value" to "/CheckoutActivity"))),
+                    mapOf("match" to mapOf("event" to mapOf("type" to "click", "value" to "#back")), "withinSeconds" to 60),
+                ),
+                "actions" to listOf(
+                    mapOf("type" to "capture", "replay" to true, "lookbackSeconds" to 30, "durationSeconds" to 120),
+                ),
+                "cooldownSeconds" to 60,
+                "maxPerSession" to 3,
+            ),
+        ),
+    ),
+)
+```
+
+The [trigger reference](/learn/remote-config/reference#triggers) has every field, and [Recording triggers](/learn/remote-config/trigger-sequences) walks through the builder.
+
+### Name the views a trigger can match
+
+A tap step matches a view by a CSS-like selector. Give the views a journey goes through a stable name:
+
+```xml
+<!-- #pay, or MaterialButton#pay -->
+<com.google.android.material.button.MaterialButton
+    android:id="@+id/pay"
+    android:text="Pay now" />
+```
+
+```kotlin
+// ImageButton[label="Delete"]
+deleteButton.contentDescription = "Delete"
+
+// In Compose: #checkout-form
+Column(Modifier.testTag("checkout-form")) { CheckoutForm() }
+```
+
+You rarely write a selector by hand: every tap is recorded with the selector of the view that handled it, and the session's **Actions** list shows it, ready to paste into a step. Ids and test tags survive copy changes, translations and R8, which renames classes in a minified build. The whole syntax is in [Naming views](/client/android#naming-views).
+
+### Name your screens
+
+A navigation step matches the path of the screen on top, and so do the screen names on issues and taps. Activities (`/CheckoutActivity`) and AndroidX fragments (`/CartFragment`) are screens with no code. A single-activity Compose app is one screen to Android until you hand its `NavController` to the SDK:
+
+```kotlin
+import com.tracewayapp.traceway.navigation.trackNavigation
+
+val nav = rememberNavController()
+LaunchedEffect(nav) { Traceway.trackNavigation(nav) }
+NavHost(nav, startDestination = "orders") {
+    composable("orders") { Orders() }
+    composable("orders/{id}") { OrderDetail() } // the screen /orders/8841, route /orders/:id
+}
+```
+
+- A screen no `NavController` shows names itself: `Modifier.tracewayScreen("/orders/$id", route = "/orders/:id")` on its root.
+- Any other router calls `Traceway.recordNavigation("/orders/8841", route = "/orders/:id")`; `Traceway.setRoute("/orders/:id")` names the current screen's route template.
+
+The details are in [Naming screens](/client/android#naming-screens).
+
+## Step 5: Capture one user or device from the dashboard
+
+```kotlin
+// After sign-in: captures can now target this user.
+Traceway.setAttribute("user.id", user.id)
+
+// This installation, for a capture of one device (service.instance.id).
+// Null for a moment right after init, until the SDK has read it.
+val instanceId = Traceway.getInstanceId()
+
+// Ask for settings now instead of at the next poll.
+Traceway.refreshConfig()
+```
+
+<DashboardCapture />
+
+**When the app picks it up.** An Android app polls at start, every 5 minutes (every 60 seconds while a capture targets it), every time it returns to the foreground, and about 2 seconds after `setAttribute`. To start a capture on your own test device at once, send the app to the background and bring it back.
+
+## Step 6: Change collection remotely with Data Collection rules
+
+<DataCollectionRules />
+
+**Replay type** (`replay.captureMode`) is a Flutter setting: an Android app always records a wireframe.
+
+## Check that it works
+
+Start the app with `debug = true`, so Logcat shows what the SDK does under the tag `Traceway`, and send a test error:
+
+```kotlin
+import kotlin.concurrent.thread
+
+Traceway.captureException(RuntimeException("Test error from Traceway"))
+thread { Traceway.flush() } // flush blocks; on the main thread it waits 2 s at most
+```
+
+<CheckItWorks />
+
+## What replay does not record
+
+- **Compose images and colors.** Compose screens are recorded from their semantics, which hold no pixels: images are placeholders, and since Compose does not expose its surface colors, a filled button takes the theme's primary color and other buttons and fields a neutral look.
+- **Native and custom views.** `WebView`, `SurfaceView`, `TextureView`, video and maps are labelled placeholders, and views that draw themselves (charts, a custom `onDraw`) are dashed outlines.
+- **Taps in dialogs, bottom sheets and menus.** The replay shows those windows, but their taps are not recorded yet, so tap steps cannot match inside them.
+- **Class names in minified builds.** R8 renames classes; a renamed class is named by its nearest superclass that kept its name. Ids, test tags and text are not renamed.
+
+<ReplayBudget />
+
+## When it fails
+
+| Symptom                         | Cause                                                                                                                                           | Fix                                                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Nothing arrives at all          | The `Application` class is not registered in the manifest, or the token is empty (no `TRACEWAY_TOKEN` in `local.properties` or the environment) | Add `android:name` to `<application>`; with `debug = true`, Logcat says why `Traceway.init` returned `null` |
+| An issue has no replay          | `screenCapture` is off, the clip ration (one per 5 seconds, 20 per session) was used up, or the session's replay budget is spent                | Turn `screenCapture` on; check **Failed replay uploads** on the session's **Overview**                      |
+| Images are grey boxes           | The effective policy is `off`, or `wifi` on a metered network, the image is masked, or it is a Compose image                                    | Check **Replay images** in your rules and `replayImages`                                                    |
+| A Compose element is not masked | `android:tag` belongs to views                                                                                                                  | Use `Modifier.tracewayMask()` or `Modifier.testTag("traceway-mask")`                                        |
+| A trigger never fires           | The selector names a class R8 renamed, the tap was in a dialog, or the Compose screens are not tracked                                          | Copy the selector from the session's **Actions**; prefer ids and test tags; call `Traceway.trackNavigation` |
+| A capture never starts          | The device has not polled since, or the target value is wrong                                                                                   | Bring the app back to the foreground, or call `refreshConfig()`; check `getInstanceId()`                    |
+| The poll is answered 403        | The token belongs to a backend or React Native project                                                                                          | Use the token of the project you created for this app                                                       |

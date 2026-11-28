@@ -115,6 +115,7 @@ func (a authController) Login(c *gin.Context) {
 		return
 	}
 
+	withInstanceUrl(c, projects...)
 	response.Projects = projects
 	response.Organizations = organizations
 	c.JSON(http.StatusOK, response)
@@ -212,7 +213,7 @@ func (a authController) Register(c *gin.Context) {
 	if wantsProject {
 		if !validFrameworks[request.Framework] {
 			traceway.CaptureMessage("Invalid framework received during registration: " + request.Framework)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Framework must be one of: gin, fiber, chi, fasthttp, stdlib, custom, react, svelte, vuejs, jquery, react-native, hono, cloudflare, opentelemetry, symfony, flutter, android, ios"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": invalidFrameworkMessage})
 			return
 		}
 
@@ -244,6 +245,7 @@ func (a authController) Register(c *gin.Context) {
 		middleware.OnCommit(c, func() { cache.ProjectCache.AddProject(project) })
 		projectWithUrl = project.ToProjectWithBackendUrl()
 	}
+	withInstanceUrl(c, append(projects, projectWithUrl)...)
 
 	organizations, err := transactional.OrganizationRepository.FindByUserIdWithRoles(tx, user.Id)
 	if err != nil {
@@ -291,6 +293,7 @@ func (a authController) LoginBundle(c *gin.Context) {
 		return
 	}
 
+	withInstanceUrl(c, projects...)
 	c.JSON(http.StatusOK, &models.LoginResponse{
 		User:          user.ToResponse(),
 		Projects:      projects,

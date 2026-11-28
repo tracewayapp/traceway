@@ -1,0 +1,10 @@
+SIGSEGV (SEGV_MAPERR), fault addr 0x0000000000000010
+Cause: null pointer dereference
+    #00 pc 000000000001c6a4  /data/app/~~pQ0aZ8sW2eR4tY6uI1oP3a==/com.example.shop-Lk9jH7gF5dS3aQ1wE2rT4y==/lib/arm64/libpayments.so (pay::Card::charge(int)+52) (BuildId: 6f2c1a9e8b7d4c3a2f1e0d9c8b7a6f5e4d3c2b1a)
+    #01 pc 000000000001b210  /data/app/~~pQ0aZ8sW2eR4tY6uI1oP3a==/com.example.shop-Lk9jH7gF5dS3aQ1wE2rT4y==/lib/arm64/libpayments.so (Java_com_example_shop_Payments_nativeCharge+96) (BuildId: 6f2c1a9e8b7d4c3a2f1e0d9c8b7a6f5e4d3c2b1a)
+    #02 pc 0000000000355a10  /apex/com.android.art/lib64/libart.so (art_quick_generic_jni_trampoline+152) (BuildId: 0d4f2a8c6e1b3d5f7a9c0e2b4d6f8a1c)
+    #03 pc 000000000033c2b4  /apex/com.android.art/lib64/libart.so (art_quick_invoke_stub+584) (BuildId: 0d4f2a8c6e1b3d5f7a9c0e2b4d6f8a1c)
+    #04 pc 0000000000412b4c  /data/app/~~pQ0aZ8sW2eR4tY6uI1oP3a==/com.example.shop-Lk9jH7gF5dS3aQ1wE2rT4y==/oat/arm64/base.odex (com.example.shop.Payments.charge+124)
+    #05 pc 0000000000410f20  /data/app/~~pQ0aZ8sW2eR4tY6uI1oP3a==/com.example.shop-Lk9jH7gF5dS3aQ1wE2rT4y==/oat/arm64/base.odex (com.example.shop.CheckoutActivity.onPay+88)
+    #06 pc 0000000000612d08  /system/framework/arm64/boot-framework.oat (android.view.View.performClick+184) (BuildId: 7c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f809)
+    #07 pc 00000000000b63a0  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+68) (BuildId: 5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b)

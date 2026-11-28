@@ -148,19 +148,19 @@ If you get an error instead, look it up in [When it fails](#when-it-fails).
 |---|---|
 | **Issues** | Exception groups, the occurrences of one group, and a single occurrence with its session and recording |
 | **Endpoints and tasks** | p50, p95 and p99 per endpoint, latency over time, the slowest requests of one endpoint, and one request or task run with its spans and linked errors |
-| **Traces and sessions** | A distributed trace across services and projects, an AI trace with its conversation, and a session with the exceptions that fired in it |
+| **Traces and sessions** | A distributed trace across services and projects, an AI trace with its conversation, the sessions of a window, and a session with the exceptions that fired in it |
 | **Logs** | Log records by time, service, severity, trace id or text |
 | **Metrics** | The metric names, types, units and tags a project records, and any metric as a time series or as one value |
 | **Dashboards** | The dashboards applied to the project, the organization's library, and a dashboard as importable JSON |
 | **Alerting** | Alert rules and their state, channels, notification history, and [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp) with their error budget |
 | **On-call** | Open pages and their delivery log, who is on call, teams, schedules and escalation policies |
 | **Monitors** | Uptime monitors with their incidents, and post-mortems |
-| **Browser data collection** | A browser project's [remote SDK config](/learn/remote-config) rules, and the settings a given client would receive |
+| **Browser data collection** | A browser, Flutter, iOS or Android project's [remote SDK config](/learn/remote-config) rules, and the settings a given client would receive |
 
 ### What you cannot do with it
 
 - **Change anything.** Archiving an issue, acknowledging a page, snoozing an alert and every other change needs [`traceway-write`](#write-commands).
-- **List tasks, sessions or AI traces.** Those have a `show` command only. Take the id from the dashboard URL or from the output of another command, such as the nodes of `traces show`.
+- **List tasks or AI traces.** Those have a `show` command only. Take the id from the dashboard URL or from the output of another command, such as the nodes of `traces show`.
 - **Manage the account.** Creating projects, inviting members and changing settings stay in the dashboard.
 
 ## Examples
@@ -272,7 +272,7 @@ traceway endpoints show <id>        --recorded-at <time>
 traceway tasks show <id>            --recorded-at <time>
 traceway ai-traces show <id>        --recorded-at <time>
 traceway traces show <traceId>      --recorded-at <time>
-traceway sessions show <id>         --started-at <time>
+traceway sessions show <id>         [--started-at <time>]
 ```
 
 Telemetry is stored by day. The timestamp tells the server which days to look in, so the lookup does not scan everything. It is an RFC 3339 time such as `2026-11-26T14:20:05Z`, and it only has to be close: the server searches a window around it.
@@ -283,7 +283,7 @@ Always take the id and its timestamp from the same place:
 - **A dashboard URL.** Detail pages carry the time as the `?t=` parameter. A session page has none: use the session's start time, or the `recordedAt` of an exception that fired in it.
 - **A notification.** Use its **Occurred at** time, rewritten as RFC 3339.
 
-Without the flag the command stops with `usage_error` (exit 2).
+Without the flag the command stops with `usage_error` (exit 2). `sessions show` is the exception: without `--started-at` the CLI looks the start up among the sessions of the last 30 days, so pass it for an older session.
 
 ## Command reference
 
@@ -315,7 +315,8 @@ traceway tasks show <id> --recorded-at <time>
 # Traces, AI traces and sessions
 traceway traces show <traceId> --recorded-at <time>
 traceway ai-traces show <id> --recorded-at <time>
-traceway sessions show <id> --started-at <time>
+traceway sessions list [--search <text>] [--order-by startedAt|duration]
+traceway sessions show <id> [--started-at <time>]
 
 # Logs
 traceway logs query [--search <text>] [--service <name>]
@@ -372,6 +373,8 @@ traceway setup apply --plan plan.json
 
 A few of these need a word more:
 
+- **`exceptions show`** takes the full hash or a unique prefix of 4 or more hex characters.
+- **`sessions list`** prints the sessions that started in the window, with id, start, duration, version, replay and user. `--search` matches the session id, the client IP or an attribute value such as a user id.
 - **`endpoints slow`** shows the expected-slow allowance someone set for an endpoint. It shifts Apdex and impact only, never the percentiles.
 - **`metrics discover --name M --key K`** lists the values one tag takes for one metric.
 - **`dashboards validate`** checks a dashboard file on your machine. It needs no login.
@@ -403,7 +406,7 @@ traceway exceptions list --output json --fields exceptionHash,count,lastSeen
 A profile is one login: an instance URL, an account and a selected project. Use profiles to keep several instances or accounts side by side.
 
 ```bash
-traceway login --url https://traceway.example.com --profile work
+traceway login --url https://traceway.mycompany.com --profile work
 traceway profiles list
 traceway profiles use work
 traceway --profile personal exceptions list   # one command only

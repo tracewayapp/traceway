@@ -47,7 +47,7 @@ import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 
-const OTEL_URL = "https://your-traceway-instance.com/api/otel";
+const OTEL_URL = "https://cloud.tracewayapp.com/api/otel";
 const HEADERS = { Authorization: "Bearer your-project-token" };
 
 const sdk = new NodeSDK({
@@ -95,7 +95,7 @@ process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 ```
 
-Replace `your-traceway-instance.com` and `your-project-token` with your own values. The token is on the Connection page of your Traceway dashboard.
+Replace `your-project-token` with your project's token, from the Connection page of your Traceway dashboard. On a self-hosted server, replace `cloud.tracewayapp.com` with its address.
 
 Three details on that file are easy to get wrong:
 
@@ -394,7 +394,7 @@ If you would rather not hardcode the endpoint and token, the SDK reads them from
 
 ```bash
 export OTEL_SERVICE_NAME="my-hono-app"
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-traceway-instance.com/api/otel"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://cloud.tracewayapp.com/api/otel"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
 ```
 

@@ -19,10 +19,62 @@ const (
 	ResultUnchanged Result = "unchanged"
 )
 
+// Upsert sets key to value in the env file at path, creating the file and its directory when missing. The file
+// type follows the extension: an Xcode .xcconfig keeps "//" as "/$()/" (a bare "//" starts a comment there), and a
+// .properties file also takes "key: value" lines.
 func Upsert(path, key, value string) (Result, error) {
-	content, mode, existed, err := readEnvFile(path)
+	return UpsertEquivalent(path, key, value, nil)
+}
+
+// UpsertEquivalent is Upsert that leaves the file alone when key already holds a value equivalent reports true for,
+// such as an older spelling of the same connection string.
+func UpsertEquivalent(path, key, value string, equivalent func(existing string) bool) (Result, error) {
+	var result Result
+	err := Edit(path, func(file *File) error {
+		var err error
+		result, err = file.Set(key, value, equivalent)
+		return err
+	})
 	if err != nil {
 		return "", err
+	}
+	return result, nil
+}
+
+// File holds one env file's contents during Edit.
+type File struct {
+	path, content string
+	existed       bool
+}
+
+// Edit makes all related assignments visible in a single rename. A reader
+// opening the file during setup sees credentials and URLs from the same apply.
+func Edit(path string, update func(*File) error) error {
+	content, mode, existed, err := readEnvFile(path)
+	if err != nil {
+		return err
+	}
+	file := &File{path, content, existed}
+	if err := update(file); err != nil {
+		return err
+	}
+	if file.content == content && file.existed == existed {
+		return nil
+	}
+	return writeAtomic(path, file.content, mode)
+}
+
+func (f *File) Has(key string) bool {
+	_, found := lookupIn(f.path, f.content, key)
+	return found
+}
+
+func (f *File) Set(key, value string, equivalent func(string) bool) (Result, error) {
+	path, content := f.path, f.content
+	if equivalent != nil {
+		if existing, found := lookupIn(path, content, key); found && equivalent(existing) {
+			return ResultUnchanged, nil
+		}
 	}
 
 	eol := "\n"
@@ -30,10 +82,11 @@ func Upsert(path, key, value string) (Result, error) {
 		eol = "\r\n"
 	}
 
-	assignRe, err := regexp.Compile(`^(\s*(?:export\s+)?)` + regexp.QuoteMeta(key) + `\s*=`)
+	assignRe, err := assignmentRegex(path, key)
 	if err != nil {
 		return "", err
 	}
+	written := escapeValue(path, value)
 
 	lines := strings.Split(content, "\n")
 	replaced := false
@@ -47,7 +100,7 @@ func Upsert(path, key, value string) (Result, error) {
 		if strings.HasSuffix(line, "\r") {
 			suffix = "\r"
 		}
-		lines[i] = match[1] + key + "=" + value + suffix
+		lines[i] = match[1] + key + "=" + written + suffix
 		replaced = true
 	}
 
@@ -60,21 +113,77 @@ func Upsert(path, key, value string) (Result, error) {
 		if updated != "" && !strings.HasSuffix(updated, "\n") {
 			updated += eol
 		}
-		updated += key + "=" + value + eol
+		updated += key + "=" + written + eol
 		result = ResultAdded
-		if !existed {
+		if !f.existed {
 			result = ResultCreated
 		}
 	}
-
-	if existed && updated == content {
+	if f.existed && updated == content {
 		return ResultUnchanged, nil
 	}
-
-	if err := writeAtomic(path, updated, mode); err != nil {
-		return "", err
-	}
+	f.content, f.existed = updated, true
 	return result, nil
+}
+
+// Lookup returns the value key is assigned in the env file at path (the last assignment, unquoted and unescaped),
+// and whether it is assigned at all. A missing file has no keys.
+func Lookup(path, key string) (string, bool, error) {
+	content, _, existed, err := readEnvFile(path)
+	if err != nil || !existed {
+		return "", false, err
+	}
+	value, found := lookupIn(path, content, key)
+	return value, found, nil
+}
+
+func lookupIn(path, content, key string) (string, bool) {
+	assignRe, err := assignmentRegex(path, key)
+	if err != nil {
+		return "", false
+	}
+	value, found := "", false
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		match := assignRe.FindStringSubmatchIndex(line)
+		if match == nil {
+			continue
+		}
+		value, found = unquote(strings.TrimSpace(line[match[1]:])), true
+	}
+	if isXcconfig(path) {
+		value = strings.ReplaceAll(value, "$()", "")
+	}
+	return value, found
+}
+
+func assignmentRegex(path, key string) (*regexp.Regexp, error) {
+	separator := `\s*=`
+	if strings.HasSuffix(strings.ToLower(path), ".properties") {
+		separator = `(?:[ \t\f]*[=:]|[ \t\f]+|$)`
+	}
+	return regexp.Compile(`^(\s*(?:export\s+)?)` + regexp.QuoteMeta(key) + separator)
+}
+
+func isXcconfig(path string) bool {
+	return strings.HasSuffix(strings.ToLower(path), ".xcconfig")
+}
+
+func escapeValue(path, value string) string {
+	if isXcconfig(path) {
+		return strings.ReplaceAll(value, "//", "/$()/")
+	}
+	return value
+}
+
+func unquote(value string) string {
+	if len(value) >= 2 {
+		first, last := value[0], value[len(value)-1]
+		if (first == '"' || first == '\'') && last == first {
+			return value[1 : len(value)-1]
+		}
+	}
+	return value
 }
 
 func readEnvFile(path string) (content string, mode fs.FileMode, existed bool, err error) {
@@ -94,6 +203,9 @@ func readEnvFile(path string) (content string, mode fs.FileMode, existed bool, e
 
 func writeAtomic(path, content string, mode fs.FileMode) error {
 	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
 	tmp, err := os.CreateTemp(dir, ".tmp-env-*")
 	if err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)

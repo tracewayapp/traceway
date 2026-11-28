@@ -71,7 +71,7 @@ const sdk = new NodeSDK({
   logRecordProcessors: [
     new BatchLogRecordProcessor({
       exporter: new OTLPLogExporter({
-        url: "https://your-traceway-instance.com/api/otel/v1/logs",
+        url: "https://cloud.tracewayapp.com/api/otel/v1/logs",
         headers: {
           Authorization: "Bearer your-project-token",
         },
@@ -163,7 +163,7 @@ provider = LoggerProvider(resource=resource)
 set_logger_provider(provider)
 
 exporter = OTLPLogExporter(
-    endpoint="https://your-traceway-instance.com/api/otel/v1/logs",
+    endpoint="https://cloud.tracewayapp.com/api/otel/v1/logs",
     headers={"Authorization": "Bearer your-project-token"},
 )
 provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
@@ -205,7 +205,7 @@ import (
 
 func initLogs(ctx context.Context) (*sdklog.LoggerProvider, error) {
     exporter, err := otlploghttp.New(ctx,
-        otlploghttp.WithEndpoint("your-traceway-instance.com"),
+        otlploghttp.WithEndpoint("cloud.tracewayapp.com"),
         otlploghttp.WithURLPath("/api/otel/v1/logs"),
         otlploghttp.WithHeaders(map[string]string{
             "Authorization": "Bearer your-project-token",
@@ -267,7 +267,7 @@ java \
   -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=my-spring-app \
   -Dotel.exporter.otlp.protocol=http/protobuf \
-  -Dotel.exporter.otlp.endpoint=https://<your-instance>/api/otel \
+  -Dotel.exporter.otlp.endpoint=https://cloud.tracewayapp.com/api/otel \
   -Dotel.exporter.otlp.headers="Authorization=Bearer <project_token>" \
   -jar target/my-app.jar
 ```
@@ -292,7 +292,7 @@ processors:
 
 exporters:
   otlphttp:
-    endpoint: "https://your-traceway-instance.com/api/otel"
+    endpoint: "https://cloud.tracewayapp.com/api/otel"
     headers:
       Authorization: "Bearer your-project-token"
 

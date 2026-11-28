@@ -1,0 +1,8 @@
+The options you set in the app are the most replay can ever do. A Data Collection rule can record less or stop recording, but never more: without `screenCapture` turned on, nothing is recorded, whatever a rule says. The other ceilings that matter for replay:
+
+- `replayImages`: the most a replay may show of images (see [Step 3](#step-3-choose-whether-replays-show-images)).
+- `captureUserActions` and `captureNavigation`: the taps and screens shown next to the replay, and the steps recording triggers match.
+- `sessions`: the session records (`session.start`, `session.end`) the **Sessions** page is built from. The session id exists either way, so error clips, captures and rules that stream replay still work.
+- `fps` and `maxBufferFrames`: how often a frame is taken and how many frames the device holds. A rule cannot raise them.
+
+`sampleRate`, `baselineSampleRate` and `recordAllSessions` are defaults, not ceilings: a rule can change them in either direction.

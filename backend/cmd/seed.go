@@ -71,7 +71,7 @@ func seed(opts *options) error {
 			if err := dashboards.EnsureClientDefault(tx, project); err != nil {
 				return struct{}{}, err
 			}
-			config.LogfLocal("Seed: project %q connection string: %s@%s/api/report", project.Name, project.Token, opts.serverURL)
+			config.LogfLocal("Seed: project %q token: %s, baseUrl: %s", project.Name, project.Token, opts.serverURL)
 		}
 
 		config.Logf("Seed: created user %s, org %q", user.Email, org.Name)

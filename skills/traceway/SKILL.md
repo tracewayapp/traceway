@@ -43,7 +43,7 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 | `/endpoints/<endpoint>/<endpointId>` | One request (transaction) of that endpoint | `traceway endpoints show <endpointId> --recorded-at <t>` (`t` = the URL's `?t=` param). Returns the request, its span waterfall, and any linked exception/messages |
 | `/tasks/<task>` | Background task group | No CLI for the group; for one run use the next row |
 | `/tasks/<task>/<taskId>` | Single task run | `traceway tasks show <taskId> --recorded-at <t>` (`t` = the URL's `?t=` param) |
-| `/sessions/<sessionId>` | Session (the exceptions that fired during it; replay stays dashboard-only) | `traceway sessions show <sessionId> --started-at <t>`. The URL has no `?t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the window). Occurrences reference sessions via their `sessionId` |
+| `/sessions/<sessionId>` | Session (the exceptions that fired during it; replay stays dashboard-only) | `traceway sessions show <sessionId> --started-at <t>`. The URL has no `?t=`; use the session's start, the URL's `from=`, or a linked occurrence's `recordedAt` (it falls inside the window). Without any of them, leave `--started-at` out: the CLI looks the start up among the last 30 days' sessions. Occurrences reference sessions via their `sessionId` |
 | `/ai-traces/<traceName>` | AI trace group | No CLI for the group; for one trace use the next row |
 | `/ai-traces/<traceName>/<traceId>` | Single AI trace | `traceway ai-traces show <aiTraceId> --recorded-at <t>` (the UUID in the URL, not a 32 hex trace id) (`t` = the URL's `?t=` param); returns token/cost stats + the conversation |
 | `/logs` | Logs page. Its filters are URL params: `service=`, `minSeverity=`, `traceId=`, `spanId=`, `scopeName=`, `body=` (exact body), `search=` with `searchType=` (`body` by default, `service` or `trace`), and repeated `attr=<scope>.<key><op><value>` (`scope` is `resource`, `scope` or `log`; `op` is `=`, `!=`, `~=` contains, `!~=` not contains, `?=` key exists or `!?=` key does not exist, the last two with no value; in the key, `%3D` is `=`, `%25` is `%`, and `%21`, `%7E`, `%3F` are `!`, `~`, `?`). `chart=<scope>.<key>` with `chartView=distribution` and `chartAgg=` is an attribute chart, dashboard only | `traceway logs query` with `--service` (exact, from `service=`), `--min-severity`, `--trace-id` (from `traceId=` or a `searchType=trace` search) and `--search` (a body search). The CLI has no span, scope, exact-body, attribute or service-substring filter, so check those against the returned records |
@@ -59,7 +59,7 @@ Users paste dashboard URLs (`https://<instance>/<route>`) as references in any f
 
 ## Fast by-id lookups (always pass the timestamp)
 
-The by-id detail commands (`exceptions occurrence`, `endpoints show`, `tasks show`, `ai-traces show`, `sessions show`, `traces show`) **require** the record's timestamp (`--recorded-at`, or `--started-at` for sessions). Telemetry tables are partitioned by day: with the timestamp the lookup is bounded to a small window and ClickHouse prunes to a few partitions; without it the server scans every partition (slow cold load). The flag is mandatory for exactly this reason, so never omit it. It can be approximate (within ±24h), and you can recover or estimate it when it isn't handed to you; see "When you don't have the timestamp" below.
+The by-id detail commands (`exceptions occurrence`, `endpoints show`, `tasks show`, `ai-traces show`, `traces show`) **require** the record's timestamp (`--recorded-at`). `sessions show` / `get_session` take the session's start (`--started-at` / `started_at`) as an option: without it the CLI first looks the start up among the sessions of the last 30 days, which costs a second query and misses older sessions, so still pass it when you know it. Telemetry tables are partitioned by day: with the timestamp the lookup is bounded to a small window and ClickHouse prunes to a few partitions; without it the server scans every partition (slow cold load). `--recorded-at` is mandatory for exactly this reason, so never omit it. It can be approximate (within ±24h), and you can recover or estimate it when it isn't handed to you; see "When you don't have the timestamp" below.
 
 Where the timestamp comes from, in order of preference:
 
@@ -369,7 +369,8 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway endpoints show <id> --recorded-at <t>` | One request by id: span waterfall + linked errors |
 | `traceway tasks show <id> --recorded-at <t>` | One background task run by id |
 | `traceway ai-traces show <id> --recorded-at <t>` | One AI trace by id + its conversation |
-| `traceway sessions show <id> --started-at <t>` | One session by id + the exceptions that fired in it |
+| `traceway sessions list` | Sessions that started in the window (default 1h): id, start, duration, version, replay, user; `--search` (session id, client IP, an attribute value such as a user id), `--order-by startedAt\|duration` |
+| `traceway sessions show <id> [--started-at <t>]` | One session by id + the exceptions that fired in it; without `--started-at` the start is looked up among the last 30 days |
 | `traceway traces show <id> --recorded-at <t>` | Distributed trace: every service node sharing the id |
 | `traceway metrics query --name <metric>` | Time series; `--aggregation`, `--tag`, `--group-by`, `--interval-minutes` |
 | `traceway pages list` / `pages show <id>` | On-call pages; `--status active\|open\|acknowledged\|resolved` |
@@ -379,13 +380,13 @@ For free-form requests ("what's broken in prod?", "is /api/checkout slow?", "sho
 | `traceway slos series <id> --file range.json` | `good` and `total` per bucket for `{"fromDate", "toDate"}` (RFC 3339, at most 91 days, optional `intervalMinutes`) |
 | `traceway slos preview --file slo.json` | What an SLO definition `{"sliKind", "sliConfig"}` would measure over the last 24h (`good`, `total`, `sli`), without saving |
 | `traceway post-mortems list` / `post-mortems show <id>` | Post-mortem documents; `--search`, `--tag` |
-| `traceway opamp rules list` | Browser and Flutter projects only: the remote SDK config (OpAMP) rules in order, with conditions, settings and `updatedAt`. Later matching rules win |
+| `traceway opamp rules list` | Browser, Flutter, Android and iOS projects only: the remote SDK config (OpAMP) rules in order, with conditions, settings and `updatedAt`. Later matching rules win |
 | `traceway opamp preview --file client.json` | The settings document the saved rules give a client described by `{"attributes":{...},"instanceUid":"..."}` (`--file -` reads stdin): matched rules and captures, plan limits applied, config hash. Not proof that a client applied it |
 | `traceway profiles {list,use}`, `login`, `logout`, `version` | Profile and session management |
 
-The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at` / `--started-at`); see "Fast by-id lookups" above.
+The by-id `show`/`occurrence` commands take their id from a dashboard URL, a notification, or an `exceptions show` occurrence — and **require** the record's timestamp (`--recorded-at`; for `sessions show`, `--started-at` is optional but saves a lookup); see "Fast by-id lookups" above.
 
-Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `sessions` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list`. Metric discovery is available as `metrics discover`.
+Not implemented yet (do not fabricate flags; point the user at the web UI): `list` verbs for `tasks` / `ai-traces` / `traces` (only by-id `show` exists for those), and `metrics list`. Metric discovery is available as `metrics discover`.
 
 ### Recipes
 

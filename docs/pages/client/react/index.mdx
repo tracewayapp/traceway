@@ -2,7 +2,7 @@
 
 Integrate Traceway into your React application with the `@tracewayapp/react` package.
 
-Upgrading from 1.x? See the [migration guide](/client/js-sdk/migration).
+Upgrading from 2.0 or 1.x? See [Upgrading](/client/js-sdk/migration).
 
 ## Installation
 
@@ -12,14 +12,14 @@ npm install @tracewayapp/react
 
 ## Setup
 
-Wrap your application with `TracewayProvider`. It also acts as an error boundary: render-time exceptions thrown anywhere in the tree are captured and reported automatically, then re-thrown so your app behaves exactly as it would without Traceway installed. Session replay is on by default and stays on the device until it is needed: an error uploads a 30-second replay clip and up to 10 minutes of breadcrumbs (console output, requests, navigation, clicks). Set `recordAllSessions: true` to stream whole sessions instead:
+Wrap your application with `TracewayProvider` and give it the project token:
 
 ```jsx
 import { TracewayProvider } from "@tracewayapp/react";
 
 function App() {
   return (
-    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+    <TracewayProvider token={import.meta.env.VITE_TRACEWAY_TOKEN}>
       <YourApp />
     </TracewayProvider>
   );
@@ -28,9 +28,24 @@ function App() {
 export default App;
 ```
 
+```bash
+# .env
+VITE_TRACEWAY_TOKEN=YOUR_TOKEN
+```
+
+The project's **Connection** page in Traceway shows the token. Next.js reads it from `NEXT_PUBLIC_TRACEWAY_TOKEN` (see [Next.js App Router](#nextjs-app-router)). The SDK sends to Traceway Cloud; for a self-hosted server, also pass its address as `baseUrl={import.meta.env.VITE_TRACEWAY_URL}`.
+
+The provider runs `init()` once, which installs the handlers for uncaught errors and unhandled rejections, instruments `console.*`, `fetch` / XHR, the History API and clicks, and starts the replay recorder. It also acts as an error boundary: render-time exceptions thrown anywhere in the tree are captured and re-thrown, so your app behaves exactly as it would without Traceway installed.
+
+A provider that cannot start the SDK, such as a build without its token, does not break the render: the app renders as usual, the SDK stays off, and the console shows one warning that says what is missing.
+
 > **Custom fallback UI?** If you want to replace a crashed subtree with a fallback view instead of letting the error propagate, wrap the relevant section in `TracewayErrorBoundary`. It's still exported for that purpose, but is no longer required for capture.
 
 React StrictMode double-invokes the provider's constructor in development. That is harmless: the second `init()` is a no-op, so there is still one SDK client. See [A note on StrictMode](/client/react/provider#a-note-on-strictmode).
+
+## Session capture
+
+Errors and messages are sent as they happen, and session start and end are reported for every visit. Console output, requests, navigation, clicks and the session replay stay on the device until they are needed: a captured error uploads a 30-second replay clip and up to 10 minutes of those breadcrumbs. [Configure Session Capture](/client/react/session-capture) shows how to hide private content, record whole sessions or journeys, and capture one user from the dashboard.
 
 ## Capture Errors Manually
 
@@ -54,11 +69,15 @@ function MyComponent() {
 }
 ```
 
+Every other function of the browser SDK (`log`, `track`, `recordNavigation`, `startInteraction`, `tracer`, `flush`, …) is exported from `@tracewayapp/react` too; see [Without a Hook](/client/react/hooks#without-a-hook).
+
 ## With Options
+
+Every option of the browser SDK goes in `options`:
 
 ```jsx
 <TracewayProvider
-  connectionString="your-token@https://traceway.example.com/api/report"
+  token={import.meta.env.VITE_TRACEWAY_TOKEN}
   options={{
     debug: true,
     version: "1.0.0",
@@ -67,6 +86,33 @@ function MyComponent() {
   <YourApp />
 </TracewayProvider>
 ```
+
+## Next.js App Router
+
+`@tracewayapp/react` ships with the `"use client"` directive, so `TracewayProvider` goes straight into `app/layout.tsx`, a Server Component, with no wrapper file:
+
+```tsx
+// app/layout.tsx
+import { TracewayProvider } from "@tracewayapp/react";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <TracewayProvider token={process.env.NEXT_PUBLIC_TRACEWAY_TOKEN}>
+          {children}
+        </TracewayProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+During server rendering the provider renders its children and the SDK does not start (there is no `window`), so server-side errors are not reported by it. Server code (route handlers, server actions, a util shared by server and client) imports the plain functions from `@tracewayapp/frontend`, which do nothing on the server. To name pages by their route, render the `TracewayRoute` component from [useTracewayRoute](/client/react/hooks#usetracewayroute) in the same layout. For the server half of the app, see [Next.js](/client/otel/nextjs).
 
 ## Test Your Integration
 
@@ -84,14 +130,24 @@ function TestButton() {
 }
 ```
 
-Click the button and check your Traceway dashboard to verify the error appears.
+Click the button and check your Traceway dashboard to verify the error appears. With `debug: true` in `options`, the browser console shows `Traceway: started (https://cloud.tracewayapp.com/api/otel/v1/logs), session …` when the SDK starts.
 
 ## Distributed Tracing
 
 The SDK records `fetch` and `XMLHttpRequest` calls as OpenTelemetry CLIENT spans and sends the W3C `traceparent` header on same-origin requests, which a backend instrumented with OpenTelemetry picks up with no extra middleware. The browser request and the backend work it caused then show up in one trace. For an API on another origin, list it in the `propagateTraceHeaderCorsUrls` option. See [Distributed Tracing](/client/js-sdk/distributed-tracing).
 
+## Platform Support
+
+| Environment                     | Error Tracking                                          | Session Replay |
+| ------------------------------- | ------------------------------------------------------- | -------------- |
+| React 18+ in any modern browser | Yes                                                     | Yes            |
+| Next.js (App and Pages Router)  | Yes                                                     | Yes            |
+| Vite, Create React App, Remix   | Yes                                                     | Yes            |
+| React Native, Expo              | Use [`@tracewayapp/react-native`](/client/react-native) | No             |
+
 ## Next Steps
 
+- [Configure Session Capture](/client/react/session-capture) - Masks, images, which sessions upload, captures and rules
 - [TracewayProvider](/client/react/provider) - Configuration options
 - [Error Boundary](/client/react/error-boundary) - Custom fallback UI for a subtree
 - [Hooks](/client/react/hooks) - Manual error capture, route names, attributes

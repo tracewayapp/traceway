@@ -2,7 +2,7 @@
 
 Integrate Traceway into your React Native or Expo application with the [`@tracewayapp/react-native`](https://www.npmjs.com/package/@tracewayapp/react-native) package. Plain JavaScript (no native modules, no `pod install`, no Gradle changes) that works in Expo Go, in bare React Native CLI projects, and in EAS builds.
 
-> **Version 2.0.0.** `@tracewayapp/react-native` is versioned together with the browser packages, but it is not the OpenTelemetry browser SDK: its API, options and transport are the same as in 1.x, so upgrading from 1.x needs no code changes. Remote collection settings, performance metrics, `track()` and session replay belong to the [browser SDK](/client/js-sdk) and are not part of this package.
+> **Version 2.1.0.** `@tracewayapp/react-native` is versioned together with the browser packages, but it is not the OpenTelemetry browser SDK: its API, options and transport are the same as in 1.x, so upgrading from 1.x needs no code changes. Remote collection settings, performance metrics, `track()` and session replay belong to the [browser SDK](/client/js-sdk) and are not part of this package.
 
 ## Installation
 
@@ -19,7 +19,7 @@ import { TracewayProvider } from "@tracewayapp/react-native";
 
 export default function App() {
   return (
-    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+    <TracewayProvider connectionString="YOUR_TOKEN@https://cloud.tracewayapp.com/api/report">
       <RootNavigator />
     </TracewayProvider>
   );
@@ -28,7 +28,7 @@ export default function App() {
 
 Copy the connection string from your project's **Connection** page as it is, including the path after the host: this package sends its reports to that exact URL.
 
-That's it. Every uncaught throw, render-time exception, and `fetch` call is captured automatically. If you want to replace a crashed subtree with a custom fallback view, `TracewayErrorBoundary` is still exported in 2.0.0 for that purpose, but it has been deprecated since v1.1.0. Do not build new code around it.
+That's it. Every uncaught throw, render-time exception, and `fetch` call is captured automatically. If you want to replace a crashed subtree with a custom fallback view, `TracewayErrorBoundary` is still exported in 2.1.0 for that purpose, but it has been deprecated since v1.1.0. Do not build new code around it.
 
 > **No screen recording.** Unlike the browser SDK ([`@tracewayapp/frontend`](/client/js-sdk)), this package does not record the screen. The `rrweb` recorder is intentionally absent: nothing in the bundle reaches into a DOM that doesn't exist.
 
@@ -80,7 +80,7 @@ Field names mirror the Android and Flutter SDKs and the 1.x browser SDK, so exis
 
 ```tsx
 <TracewayProvider
-  connectionString="your-token@https://traceway.example.com/api/report"
+  connectionString="YOUR_TOKEN@https://cloud.tracewayapp.com/api/report"
   options={{
     debug: true,
     version: "1.4.0",
@@ -322,7 +322,7 @@ Both paths moved between React Native versions. If yours is not there, search th
 Traceway matches a map to a frame by filename: the frame says `index.android.bundle`, so the uploaded file must be named `index.android.bundle.map`. `curl -F` sends the basename of the local path, so keep the filename as the build produced it.
 
 ```bash
-export TRACEWAY_URL="https://traceway.example.com"
+export TRACEWAY_URL="https://cloud.tracewayapp.com"
 export TRACEWAY_SOURCEMAP_TOKEN="your-upload-token"
 
 curl --fail -X POST "$TRACEWAY_URL/api/sourcemaps/upload" \

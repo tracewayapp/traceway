@@ -49,6 +49,7 @@ var specs = []Spec{
 	{Op: "endpoints.slow", CLI: []string{"endpoints", "slow"}, MCP: "get_slow_endpoint_config", Positional: []string{"endpoint"}},
 	{Op: "tasks.show", CLI: []string{"tasks", "show"}, MCP: "get_task", Positional: []string{"id"}},
 	{Op: "ai_traces.show", CLI: []string{"ai-traces", "show"}, MCP: "get_ai_trace", Positional: []string{"id"}},
+	{Op: "sessions.list", CLI: []string{"sessions", "list"}, MCP: "list_sessions"},
 	{Op: "sessions.show", CLI: []string{"sessions", "show"}, MCP: "get_session", Positional: []string{"id"}},
 	{Op: "traces.show", CLI: []string{"traces", "show"}, MCP: "get_trace", Positional: []string{"id"}},
 	{Op: "metrics.query", CLI: []string{"metrics", "query"}, MCP: "query_metrics", Rename: map[string]string{"tag": "tag_filters"}},

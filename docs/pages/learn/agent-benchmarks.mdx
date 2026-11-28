@@ -39,7 +39,7 @@ This page explains how we measure. The results live on [AI SRE BENCH](https://tr
 
 Every run is a fresh, isolated Traceway instance with one broken system in it:
 
-1. **A hermetic backend.** The harness starts the standalone backend in SQLite mode, registers an organization, and seeds it through the real ingest endpoints (OTLP and `/api/report`): weeks of traces, metrics, logs, issues, deploys and dashboard objects, ending at a fixed "now".
+1. **A hermetic backend.** The harness starts the standalone backend in SQLite mode, registers an organization, and seeds it through the real ingest endpoints: weeks of traces, metrics, logs, issues, deploys and dashboard objects, ending at a fixed "now".
 2. **One defect, one distractor.** The seed breaks the system in exactly one way (an N+1 query, pool exhaustion, a noisy neighbor, a cache stampede, GC pauses, a missing index, ...) and plants one named distractor that looks like a plausible cause but isn't.
 3. **A prompt like a real one.** The agent gets the kind of message a person would send: "checkout got slow this week, find out why", a pasted alert, a dashboard URL, or a request to archive the errors from last week's incident.
 4. **Real tools only.** The agent works through real `traceway` commands in a sandboxed shell, or through the MCP server's tools. Nothing else knows the answer.
@@ -53,7 +53,7 @@ Every run is a fresh, isolated Traceway instance with one broken system in it:
 | perf | 35 | Diagnosing latency: every row of the skill's bottleneck checklist, plus controls (a healthy endpoint, an endpoint inside its slow allowance, one past it, an onset outside the chart's top 5, an alert hand-off, the metric "p95" trap) and cross-surface cases where browser, Android and iOS crashes have a backend cause |
 | debug | 14 | Debugging an issue to its root cause and fixing the code, in Go, Python, Node, Android, iOS and Flutter. Hidden tests check the fix |
 | write | 13 | The write playbooks (pages, alerts, monitors, archiving, post-mortems including a concurrent-edit conflict, slow marks) and the 403 policy (agent access off, a read-only token, a read-only member) |
-| setup | 6 | Instrumenting an app with the setup skill until its telemetry arrives: Go net/http, Express, FastAPI, Next.js, a React SPA and a Go + React monorepo |
+| setup | 9 | Instrumenting an app with the setup skill. Go net/http, Express, FastAPI, Next.js, a React SPA and a Go + React monorepo run until their telemetry arrives. Flutter, Android and iOS apps are graded on their files |
 
 ## The test cases
 
@@ -144,7 +144,11 @@ Each write case asks the agent to change something in Traceway, or to refuse whe
 
 ### Setup
 
-Each setup case hands the agent an uninstrumented app in a container. It passes when the app builds, starts and its telemetry arrives in Traceway.
+Each setup case hands the agent an uninstrumented app in a container. A backend case passes when the app builds, starts and its telemetry arrives in Traceway. A browser case passes when its production build carries the SDK wired to the project: the installed SDK is 2.1 or later, it starts with a token (and, for a self-hosted server, a base URL) read from the build's environment variables, and the bundle has debug IDs and source maps.
+
+The container has no Flutter, JDK, Android SDK or Swift toolchain, so the Flutter, Android and iOS cases cannot build the app. They pass on their files: the SDK at 2.1.0 or later, the start call with the token and server URL from the platform's build configuration, screen naming or the app class the platform needs, the CI build wired to the same secrets, and no token in a file git would commit.
+
+In the browser and mobile cases, a start with a 2.0 connection string fails, with a note that it still works but is deprecated.
 
 | Case | What the agent gets |
 |---|---|
@@ -154,6 +158,9 @@ Each setup case hands the agent an uninstrumented app in a container. It passes 
 | `setup-node-express` | Instrument an ES-module Express API until its routes show up in Traceway |
 | `setup-python-fastapi` | Instrument a FastAPI service run by uvicorn until its routes show up in Traceway |
 | `setup-react-browser` | Add the Traceway browser SDK to a React + Vite SPA, with debug IDs and source map upload in CI |
+| `setup-flutter` | Add the Flutter SDK with video replay (the `traceway_video` add-on) and screen names to a Flutter app, with the token passed to both store builds. Files only |
+| `setup-android` | Add the Android SDK and its Gradle plugin to a minified Kotlin app with `minSdk` 24, so release crashes arrive readable. Files only |
+| `setup-ios` | Add the iOS SDK to a SwiftUI app's Xcode project, with the token from a gitignored `.xcconfig` and the saved card on the checkout screen hidden from replays. Files only |
 
 ## Setups
 
@@ -165,7 +172,7 @@ Each case runs on several setups, so the skill and the two surfaces can be compa
 | `cli-noskill` | The CLI and nothing else: the control group for skill uplift |
 | `mcp` | The MCP server's tools and knowledge |
 | `cli-write+skill`, `mcp-write` | The write edition of the CLI with the `traceway-write` skill, or the `/mcp/write` server |
-| `cli+setup-skill` | The setup skill and a container shell with the app's toolchain |
+| `cli+setup-skill` | The setup skill and a container shell with Go, Node.js and Python (no Flutter, JDK, Android SDK or Swift) |
 
 **Skill uplift** is the `cli+skill` pass rate minus `cli-noskill`, on the same cases, computed per suite (perf and debug both have the control arm). **CLI vs MCP** is `cli+skill` minus `mcp`, and `cli-write+skill` minus `mcp-write` for the write arms.
 
@@ -179,7 +186,7 @@ Each case runs on several setups, so the skill and the two surfaces can be compa
 | `report` | yes | Statements the report must make, such as naming the figure that decides the case |
 | `state` | yes | After a write or setup run, the backend and the workspace are exactly as expected: the right two issues archived, not three |
 | `hidden_tests` | per case | Debug fixes: hidden tests copied in after the run pass, and the diff touches the culprit |
-| `setup_verify` | yes | The instrumented app builds, starts against the backend and serves traffic |
+| `setup_verify` | yes | The instrumented app builds, starts against the backend and serves traffic. The Flutter, Android and iOS cases have no such step |
 | `efficiency` | no | Call counts, failed calls and repeated calls, reported in their own table |
 | `judge` | no | Claude Haiku 5.5 scores the report from 0 to 1 against the case's rubric. It does not gate until it agrees with human labels on at least 85% of runs |
 
@@ -212,7 +219,8 @@ Evals cost real money, so nothing runs them automatically:
 
 | Missing | Size | Why |
 |---|---|---|
-| The setup suite | 6 cases, 6 runs per model | Needs a Linux Docker host. The setup container runs on the host network and reaches the run's backend at `127.0.0.1`, which a Docker VM on macOS (Colima, Docker Desktop) does not share with the host. The debug suite's hidden tests only need a container with no network, so they run on macOS too |
+| The setup suite | 9 cases, 9 runs per model | Needs a Linux Docker host. The setup container runs on the host network and reaches the run's backend at `127.0.0.1`, which a Docker VM on macOS (Colima, Docker Desktop) does not share with the host. The debug suite's hidden tests only need a container with no network, so they run on macOS too |
+| Mobile apps that run | the Flutter, Android and iOS setup cases | They check the files the agent wrote. Nothing builds the app or sees its telemetry arrive |
 | GPT-6 Astra | every suite | It is configured in `models.yaml` but has never run |
 | Repeats | every case | Each case ran once per setup, so there is no variance estimate yet |
 | Workflow baselines | every suite | The published runs were made locally, not by the CLI Evals workflow |

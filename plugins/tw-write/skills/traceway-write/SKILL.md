@@ -1,6 +1,6 @@
 ---
 name: traceway-write
-description: 'Configure Traceway alerting, SLOs, on-call routing, personal notifications, dashboards and browser collection, issue shared dashboard links and embed dashboards in another application, or perform incident actions through the write CLI or MCP server. Use when the user asks to change Traceway configuration or operational state, or to share or embed a dashboard. Requires a write credential and organization Agent Access.'
+description: 'Configure Traceway alerting, SLOs, on-call routing, personal notifications, dashboards and browser and mobile SDK collection, issue shared dashboard links and embed dashboards in another application, or perform incident actions through the write CLI or MCP server. Use when the user asks to change Traceway configuration or operational state, or to share or embed a dashboard. Requires a write credential and organization Agent Access.'
 ---
 <!-- GENERATED FILE: assembled from cli/pkg/mcpserver/knowledge by cli/tools/skillgen. Edit the chunks there and run just gen-skills in cli/. -->
 
@@ -19,7 +19,7 @@ Use the connected write MCP server when available, otherwise `traceway-write`. E
 | Dashboards | [dashboard-building.md](dashboard-building.md) | Discover recorded metrics and build useful charts from instrumentation |
 | Sharing and embedding | [dashboard-embedding.md](dashboard-embedding.md) | Issue an expiring read-only dashboard link, and add an embedded dashboard to the user's own application |
 | RUM | [rum.md](rum.md) | Browser metrics, release alerts, frontend SLO semantics and dashboard-only capabilities |
-| Browser and Flutter collection | [sdk-configuration.md](sdk-configuration.md) | OpAMP rules, sampling, sessions, replay, and recording triggers (widget selectors and route names in Flutter) |
+| Browser and mobile collection | [sdk-configuration.md](sdk-configuration.md) | OpAMP rules, sampling, sessions, replay, and recording triggers (CSS selectors in a browser; widget, view and Compose selectors and screen names in Flutter, Android and iOS) |
 
 ## How the concepts interact
 
@@ -43,6 +43,6 @@ Read the relevant resource before configuring an area:
 - `traceway://knowledge/incident-actions`: pages, issues, monitor runs, post-mortems and expected latency.
 - `traceway://knowledge/dashboard-building`: dashboard charts and instrumentation discovery.
 - `traceway://knowledge/dashboard-embedding`: shared dashboard links and embedding a dashboard in the user's own application.
-- `traceway://knowledge/sdk-configuration`: browser and Flutter collection, replay, OpAMP rules, and recording triggers (CSS selectors in a browser, widget selectors and route names in Flutter).
+- `traceway://knowledge/sdk-configuration`: browser, Flutter, iOS and Android collection, replay, OpAMP rules, and recording triggers (CSS selectors in a browser, widget, view and Compose selectors and screen names in the apps).
 
 For product behavior and tradeoffs use `traceway://knowledge/learn/alerts`, `traceway://knowledge/learn/on-call` and the other learn resources.

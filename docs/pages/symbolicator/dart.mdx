@@ -44,11 +44,11 @@ The [`traceway`](https://pub.dev/packages/traceway) package ships an uploader th
 
 ```yaml
 traceway:
-  url: https://your-traceway-host   # omit on Traceway Cloud
+  url: https://traceway.mycompany.com   # only for a self-hosted server; Traceway Cloud by default
   # upload_token: ...               # prefer the env var, especially in CI
 ```
 
-The upload token is your project's **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your `Traceway.run()` connection string.
+The upload token is your project's **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the project token you pass to `Traceway.run(token: …)`.
 
 **Per release.** Build with the symbol flags, then run the uploader:
 

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -44,6 +45,7 @@ type timelineAction struct {
 	Action     string         `json:"action,omitempty"`
 	From       string         `json:"from,omitempty"`
 	To         string         `json:"to,omitempty"`
+	Route      string         `json:"route,omitempty"`
 	Category   string         `json:"category,omitempty"`
 	Name       string         `json:"name,omitempty"`
 	Data       map[string]any `json:"data,omitempty"`
@@ -67,6 +69,24 @@ var timelineSkippedEvents = func() map[string]bool {
 var timelineContextKeys = map[string]bool{
 	"session.id": true, "event.name": true, "url": true, "path": true, "referrer": true, "userAgent": true,
 	"language": true, "platform": true, "viewport": true, "screen": true, "timezone": true,
+	// Earlier 2.x app SDK builds stamped the session's start on every record.
+	"traceway.session.started_at": true,
+	// The app SDKs stamp every record with the dashboard captures running while it was made.
+	"traceway.capture.ids": true,
+	// Where the app or page was; the navigation rows show it.
+	"app.screen.name": true, "app.screen.route": true, "app.screen.previous": true, "app.screen.duration_ms": true,
+}
+
+// clickDataKeys maps the data of a click row to the record attributes it comes from. The app SDKs (Flutter, iOS,
+// Android) report a tap as a click and add what the tapped control shows and the screen it was on, so the row can
+// read "Tap MaterialButton#pay “Pay now” on /Checkout" instead of a bare selector.
+var clickDataKeys = map[string]string{
+	"selector": "browser.css_selector",
+	"tag":      "browser.tag_name",
+	"id":       "app.widget.id",
+	"text":     "app.widget.text",
+	"label":    "app.widget.label",
+	"screen":   "app.screen.name",
 }
 
 // Timeline answers the breadcrumbs of a browser session in a time window: its console lines, navigation, clicks
@@ -168,18 +188,23 @@ func BuildSessionTimeline(records []models.LogRecord, spans []shared.SessionSpan
 		case "", "browser.console":
 			timeline.Logs = append(timeline.Logs, timelineLog{Type: "log", Timestamp: record.Timestamp, Level: timelineLevel(record.SeverityNumber), Message: record.Body})
 		case "exception":
-			message := strings.TrimSpace(attrs["exception.type"] + ": " + attrs["exception.message"])
-			timeline.Logs = append(timeline.Logs, timelineLog{Type: "log", Timestamp: record.Timestamp, Level: "error", Message: strings.TrimPrefix(message, ": ")})
+			timeline.Logs = append(timeline.Logs, timelineLog{Type: "log", Timestamp: record.Timestamp, Level: "error", Message: exceptionTimelineMessage(attrs)})
 		case "traceway.message":
 			timeline.Logs = append(timeline.Logs, timelineLog{Type: "log", Timestamp: record.Timestamp, Level: "info", Message: record.Body})
 		case "browser.navigation":
 			action := navigationAction(attrs)
 			to := attrs["url.full"]
-			timeline.Actions = append(timeline.Actions, timelineAction{Type: "navigation", Timestamp: record.Timestamp, Action: action, From: lastURL, To: to})
+			from := lastURL
+			if from == "" {
+				// The first navigation of the window: the SDKs name the screen it left.
+				from = attrs["navigation.from"]
+			}
+			timeline.Actions = append(timeline.Actions, timelineAction{Type: "navigation", Timestamp: record.Timestamp, Action: action, From: from, To: to,
+				Route: attrs["app.screen.route"]})
 			lastURL = to
 		case "browser.user_action.click":
 			data := map[string]any{}
-			for key, attr := range map[string]string{"selector": "browser.css_selector", "tag": "browser.tag_name"} {
+			for key, attr := range clickDataKeys {
 				if v := attrs[attr]; v != "" {
 					data[key] = v
 				}
@@ -193,10 +218,11 @@ func BuildSessionTimeline(records []models.LogRecord, spans []shared.SessionSpan
 			timeline.Actions = append(timeline.Actions, timelineAction{Type: "custom", Timestamp: record.Timestamp,
 				Category: attrs["traceway.action.category"], Name: attrs["traceway.action.name"], Data: data})
 		default:
+			// The first 20 of the event's own attributes by name, so a wide event reads the same on every load.
 			data := map[string]any{}
-			for key, value := range attrs {
+			for _, key := range slices.Sorted(maps.Keys(attrs)) {
 				if !timelineContextKeys[key] && len(data) < 20 {
-					data[key] = value
+					data[key] = attrs[key]
 				}
 			}
 			timeline.Actions = append(timeline.Actions, timelineAction{Type: "custom", Timestamp: record.Timestamp, Category: "event", Name: event, Data: data})
@@ -228,6 +254,22 @@ func BuildSessionTimeline(records []models.LogRecord, spans []shared.SessionSpan
 	}
 	slices.SortStableFunc(timeline.Actions, func(a, b timelineAction) int { return a.Timestamp.Compare(b.Timestamp) })
 	return timeline
+}
+
+// exceptionTimelineMessage is an exception's line on the timeline: its type and message, and for a hang the process
+// did not survive (reported on the next launch) that it was fatal.
+func exceptionTimelineMessage(attrs map[string]string) string {
+	parts := make([]string, 0, 2)
+	for _, part := range []string{attrs["exception.type"], attrs["exception.message"]} {
+		if part = strings.TrimSpace(part); part != "" {
+			parts = append(parts, part)
+		}
+	}
+	message := strings.Join(parts, ": ")
+	if attrs["app.hang.fatal"] == "true" {
+		message += " (fatal, the app was terminated)"
+	}
+	return message
 }
 
 // navigationAction names a navigation the way the replay player does. The instrumentation only sets

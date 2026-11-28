@@ -1,22 +1,18 @@
 # JS SDK Overview
 
-import BrowserSdkV1 from "../../../components/BrowserSdkV1";
-
-<BrowserSdkV1 href="/client/js-sdk/v1" />
-
-This reference covers the 2.x browser SDK and its framework wrappers. It uses OpenTelemetry and supports [remote collection settings](/learn/remote-config). Version 2.0.2 is the current release on npm, so a plain `npm install` gets it. Coming from 1.x? Follow [Migrating from 1.x to 2.x](/client/js-sdk/migration).
+This reference covers version 2.1.0 of the browser SDK and its framework wrappers. The SDK is built on OpenTelemetry and takes [remote collection settings](/learn/remote-config). Upgrading from 2.0 or 1.x? See [Upgrading](/client/js-sdk/migration).
 
 The Traceway JavaScript SDK is the browser side of [Real User Monitoring](/learn/rum). It captures exceptions and messages, measures web vitals, route changes and requests as [performance metrics](/learn/client-metrics), reports sessions, and keeps breadcrumbs and session replay on the device until an error, a trigger or a capture asks for them.
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `@tracewayapp/frontend` | Core browser SDK (framework-agnostic) |
-| `@tracewayapp/react` | React bindings with Provider, Error Boundary, and hooks |
-| `@tracewayapp/vue` | Vue 3 plugin and composables |
-| `@tracewayapp/svelte` | Svelte context-based integration |
-| `@tracewayapp/jquery` | jQuery integration with automatic AJAX error capture |
+| Package                 | Description                                             |
+| ----------------------- | ------------------------------------------------------- |
+| `@tracewayapp/frontend` | Core browser SDK (framework-agnostic)                   |
+| `@tracewayapp/react`    | React bindings with Provider, Error Boundary, and hooks |
+| `@tracewayapp/vue`      | Vue 3 plugin and composables                            |
+| `@tracewayapp/svelte`   | Svelte context-based integration                        |
+| `@tracewayapp/jquery`   | jQuery integration with automatic AJAX error capture    |
 
 ## Installation
 
@@ -41,7 +37,7 @@ The frontend and jQuery packages are also available as standalone scripts (no bu
 <!-- Framework-agnostic (exposes window.Traceway) -->
 <script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@2/dist/traceway.iife.global.js"></script>
 <script>
-  Traceway.init("your-token@https://traceway.example.com/api/report");
+  Traceway.init({ token: "YOUR_TOKEN" });
 </script>
 ```
 
@@ -50,24 +46,38 @@ The frontend and jQuery packages are also available as standalone scripts (no bu
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@2/dist/traceway-jquery.iife.global.js"></script>
 <script>
-  TracewayJQuery.init("your-token@https://traceway.example.com/api/report");
+  TracewayJQuery.init({ token: "YOUR_TOKEN" });
 </script>
 ```
 
-## Connection String Format
+## Token and server
 
-All Traceway SDKs use a connection string to identify your project and endpoint:
+The SDK needs one value, the project token. The project's **Connection** page in Traceway shows it in a start snippet ready to copy. The SDK sends to Traceway Cloud (`https://cloud.tracewayapp.com`); for a self-hosted Traceway server, pass the server's address as `baseUrl`:
 
-```
-<project_token>@<server_url>/api/report
+```javascript
+import { init } from "@tracewayapp/frontend";
+
+init({
+  token: import.meta.env.VITE_TRACEWAY_TOKEN,
+  baseUrl: import.meta.env.VITE_TRACEWAY_URL, // only for a self-hosted server
+});
 ```
 
-Example:
-```
-abc123def456@https://traceway.example.com/api/report
+Keep the token in an environment variable with your build tool's public prefix, and the server address next to it only when it is self-hosted:
+
+- **Vite** (React, Vue, Svelte, jQuery): `VITE_TRACEWAY_TOKEN` and `VITE_TRACEWAY_URL`, read as `import.meta.env.VITE_TRACEWAY_TOKEN`.
+- **Next.js**: `NEXT_PUBLIC_TRACEWAY_TOKEN` and `NEXT_PUBLIC_TRACEWAY_URL`, read as `process.env.NEXT_PUBLIC_TRACEWAY_TOKEN`.
+- **SvelteKit**: `PUBLIC_TRACEWAY_TOKEN` and `PUBLIC_TRACEWAY_URL`, imported from `$env/static/public`.
+- **Nuxt**: `NUXT_PUBLIC_TRACEWAY_TOKEN`, read as `useRuntimeConfig().public.tracewayToken` (see [Nuxt Integration](/client/vue/plugin#nuxt-integration)).
+
+```bash
+# .env
+VITE_TRACEWAY_TOKEN=YOUR_TOKEN
 ```
 
-You can find your connection string on the project’s **Connection** page.
+`init()` never throws. When it gets options it cannot use, such as a preview build whose environment variable is not set, it logs one `console.warn` and the SDK stays off; every other function does nothing until a later `init()` succeeds. Where there is no `window` (server-side rendering), `init()` does nothing.
+
+2.0 started with a connection string, which still works with a deprecation warning: see [Upgrading from 2.0](/client/js-sdk/migration#upgrading-from-20).
 
 ## When to Use
 
@@ -85,8 +95,8 @@ For React, Vue, or Svelte applications, use the framework-specific packages for 
 ```javascript
 import { init, captureException, captureMessage } from "@tracewayapp/frontend";
 
-// Initialize once at app startup
-init("your-token@https://traceway.example.com/api/report");
+// Initialize once at app startup; a second call is ignored until shutdown()
+init({ token: import.meta.env.VITE_TRACEWAY_TOKEN });
 
 // Capture errors
 try {
@@ -99,13 +109,115 @@ try {
 captureMessage("User completed checkout");
 ```
 
+## Logs
+
+`log(message, level?, attributes?)` records a log line of your own. The level is a `TracewayLogLevel`: `"trace"`, `"debug"`, `"info"` (the default), `"warn"`, `"error"` or `"fatal"`; an unknown level counts as `"info"`. Attribute values are strings, numbers or booleans.
+
+```javascript
+import { log } from "@tracewayapp/frontend";
+
+log("cart synced", "debug", { items: 3 });
+log("payment provider slow", "warn", { provider: "stripe" });
+```
+
+A `log()` line is handled like a `console.*` line. It belongs to the console signal, so it is kept on the device by default and uploaded with an error, the console `minSeverity` applies (default `info`: the `debug` line above is dropped), remote rules can stream it or switch it off, and `captureLogs: false` turns it off. On the wire it is an OpenTelemetry log record without an event name: the body is the message, the severity number and text come from the level (trace 1 `TRACE`, debug 5 `DEBUG`, info 9 `INFO`, warn 13 `WARN`, error 17 `ERROR`, fatal 21 `FATAL`), and the attributes are the global ones, then yours, then `log.source = "api"`. Use [`captureMessage`](/client/js-sdk/messages) for a line that should open an issue.
+
+## Screens and navigation
+
+Exceptions, messages, log lines (`console.*` and `log()`) and actions (`recordAction` and clicks) say where the page was, with the keys the Android and iOS SDKs use:
+
+| Attribute                | Value                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `app.screen.name`        | The screen's route template (`setRoute`, the app's router, or `recordNavigation`'s `route`), else its path (`/orders/42`) |
+| `app.screen.route`       | The route template, when one is known                                                                                     |
+| `app.screen.previous`    | The name of the screen before                                                                                             |
+| `app.screen.duration_ms` | How long the screen had been shown                                                                                        |
+| `viewport`               | The window's size in CSS pixels, `1280x720`                                                                               |
+
+A screen is a path of the address: `history.pushState`, back and forward to another path start a new one, a change of the query or the hash does not. Navigation records carry `app.screen.name` and `app.screen.route` of the screen they arrive at. Attributes you pass yourself win over these.
+
+For navigation the address does not show (a memory or hash router, a modal, the step of a wizard), report it:
+
+```javascript
+import { recordNavigation } from "@tracewayapp/frontend";
+
+recordNavigation("/orders/42", "push", "/orders", "/orders/:id"); // path, action, from, route
+```
+
+`recordNavigation(path, action = "push", from?, route?)` records a navigation with the same attributes as the mobile SDKs (`url.full`, `navigation.action`, `browser.navigation.type`, `navigation.to`, `navigation.from`, `app.screen.name`, `app.screen.route`), and the screen it reports is the one later records carry until the address changes. A `route` also names the page for metrics, like `setRoute`. Every arrival starts a new page view of the [performance metrics](/learn/client-metrics); a `"replace"` of the same path does not, and `"remove"` is not an arrival: the record has no `navigation.to` and the screen stays as it was. A report that names the view the SDK has just opened from the address renames that view instead of starting a second one. That is the first report within a second of the view's start, when its path is the view's own path (a `history.pushState` to it just before), or when the view is the page load's and the address has not changed since: a hash or memory router naming its landing screen, so each load is one page view, filed under the reported route. Any other report closes the current view and starts a new one, so a real change of address in the first second still counts both pages.
+
+### Route names
+
+Metrics are grouped by page, and a page is named by its route template (`/orders/:id`), so two orders are one series; the same template names the screen on exceptions, log lines and actions. The SDK takes the template from the app's router wherever it can read the router from the page, and a name set with `setRoute` wins over it:
+
+| Router                                        | What names the route                                                                                             |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| React Router in framework mode, Remix         | Nothing to do: the SDK reads the router from the page                                                            |
+| TanStack Router                               | Nothing to do                                                                                                    |
+| Next.js Pages Router                          | Nothing to do                                                                                                    |
+| Vue Router, Nuxt                              | Nothing to do                                                                                                    |
+| React Router `createBrowserRouter`            | `trackRouter(router)`, or `<TracewayProvider router={router}>`                                                   |
+| React Router `<BrowserRouter>` and `<Routes>` | `useTracewayRoute(useLocation().pathname, useParams())` in a layout route                                        |
+| Next.js App Router                            | `useTracewayRoute(usePathname(), useParams())` in a client component of the root layout                          |
+| SvelteKit                                     | `trackRoute(page.route.id)` in an `$effect` of the root layout                                                   |
+| Anything else                                 | `setRoute("/orders/:id")`, or nothing: id-like path segments are replaced (`/orders/8841` becomes `/orders/:id`) |
+
+`trackRouter(router)` takes a React Router data router, a TanStack Router, a Vue Router or the Next.js Pages Router and may be called before `init()`. `routeFromParams(pathname, params)` rebuilds a template from a path and the params a router matched in it. `detectRoutes: false` in `init()` stops the SDK from reading routers.
+
 ## Features
 
 - **Automatic batching**: Logs and spans go out in OTLP batches, by default about a second apart (`exportDelayMs`)
 - **Automatic retry**: Batches that fail with a retryable status (such as 429 or 503) are retried with backoff; with `buffer.persist` they also survive page loads (see [Flush & Lifecycle](/client/js-sdk/flush))
-- **Stack trace capture**: Full stack traces are captured for exceptions
+- **Stack trace capture**: Full stack traces are captured for exceptions, with the screen the page showed
 - **Custom attributes**: Attach metadata to exceptions for better debugging
-- **Distributed tracing**: Records `fetch` and `XMLHttpRequest` calls as spans and sends the W3C `traceparent` header, so a browser request and the backend work it caused share one trace. This covers `$.ajax()` and browser Axios with no extra setup (see [Distributed Tracing](/client/js-sdk/distributed-tracing))
-- **Performance metrics**: web vitals, route changes and requests are aggregated on the device and sent as histograms. A poor LCP, INP or CLS names the element behind it, and from releases after 2.0.2 a slow interaction also reports which part took the time (see [Performance Metrics](/learn/client-metrics) and [stable element names](/learn/rum-best-practices#10-give-the-controls-people-use-a-stable-name))
-- **Session replay and breadcrumbs**: kept on the device and uploaded with an error, a trigger or a capture (see [Session Replay](/client/js-sdk/session-replay))
+- **Distributed tracing**: Records `fetch` and `XMLHttpRequest` calls as spans and sends the W3C `traceparent` header, so a browser request and the backend work it caused share one trace. This covers `$.ajax()` and browser Axios with no extra setup. `startInteraction` ties the steps of one user action together, and `tracer()` gives you the SDK's OpenTelemetry tracer for spans of your own (see [Distributed Tracing](/client/js-sdk/distributed-tracing))
+- **Performance metrics**: web vitals, route changes and requests are aggregated on the device and sent as histograms. A poor LCP, INP or CLS names the element behind it, and a slow interaction also reports which part took the time (see [Performance Metrics](/learn/client-metrics) and [stable element names](/learn/rum-best-practices#10-give-the-controls-people-use-a-stable-name))
+- **Session replay and breadcrumbs**: kept on the device and uploaded with an error, a trigger or a capture. Input values are masked by default, `class="traceway-mask"` and `class="traceway-blank"` hide other parts of the page, and `replay.images` decides what the replay shows of pictures (see [Configure Session Capture](/client/js-sdk/session-capture))
 - **Remote collection settings**: change what browsers send from the **Data Collection** page, without a release (see [Remote SDK Config](/learn/remote-config))
+
+## The SDK never breaks the page
+
+Nothing the SDK does may break the page. A failure of its own code, in a public function, an event listener, a timer, a `console.*` or `fetch` wrapper or the replay recorder, is contained, and the page's own call goes on as it would without the SDK (`debug: true` logs the failure). A call before `init()`, after `shutdown()` or with an argument the SDK cannot use does nothing. The page's own uncaught errors and rejections reach the page's handlers unchanged. `console.*` arguments are written without running the page's getters or `toJSON`, at most six levels deep and a thousand values per call.
+
+## API
+
+The functions `@tracewayapp/frontend` exports:
+
+| Function                                             | Description                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `init(options)`                                      | Start the SDK: `init({ token: "YOUR_TOKEN" })`, with `baseUrl` for a self-hosted server and every other option next to them. A second call is a no-op until `shutdown()`. It never throws. Without a `token`, `telemetry` is the only destination. See [Initialization](/client/js-sdk/initialization)                                     |
+| `captureException(error, attributes?)`               | Capture an error, optionally with string attributes. See [Exceptions](/client/js-sdk/exceptions)                                                                                                                                                                                                                                           |
+| `captureExceptionWithAttributes(error, attributes?)` | Same as `captureException`                                                                                                                                                                                                                                                                                                                 |
+| `captureMessage(message, attributes?)`               | Capture a message issue. See [Messages](/client/js-sdk/messages)                                                                                                                                                                                                                                                                           |
+| `log(message, level?, attributes?)`                  | Record a log line; `level` is `"trace"`, `"debug"`, `"info"` (default), `"warn"`, `"error"` or `"fatal"`. See [Logs](#logs)                                                                                                                                                                                                                |
+| `recordAction(category, name, data?)`                | Record a breadcrumb triggers can match                                                                                                                                                                                                                                                                                                     |
+| `track(eventName, attributes?)`                      | Record a named app event triggers can match                                                                                                                                                                                                                                                                                                |
+| `metric(name, value, dims?)`                         | Record one observation of a custom distribution; at most two dimensions                                                                                                                                                                                                                                                                    |
+| `count(name, n?, dims?)`                             | Add to a custom counter                                                                                                                                                                                                                                                                                                                    |
+| `setRoute(template)`                                 | Name the page by its route template, e.g. `/orders/:id`, for metrics and the screen keys; `null` goes back to the router's name or the normalized path                                                                                                                                                                                     |
+| `recordNavigation(path, action?, from?, route?)`     | Record a navigation the address does not show; `action` defaults to `"push"`. See [Screens and navigation](#screens-and-navigation)                                                                                                                                                                                                        |
+| `tracer()`                                           | The SDK's OpenTelemetry tracer for spans of your own, or `undefined` before `init()`. See [Distributed Tracing](/client/js-sdk/distributed-tracing#spans-of-your-own)                                                                                                                                                                      |
+| `trackRouter(router)`                                | Name every page from this router's route templates. See [Route names](#route-names)                                                                                                                                                                                                                                                        |
+| `routeFromParams(pathname, params)`                  | Rebuild a route template from a path and the params a router matched in it                                                                                                                                                                                                                                                                 |
+| `setMetricDimension(key, value)`                     | Set a dimension of your own on every performance metric from now on; `null` removes it                                                                                                                                                                                                                                                     |
+| `startInteraction(name, attributes?)`                | Start a span for one user action; returns a `TracewayInteraction` (`{ traceId, spanId, isEnded, run, bind, setAttribute, captureException, end(failed?) }`). Before `init()` it only runs the work, with `traceId` and `spanId` null. See [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
+| `setAttribute(key, value)` / `setAttributes(map)`    | Attach attributes to every later exception and message and to the session; also used to target remote rules                                                                                                                                                                                                                                |
+| `removeAttribute(key)` / `clearAttributes()`         | Drop global attributes                                                                                                                                                                                                                                                                                                                     |
+| `refreshConfig()`                                    | Fetch remote settings now, e.g. right after login                                                                                                                                                                                                                                                                                          |
+| `flush(timeoutMs?)`                                  | Send what is queued, including pending metrics; buffered telemetry stays on the device. See [Flush & Lifecycle](/client/js-sdk/flush)                                                                                                                                                                                                      |
+| `shutdown()`                                         | Flush, remove all instrumentation and stop recording; `init()` may be called again afterwards                                                                                                                                                                                                                                              |
+| `getInstanceId()`                                    | This browser profile's id (`service.instance.id`), which the dashboard can capture                                                                                                                                                                                                                                                         |
+| `currentSessionId()`                                 | The current session's id (`session.id`), or `null` before `init()` and between sessions                                                                                                                                                                                                                                                    |
+| `getClient()`                                        | The running `TracewayFrontendClient`, or `null` before `init()` and on the server                                                                                                                                                                                                                                                          |
+
+Also exported: `DEFAULT_IGNORE_PATTERNS`, `SDK_VERSION`, the `TracewayFrontendClient` class, and the types `TracewayFrontendOptions`, `StandaloneOptions` (deprecated), `TelemetryOptions`, `TelemetryEndpoint`, `TracewayCapturedError` (`CapturedException` is its deprecated alias), `TracewayInteraction`, `TracewayLogLevel`, `ErrorLimits`, `CollectionLimits`, `TracewayImagePolicy`, `CollectionSettings`, `Settings`, `Trigger`, `TriggerAction`, `Capture`, `Mode`, `SignalName`, `RouteParams`, and the event types `TracewayEvent`, `LogEvent`, `NetworkEvent`, `NavigationEvent` and `CustomEvent`.
+
+## Platform differences
+
+The browser SDK and the Traceway app SDKs ([Flutter](/client/flutter), [Android](/client/android), [iOS](/client/ios)) use the same names and send the same records. What differs:
+
+- **Only in the browser**: replay is an rrweb recording of the page's DOM, where the apps record wireframes of their views (Flutter can also record video). Masks are classes in the markup (`traceway-mask`, `traceway-blank`, rrweb's `rr-*`), not a mask API with `TracewayMaskMode`. Navigation is recorded from the History API and route templates are read from the app's router (`trackRouter`, `routeFromParams`); `recordNavigation` is for navigation the address does not show. `console.*` is captured automatically. Web vital, resource timing, long task and route change timing events, `captureHttpServerErrors` and `bind` on an interaction exist only here.
+- **Only in the apps**: process-ending crash capture with native symbolication, `reportFullyDisplayed()` and the `app.*` performance metrics (app start, slow and frozen frames, hangs), the mask API (`TracewayMask`, `View.tracewayMask`, `UIView.tracewayMask`, `.tracewayMask(_:)`) with its blur and blank modes, and the frame options (`fps`, `maxBufferFrames`).
+- **Same feature, browser idiom**: the start call is `init({ token, baseUrl })` (Flutter `Traceway.run`, Android `Traceway.init`, iOS `Traceway.initialize`, with the same `token` and `baseUrl`). The switch that allows replay is `sessionRecording`, on by default, where the apps have `screenCapture`, off by default: a browser app records replay unless it sets `sessionRecording: false`. The apps' `sampleRate` and `persistToDisk` options are collection settings here: `collection.signals.errors.sampleRate`, `collection.signals.messages.sampleRate` and `collection.buffer.persist`. `beforeCapture` gets a `TracewayCapturedError` whose stack is `stack` (the apps: `stackTrace`). `getInstanceId()` and `currentSessionId()` are functions (iOS has the properties `instanceId` and `currentSessionId`); `flush(timeoutMs?)` takes milliseconds (Swift `flush(timeout:)` takes seconds); cross-origin trace headers are set with `propagateTraceHeaderCorsUrls` (apps: `propagateTraceHeaderUrls`; a string is a URL prefix in both); `tracer()` is a function (`Traceway.tracer` on the apps). `app.screen.name` is the route template when one is known and the path otherwise (the apps name a screen by its path or class and put the template in `app.screen.route`), `viewport` is in CSS pixels, and the first screen's time counts from `init()`. `replay.images`: `"wifi"` records URL references and never pixels, since the browser has no reliable network type; `"always"` adds small copies of pictures the page may read; `"off"` blanks pictures as on the apps.
+
+For React Native and Expo apps, use [`@tracewayapp/react-native`](/client/react-native) instead. It shares the version number but not this SDK.

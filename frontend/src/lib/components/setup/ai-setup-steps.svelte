@@ -1,6 +1,10 @@
 <script lang="ts">
 	import bash from 'svelte-highlight/languages/bash';
-	import { SKILL_INSTALL_COMMAND, getSetupPromptParts } from '$lib/utils/ai-setup';
+	import {
+		SKILL_INSTALL_COMMAND,
+		getSetupPromptParts,
+		uploadTokenLabel
+	} from '$lib/utils/ai-setup';
 	import { projectsState } from '$lib/state/projects.svelte';
 	import CopyableCodeBlock from './copyable-code-block.svelte';
 	import CopyablePrompt from './copyable-prompt.svelte';
@@ -8,7 +12,8 @@
 	let { backendUrl, token }: { backendUrl: string; token: string } = $props();
 
 	const sourceMapToken = $derived(projectsState.currentProject?.sourceMapToken ?? null);
-	const promptParts = $derived(getSetupPromptParts(backendUrl, token, sourceMapToken));
+	const framework = $derived(projectsState.currentProject?.framework ?? null);
+	const promptParts = $derived(getSetupPromptParts(backendUrl, token, sourceMapToken, framework));
 </script>
 
 <div class="rounded-md border bg-card">
@@ -43,7 +48,7 @@
 		</div>
 		<p class="mt-1 ml-9 text-sm text-muted-foreground">
 			Paste this prompt into your agent. Your instance URL and project token are already filled in{sourceMapToken
-				? ', along with your source map upload token'
+				? `, along with your ${uploadTokenLabel(framework)}`
 				: ''}.
 		</p>
 	</div>

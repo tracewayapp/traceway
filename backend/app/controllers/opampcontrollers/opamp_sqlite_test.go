@@ -388,7 +388,30 @@ const flutterAgentToServerHex = "0a100195f2a000007000800000000000000110031a6f0a1
 func TestOpampServesFlutterProjects(t *testing.T) {
 	f := newOpampFixture(t)
 	f.project.Framework = "flutter"
-	f.rule("stream app events", `{}`, `{"signals":{"custom":{"mode":"stream"}}}`)
+	f.rule("stream app events", `{}`, `{"signals":{"custom":{"mode":"stream"}},"replay":{"captureMode":"wireframe"}}`)
+	body, err := hex.DecodeString(flutterAgentToServerHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := f.post(body, map[string]string{instanceUidHeader: "0195f2a0-0000-7000-8000-000000000001"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", response.Code, response.Body.String())
+	}
+	var resp protobufs.ServerToAgent
+	if err := proto.Unmarshal(response.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	doc := resp.GetRemoteConfig().GetConfig().GetConfigMap()["traceway"]
+	if doc == nil || !strings.Contains(string(doc.GetBody()), `"custom":{"mode":"stream"`) || !strings.Contains(string(doc.GetBody()), `"captureMode":"wireframe"`) {
+		t.Fatalf("a Flutter project must receive its remote settings, got %s", doc.GetBody())
+	}
+}
+
+// The iOS SDK's tests pin the same AgentToServer bytes as the Flutter and browser SDKs.
+func TestOpampServesIosProjects(t *testing.T) {
+	f := newOpampFixture(t)
+	f.project.Framework = "ios"
+	f.rule("stream app events", `{}`, `{"signals":{"custom":{"mode":"stream"}},"replay":{"mode":"stream"}}`)
 	body, err := hex.DecodeString(flutterAgentToServerHex)
 	if err != nil {
 		t.Fatal(err)
@@ -403,13 +426,37 @@ func TestOpampServesFlutterProjects(t *testing.T) {
 	}
 	doc := resp.GetRemoteConfig().GetConfig().GetConfigMap()["traceway"]
 	if doc == nil || !strings.Contains(string(doc.GetBody()), `"custom":{"mode":"stream"`) {
-		t.Fatalf("a Flutter project must receive its remote settings, got %s", doc.GetBody())
+		t.Fatalf("an iOS project must receive its remote settings, got %s", doc.GetBody())
+	}
+}
+
+// The Android SDK's OpAMP codec is checked against opamp-go with the same AgentToServer bytes.
+func TestOpampServesAndroidProjects(t *testing.T) {
+	f := newOpampFixture(t)
+	f.project.Framework = "android"
+	f.rule("stream app logs", `{}`, `{"signals":{"console":{"mode":"stream"}},"replay":{"mode":"stream"}}`)
+	body, err := hex.DecodeString(flutterAgentToServerHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The bytes name this instance.
+	response := f.post(body, map[string]string{instanceUidHeader: "0195f2a0-0000-7000-8000-000000000001"})
+	if response.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", response.Code, response.Body.String())
+	}
+	var resp protobufs.ServerToAgent
+	if err := proto.Unmarshal(response.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	doc := resp.GetRemoteConfig().GetConfig().GetConfigMap()["traceway"]
+	if doc == nil || !strings.Contains(string(doc.GetBody()), `"console":{"mode":"stream"`) {
+		t.Fatalf("an Android project must receive its remote settings, got %s", doc.GetBody())
 	}
 }
 
 func TestOpampRejectsUnsupportedProjects(t *testing.T) {
 	f := newOpampFixture(t)
-	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "ios", "android", ""} {
+	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", ""} {
 		t.Run(framework, func(t *testing.T) {
 			f.project.Framework = framework
 			response := f.post(nil, nil)

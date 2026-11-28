@@ -12,10 +12,13 @@ import (
 	"github.com/tracewayapp/traceway/backend/v2/app/sdkconfig"
 )
 
-// EnsureClientDefault also covers Flutter projects seeded by embedded servers.
+// EnsureClientDefault also covers the Flutter, Android and iOS projects seeded by embedded servers.
 func EnsureClientDefault(tx *sql.Tx, project *models.Project) error {
-	if project.Framework == "flutter" {
+	switch project.Framework {
+	case "flutter":
 		return ensurePerformanceDashboard(tx, project, "flutter-performance")
+	case "android", "ios":
+		return ensurePerformanceDashboard(tx, project, "mobile-performance")
 	}
 	return EnsureBrowserDefault(tx, project)
 }
@@ -68,12 +71,7 @@ func ensurePerformanceDashboard(tx *sql.Tx, project *models.Project, templateKey
 	for _, d := range dashboards {
 		used[strings.ToLower(d.Name)] = true
 	}
-	base := TruncateName(template.Name, 100)
-	name := base
-	for n := 2; used[strings.ToLower(name)]; n++ {
-		suffix := fmt.Sprintf(" %d", n)
-		name = TruncateName(base, 100-len(suffix)) + suffix
-	}
+	name := UniqueName(func(name string) bool { return used[strings.ToLower(name)] }, template.Name, project.Name, 100)
 	now := time.Now().UTC()
 	dashboard := &models.Dashboard{OrganizationId: org, Name: name, Description: template.Description, Definition: definition, TemplateKey: &template.Key, CreatedAt: now, UpdatedAt: now}
 	id, err := lit.Insert(tx, dashboard)

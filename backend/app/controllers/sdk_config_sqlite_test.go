@@ -263,11 +263,65 @@ func TestSdkConfigServesFlutterProjects(t *testing.T) {
 			t.Fatalf("%s: %d %v", path, code, body)
 		}
 	}
+
+	if code, out := f.do("POST", "/api/sdk-config/rules", `{"name":"Wireframe replay","settings":{"replay":{"mode":"stream","captureMode":"wireframe"}}}`); code != http.StatusCreated {
+		t.Fatalf("create = %d %v", code, out)
+	}
+	if code, out := f.do("POST", "/api/sdk-config/rules", `{"name":"x","settings":{"replay":{"captureMode":"pixels"}}}`); code != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown capture mode = %d %v, want 422", code, out)
+	}
+	code, preview := f.do("POST", "/api/sdk-config/preview", `{"attributes":{}}`)
+	if code != http.StatusOK {
+		t.Fatalf("preview = %d %v", code, preview)
+	}
+	if replay := preview["settings"].(map[string]any)["replay"].(map[string]any); replay["captureMode"] != "wireframe" || replay["mode"] != "stream" {
+		t.Fatalf("the capture mode must reach the evaluated document, got %v", replay)
+	}
+}
+
+func TestSdkConfigServesIosProjects(t *testing.T) {
+	f := newSdkConfigFixture(t)
+	if _, err := db.DB.Exec("UPDATE projects SET framework = ? WHERE id = ?", "ios", f.projectId); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/sdk-config/rules", "/api/sdk-config/captures"} {
+		if code, body := f.do("GET", path, ""); code != http.StatusOK {
+			t.Fatalf("%s: %d %v", path, code, body)
+		}
+	}
+	// A click step takes the selector the iOS SDK records for a tap.
+	rule := `{"name":"Pay tapped","settings":{"triggers":[{"id":"pay","steps":[{"match":{"event":{"type":"click","value":"UIButton#pay"}}}],"actions":[{"type":"flush","lookbackSeconds":60}]}]}}`
+	if code, out := f.do("POST", "/api/sdk-config/rules", rule); code != http.StatusCreated {
+		t.Fatalf("create = %d %v", code, out)
+	}
+	if code, out := f.do("POST", "/api/sdk-config/captures", `{"target":{"kind":"instance","value":"0195f2a0-0000-7000-8000-000000000001"},"durationMinutes":5,"replay":true}`); code != http.StatusCreated && code != http.StatusOK {
+		t.Fatalf("capture = %d %v", code, out)
+	}
+}
+
+func TestSdkConfigServesAndroidProjects(t *testing.T) {
+	f := newSdkConfigFixture(t)
+	if _, err := db.DB.Exec("UPDATE projects SET framework = ? WHERE id = ?", "android", f.projectId); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/sdk-config/rules", "/api/sdk-config/captures"} {
+		if code, body := f.do("GET", path, ""); code != http.StatusOK {
+			t.Fatalf("%s: %d %v", path, code, body)
+		}
+	}
+	// A click step takes the selector the Android SDK records for a tap, and a navigation step its screen name.
+	rule := `{"name":"Pay tapped","settings":{"triggers":[{"id":"pay","steps":[{"match":{"event":{"type":"navigation","value":"/CheckoutActivity"}}},{"match":{"event":{"type":"click","value":"MaterialButton#pay"}}}],"actions":[{"type":"flush","lookbackSeconds":60}]}]}}`
+	if code, out := f.do("POST", "/api/sdk-config/rules", rule); code != http.StatusCreated {
+		t.Fatalf("create = %d %v", code, out)
+	}
+	if code, out := f.do("POST", "/api/sdk-config/captures", `{"target":{"kind":"instance","value":"0195f2a0-0000-7000-8000-000000000002"},"durationMinutes":5,"replay":true}`); code != http.StatusCreated && code != http.StatusOK {
+		t.Fatalf("capture = %d %v", code, out)
+	}
 }
 
 func TestSdkConfigRejectsUnsupportedProjects(t *testing.T) {
 	f := newSdkConfigFixture(t)
-	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native", "ios", "android"} {
+	for _, framework := range []string{"go", "nestjs", "nextjs", "react-native"} {
 		t.Run(framework, func(t *testing.T) {
 			if _, err := db.DB.Exec("UPDATE projects SET framework = ? WHERE id = ?", framework, f.projectId); err != nil {
 				t.Fatal(err)

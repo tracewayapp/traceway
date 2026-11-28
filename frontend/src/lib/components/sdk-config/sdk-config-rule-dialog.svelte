@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import SdkVersionWarning from './sdk-version-warning.svelte';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Select from '$lib/components/ui/select';
@@ -9,7 +10,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { CodeEditor } from '$lib/components/ui/code-editor';
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
-	import { Check, Plus, X } from '@lucide/svelte';
+	import { Check, Info, Plus, X } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import { getErrorMessage, getErrorStatus } from '$lib/utils/errors';
@@ -19,18 +20,25 @@
 	import {
 		BROWSER_ONLY_SIGNALS,
 		CONDITION_OPS,
+		REPLAY_IMAGES_HINTS,
+		REPLAY_IMAGES_LABELS,
 		SIGNALS,
-		SUGGESTED_KEYS,
+		suggestedKeysFor,
 		TRIGGER_TEMPLATES,
 		fitsForm,
+		jsonOnlyFields,
+		mergeFormSettings,
 		withTrigger,
 		buildRuleConditions,
 		conditionText,
 		isNumericOp,
 		optionalNumber,
+		sdkPlatform,
 		signalsFor,
+		type CaptureMode,
 		type ConditionRow,
 		type Mode,
+		type ReplayImages,
 		type SdkConfigRule,
 		type SettingsDocument
 	} from './sdk-config';
@@ -44,13 +52,16 @@
 	}
 
 	let { open = $bindable(), rule, otherTriggerIds = [], onSaved }: Props = $props();
-	let flutter = $derived(projectsState.currentProject?.framework === 'flutter');
-	// Recorded sequences match clicks, hovers and navigation, which the browser and Flutter SDKs report.
+	let platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
+	let flutter = $derived(platform === 'flutter');
+	// An app SDK (Flutter, iOS, Android): taps, screens and app logs instead of clicks, pages and console calls.
+	let app = $derived(platform !== 'browser');
+	// Recorded sequences match clicks, hovers and navigation, which the browser and app SDKs report.
 	let recordsSequences = $derived(
 		!!projectsState.currentProject &&
-			(isBrowserFramework(projectsState.currentProject.framework) || flutter)
+			(isBrowserFramework(projectsState.currentProject.framework) || app)
 	);
-	let triggerTemplates = $derived(TRIGGER_TEMPLATES.filter((t) => !flutter || !t.browserOnly));
+	let triggerTemplates = $derived(TRIGGER_TEMPLATES.filter((t) => !app || !t.browserOnly));
 
 	type Choice = 'inherit' | Mode;
 
@@ -67,11 +78,17 @@
 	let signalChoices = $state<Record<string, Choice>>({});
 	let shownSignals = $state(SIGNALS);
 	let replayChoice = $state<Choice>('inherit');
+	let captureModeChoice = $state<'inherit' | CaptureMode>('inherit');
+	let showCaptureMode = $state(false);
+	let imagesChoice = $state<'inherit' | ReplayImages>('inherit');
 	let sessionsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let collectionChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let metricsChoice = $state<'inherit' | 'on' | 'off'>('inherit');
 	let metricsSamplePercent = $state<number | null | undefined>(undefined);
 	let settingsJson = $state('');
+	// The document the form was loaded from: saving from the form keeps the fields only the JSON tab shows.
+	let loadedSettings = $state<SettingsDocument>({ schemaVersion: 1 });
+	let jsonOnly = $derived(jsonOnlyFields(loadedSettings));
 	let saving = $state(false);
 	let dialogError = $state('');
 
@@ -82,29 +99,46 @@
 		stream: 'Stream'
 	};
 	const toggleLabels = { inherit: 'Inherit', on: 'On', off: 'Off' };
+	const captureModeLabels: Record<'inherit' | CaptureMode, string> = {
+		inherit: 'Inherit',
+		video: 'Video',
+		wireframe: 'Wireframe'
+	};
+	const imagesLabels: Record<'inherit' | ReplayImages, string> = {
+		inherit: 'Inherit',
+		...REPLAY_IMAGES_LABELS
+	};
 
+	// Only opening the dialog, or opening it on another rule, loads it. The load reads back form state it writes
+	// (editAsJson, captureModeChoice), so tracking it would reload the rule and drop what was typed whenever the
+	// JSON tab or a log trigger switched editAsJson.
 	$effect(() => {
 		if (!open) return;
+		const current = rule;
+		untrack(() => loadRule(current));
+	});
+
+	function loadRule(current: SdkConfigRule | null) {
 		dialogError = '';
-		name = rule?.name ?? '';
-		enabled = rule?.enabled ?? true;
-		rows = (rule?.conditions.all ?? []).map((c) => ({
+		name = current?.name ?? '';
+		enabled = current?.enabled ?? true;
+		rows = (current?.conditions.all ?? []).map((c) => ({
 			key: c.key,
 			op: c.op,
 			value: conditionText(c),
 			original: c
 		}));
-		rolloutPercent = rule?.conditions.rollout?.percent;
-		rolloutBy = rule?.conditions.rollout?.by ?? '';
-		const settings = rule?.settings ?? { schemaVersion: 1 };
-		loadForm(settings);
-		settingsJson = JSON.stringify(settings, null, 2);
+		rolloutPercent = current?.conditions.rollout?.percent;
+		rolloutBy = current?.conditions.rollout?.by ?? '';
+		const settings = current?.settings ?? { schemaVersion: 1 };
 		editAsJson = !fitsForm(settings);
+		loadForm(editAsJson ? { schemaVersion: 1 } : settings);
+		settingsJson = JSON.stringify(settings, null, 2);
 		tab = 'applies';
-	});
+	}
 
 	// The form tabs and the JSON tab edit the same settings; whichever was edited last is carried over when the
-	// tab changes. A document the form cannot show keeps the JSON tab open and says why.
+	// tab changes. Only a document that is not a settings object at all keeps the JSON tab open and says why.
 	function changeTab(next: string) {
 		const target = next as RuleTab;
 		if (target === tab) return;
@@ -129,12 +163,18 @@
 	let conditionCount = $derived(rows.filter((row) => row.key.trim() !== '').length);
 	let signalCount = $derived(
 		Object.values(signalChoices).filter((choice) => choice !== 'inherit').length +
-			[replayChoice, sessionsChoice, collectionChoice, metricsChoice].filter(
-				(choice) => choice !== 'inherit'
-			).length
+			[
+				replayChoice,
+				captureModeChoice,
+				imagesChoice,
+				sessionsChoice,
+				collectionChoice,
+				metricsChoice
+			].filter((choice) => choice !== 'inherit').length
 	);
 
 	function loadForm(settings: SettingsDocument) {
+		loadedSettings = JSON.parse(JSON.stringify(settings));
 		formTriggers = JSON.parse(JSON.stringify(settings.triggers ?? []));
 		baselinePercent =
 			settings.sessions?.baselineSampleRate === undefined
@@ -144,17 +184,22 @@
 		for (const signal of SIGNALS)
 			next[signal.key] = settings.signals?.[signal.key]?.mode ?? 'inherit';
 		signalChoices = next;
-		// A Flutter project is not offered the browser-only signals, but a rule that already sets one keeps
+		// An app project is not offered the browser-only signals, but a rule that already sets one keeps
 		// showing it, so the form can still change it.
-		shownSignals = flutter
+		shownSignals = app
 			? [
-					...signalsFor(true),
+					...signalsFor(platform),
 					...SIGNALS.filter(
 						(signal) => BROWSER_ONLY_SIGNALS.has(signal.key) && next[signal.key] !== 'inherit'
 					)
 				]
 			: SIGNALS;
 		replayChoice = settings.replay?.mode ?? 'inherit';
+		captureModeChoice = settings.replay?.captureMode ?? 'inherit';
+		// Only the Flutter SDK reads the replay type, but a rule that already sets one keeps showing it, so the
+		// form can still change it.
+		showCaptureMode = flutter || captureModeChoice !== 'inherit';
+		imagesChoice = settings.replay?.images ?? 'inherit';
 		sessionsChoice =
 			settings.sessions?.enabled === undefined
 				? 'inherit'
@@ -169,6 +214,10 @@
 	}
 
 	function formSettings(): SettingsDocument {
+		return mergeFormSettings(loadedSettings, formFields());
+	}
+
+	function formFields(): SettingsDocument {
 		const settings: SettingsDocument = { schemaVersion: 1 };
 		if (formTriggers.length) settings.triggers = formTriggers;
 		const signals: NonNullable<SettingsDocument['signals']> = {};
@@ -176,7 +225,11 @@
 			if (choice !== 'inherit') signals[key] = { mode: choice };
 		}
 		if (Object.keys(signals).length > 0) settings.signals = signals;
-		if (replayChoice !== 'inherit') settings.replay = { mode: replayChoice };
+		const replay: NonNullable<SettingsDocument['replay']> = {};
+		if (replayChoice !== 'inherit') replay.mode = replayChoice;
+		if (captureModeChoice !== 'inherit') replay.captureMode = captureModeChoice;
+		if (imagesChoice !== 'inherit') replay.images = imagesChoice;
+		if (Object.keys(replay).length > 0) settings.replay = replay;
 		if (sessionsChoice !== 'inherit') settings.sessions = { enabled: sessionsChoice === 'on' };
 		const baseline = optionalNumber(baselinePercent);
 		if (baseline !== undefined)
@@ -204,7 +257,7 @@
 		}
 		if (!fitsForm(parsed)) {
 			dialogError =
-				'This rule sets advanced sample rates or buffer sizes, which only the JSON editor can show.';
+				'The settings must be an object whose sections are objects and whose triggers are a list.';
 			return;
 		}
 		dialogError = '';
@@ -277,7 +330,7 @@
 </script>
 
 <datalist id="sdk-config-keys">
-	{#each SUGGESTED_KEYS as key (key)}
+	{#each suggestedKeysFor(platform) as key (key)}
 		<option value={key}></option>
 	{/each}
 </datalist>
@@ -292,7 +345,7 @@
 			<Sheet.Title>{rule ? 'Edit Rule' : 'New Rule'}</Sheet.Title>
 			<Sheet.Description>
 				Clients whose attributes match get these settings. Rules apply top to bottom, and a later
-				rule overrides what an earlier one set. Settings only lower what the SDK's {flutter
+				rule overrides what an earlier one set. Settings only lower what the SDK's {app
 					? 'TracewayOptions'
 					: 'init() options'}
 				allow.
@@ -348,6 +401,18 @@
 					<Tabs.Trigger value="json">JSON</Tabs.Trigger>
 				</Tabs.List>
 			</Tabs.Root>
+
+			{#if !editAsJson && jsonOnly.length > 0 && (tab === 'triggers' || tab === 'signals')}
+				<p class="flex gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+					<Info class="mt-px h-3.5 w-3.5 shrink-0" />
+					<span>
+						This rule also sets <span class="font-mono">{jsonOnly.join(', ')}</span>, which only the
+						JSON tab shows. Saving from the form keeps {jsonOnly.length === 1
+							? 'it as it is'
+							: 'them as they are'}.
+					</span>
+				</p>
+			{/if}
 
 			<div>
 				{#if tab === 'applies'}
@@ -448,9 +513,9 @@
 				{:else if tab === 'triggers'}
 					<div class="space-y-4">
 						{#if recordsSequences}
-							<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} {flutter} />
+							<SequenceTriggerBuilder bind:triggers={formTriggers} disabled={saving} {platform} />
 						{/if}
-						<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} {flutter} />
+						<LogTriggerBuilder disabled={saving} onAdd={addLogTrigger} {platform} />
 					</div>
 				{:else if tab === 'signals'}
 					<div class="space-y-4">
@@ -464,7 +529,7 @@
 								<div class="flex items-center justify-between gap-3">
 									<div class="min-w-0">
 										<div class="text-sm">{signal.label}</div>
-										<div class="truncate text-xs text-muted-foreground">{signal.hint}</div>
+										<div class="text-xs text-muted-foreground">{signal.hint}</div>
 									</div>
 									<Select.Root
 										type="single"
@@ -486,13 +551,53 @@
 								<div>
 									<div class="text-sm">Session replay</div>
 									<div class="text-xs text-muted-foreground">
-										{flutter ? 'Screen recording, as video' : 'rrweb recording'}
+										{flutter
+											? 'Screen recording or wireframe'
+											: platform === 'ios' || platform === 'android'
+												? 'Wireframe of the view hierarchy'
+												: 'rrweb recording'}
 									</div>
 								</div>
 								<Select.Root type="single" bind:value={replayChoice} disabled={saving}>
 									<Select.Trigger class="w-28">{choiceLabels[replayChoice]}</Select.Trigger>
 									<Select.Content>
 										{#each Object.entries(choiceLabels) as [value, label] (value)}
+											<Select.Item {value}>{label}</Select.Item>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+							</div>
+							{#if showCaptureMode}
+								<div class="flex items-center justify-between gap-3">
+									<div>
+										<div class="text-sm">Replay type</div>
+										<div class="text-xs text-muted-foreground">
+											{flutter
+												? 'A wireframe of the widget tree, or video with the traceway_video add-on (a wireframe without it)'
+												: 'Flutter SDK only'}
+										</div>
+									</div>
+									<Select.Root type="single" bind:value={captureModeChoice} disabled={saving}>
+										<Select.Trigger class="w-28"
+											>{captureModeLabels[captureModeChoice]}</Select.Trigger
+										>
+										<Select.Content>
+											{#each Object.entries(captureModeLabels) as [value, label] (value)}
+												<Select.Item {value}>{label}</Select.Item>
+											{/each}
+										</Select.Content>
+									</Select.Root>
+								</div>
+							{/if}
+							<div class="flex items-center justify-between gap-3">
+								<div>
+									<div class="text-sm">Replay images</div>
+									<div class="text-xs text-muted-foreground">{REPLAY_IMAGES_HINTS[platform]}</div>
+								</div>
+								<Select.Root type="single" bind:value={imagesChoice} disabled={saving}>
+									<Select.Trigger class="w-28">{imagesLabels[imagesChoice]}</Select.Trigger>
+									<Select.Content>
+										{#each Object.entries(imagesLabels) as [value, label] (value)}
 											<Select.Item {value}>{label}</Select.Item>
 										{/each}
 									</Select.Content>
@@ -562,9 +667,11 @@
 								placeholder="Inherit (0% by default)"
 							/>
 							<p class="text-xs text-muted-foreground">
-								Try 1% for a stable sample of session breadcrumbs and request spans. Errors and {flutter
-									? 'performance metrics'
-									: 'web vitals'} stay on; replay stays error-triggered unless configured separately.
+								Try 1% for a stable sample of session breadcrumbs and request spans. {platform ===
+								'browser'
+									? 'Errors and web vitals stay on'
+									: 'Errors and performance metrics stay on'}; replay stays error-triggered unless
+								configured separately.
 							</p>
 						</div>
 						<div class="space-y-2">

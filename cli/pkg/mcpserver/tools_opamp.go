@@ -11,7 +11,7 @@ import (
 
 func (s *server) addOpampReadTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{Name: "list_sdk_config_rules", OutputSchema: passThroughSchema,
-		Description: "List ordered OpAMP SDK rules, including conditions, settings and updatedAt. Later matching rules win. Browser and Flutter projects only (SDK 2.x); inspect before changing collection.", Annotations: readOnly()}, s.listSDKConfigRules)
+		Description: "List ordered OpAMP SDK rules, including conditions, settings and updatedAt. Later matching rules win. Browser, Flutter, iOS and Android projects only (SDK 2.x); inspect before changing collection.", Annotations: readOnly()}, s.listSDKConfigRules)
 	mcp.AddTool(srv, &mcp.Tool{Name: "preview_sdk_config", OutputSchema: passThroughSchema,
 		Description: "Evaluate saved OpAMP rules for client attributes and optional instance UID. Returns effective settings, matched rules, plan limits, config hash and heartbeat interval. Read-only; this does not prove a client has applied the config.", Annotations: readOnly()}, s.previewSDKConfig)
 }
@@ -32,7 +32,7 @@ type sdkRuleIn struct {
 	Name       string         `json:"name" jsonschema:"Rule name, required."`
 	Enabled    *bool          `json:"enabled,omitempty" jsonschema:"Defaults true on create; omitted on update preserves state."`
 	Conditions map[string]any `json:"conditions" jsonschema:"Targeting document; {} matches every client. Use all: [{key, op, value}] and rollout: {percent: 0..100, by: instance or an attribute key}."`
-	Settings   map[string]any `json:"settings" jsonschema:"Partial SDK settings document (schemaVersion 1): enabled kill switch; signals modes off/buffer/stream and sampleRate 0..1; sessions enabled/baselineSampleRate; replay mode/sessionSampleRate/maskAllInputs; buffer; triggers. A recording trigger step is {match: {event: {type, value}}} with type click, hover, navigation or log: in a browser project the value is a CSS selector or a URL path, in a Flutter project a widget selector (#pay is Key('pay') or a Semantics identifier) or a route name. Read traceway://knowledge/sdk-configuration before writing one. Server-owned captures and limits are forbidden."`
+	Settings   map[string]any `json:"settings" jsonschema:"Partial SDK settings document (schemaVersion 1): enabled kill switch; signals modes off/buffer/stream and sampleRate 0..1; sessions enabled/baselineSampleRate; replay mode/sessionSampleRate/maskAllInputs, captureMode video or wireframe (Flutter only, overrides the app's screenCaptureMode), and images off, wifi or always (browser, Flutter, Android and iOS: what a replay shows of pictures); buffer; triggers. A recording trigger step is {match: {event: {type, value}}} with type click, hover, navigation or log: in a browser project the value is a CSS selector or a URL path, in a Flutter project a widget selector (#pay is Key('pay') or a Semantics identifier) or a route name, in an Android project a view selector (#pay is R.id.pay or a Compose testTag) or a screen path (/CheckoutActivity), in an iOS project a view selector (#pay is an accessibilityIdentifier) or a screen path (/CheckoutViewController). Read traceway://knowledge/sdk-configuration before writing one. Server-owned captures and limits are forbidden."`
 }
 
 type updateSDKRuleIn struct {

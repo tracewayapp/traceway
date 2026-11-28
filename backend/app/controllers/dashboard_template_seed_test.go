@@ -115,6 +115,28 @@ func TestSeededDashboardTemplatesAreValid(t *testing.T) {
 		}
 		assertClientMetricTemplate(t, flutter)
 	}
+
+	// The Android and iOS SDKs count ANRs (and watchdog kills) as app.anr and out-of-memory kills as
+	// app.oom; the Mobile Performance dashboard charts them as the counters they are.
+	if mobile := byKey["mobile-performance"]; mobile != nil {
+		assertClientMetricTemplate(t, mobile)
+		charted := map[string]string{}
+		def, _ := dashboardsvc.ParseDefinition(mobile.Definition)
+		for _, w := range def.Widgets {
+			var cfg struct {
+				Sources []struct{ Name, Aggregation string } `json:"sources"`
+			}
+			_ = json.Unmarshal(w.Config, &cfg)
+			for _, src := range cfg.Sources {
+				charted[src.Name] = src.Aggregation
+			}
+		}
+		for _, name := range []string{"app.anr", "app.oom", "app.hang", "app.crash"} {
+			if charted[name] != "sum" {
+				t.Errorf("mobile-performance charts %s as %q, want a sum", name, charted[name])
+			}
+		}
+	}
 }
 
 // clientMetricCommonDimensions are kept on every client metric whatever its catalog
@@ -340,4 +362,36 @@ func TestNewFlutterProjectStartsWithFlutterPerformanceDashboard(t *testing.T) {
 		}
 		assertFlutterPerformanceDashboard(t, tx, createdProjectId(t, recorder.Body.Bytes(), "project"))
 	})
+}
+
+// A second project on the same template names its copy after itself instead of "Mobile Performance 2".
+func TestSecondProjectDefaultDashboardIsNamedAfterTheProject(t *testing.T) {
+	setupSetupControllerDB(t)
+	tx, err := db.DB.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback()
+	userId, orgId := createSetupTestAccount(t, tx, "names@example.com", "owner")
+
+	results, err := batchCreateProjects(tx, orgId, userId, []BatchProjectInput{
+		{Name: "Android App", Framework: "android"},
+		{Name: "iOS App", Framework: "ios"},
+	})
+	if err != nil {
+		t.Fatalf("batch create: %v", err)
+	}
+	for i, want := range []string{"Mobile Performance", "Mobile Performance · iOS App"} {
+		assignments, err := transactional.DashboardRepository.FindAssignmentsByProject(tx, results[i].Project.Id)
+		if err != nil || len(assignments) != 1 {
+			t.Fatalf("%s assignments: %d, %v", results[i].Project.Name, len(assignments), err)
+		}
+		dashboard, err := transactional.DashboardRepository.FindById(tx, assignments[0].DashboardId)
+		if err != nil || dashboard == nil {
+			t.Fatalf("load dashboard: (%v, %v)", dashboard, err)
+		}
+		if dashboard.Name != want {
+			t.Errorf("%s got the dashboard %q, want %q", results[i].Project.Name, dashboard.Name, want)
+		}
+	}
 }

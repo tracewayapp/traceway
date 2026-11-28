@@ -1,0 +1,8 @@
+// Build settings of the Shop target, for Debug and Release.
+// In this file // starts a comment, so URLs are written https:/$()/host.
+
+API_BASE_URL = https:/$()/api.shop.example
+
+// Keys and tokens: Config/Secrets.xcconfig, gitignored. Create it locally;
+// CI writes it before archiving (.github/workflows/release.yml).
+#include? "Secrets.xcconfig"

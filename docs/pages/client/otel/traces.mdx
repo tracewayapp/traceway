@@ -122,7 +122,7 @@ const sdk = new NodeSDK({
     "service.version": "1.0.0",
   }),
   traceExporter: new OTLPTraceExporter({
-    url: "https://your-traceway-instance.com/api/otel/v1/traces",
+    url: "https://cloud.tracewayapp.com/api/otel/v1/traces",
     headers: {
       Authorization: "Bearer your-project-token",
     },
@@ -150,7 +150,7 @@ opentelemetry-bootstrap -a install
 
 ```bash
 export OTEL_SERVICE_NAME=my-python-service
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-traceway-instance.com/api/otel
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://cloud.tracewayapp.com/api/otel
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-project-token"
 export OTEL_TRACES_EXPORTER=otlp
@@ -186,7 +186,7 @@ resource = Resource.create({
 
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(
-    endpoint="https://your-traceway-instance.com/api/otel/v1/traces",
+    endpoint="https://cloud.tracewayapp.com/api/otel/v1/traces",
     headers={"Authorization": "Bearer your-project-token"},
 )))
 trace.set_tracer_provider(provider)

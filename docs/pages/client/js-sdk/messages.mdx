@@ -12,18 +12,17 @@ import { captureMessage } from "@tracewayapp/frontend";
 // Track important events
 captureMessage("User completed onboarding");
 
-// Track business metrics
+// Track business events
 captureMessage("Payment processed successfully");
-
-// Track navigation
-captureMessage("User visited pricing page");
 ```
+
+Page changes are recorded on their own (`browser.navigation` records), so do not report them as messages, which would open an issue per visit. For navigation the address does not show, use [`recordNavigation`](/client/js-sdk#screens-and-navigation).
 
 Every message becomes an issue, and messages are grouped by their exact text: two messages that differ in one character are two issues. Keep the text constant and put the variable parts in attributes.
 
 ## Attributes
 
-In the 2.x SDK `captureMessage` takes an optional second argument with string attributes, shown on the issue like the attributes of an exception:
+`captureMessage` takes an optional second argument with string attributes, shown on the issue like the attributes of an exception:
 
 ```javascript
 captureMessage("Payment processed successfully", {
@@ -40,7 +39,7 @@ The 1.x SDK takes the message only. Global attributes set with `setAttribute` ar
 
 ```javascript
 function handlePurchase(product) {
-  captureMessage(`Purchase: ${product.name}`);
+  captureMessage("Purchase completed", { product: product.name });
   // ... process purchase
 }
 ```
@@ -49,17 +48,19 @@ function handlePurchase(product) {
 
 ```javascript
 function enableBetaFeature(featureName) {
-  captureMessage(`Beta feature enabled: ${featureName}`);
+  captureMessage("Beta feature enabled", { feature: featureName });
   // ... enable feature
 }
 ```
+
+The text stays the same and the name goes in an attribute, so every purchase is one issue that you can filter by product.
 
 ### Debugging Production Issues
 
 ```javascript
 function processData(data) {
   if (data.items.length > 1000) {
-    // The count goes in an attribute (2.x), so every occurrence stays one issue
+    // The count goes in an attribute, so every occurrence stays one issue
     captureMessage("Large dataset processed", {
       items: String(data.items.length),
     });
@@ -70,12 +71,12 @@ function processData(data) {
 
 ## Messages vs Exceptions
 
-| Use `captureMessage` when | Use `captureException` when |
-|---------------------------|----------------------------|
-| Tracking user actions | An error occurred |
-| Logging business events | Catching exceptions |
+| Use `captureMessage` when  | Use `captureException` when   |
+| -------------------------- | ----------------------------- |
+| Tracking user actions      | An error occurred             |
+| Logging business events    | Catching exceptions           |
 | Debugging production flows | Something unexpected happened |
-| Monitoring feature usage | Operation failed |
+| Monitoring feature usage   | Operation failed              |
 
 ## Best Practices
 
@@ -85,7 +86,7 @@ function processData(data) {
 4. **Use sparingly**: Messages add overhead; don't log every action
 5. **Mind the error filters**: `ignoreErrors` patterns and `beforeCapture` apply to messages too, so with the default patterns a text containing "timeout" or "Failed to fetch" is dropped. See [Error Filtering](/client/js-sdk/initialization#error-filtering)
 
-Messages are sent right away and each one is an issue occurrence. For an event that should only appear as a breadcrumb on the session timeline, use `recordAction(category, name, data)`; the 2.x SDK also has `track(name, attributes)` for named events a trigger can match. In 2.x both are buffered on the device by default.
+Messages are sent right away and each one is an issue occurrence. For an event that should only appear as a breadcrumb on the session timeline, use `recordAction(category, name, data)`, `track(name, attributes)` for named events a trigger can match, or [`log(message, level, attributes)`](/client/js-sdk#logs) for a log line. All three are buffered on the device by default. A message carries the screen keys too (`app.screen.name` and the others), like an exception.
 
 ## Viewing Messages
 

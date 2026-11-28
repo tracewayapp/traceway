@@ -310,6 +310,7 @@ func (c *invitationController) AcceptInvitation(ctx *gin.Context) {
 		return
 	}
 
+	withInstanceUrl(ctx, projects...)
 	ctx.JSON(http.StatusCreated, &models.LoginResponse{
 		Token:    jwtToken,
 		User:     user.ToResponse(),
@@ -380,6 +381,7 @@ func (c *invitationController) AcceptExistingUser(ctx *gin.Context) {
 		return
 	}
 
+	withInstanceUrl(ctx, projects...)
 	ctx.JSON(http.StatusOK, gin.H{
 		"message":  "You have joined the organization",
 		"projects": projects,

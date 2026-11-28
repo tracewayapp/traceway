@@ -24,7 +24,8 @@ type StackTrace struct {
 
 var (
 	osArchRe = regexp.MustCompile(`os:\s*(\S+)\s+arch:\s*(\S+)`)
-	frameRe  = regexp.MustCompile(`^\s*#(\d+)\s+([0-9a-fA-F]{32})\s+0x([0-9a-fA-F]+)\s*(.*)$`)
+	// The image UUID comes without dashes from the SDK's binary-image list and with them from MetricKit.
+	frameRe = regexp.MustCompile(`^\s*#(\d+)\s+([0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12})\s+0x([0-9a-fA-F]+)\s*(.*)$`)
 )
 
 func ParseTrace(text string) StackTrace {
@@ -38,7 +39,7 @@ func ParseTrace(text string) StackTrace {
 		if m := frameRe.FindStringSubmatch(line); m != nil {
 			off, _ := strconv.ParseUint(m[3], 16, 64)
 			t.Frames = append(t.Frames, StackFrame{
-				UUID:   strings.ToLower(m[2]),
+				UUID:   NormalizeUUID(m[2]),
 				Offset: off,
 				Image:  strings.TrimSpace(m[4]),
 				Raw:    strings.TrimSpace(line),

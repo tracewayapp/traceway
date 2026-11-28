@@ -1,0 +1,11 @@
+Main thread blocked for 4.7 s
+#0  libsystem_kernel.dylib+0x1e5a8
+#1  CoreAutoLayout+0x20b8
+#2  CoreAutoLayout+0x2b9c
+#3  CoreAutoLayout+0x3c40
+#4  UIKitCore+0x30a2f4
+#5  CartView.layoutCart() (CartView.swift:42)
+#6  CartViewController.viewDidLayoutSubviews() (CartViewController.swift:88)
+#7  UIKitCore+0x2f7b18
+#8  GraphicsServices+0x1d58
+#9  main (<compiler-generated>)

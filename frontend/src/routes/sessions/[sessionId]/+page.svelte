@@ -27,6 +27,7 @@
 	import TableContainer from '$lib/components/traceway/table-container.svelte';
 	import { ArrowRight, Radar } from '@lucide/svelte';
 	import SdkCaptureDialog from '$lib/components/sdk-config/sdk-capture-dialog.svelte';
+	import { sdkPlatform, SDK_PLATFORM_NAMES } from '$lib/components/sdk-config/sdk-config';
 	import { SDK_CONFIG_FRAMEWORKS } from '$lib/state/projects.svelte';
 	import type {
 		SessionActionEvent,
@@ -38,6 +39,8 @@
 		pickBreadcrumbs,
 		type SessionBreadcrumbs
 	} from '$lib/utils/session-timeline';
+	import { cleanRecording } from '$lib/utils/session-recording';
+	import { replayImageDataLabel, replayImagesLabel } from '$lib/utils/session-overview';
 
 	type Session = {
 		recordingReasons?: Array<{
@@ -70,9 +73,11 @@
 
 	let session = $state<Session | null>(null);
 	let exceptions = $state<SessionException[]>([]);
-	let recordingEvents = $state<SessionReplayEvent[] | null>(null);
-	let recordingLogs = $state<SessionLogEvent[]>([]);
-	let recordingActions = $state<SessionActionEvent[]>([]);
+	// A recording is tens of megabytes of events that are only ever replaced as a whole, so it is not proxied.
+	let recordingEvents = $state.raw<SessionReplayEvent[] | null>(null);
+	let recordingLogs = $state.raw<SessionLogEvent[]>([]);
+	let recordingActions = $state.raw<SessionActionEvent[]>([]);
+	let recordingTruncated = $state(false);
 	let timeline = $state<SessionBreadcrumbs | null>(null);
 	let recordingLoading = $state(false);
 	let recordingError = $state('');
@@ -106,11 +111,13 @@
 		recordingLoading = true;
 		recordingError = '';
 		try {
-			const recording = await request;
+			// The segments hold what the SDK uploaded.
+			const recording = cleanRecording(await request);
 			if (generation !== loadGeneration) return;
 			recordingEvents = recording?.events ?? [];
 			recordingLogs = recording?.logs ?? [];
 			recordingActions = recording?.actions ?? [];
+			recordingTruncated = recording?.truncated ?? false;
 		} catch (e) {
 			if (generation !== loadGeneration) return;
 			recordingError = getErrorMessage(e) || 'Failed to load the replay';
@@ -145,6 +152,7 @@
 		recordingEvents = null;
 		recordingLogs = [];
 		recordingActions = [];
+		recordingTruncated = false;
 		timeline = null;
 
 		const startedAt = pageState.url.searchParams.get('t');
@@ -186,15 +194,19 @@
 			SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework) &&
 			projectsState.canWriteCurrentProject
 	);
-	const isFlutter = $derived(projectsState.currentProject?.framework === 'flutter');
+	const platform = $derived(sdkPlatform(projectsState.currentProject?.framework));
 	const sdkVersion = $derived(session?.attributes?.['traceway.sdk.version']);
+	// The row's label says "SDK", so the value names only the platform and version: "iOS 2.0.0-beta.1".
 	const sdkLabel = $derived(
 		sdkVersion
-			? `${isFlutter ? 'Flutter' : 'JS'} SDK v${sdkVersion}`
+			? `${SDK_PLATFORM_NAMES[platform]} ${sdkVersion}`
 			: session?.attributes?.['traceway.sdk.generation'] === '1'
-				? 'V1 · legacy ingestion'
-				: 'Unknown · not reported'
+				? `${SDK_PLATFORM_NAMES[platform]} v1 · legacy ingestion`
+				: 'Not reported'
 	);
+	// The replay-image policy the SDK applied and the image data it sent, shown only when the session reported them.
+	const replayImages = $derived(replayImagesLabel(session?.attributes));
+	const replayImageData = $derived(replayImageDataLabel(session?.attributes));
 	// A device keeps its instance id across sessions, so capturing it also covers the visits that follow.
 	const captureTarget = $derived(
 		session?.attributes?.['service.instance.id']
@@ -243,9 +255,10 @@
 		{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
 			<p
 				class="text-sm text-muted-foreground"
-				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; {isFlutter
-					? 'performance metrics'
-					: 'web vitals'} are collected independently."
+				title="Error-triggered and targeted captures are diagnostic samples. They are excluded from endpoint performance aggregates. Do not interpret this session's request durations as an average across all visits; {platform ===
+				'browser'
+					? 'web vitals are'
+					: 'performance metrics are'} collected independently."
 			>
 				Session requests are diagnostic samples, not overall performance statistics.
 			</p>
@@ -259,7 +272,7 @@
 				<LabelValue label="Duration" value={sessionDurationLabel(session)} />
 				<LabelValue label="App version" value={session.appVersion || '—'} />
 				{#if projectsState.currentProject && SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework)}
-					<LabelValue label={isFlutter ? 'Flutter SDK' : 'JavaScript SDK'} value={sdkLabel} />
+					<LabelValue label="SDK" value={sdkLabel} />
 					<LabelValue
 						label="Failed replay uploads"
 						value={session.attributes?.['traceway.replay.failed_segments'] ?? 'Not reported'}
@@ -272,6 +285,12 @@
 						label="Diagnostic events dropped"
 						value={session.attributes?.['traceway.collection.dropped'] ?? 'Not reported'}
 					/>
+					{#if replayImages}
+						<LabelValue label="Replay images" value={replayImages} />
+					{/if}
+					{#if replayImageData}
+						<LabelValue label="Image data" value={replayImageData} />
+					{/if}
 				{/if}
 			</Card.Content>
 		</Card.Root>
@@ -321,6 +340,11 @@
 			<Card.Root class="pb-0">
 				<Card.Header class="gap-0">
 					<Card.Title>Session Replay</Card.Title>
+					{#if recordingTruncated}
+						<Card.Description>
+							This recording is longer than can be shown at once, so the replay stops early.
+						</Card.Description>
+					{/if}
 				</Card.Header>
 				<Card.Content class="p-0">
 					{#key recordingEvents}

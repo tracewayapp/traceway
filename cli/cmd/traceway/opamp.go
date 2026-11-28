@@ -44,7 +44,7 @@ func addJSONFileFlag(cmd *cobra.Command) {
 }
 
 func newOpampCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "opamp", Short: "Browser and Flutter SDK remote collection configuration"}
+	cmd := &cobra.Command{Use: "opamp", Short: "Browser, Flutter, Android and iOS SDK remote collection configuration"}
 	rules := &cobra.Command{Use: "rules", Short: "Ordered remote collection rules; later matching rules win"}
 	rules.AddCommand(&cobra.Command{
 		Use: "list", Short: "List rules with their settings, conditions and updatedAt", Args: cobra.NoArgs,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -81,6 +82,18 @@ func TestCaseReferences(t *testing.T) {
 					}
 					if s.WriteFile != nil && s.WriteFile.From != "" && !exists(filepath.Join(root, "testdata", s.WriteFile.From)) {
 						t.Errorf("%s[%d] writes from %s, which does not exist", arm, i, s.WriteFile.From)
+					}
+				}
+			}
+			// A regexp that does not compile reads as "does not match" (or
+			// never matches a not_contains), so catch it here.
+			for i, a := range c.Expect.State {
+				for _, re := range append(append([]string{}, a.Contains...), a.NotContains...) {
+					if strings.Contains(re, "{{") {
+						continue
+					}
+					if _, err := regexp.Compile("(?m)" + re); err != nil {
+						t.Errorf("expect.state[%d] %s: %v", i, a.Kind, err)
 					}
 				}
 			}

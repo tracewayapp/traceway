@@ -114,7 +114,13 @@ Two things make it different from RUM tools that upload everything and then samp
 1. **Every visit is measured.** Each browser adds up its own page timings and sends one small summary, so nobody is left out of the numbers. What is stored grows with your pages and releases, not with your visitors.
 2. **Details stay in the browser until they are needed.** The last 10 minutes of activity and the page recording are kept in a ring buffer on the device. They are uploaded when an error happens, when a trigger matches, or when you start a capture. A visit with no problems never uploads them.
 
-The browser SDK is OpenTelemetry: it sends standard OTLP logs, traces and metrics and gets its settings over OpAMP, so a click in the browser and the backend work behind it show up as one trace. RUM needs the 2.x browser SDK: `npm install @tracewayapp/frontend`.
+The browser SDK is OpenTelemetry: it sends standard OTLP logs, traces and metrics and gets its settings over OpAMP, so a click in the browser and the backend work behind it show up as one trace. RUM needs the 2.x browser SDK: `npm install @tracewayapp/frontend`, then start it with the project token (this start call is 2.1.0 and later):
+
+```ts
+import { init } from "@tracewayapp/frontend";
+
+init({ token: "YOUR_TOKEN" }); // Traceway Cloud; add baseUrl: "https://traceway.mycompany.com" for a self-hosted server
+```
 
 [RUM guide](https://docs.tracewayapp.com/learn/rum) · [Best practices](https://docs.tracewayapp.com/learn/rum-best-practices) · [Product page](https://tracewayapp.com/product/rum)
 

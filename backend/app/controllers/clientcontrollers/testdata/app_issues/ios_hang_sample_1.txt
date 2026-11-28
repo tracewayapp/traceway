@@ -1,0 +1,10 @@
+Main thread blocked for 3.2 s
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+os: ios arch: arm64
+#00 6f1c2a3b4c5d6e7f8091a2b3c4d5e6f7 0x1d2c4 libsystem_kernel.dylib
+#01 c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6 0x3a1f0 Foundation
+#02 0a1b2c3d4e5f60718293a4b5c6d7e8f9 0x1a2b4 ShopApp
+#03 0a1b2c3d4e5f60718293a4b5c6d7e8f9 0x19f80 ShopApp
+#04 d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9 0x2f4e10 UIKitCore
+#05 0a1b2c3d4e5f60718293a4b5c6d7e8f9 0x8c40 ShopApp
+#06 e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0 0x1c3c GraphicsServices

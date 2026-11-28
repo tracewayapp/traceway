@@ -8,20 +8,27 @@ Use the `useTraceway` composable to capture errors and messages in Vue component
 <script setup>
 import { useTraceway } from "@tracewayapp/vue";
 
-const { captureException, captureExceptionWithAttributes, captureMessage, recordAction } = useTraceway();
+const {
+  captureException,
+  captureExceptionWithAttributes,
+  captureMessage,
+  recordAction,
+} = useTraceway();
 </script>
 ```
 
 ## Return Value
 
-| Function | Description |
-|----------|-------------|
-| `captureException(error, attributes?)` | Capture an error with stack trace |
+| Function                                            | Description                                                  |
+| --------------------------------------------------- | ------------------------------------------------------------ |
+| `captureException(error, attributes?)`              | Capture an error with stack trace                            |
 | `captureExceptionWithAttributes(error, attributes)` | Capture an error with metadata. Attribute values are strings |
-| `captureMessage(message, attributes?)` | Send a custom message, listed on the Issues page |
-| `recordAction(category, name, data?)` | Add a custom entry to the session timeline |
+| `captureMessage(message, attributes?)`              | Send a custom message, listed on the Issues page             |
+| `recordAction(category, name, data?)`               | Add a custom entry to the session timeline                   |
 
 These four are the whole return value. Everything else is imported from `@tracewayapp/vue` directly, see [Direct Imports](#direct-imports).
+
+`useTraceway` never throws. Without the plugin (an app that calls `init()` itself) it returns the same functions, which report once the SDK runs and do nothing before.
 
 ## captureException
 
@@ -56,7 +63,7 @@ Add context to errors:
 <script setup>
 import { useTraceway } from "@tracewayapp/vue";
 
-const props = defineProps(['userId']);
+const props = defineProps(["userId"]);
 const { captureExceptionWithAttributes } = useTraceway();
 
 async function loadData() {
@@ -124,7 +131,7 @@ function startCheckout() {
 <script setup>
 import { useTracewayAttributes } from "@tracewayapp/vue";
 
-const props = defineProps(['userId']);
+const props = defineProps(["userId"]);
 useTracewayAttributes(() => ({ "user.id": String(props.userId) }));
 </script>
 ```
@@ -133,7 +140,7 @@ See [Custom Attributes](/client/vue/plugin#custom-attributes) for the details.
 
 ## Direct Imports
 
-`@tracewayapp/vue` re-exports the browser SDK's functions, so they can be imported anywhere, outside components too:
+`@tracewayapp/vue` re-exports the browser SDK's functions, so they can be imported anywhere, outside components too: every value of `@tracewayapp/frontend` except `init` (the plugin calls it), the `TracewayFrontendClient` class, and `trackRouter`, which this package has its own of.
 
 ```javascript
 import { track, metric, count, flush } from "@tracewayapp/vue";
@@ -145,18 +152,28 @@ count("cart.item_added"); // a custom counter
 await flush(); // send everything that is queued for sending
 ```
 
-| Function | Description |
-|----------|-------------|
-| `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` | The same functions `useTraceway()` returns |
-| `track(eventName, attributes?)` | Record a named app event. [Triggers](/learn/remote-config) can match it |
-| `metric(name, value, dims?)`, `count(name, n?, dims?)` | Custom [performance metrics](/learn/client-metrics), aggregated on the device |
-| `setMetricDimension(key, value)` | Put a dimension of your own on every performance metric; `null` removes it |
-| `setRoute(template)` | Name the current page by its route template. [`trackRouter`](/client/vue/plugin#route-names) calls it for you |
-| `startInteraction(name)` | Trace a multi-step interaction, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly) |
-| `setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes` | The global attribute scope, see [Custom Attributes](/client/vue/plugin#custom-attributes) |
-| `refreshConfig()` | Fetch the remote collection settings now instead of at the next poll |
-| `flush(timeoutMs?)`, `shutdown()` | See [Flush & Lifecycle](/client/js-sdk/flush) |
-| `getInstanceId()` | The id this browser profile reports as `service.instance.id` |
+| Function                                                                               | Description                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `captureException`, `captureExceptionWithAttributes`, `captureMessage`, `recordAction` | The same functions `useTraceway()` returns                                                                                                                                         |
+| `log(message, level?, attributes?)`                                                    | Record a log line of your own, handled like a `console.*` line; `level` is a `TracewayLogLevel`. See [Logs](/client/js-sdk#logs)                                                   |
+| `track(eventName, attributes?)`                                                        | Record a named app event. [Triggers](/learn/remote-config) can match it                                                                                                            |
+| `metric(name, value, dims?)`, `count(name, n?, dims?)`                                 | Custom [performance metrics](/learn/client-metrics), aggregated on the device                                                                                                      |
+| `setMetricDimension(key, value)`                                                       | Put a dimension of your own on every performance metric; `null` removes it                                                                                                         |
+| `setRoute(template)`                                                                   | Name the current page by its route template. The plugin and [`trackRouter`](/client/vue/plugin#route-names) call it for you                                                        |
+| `recordNavigation(path, action?, from?, route?)`                                       | Report a navigation the address does not show, such as a modal or a wizard step. See [Screens and navigation](/client/js-sdk#screens-and-navigation)                               |
+| `routeFromParams(pathname, params)`                                                    | Infer a route template from a path and the params a router matched in it                                                                                                           |
+| `trackRouter(router)`                                                                  | This package's own: names pages after each navigation of a router the plugin does not see, see [Route Names](/client/vue/plugin#route-names)                                       |
+| `startInteraction(name, attributes?)`                                                  | Trace a multi-step interaction; returns a `TracewayInteraction`, see [Distributed Tracing](/client/js-sdk/distributed-tracing#trace-an-entire-interaction-explicitly)              |
+| `tracer()`                                                                             | The SDK's OpenTelemetry tracer for spans of your own, or `undefined` before the plugin is installed. See [Spans of your own](/client/js-sdk/distributed-tracing#spans-of-your-own) |
+| `setAttribute`, `setAttributes`, `removeAttribute`, `clearAttributes`                  | The global attribute scope, see [Custom Attributes](/client/vue/plugin#custom-attributes)                                                                                          |
+| `refreshConfig()`                                                                      | Fetch the remote collection settings now instead of at the next poll                                                                                                               |
+| `flush(timeoutMs?)`, `shutdown()`                                                      | See [Flush & Lifecycle](/client/js-sdk/flush)                                                                                                                                      |
+| `getInstanceId()`                                                                      | The id this browser profile reports as `service.instance.id`                                                                                                                       |
+| `currentSessionId()`                                                                   | The current session's id (`session.id`), or `null` before the plugin is installed and between sessions                                                                             |
+| `getClient()`                                                                          | The running `TracewayFrontendClient`, or `null` before the plugin is installed and on the server                                                                                   |
+| `DEFAULT_IGNORE_PATTERNS`, `SDK_VERSION`                                               | The built-in `ignoreErrors` list, and the SDK's version                                                                                                                            |
+
+The types are re-exported too: `TracewayFrontendOptions`, `TelemetryOptions`, `TracewayCapturedError`, `TracewayInteraction`, `TracewayLogLevel`, `TracewayImagePolicy`, `CollectionSettings`, `Settings`, `Trigger`, `RouteParams` and the others of `@tracewayapp/frontend`.
 
 ## Composable Pattern
 
@@ -201,10 +218,9 @@ Usage:
 import { onMounted } from "vue";
 import { useTrackedFetch } from "@/composables/useTrackedFetch";
 
-const { data, error, loading, execute } = useTrackedFetch(
-  "/api/users",
-  { component: "UserList" }
-);
+const { data, error, loading, execute } = useTrackedFetch("/api/users", {
+  component: "UserList",
+});
 
 onMounted(execute);
 </script>

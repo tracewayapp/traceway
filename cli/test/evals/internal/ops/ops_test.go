@@ -55,7 +55,10 @@ func TestEveryCLICommandMaps(t *testing.T) {
 		if inRead[strings.Join(path, " ")] {
 			continue
 		}
-		if spec, ok := SpecFor(op.Op); !ok || !spec.WriteEdition || !op.Write {
+		// A command with an MCP twin takes its write flag from the tool's
+		// readOnly annotation, which TestEveryMCPToolMaps checks: tokens
+		// list reads, but only the write edition has it.
+		if spec, ok := SpecFor(op.Op); !ok || !spec.WriteEdition || (!op.Write && spec.MCP == "") {
 			t.Errorf("traceway-write %v exists only in the write edition, so %s must be WriteEdition and Write", path, op.Op)
 		}
 	}

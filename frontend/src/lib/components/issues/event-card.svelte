@@ -26,6 +26,9 @@
 		pickBreadcrumbs,
 		type SessionBreadcrumbs
 	} from '$lib/utils/session-timeline';
+	import { cleanRecording, recordingOrigin } from '$lib/utils/session-recording';
+	import { formatElapsed, formatViewport, hangDetails, screenContext } from '$lib/utils/app-issue';
+	import { sdkPlatform } from '$lib/components/sdk-config/sdk-config';
 
 	interface Props {
 		occurrence: ExceptionOccurrence;
@@ -54,13 +57,21 @@
 	} as const;
 
 	const tz = $derived(timezone ?? getTimezone());
+	// Every SDK stamps where the app or page was; shown whenever the occurrence carries it.
+	const screen = $derived(screenContext(occurrence.attributes));
+	const screenNoun = $derived(
+		sdkPlatform(projectsState.currentProject?.framework) === 'browser' ? 'Page' : 'Screen'
+	);
+	const hang = $derived(hangDetails(occurrence.stackTrace, occurrence.attributes));
 	const isFrontend = $derived(
 		projectsState.currentProject?.framework
 			? isFrontendFramework(projectsState.currentProject.framework)
 			: false
 	);
 
-	const recordingEvents = $derived(sessionRecording?.events ?? null);
+	// The clip holds what the SDK uploaded.
+	const recording = $derived(cleanRecording(sessionRecording));
+	const recordingEvents = $derived(recording?.events ?? null);
 	const hasReplay = $derived(!!recordingEvents && recordingEvents.length > 0);
 	const replayStatus = $derived(occurrence.attributes?.['traceway.replay.status']);
 	const replayExplanation = $derived(
@@ -103,7 +114,7 @@
 			cancelled = true;
 		};
 	});
-	const breadcrumbs = $derived(pickBreadcrumbs(timeline, sessionRecording));
+	const breadcrumbs = $derived(pickBreadcrumbs(timeline, recording));
 	// A read cut short at its limit kept the latest breadcrumbs; the oldest of them is where the list becomes complete.
 	const truncationNote = $derived.by(() => {
 		const rows = [...(timeline?.logs ?? []), ...(timeline?.actions ?? [])];
@@ -114,8 +125,10 @@
 	});
 	const logs = $derived(breadcrumbs.logs);
 	const actions = $derived(breadcrumbs.actions);
-	// Without a replay to seek, times read best relative to the exception.
-	const timelineOrigin = $derived(sessionRecording?.startedAt ?? occurrence.recordedAt);
+	// The player and the tables count from the recording's start, the clip's first event when it does not say; without
+	// a recording, times read best relative to the exception.
+	const recordingStart = $derived(recordingOrigin(recording));
+	const timelineOrigin = $derived(recordingStart ?? occurrence.recordedAt);
 	const hasLogs = $derived(logs.length > 0);
 	const hasActions = $derived(actions.length > 0);
 	// Logs/actions tables are only meaningful for frontend-framework projects.
@@ -130,11 +143,12 @@
 		replayRef?.seek(offsetMs);
 	}
 
-	// The browser and Flutter SDKs report whole sessions, so an occurrence links to its session page.
+	// The OpenTelemetry SDKs (browser, Flutter, iOS, Android) report whole sessions, so an occurrence links to its session
+	// page.
 	const hasFullSessions = $derived(
 		!!projectsState.currentProject &&
 			(isBrowserFramework(projectsState.currentProject.framework) ||
-				projectsState.currentProject.framework === 'flutter')
+				SDK_CONFIG_FRAMEWORKS.includes(projectsState.currentProject.framework))
 	);
 	let captureOpen = $state(false);
 	const canCapture = $derived(
@@ -207,6 +221,7 @@
 				<SessionReplay
 					bind:this={replayRef}
 					events={recordingEvents}
+					startedAt={timelineOrigin}
 					onTimeUpdate={(ms) => (currentTimeMs = ms)}
 				/>
 			{/key}
@@ -231,7 +246,7 @@
 			<Card.Title>Session Context</Card.Title>
 			<Card.Description>
 				Console output, requests, navigation and app events in the 10 minutes before this exception.
-				Times are offsets from {hasReplay ? 'the start of the recording' : 'the exception'}.
+				Times are offsets from {recordingStart ? 'the start of the recording' : 'the exception'}.
 				{truncationNote}
 			</Card.Description>
 		</Card.Header>
@@ -299,6 +314,55 @@
 				</div>
 			{/if}
 		</div>
+
+		{#if hang}
+			<hr class="border-border" />
+			<div>
+				<p class="mb-3 text-sm font-medium">App Hang</p>
+				<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+					<LabelValue
+						label="Main thread blocked for"
+						value={hang.durationMs !== null ? formatElapsed(hang.durationMs) : null}
+						mono
+					/>
+					<LabelValue
+						label="Fatal"
+						value={hang.fatal
+							? 'Yes, the app was terminated during the hang'
+							: 'No, the app recovered'}
+						valueClass={hang.fatal ? 'font-medium text-rose-600 dark:text-rose-400' : ''}
+					/>
+				</div>
+			</div>
+		{/if}
+
+		{#if screen}
+			<hr class="border-border" />
+			<div>
+				<p class="mb-3 text-sm font-medium">{screenNoun}</p>
+				<div class="grid grid-cols-2 gap-4 md:grid-cols-5">
+					{#if screen.name}
+						<LabelValue label={screenNoun} value={screen.name} mono />
+					{/if}
+					{#if screen.route}
+						<LabelValue label="Route" value={screen.route} mono />
+					{/if}
+					{#if screen.previous}
+						<LabelValue label="Previous {screenNoun.toLowerCase()}" value={screen.previous} mono />
+					{/if}
+					{#if screen.durationMs !== undefined}
+						<LabelValue
+							label="Time on {screenNoun.toLowerCase()}"
+							value={formatElapsed(screen.durationMs)}
+							mono
+						/>
+					{/if}
+					{#if screen.viewport}
+						<LabelValue label="Viewport" value={formatViewport(screen.viewport)} mono />
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		<!-- AttributesGrid -->
 		{#if occurrence.attributes && Object.keys(occurrence.attributes).length > 0}

@@ -28,23 +28,32 @@ Mach-O builds carry no GNU build-id note, so the debug ID is the Mach-O UUID. A 
 
 ## Uploading the `.dSYM` with the Xcode build phase
 
-The [`traceway-ios`](/client/ios) SDK ships an uploader at `Scripts/upload_symbols.sh` that finds the `.dSYM` binaries and posts them. The recommended setup is an Xcode **Run Script** build phase, so symbols upload automatically on every Release build:
+The [`traceway-ios`](/client/ios) SDK ships an uploader at `Scripts/upload_symbols.sh` that finds the `.dSYM` binaries and posts them. The recommended setup is an Xcode **Run Script** build phase, last in the app target's Build Phases, so symbols upload automatically on every Release build. It can run the script straight from the package checkout:
 
 ```bash
-"${SRCROOT}/path/to/Scripts/upload_symbols.sh"
+"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/traceway-ios/Scripts/upload_symbols.sh"
 ```
 
-The script no-ops on non-Release builds and when the token is unset, so it is safe to leave in place for Debug builds and local development. Configure it through the build environment:
+or a copy of the script in your repository (`"${SRCROOT}/Scripts/upload_symbols.sh"`). Set **User Script Sandboxing** to **No** for the app target (`ENABLE_USER_SCRIPT_SANDBOXING = NO`): Xcode 15 and later turn it on for new projects, and then the script cannot read the package checkout or the dSYM folder (the build log says `Sandbox: bash deny file-read-data`). With sandboxing on, the phase must list `$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)` as an input file, and only the app's own dSYM is uploaded.
+
+Configure it through build settings, which Xcode hands to the script as environment variables (scheme environment variables do not reach build phases), or through flags:
 
 | Value | Flag | Env var | Default |
 |---|---|---|---|
 | Upload token | `--token` | `TRACEWAY_UPLOAD_TOKEN` | required |
-| Instance URL | `--url` | `TRACEWAY_URL` | Traceway Cloud |
+| Server URL | `--url` | `TRACEWAY_URL` | Traceway Cloud (also when blank) |
 | dSYM directory | `--dsym-dir` | | Xcode's `DWARF_DSYM_FOLDER_PATH` |
+| Upload Debug builds too | | `TRACEWAY_UPLOAD_DEBUG=YES` | Release builds only |
 
-`TRACEWAY_UPLOAD_TOKEN` is your project's **upload token** from the dashboard, the same one used for JavaScript source maps. It is **not** the runtime token in your `Traceway.start()` connection string. `TRACEWAY_URL` is your Traceway base URL (or the `/api/report` URL); the script derives the upload endpoint from it.
+`TRACEWAY_UPLOAD_TOKEN` is your project's **upload token** from the Connection page (Symbol Upload), the same one used for JavaScript source maps; `traceway setup` creates it. It is **not** the project token the app passes to `Traceway.initialize(token:)`. Keep it in the git-ignored `Traceway.xcconfig` the [Quick start](/client/ios#quick-start) sets up, or in CI's environment; `Info.plist` does not reference it, so it never reaches the app. `TRACEWAY_URL` is needed only for a self-hosted server: the script reads it by the rules every Traceway SDK uses for `baseUrl` (`https://` added without a scheme, a trailing `/api` dropped) and appends `/api/symbols/upload`.
 
-The script finds dSYM binaries at `*.dSYM/Contents/Resources/DWARF/*` and POSTs each one. Pass `--dry-run` to resolve the config and list what would be uploaded without sending.
+Debug builds have no dSYM (Debug Information Format is `DWARF`), and the script skips any build that is not Release. To symbolicate the crashes and hangs of Debug builds too, set Debug Information Format to **DWARF with dSYM File** for Debug and `TRACEWAY_UPLOAD_DEBUG = YES`.
+
+The script finds dSYM binaries at `*.dSYM/Contents/Resources/DWARF/*` and POSTs each one. It never fails a build: a Release build without a token, no dSYM found, or a failed upload (with its HTTP status) are Xcode build warnings (`warning: traceway: …`). Pass `--dry-run` to resolve the config and list what would be uploaded without sending. After an archive in CI:
+
+```bash
+TRACEWAY_UPLOAD_TOKEN="$TRACEWAY_UPLOAD_TOKEN" ./Scripts/upload_symbols.sh --dsym-dir build/MyApp.xcarchive/dSYMs
+```
 
 ## Uploading from CI without Xcode
 

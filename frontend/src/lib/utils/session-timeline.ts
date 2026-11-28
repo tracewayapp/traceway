@@ -1,5 +1,6 @@
 import { api } from '$lib/api';
 import type { SessionActionEvent, SessionLogEvent } from '$lib/types/exceptions';
+import { objectRows } from '$lib/utils/session-recording';
 
 export type SessionBreadcrumbs = {
 	logs: SessionLogEvent[];
@@ -61,14 +62,17 @@ export function pickBreadcrumbs(
 	timeline: SessionBreadcrumbs | null,
 	recording?: { logs?: SessionLogEvent[]; actions?: SessionActionEvent[] } | null
 ): SessionBreadcrumbs {
-	function merge<T extends { timestamp: string }>(legacy: T[] = [], current: T[] = []): T[] {
+	// A recording's breadcrumbs are whatever its SDK uploaded.
+	function merge<T extends { timestamp: string }>(legacy: unknown, current: unknown): T[] {
 		const rows = new Map<string, T>();
-		for (const row of [...legacy, ...current]) rows.set(JSON.stringify(row), row);
+		for (const row of [...objectRows<T>(legacy), ...objectRows<T>(current)]) {
+			rows.set(JSON.stringify(row), row);
+		}
 		return [...rows.values()].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 	}
 	return {
-		logs: merge(recording?.logs, timeline?.logs),
-		actions: merge(recording?.actions, timeline?.actions),
+		logs: merge<SessionLogEvent>(recording?.logs, timeline?.logs),
+		actions: merge<SessionActionEvent>(recording?.actions, timeline?.actions),
 		truncated: timeline?.truncated ?? false
 	};
 }

@@ -1,0 +1,12 @@
+Session replay shows what a user saw and did on the page: before an error, along a journey you care about, or while they tell support about a problem. This page sets it up from the first line of code to the dashboard. Private content is hidden in the browser, before anything is uploaded, and once the app ships you change what is recorded from the dashboard, without a release.
+
+| Step                                                                                           | What you do                                                 | Where                         |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------- |
+| [1. Turn on replay and set the limits](#step-1-turn-on-replay-and-set-the-limits-in-the-app)   | Start the SDK and decide what may never be recorded         | Your code                     |
+| [2. Hide private content](#step-2-hide-private-content)                                        | Keep inputs masked and mark private elements                | Your markup                   |
+| [3. Choose whether replays show images](#step-3-choose-whether-replays-show-images)            | Pick `off`, `wifi` or `always`                              | Your code or a rule           |
+| [4. Choose which sessions upload replay](#step-4-choose-which-sessions-upload-replay)          | Keep the error clips, sample sessions, record journeys      | Your code or a rule           |
+| [5. Capture one user or device](#step-5-capture-one-user-or-device-from-the-dashboard)         | Identify users, then capture one when they report a problem | Your code, then the dashboard |
+| [6. Change collection remotely](#step-6-change-collection-remotely-with-data-collection-rules) | Write Data Collection rules                                 | The dashboard                 |
+
+With Steps 1 and 2 done, every captured error uploads a 30-second replay clip. The other steps change what is recorded and when it is uploaded.

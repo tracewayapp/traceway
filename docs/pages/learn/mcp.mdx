@@ -136,13 +136,13 @@ If the agent says it has no Traceway tools or gets an error, see [When it fails]
 | **Issues** | Grouped exceptions in a time window, one issue with its stack trace and occurrences, a single occurrence |
 | **Logs** | Log search by severity, service, text or trace id |
 | **Endpoints and tasks** | p50, p95 and p99, request counts and impact per endpoint, latency over time, one endpoint's slowest requests, the span waterfall of a request or task run, and whether an endpoint is marked expected-slow |
-| **Traces, sessions and AI** | A distributed trace across services and projects, a session with the exceptions that happened in it, an AI trace with its conversation |
+| **Traces, sessions and AI** | A distributed trace across services and projects, the sessions of a time window, a session with the exceptions that happened in it, an AI trace with its conversation |
 | **Metrics and dashboards** | Which metrics are recorded and their tags, metric series, the dashboards of a project and their JSON |
 | **Alerts** | Alert rules with their enabled and snoozed state, notification channels, and what was sent |
 | **On-call** | Pages and who was notified, who is on call now, teams, schedules, escalation policies, and your own contact methods and notification chains |
 | **Monitors and SLOs** | Monitors and their incidents, SLO status, error budget and history, and a dry run of an SLO definition |
 | **Post-mortems** | The post-mortem documents of a project |
-| **Remote SDK config** | The [remote SDK config](/learn/remote-config) rules of a browser or Flutter project, and the settings a given client would get |
+| **Remote SDK config** | The [remote SDK config](/learn/remote-config) rules of a browser, Flutter, iOS or Android project, and the settings a given client would get |
 
 The agent can also explain Traceway itself. The server carries a [product guide](#the-product-guide), so "how does paging escalate?" gets an answer from the guide and not a guess.
 
@@ -248,6 +248,7 @@ Every tool wraps one API call and is annotated read-only. Each declares an outpu
 | `get_endpoint_request` | One request: span waterfall and linked errors |
 | `endpoints_chart` | Latency over time, to find when it changed |
 | `get_slow_endpoint_config` | Whether an endpoint is marked expected-slow, and the latency that was accepted for it |
+| `list_sessions` | User sessions that started in a window, newest first. `search` matches the session id, the client IP or an attribute value |
 | `get_task`, `get_ai_trace`, `get_session`, `get_trace` | One task run, AI trace, session or distributed trace by id |
 | `query_metrics` | Time-bucketed metric series. Aggregations include `rate`, `last`, and percentiles or `good_ratio` of a distribution metric. `whole_range` returns one value for the window |
 | `discover_metrics` | Recorded metric names, types, units and tag keys. With `name` and `key`, the values of one tag |
@@ -260,14 +261,14 @@ Every tool wraps one API call and is annotated read-only. Each declares an outpu
 | `list_checks`, `get_check` | Monitors and their incidents |
 | `list_slos`, `get_slo`, `get_slo_series`, `preview_slo` | [SLOs](/learn/slos#manage-slos-with-the-cli-or-mcp): status and error budget, history, and a dry run of a definition |
 | `list_post_mortems`, `get_post_mortem` | Post-mortem documents |
-| `list_sdk_config_rules` | A browser or Flutter project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
+| `list_sdk_config_rules` | A browser, Flutter, iOS or Android project's [remote SDK config](/learn/remote-config) rules, in order, with `updatedAt` |
 | `preview_sdk_config` | The settings document that the saved rules give a client with the attributes you pass (`attributes`, optional `instance_uid`): matched rules and captures, plan limits applied, config hash. It does not show what a live client applied |
 
 Three things hold for all of them:
 
 - **The project is chosen per call.** Every project-scoped tool takes `project_id`. The local server falls back to the CLI's current project. The remote server has no default, so the agent passes `project_id`, usually after calling `list_projects`. `get_trace` takes no project: it follows a trace through every project you can see.
 - **Time windows are bounded.** Windowed tools take `since` (such as `30m`, `1h`, `24h`, `7d`, default `1h`) or `from` and `to` as RFC 3339 timestamps.
-- **By-id lookups need the record's timestamp.** `get_exception_occurrence`, `get_endpoint_request`, `get_task`, `get_ai_trace` and `get_trace` take `recorded_at`, and `get_session` takes `started_at`, the same as the CLI's `--recorded-at` flags. It keeps the lookup fast, and an approximate time is enough. The tool descriptions tell the agent where to find it: the `?t=` parameter of a dashboard URL, an occurrence list, or a notification.
+- **By-id lookups need the record's timestamp.** `get_exception_occurrence`, `get_endpoint_request`, `get_task`, `get_ai_trace` and `get_trace` take `recorded_at`, the same as the CLI's `--recorded-at` flags. It keeps the lookup fast, and an approximate time is enough. The tool descriptions tell the agent where to find it: the `?t=` parameter of a dashboard URL, an occurrence list, or a notification. `get_session` takes `started_at` for the same reason, but it is optional: without it the start is looked up among the sessions of the last 30 days.
 
 ## Prompts and resources
 
@@ -290,7 +291,7 @@ These are the same documents the [Traceway skills](https://github.com/tracewayap
 | `learn/monitors` | Monitors, incidents, status pages, post-mortems |
 | `learn/alerts` | Every alert rule type, channels, cooldowns, snoozing |
 | `learn/on-call` | Teams, schedules, overrides, escalation policies, pages, contact methods |
-| `learn/data-collection` | Remote SDK config for browser and Flutter projects: signal modes, rules, triggers, recording trigger steps (CSS selectors in a browser, widget selectors and route names in Flutter), captures, preview |
+| `learn/data-collection` | Remote SDK config for browser, Flutter, iOS and Android projects: signal modes, rules, triggers, recording trigger steps (CSS selectors in a browser, widget or view selectors and route names in the apps), captures, preview |
 | `learn/organization` | Projects, roles, organization views, settings, agent access |
 
 The same guide ships as the `traceway-learn` skill, installed with the other skills (`npx skills add tracewayapp/skills --all`, or the `tw` Claude Code plugin).

@@ -1,0 +1,12 @@
+Three settings upload more than the error clips, from the most data to the least:
+
+- **`recordAllSessions: true`**, an option of the app, streams every replay segment and every breadcrumb of every session. Use it in development, or in a small app.
+- **Replay streaming for a share of sessions**, in `collection` or a rule. The share is decided per session id, so a session is recorded whole or not at all, and the other sessions keep their error clips:
+
+  ```json
+  { "replay": { "mode": "stream", "sessionSampleRate": 0.1 } }
+  ```
+
+- **`baselineSampleRate`**, an option of the app or a rule's **Healthy session sample (%)**, streams the breadcrumbs and request spans of a share of sessions, without replay. `0.01` (1%) gives a stable sample of healthy visits.
+
+A streamed session uploads each 30-second segment when it ends, and the segment in progress when the tab is hidden. All uploads of a session share one budget, 50 MiB and 10,000 events (`collectionLimits`); past it, the SDK drops diagnostics and counts what it dropped.

@@ -22,7 +22,7 @@ Session Replay is enabled by default when using `@tracewayapp/frontend` in a bro
 import { init } from "@tracewayapp/frontend";
 
 // Session Replay is active
-init("your-token@https://traceway.example.com/api/report");
+init("your-token@https://cloud.tracewayapp.com/api/report");
 ```
 
 ## Disabling Session Replay
@@ -30,7 +30,7 @@ init("your-token@https://traceway.example.com/api/report");
 ```javascript
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report", {
+init("your-token@https://cloud.tracewayapp.com/api/report", {
   sessionRecording: false,
 });
 ```
@@ -95,7 +95,7 @@ Recordings are split into segments to limit memory usage. Every 30 seconds (by d
 You can adjust the segment duration:
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
+init("your-token@https://cloud.tracewayapp.com/api/report", {
   sessionRecordingSegmentDuration: 60000, // 60 seconds per segment
 });
 ```
@@ -107,7 +107,7 @@ A longer segment duration means fewer rows and fewer S3 reads when reassembling 
 By default the recorder only ships clips when an exception fires. Pass `recordAllSessions: true` to upload **every** segment continuously and produce a parent `sessions` row in the dashboard:
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
+init("your-token@https://cloud.tracewayapp.com/api/report", {
   recordAllSessions: true,
 });
 ```

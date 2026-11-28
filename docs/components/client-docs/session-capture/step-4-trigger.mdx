@@ -1,0 +1,23 @@
+A recording trigger watches for steps in order on the same tab, then uploads the replay it buffered and keeps recording for a while. Build one in a rule's **Triggers** tab ([Step 6](#step-6-change-collection-remotely-with-data-collection-rules) shows how to open a rule):
+
+1. Click **Add recording trigger** and enter a **Trigger name**, such as `Checkout failed`. Sessions it records show that name.
+2. Add up to five steps with **Add step**. Each step is an **Event**:
+   - **Click** or **Hover** with a CSS selector ([next section](#name-the-elements-a-trigger-can-match));
+   - **Navigation** with a route pattern such as `/orders/{id}`, where `{id}` matches one path segment;
+   - **Log** with a log message, which **Exactly matches** or **Contains** the line.
+3. Set **Within seconds of previous step** where the steps must follow each other quickly, then **Replay lookback (seconds)**, **Continue recording (seconds)**, **Cooldown (seconds)** and **Captures per session**.
+4. Save the rule.
+
+<img
+  src="/session-capture/rule-dialog-triggers.png"
+  alt="The Triggers tab of a rule: a recording trigger with its name, ordered Click, Navigation and Log steps, the replay lookback, how long to continue recording, the cooldown and the captures per session"
+  style={{ maxWidth: "100%", height: "auto", marginTop: "16px" }}
+/>
+
+Below the recording triggers, **Capture when a log line appears** starts a capture when a line repeats, for example `payment failed` 3 times within 60 seconds, and streams for a number of minutes, with or without replay.
+
+A **Log** step matches a `console.*` line, a `log()` line or a message from `captureMessage`. Give the moments you want to find a line of their own:
+
+{props.children}
+
+The text is compared as it is, so keep it constant and put the parts that change in attributes. A trigger the builders cannot express goes in the rule's **JSON** tab, whose **Add a trigger** buttons hold templates such as **Failed requests** and **Custom event** (a `track()` name). See [Triggers](/learn/remote-config/reference#triggers) for every field, and [Record the journeys that matter](/learn/remote-config/trigger-sequences) for more examples.

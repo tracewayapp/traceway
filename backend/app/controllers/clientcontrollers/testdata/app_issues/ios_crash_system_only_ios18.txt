@@ -1,0 +1,10 @@
+SIGABRT (EXC_CRASH)
+#0  libsystem_kernel.dylib+0xa1f8
+#1  libsystem_c.dylib+0x7c1a4
+#2  CoreMedia+0x4d77c
+#3  CoreMedia+0x4e010
+#4  AVFCore+0x1c0b3c
+#5  UIKitCore+0x30a2f4
+#6  GraphicsServices+0x1d58
+#7  static ShopApp.$main() (<compiler-generated>)
+#8  main (<compiler-generated>)

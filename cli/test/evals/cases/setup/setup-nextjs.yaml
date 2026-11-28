@@ -33,7 +33,7 @@ expect:
     - kind: file
       path: package.json
       contains: ["@opentelemetry/(sdk-node|sdk-trace-node)|@vercel/otel", "@opentelemetry/exporter-trace-otlp-(http|proto)|@vercel/otel"]
-      not_contains: ["@tracewayapp/react"]
+      not_contains: ["@tracewayapp/(react|frontend)"]
     - kind: file
       path: "instrumentation.*"
       contains: ["register"]
@@ -56,7 +56,7 @@ judge:
   rubric:
     - Uses the instrumentation.ts/js hook (the Node SDK in a separate Node-only module behind a NEXT_RUNTIME guard, or @vercel/otel), not a --import/--require preload (directly or through NODE_OPTIONS).
     - Reads the token and URL from the environment; never prints or hard-codes the token.
-    - Leaves the browser side out (no @tracewayapp/react, no browser project token) as the user asked.
+    - Leaves the browser side out (no @tracewayapp/react or @tracewayapp/frontend, no NEXT_PUBLIC_ Traceway token) as the user asked.
     - Keeps npm run build passing, and lists @opentelemetry/auto-instrumentations-node in serverExternalPackages or otherwise keeps the build clean.
 oracle:
   - load_skill: traceway-setup

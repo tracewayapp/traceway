@@ -8,6 +8,7 @@ on:
       - "backend/**"
       - "skills/traceway/**"
       - "skills/traceway-learn/**"
+      - "skills/traceway-setup/**"
       - "plugins/tw-write/**"
       - ".github/workflows/cli.yml"
   pull_request:
@@ -17,6 +18,7 @@ on:
       - "backend/**"
       - "skills/traceway/**"
       - "skills/traceway-learn/**"
+      - "skills/traceway-setup/**"
       - "plugins/tw-write/**"
       - ".github/workflows/cli.yml"
   workflow_dispatch:

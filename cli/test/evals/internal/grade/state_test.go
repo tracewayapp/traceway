@@ -33,3 +33,34 @@ func TestCheckFilesSkipsGeneratedDirs(t *testing.T) {
 		t.Fatalf("the agent's own file was not found: %v", err)
 	}
 }
+
+func TestExpandBraces(t *testing.T) {
+	got := expandBraces("{app/build.gradle.kts,.github/workflows/*}")
+	if len(got) != 2 || got[0] != "app/build.gradle.kts" || got[1] != ".github/workflows/*" {
+		t.Fatalf("expandBraces = %q", got)
+	}
+	got = expandBraces("**/*.{kt,java}")
+	if len(got) != 2 || got[0] != "**/*.kt" || got[1] != "**/*.java" {
+		t.Fatalf("expandBraces = %q", got)
+	}
+	if got := expandBraces("**/*.go"); len(got) != 1 || got[0] != "**/*.go" {
+		t.Fatalf("expandBraces = %q", got)
+	}
+}
+
+func TestCheckFilesSameFile(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{"a.swift": "@main struct App {}\n", "b.swift": "Traceway.initialize(token: t)\n"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	spec := catalog.StateAssert{Path: "*.swift", Contains: []string{"@main", `Traceway\.initialize\(`}}
+	if err := checkFiles(root, spec); err != nil {
+		t.Fatalf("across files: %v", err)
+	}
+	spec.SameFile = true
+	if err := checkFiles(root, spec); err == nil {
+		t.Fatal("same_file matched across two files")
+	}
+}

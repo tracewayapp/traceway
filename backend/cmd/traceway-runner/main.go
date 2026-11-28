@@ -12,8 +12,8 @@
 //	TRACEWAY_URL             base URL of the Traceway instance (required)
 //	TRACEWAY_RUNNER_SECRET   the server's SYNTHETICS_RUNNER_SECRET (required)
 //	TRACEWAY_RUNNER_NAME     name this runner registers under (default: hostname)
-//	TRACEWAY_RUNNER_MONITORING  optional Traceway SDK connection string
-//	                         (<project_token>@<url>/api/report). When set the
+//	TRACEWAY_RUNNER_MONITORING  optional Traceway connection string
+//	                         (<project_token>@<url>). When set the
 //	                         runner reports its own telemetry: server metrics
 //	                         (CPU, memory, goroutines), one task trace per
 //	                         executed run (tagged check_id/run_id/status), and

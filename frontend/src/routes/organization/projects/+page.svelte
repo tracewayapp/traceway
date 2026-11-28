@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { ArrowUpRight } from '@lucide/svelte';
+	import { ArrowUpRight, Bot } from '@lucide/svelte';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import * as Table from '$lib/components/ui/table';
 	import FrameworkIcon from '$lib/components/framework-icon.svelte';
@@ -11,9 +12,17 @@
 	import { organizationContext } from '$lib/state/organization-context.svelte';
 	import { getFrameworkLabel, type Project } from '$lib/state/projects.svelte';
 	import { formatRelativeTimeAgo } from '$lib/utils/formatters';
+	import { resolveHref } from '$lib/utils/links';
 	import { createRowClickHandler } from '$lib/utils/navigation';
 
 	const projects = $derived(organizationContext.projects);
+
+	// The coding agent's setup flow (setup token, proposal review) for an organization that already has projects.
+	const agentSetupHref = $derived.by(() => {
+		const organizationId = organizationContext.organizationId;
+		if (organizationId === null || !authState.canWriteOrganization(organizationId)) return null;
+		return resolveHref(`/setup?mode=add&organizationId=${organizationId}`);
+	});
 
 	function projectRole(project: Project): string {
 		const organizationId = organizationContext.organizationId;
@@ -45,6 +54,14 @@
 	>
 		{#snippet trailing()}
 			<CountPill count={projects.length} />
+		{/snippet}
+		{#snippet actions()}
+			{#if agentSetupHref}
+				<Button variant="outline" size="sm" href={agentSetupHref}>
+					<Bot class="size-4" />
+					Add Projects with Your Agent
+				</Button>
+			{/if}
 		{/snippet}
 	</PageHeader>
 

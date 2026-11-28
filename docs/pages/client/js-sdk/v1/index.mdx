@@ -41,7 +41,7 @@ The frontend and jQuery packages are also available as standalone scripts (no bu
 <!-- Framework-agnostic (exposes window.Traceway) -->
 <script src="https://cdn.jsdelivr.net/npm/@tracewayapp/frontend@1/dist/traceway.iife.global.js"></script>
 <script>
-  Traceway.init("your-token@https://traceway.example.com/api/report");
+  Traceway.init("your-token@https://cloud.tracewayapp.com/api/report");
 </script>
 ```
 
@@ -50,7 +50,7 @@ The frontend and jQuery packages are also available as standalone scripts (no bu
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tracewayapp/jquery@1/dist/traceway-jquery.iife.global.js"></script>
 <script>
-  TracewayJQuery.init("your-token@https://traceway.example.com/api/report");
+  TracewayJQuery.init("your-token@https://cloud.tracewayapp.com/api/report");
 </script>
 ```
 
@@ -64,7 +64,7 @@ All Traceway SDKs use a connection string to identify your project and endpoint:
 
 Example:
 ```
-abc123def456@https://traceway.example.com/api/report
+abc123def456@https://cloud.tracewayapp.com/api/report
 ```
 
 You can find your connection string on the project’s **Connection** page.
@@ -86,7 +86,7 @@ For React, Vue, or Svelte applications, use the framework-specific packages for 
 import { init, captureException, captureMessage } from "@tracewayapp/frontend";
 
 // Initialize once at app startup
-init("your-token@https://traceway.example.com/api/report");
+init("your-token@https://cloud.tracewayapp.com/api/report");
 
 // Capture errors
 try {

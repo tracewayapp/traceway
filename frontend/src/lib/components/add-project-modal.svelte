@@ -141,7 +141,7 @@
 						<CopyButton text={() => createdProject?.token ?? ''} size="default" />
 					</div>
 					<p class="text-sm text-muted-foreground">
-						This token will only be shown once. Make sure to save it securely.
+						You can copy it again any time from the project's Connection page.
 					</p>
 				</div>
 			</div>

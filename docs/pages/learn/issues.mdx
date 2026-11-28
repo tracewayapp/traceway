@@ -11,6 +11,7 @@ An issue is created when:
 - A **panic** or **unhandled exception** occurs during a traced request or task
 - An **error** is reported to the client SDK during request handling
 - Your code explicitly captures an exception or message through the client SDK
+- A browser or app SDK catches an uncaught error or a crash, or an app SDK reports a native crash, an ANR, an app hang or a watchdog termination (see [Issues from Apps](#issues-from-apps))
 
 ## Errors vs Messages
 
@@ -20,6 +21,39 @@ Traceway captures two kinds of issues:
 - **Messages**: Explicitly captured strings sent through the client SDK
 
 Both appear in the Issues list with full context and attributes.
+
+## Issues from Apps
+
+The browser, Flutter, Android and iOS SDKs report uncaught errors and crashes as errors, with the breadcrumbs and the replay clip of the seconds before them. The Android and iOS SDKs also report what went wrong outside the app's own code, as issues of four types:
+
+| Issue type | Platforms | What happened |
+|---|---|---|
+| `NativeCrash` | Android 11 and later, iOS 14 and later | A crash in native code. On Android it is read from the system's record of how the process ended, with the signal, the abort message and the crashing thread's frames (Android 12 and later). On iOS it is a crash MetricKit saw that the SDK's own signal handler could not record |
+| `ApplicationNotResponding` | Android 11 and later | Android ended the app as not responding. The stack is the main thread's, from the ANR dump |
+| `AppHang` | Android, iOS | The main thread was blocked for 2 seconds or more (`appHangThresholdMs`) while the app was in the foreground, with the stack it was stuck in. The message says how long: `Main thread blocked for 3.2 s` |
+| `WatchdogTermination` | iOS | The system ended the app because it did not answer in time (`0x8badf00d`), as MetricKit reported it |
+
+- `NativeCrash`, `ApplicationNotResponding` and `WatchdogTermination` are reported at the next start of the app, under the app version that crashed and, when the SDK knows it, with the session the run was in. That session's breadcrumbs and replay belong to the earlier run, not to the run that sends the issue.
+- An `AppHang` is reported when the main thread runs again. A hang the app did not survive is reported at the next start with `app.hang.fatal = true`; on Android, when the system recorded that run as an ANR, the ANR is the issue instead. The issue page shows an **App Hang** section with how long the main thread was blocked and whether the app was terminated during the hang.
+- `captureExitReasons` (the three exit types) and `captureAppHangs` turn them off; both are on by default. Hangs in the background or under a debugger are not reported.
+- The Flutter SDK reports Dart errors only. A native crash in a plugin or the engine ends the process before Dart runs, and no stack can be taken from a blocked UI isolate, so Flutter reports hangs as the `app.hang` [metric](/learn/client-metrics) only. Add the Android and iOS SDKs to the host apps to get these four types.
+- Each SDK also counts these events as [client metrics](/learn/client-metrics): `app.crash`, `app.anr`, `app.hang` and `app.oom` (an out-of-memory kill is a count, never an issue).
+
+These four types are grouped by their type and their top five frames from the app's own code, not by the whole trace, because the system frames below them and the addresses inside them differ from one install or OS build to the next. See [Fingerprinting](#fingerprinting).
+
+### Screen Context
+
+Exceptions and messages from the browser, Flutter, Android and iOS SDKs say where the user was. The issue page shows them in a **Screen** section (**Page** in a browser project):
+
+| Attribute | Shown as | Value |
+|---|---|---|
+| `app.screen.name` | Screen or Page | The screen's name. In the browser, the route template when the app named it (`setRoute`, the router, `recordNavigation`), else the path; in the apps the path or the class of the screen |
+| `app.screen.route` | Route | The route template, when one is known |
+| `app.screen.previous` | Previous screen or page | The screen before it |
+| `app.screen.duration_ms` | Time on screen or page | How long the screen had been shown |
+| `viewport` | Viewport | The window size: CSS pixels in the browser, dp or points in the apps |
+
+The browser SDK puts the same keys on log lines and actions, so [Logs](/learn/logs) can be filtered by page too.
 
 ## Connection to Traces
 
@@ -57,6 +91,7 @@ Before hashing, Traceway normalizes the stack trace so values that vary between 
 | File locations | Absolute paths collapse to `filename:line`, URL origins are stripped from browser frames, and `@v1.2.3` module version suffixes are removed so a dependency bump does not split a group. |
 | JVM frames | Line numbers inside `(File.java:123)` are dropped, and `... 12 more` becomes `... more`. |
 | Column numbers | Dropped from frames that end in `:line:col`, unless the line number is 1. Minified bundles put everything on line 1, and the column is the only thing distinguishing frames there. Frames that carry the position inside brackets, such as Dart `(main.dart:20:3)`, keep the column. |
+| App issue types | `NativeCrash`, `ApplicationNotResponding`, `AppHang` and `WatchdogTermination` are hashed from their type and their top five in-app frames: system libraries, program counters in them, install paths and build ids are left out. Without an in-app frame (an ANR on an idle main thread) the top five frames are used, and without frames the message with its numbers removed. |
 | Resolved function names | JavaScript function-name lines are collapsed to `<fn>`, so better JS name resolution alone does not re-bucket an issue. Function and method names in other formats, such as Dart, iOS and JVM frames, are part of the hash. Uploading debug info for the first time also rewrites each frame's file, line and column, so occurrences from before the upload keep their old hash and later ones form a new issue. |
 | Whitespace | Runs of spaces and blank lines are collapsed. |
 

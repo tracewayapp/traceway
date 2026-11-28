@@ -24,6 +24,7 @@
 	import OauthButtons from '$lib/components/oauth-buttons.svelte';
 	import SetupProjectsStep from '$lib/components/setup/setup-projects-step.svelte';
 	import SignupExtensionSlot from '$lib/components/signup-extension-slot.svelte';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 
 	const DEFAULT_FRAMEWORK: Framework = 'opentelemetry';
 
@@ -147,7 +148,8 @@
 </script>
 
 <div class="flex min-h-screen w-full items-center justify-center px-4 py-8">
-	<Card class={step === 'projects' ? 'w-full max-w-2xl' : 'w-[400px]'}>
+	<Card class={step === 'projects' ? 'relative w-full max-w-2xl' : 'relative w-[400px]'}>
+		<HolidayArt name="gingerbread-dancer" class="absolute -top-[58px] right-6 size-16" />
 		<CardHeader>
 			<CardTitle class="text-2xl">
 				<div class="flex flex-row items-center justify-center gap-2">

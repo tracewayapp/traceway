@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { Eyebrow } from "@/components/eyebrow";
+import { Holiday } from "@/components/holiday";
 import { getCalendlyUrl, hasCalendly } from "@/lib/calendly";
 import { withReferral } from "@/lib/referral";
 
@@ -84,6 +85,12 @@ export default function Contact() {
       <section className="hero relative overflow-hidden pt-20 pb-24">
         <div className="wrap relative z-10 max-w-3xl mx-auto">
           <div className="text-center mb-10">
+            <Holiday
+              src="/holiday/reindeer-post.svg"
+              width={100}
+              height={100}
+              className="mx-auto mb-3 size-20"
+            />
             <Eyebrow>Get started</Eyebrow>
             <h1 className="mt-4">
               We&apos;d love to hear from you.{" "}

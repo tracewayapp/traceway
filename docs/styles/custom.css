@@ -1043,9 +1043,9 @@ nav.nextra-toc .nx-sticky.nx-bottom-0,
   border-top: 1px solid var(--hair) !important;
 }
 
-/* Thanksgiving corner, flipped into the top-right corner under the navbar. Only
-   from xl up, where the table of contents column leaves that corner empty. */
-.harvest-corner {
+/* Winter holiday corner, flipped into the top-right corner under the navbar.
+   Only from xl up, where the table of contents column leaves that corner empty. */
+.holiday-corner {
   display: none;
   position: absolute;
   top: var(--nextra-navbar-height, 4rem);
@@ -1056,7 +1056,7 @@ nav.nextra-toc .nx-sticky.nx-bottom-0,
   pointer-events: none;
 }
 @media (min-width: 1280px) {
-  .harvest-corner {
+  .holiday-corner {
     display: block;
   }
 }

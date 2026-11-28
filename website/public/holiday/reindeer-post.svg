@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Reindeer Post</title>
+  <path d="M36 46L24 31l-1 -13m2 15 -12 -6m18 13 1 -12M59 40l9 -19 -1 -10m-2 20 12 -6" fill="none" stroke="#915c42" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M38 45Q18 31 15 41Q18 54 36 53M60 45Q76 32 83 39Q81 48 66 52Z" fill="#c7804d"/>
+  <path d="M33 46Q45 33 60 41Q69 46 66 58L74 62Q80 73 65 75L61 89L35 89L36 69Q26 55 33 46Z" fill="#c7804d"/>
+  <circle cx="44.5" cy="53" r="2.3" fill="#293d52"/>
+  <circle cx="58" cy="52" r="2.3" fill="#293d52"/>
+  <ellipse cx="72" cy="62" rx="6" ry="5" fill="#bf3946"/>
+  <path d="M36 76q13 5 26 2" fill="none" stroke="#20564c" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(76 76) rotate(-14) scale(.87)">
+    <rect x="-15" y="-9" width="30" height="19" rx="2" fill="#fff1d3"/>
+    <path d="M-14 -8L0 2l14 -10" fill="none" stroke="#915c42" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cy="2" r="2.7" fill="#bf3946"/>
+  </g>
+</svg>

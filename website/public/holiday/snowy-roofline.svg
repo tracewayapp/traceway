@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="60" viewBox="0 0 256 60" role="img">
+  <title>Snowy Roofline</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .snowy-roofline-fall{animation:snowy-roofline-fall 4s ease-in-out infinite}
+      @keyframes snowy-roofline-fall{0%,100%{transform:translateY(-2px)}50%{transform:translateY(4px)}}
+    }
+  </style>
+  <g transform="translate(16 34)">
+    <path d="M0 0l12 -12 12 12v18H0Z" fill="#792e47"/>
+    <path d="M-3 1l15 -16 16 15 -3 3 -13 -13 -12 13Z" fill="#d7e7da"/>
+    <rect x="5" y="4" width="4" height="5" fill="#ffcf79"/>
+    <rect x="15" y="4" width="4" height="5" fill="#ffcf79"/>
+  </g>
+  <g transform="translate(51 33) scale(1.25)">
+    <path d="M0 0l12 -12 12 12v15.4H0Z" fill="#42816c"/>
+    <path d="M-3 1l15 -16 16 15 -3 3 -13 -13 -12 13Z" fill="#d7e7da"/>
+    <rect x="5" y="4" width="4" height="5" fill="#ffcf79"/>
+    <rect x="15" y="4" width="4" height="5" fill="#ffcf79"/>
+  </g>
+  <g transform="translate(103 36) scale(.87)">
+    <path d="M0 0l12 -12 12 12v18.4H0Z" fill="#65899e"/>
+    <path d="M-3 1l15 -16 16 15 -3 3 -13 -13 -12 13Z" fill="#d7e7da"/>
+    <rect x="5" y="4" width="4" height="5" fill="#ffcf79"/>
+    <rect x="15" y="4" width="4" height="5" fill="#ffcf79"/>
+  </g>
+  <g transform="translate(141 30) scale(1.4)">
+    <path d="M0 0l12 -12 12 12v15.8H0Z" fill="#792e47"/>
+    <path d="M-3 1l15 -16 16 15 -3 3 -13 -13 -12 13Z" fill="#d7e7da"/>
+    <rect x="5" y="4" width="4" height="5" fill="#ffcf79"/>
+    <rect x="15" y="4" width="4" height="5" fill="#ffcf79"/>
+  </g>
+  <g transform="translate(199 36) scale(.88)">
+    <path d="M0 0l12 -12 12 12v18.4H0Z" fill="#42816c"/>
+    <path d="M-3 1l15 -16 16 15 -3 3 -13 -13 -12 13Z" fill="#d7e7da"/>
+    <rect x="5" y="4" width="4" height="5" fill="#ffcf79"/>
+    <rect x="15" y="4" width="4" height="5" fill="#ffcf79"/>
+  </g>
+  <g transform="translate(91 47) scale(.55)">
+    <rect x="-3" y="0" width="6" height="9" fill="#915c42"/>
+    <path d="M0 -40Q-4 -31 -12 -25L-8 -24Q-13 -17 -19 -13L-13 -12Q-18 -5 -24 -1Q-9 4 0 1Q13 5 24 -1Q17 -5 13 -12L18 -13Q12 -17 8 -24L12 -25Q5 -31 0 -40Z" fill="#20564c"/>
+    <path d="M-7 -23q4 2 7 -1m-10 12q6 3 10 -1" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(189 48) scale(.65)">
+    <rect x="-3" y="0" width="6" height="6.6" fill="#915c42"/>
+    <path d="M0 -40Q-4 -31 -12 -25L-8 -24Q-13 -17 -19 -13L-13 -12Q-18 -5 -24 -1Q-9 4 0 1Q13 5 24 -1Q17 -5 13 -12L18 -13Q12 -17 8 -24L12 -25Q5 -31 0 -40Z" fill="#20564c"/>
+    <path d="M-7 -23q4 2 7 -1m-10 12q6 3 10 -1" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(238 47) scale(.47)">
+    <rect x="-3" y="0" width="6" height="9" fill="#915c42"/>
+    <path d="M0 -40Q-4 -31 -12 -25L-8 -24Q-13 -17 -19 -13L-13 -12Q-18 -5 -24 -1Q-9 4 0 1Q13 5 24 -1Q17 -5 13 -12L18 -13Q12 -17 8 -24L12 -25Q5 -31 0 -40Z" fill="#20564c"/>
+    <path d="M-7 -23q4 2 7 -1m-10 12q6 3 10 -1" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M9 51.5q65 -3 119 0t117 -1" fill="none" stroke="#d7e7da" stroke-width="5" stroke-linecap="round"/>
+  <g class="snowy-roofline-fall">
+    <circle cx="18" cy="12" r="1.7" fill="#65899e"/>
+    <circle cx="42" cy="9" r="1.7" fill="#65899e"/>
+    <circle cx="98" cy="10" r="1.7" fill="#65899e"/>
+    <circle cx="126" cy="18" r="1.7" fill="#65899e"/>
+    <circle cx="191" cy="11" r="1.7" fill="#65899e"/>
+    <circle cx="219" cy="9" r="1.7" fill="#65899e"/>
+    <circle cx="242" cy="19" r="1.7" fill="#65899e"/>
+  </g>
+</svg>

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="54" viewBox="0 0 256 54" role="img">
+  <title>Festoon Lights</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .festoon-lights-twinkle{animation:festoon-lights-twinkle 2.8s ease-in-out infinite}
+      .festoon-lights-twinkle.festoon-lights-late{animation-delay:-1.4s}
+      @keyframes festoon-lights-twinkle{0%,100%{opacity:1}50%{opacity:.36}}
+    }
+  </style>
+  <path d="M4 8Q128 47 252 8" fill="none" stroke="#20564c" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(16 11.6) rotate(15.9)">
+    <g class="festoon-lights-twinkle">
+      <path d="M-3 5Q-8 13 0 18Q8 12 3 5Z" fill="#bf3946"/>
+      <path d="M-2.6 8.4q-1.2 2.6 .2 5" fill="none" stroke="#fff1d3" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+    </g>
+    <rect x="-3" y="0" width="6" height="6" rx="1" fill="#20564c"/>
+  </g>
+  <g transform="translate(48 19.4) rotate(11.5)">
+    <g class="festoon-lights-twinkle festoon-lights-late">
+      <path d="M-3 5Q-8 13 0 18Q8 12 3 5Z" fill="#e9ae51"/>
+      <path d="M-2.6 8.4q-1.2 2.6 .2 5" fill="none" stroke="#fff1d3" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+    </g>
+    <rect x="-3" y="0" width="6" height="6" rx="1" fill="#20564c"/>
+  </g>
+  <g transform="translate(80 24.6) rotate(6.9)">
+    <g class="festoon-lights-twinkle">
+      <path d="M-3 5Q-8 13 0 18Q8 12 3 5Z" fill="#42816c"/>
+      <path d="M-2.6 8.4q-1.2 2.6 .2 5" fill="none" stroke="#fff1d3" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+    </g>
+    <rect x="-3" y="0" width="6" height="6" rx="1" fill="#20564c"/>
+  </g>
+  <g transform="translate(112 27.2) rotate(2.3)">
+    <g class="festoon-lights-twinkle festoon-lights-late">
+      <path d="M-3 5Q-8 13 0 18Q8 12 3 5Z" fill="#ef8780"/>
+      <path d="M-2.6 8.4q-1.2 2.6 .2 5" fill="none" stroke="#fff1d3" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+    </g>
+    <rect x="-3" y="0" width="6" height="6" rx="1" fill="#20564c"/>
+  </g>
+  <g transform="translate(144 27.2) rotate(-2.3)">
+    <g class="festoon-lights-twinkle">
+      <path d="M-3 5Q-8 13 0 18Q8 12 3 5Z" fill="#bf3946"/>
+      <path d="M-2.6 8.4q-1.2 2.6 .2 5" fill="none" stroke="#fff1d3" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+    </g>
+    <rect x="-3" y="0" width="6" height="6" rx="1" fill="#20564c"/>
+  </g>
+  <g transform="translate(176 24.6) rotate(-6.9)">
+    <g class="festoon-lights-twinkle festoon-lights-late">
+      <path d="M-3 5Q-8 13 0 18Q8 12 3 5Z" fill="#e9ae51"/>
+      <path d="M-2.6 8.4q-1.2 2.6 .2 5" fill="none" stroke="#fff1d3" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+    </g>
+    <rect x="-3" y="0" width="6" height="6" rx="1" fill="#20564c"/>
+  </g>
+  <g transform="translate(208 19.4) rotate(-11.5)">
+    <g class="festoon-lights-twinkle">
+      <path d="M-3 5Q-8 13 0 18Q8 12 3 5Z" fill="#65899e"/>
+      <path d="M-2.6 8.4q-1.2 2.6 .2 5" fill="none" stroke="#fff1d3" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+    </g>
+    <rect x="-3" y="0" width="6" height="6" rx="1" fill="#20564c"/>
+  </g>
+  <g transform="translate(240 11.6) rotate(-15.9)">
+    <g class="festoon-lights-twinkle festoon-lights-late">
+      <path d="M-3 5Q-8 13 0 18Q8 12 3 5Z" fill="#bf3946"/>
+      <path d="M-2.6 8.4q-1.2 2.6 .2 5" fill="none" stroke="#fff1d3" stroke-width="1" stroke-linecap="round" opacity=".7"/>
+    </g>
+    <rect x="-3" y="0" width="6" height="6" rx="1" fill="#20564c"/>
+  </g>
+</svg>

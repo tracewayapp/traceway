@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Sled of Gifts</title>
+  <g transform="translate(37 53) scale(.95)">
+    <rect x="-12" y="-9" width="24" height="20" rx="2" fill="#20564c"/>
+    <rect x="-14" y="-11" width="28" height="5" rx="1" fill="#20564c"/>
+    <rect x="-2" y="-11" width="4" height="22" fill="#e9ae51"/>
+    <path d="M0 -12q-13 -1 -10 -6q4 -5 10 6q5 -13 10 -9q5 6 -10 9" fill="none" stroke="#e9ae51" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(62 47) scale(1.2)">
+    <rect x="-12" y="-9" width="24" height="20" rx="2" fill="#bf3946"/>
+    <rect x="-14" y="-11" width="28" height="5" rx="1" fill="#bf3946"/>
+    <rect x="-2" y="-11" width="4" height="22" fill="#e9ae51"/>
+  </g>
+  <g transform="translate(62 28) scale(.65)">
+    <rect x="-12" y="-9" width="24" height="20" rx="2" fill="#65899e"/>
+    <rect x="-14" y="-11" width="28" height="5" rx="1" fill="#65899e"/>
+    <rect x="-2" y="-11" width="4" height="22" fill="#e9ae51"/>
+    <path d="M0 -12q-13 -1 -10 -6q4 -5 10 6q5 -13 10 -9q5 6 -10 9" fill="none" stroke="#e9ae51" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M15 58h60q9 0 11 -12l5 1q-1 24 -24 24H26Z" fill="#792e47"/>
+  <path d="M34 71l-3 8m37 -8 -4 8M18 80h52q11 0 16 -7" fill="none" stroke="#e9ae51" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

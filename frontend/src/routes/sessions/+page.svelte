@@ -10,6 +10,7 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -447,7 +448,9 @@
 										? 'This rule has no triggers, so it records no sessions. Add a recording trigger to it in Data Collection.'
 										: 'No session was recorded by a trigger of this rule in this time range.'
 									: 'No sessions reported in this time range. Check the SDK session collection settings.'}
-						/>
+						>
+							<HolidayArt name="snowman-on-skates" class="mx-auto mb-2 size-20" />
+						</TableEmptyState>
 					</Table.Body>
 				{:else}
 					<Table.Header>

@@ -20,7 +20,7 @@ import { AgentDebugTerminal } from "@/components/agent-debug-terminal";
 import { StatsStrip } from "@/components/stats-strip";
 import { HeroEmailCTA } from "@/components/hero-email-cta";
 import { HeroCarousel } from "@/components/hero-carousel";
-import { Harvest } from "@/components/harvest";
+import { Holiday } from "@/components/holiday";
 import { getCalendlyUrl } from "@/lib/calendly";
 import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
 
@@ -112,11 +112,11 @@ export default function Home() {
 
       {/* HERO: centered chip, title, subhead, email form */}
       <section className="hero">
-        <Harvest
-          src="/harvest/autumn-bunting.svg"
-          width={280}
-          height={60}
-          className="pointer-events-none absolute left-1/2 top-3 w-[240px] -translate-x-1/2 select-none"
+        <Holiday
+          src="/holiday/festoon-lights.svg"
+          width={256}
+          height={54}
+          className="absolute left-1/2 top-3 w-[256px] -translate-x-1/2"
         />
         <div className="wrap">
           <div className="text-center max-w-4xl mx-auto flex flex-col items-center">
@@ -168,6 +168,15 @@ export default function Home() {
 
       {/* WHITE BAND: AI-first, community, deploy, detect/resolve, cost render on white */}
       <div className="band-light">
+        {/* Ornaments hang from the top edge of the band, clear of the copy. */}
+        <div className="wrap relative hidden md:block">
+          <Holiday
+            src="/holiday/ornament-fringe.svg"
+            width={256}
+            height={68}
+            className="absolute right-7 -top-[3px] w-[224px]"
+          />
+        </div>
         {/* AI-FIRST: install the agent skills, agent session terminal */}
         <section className="pt-20">
           <div className="wrap grid gap-14 md:grid-cols-[10fr_11fr] items-center">

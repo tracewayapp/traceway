@@ -8,6 +8,7 @@
 	import { LoadingCircle } from '$lib/components/ui/loading-circle';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { NonRootChip } from '$lib/components/ui/non-root-chip';
@@ -311,7 +312,9 @@
 					</Table.Body>
 				{:else if tasks.length === 0}
 					<Table.Body>
-						<TableEmptyState colspan={4} message="No task data received yet" />
+						<TableEmptyState colspan={4} message="No task data received yet">
+							<HolidayArt name="rocking-horse" class="mx-auto mb-2 size-20" />
+						</TableEmptyState>
 					</Table.Body>
 				{:else}
 					<Table.Header>

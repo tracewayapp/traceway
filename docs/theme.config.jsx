@@ -2,7 +2,7 @@ import { useRouter } from "next/router";
 import SdkSelector from "./components/SdkSelector";
 import HiddenItem from "./components/HiddenItem";
 import { useSdk } from "./components/SdkContext";
-import Harvest from "./components/Harvest";
+import Holiday from "./components/Holiday";
 
 // Keyed by the first path segment after /client/. Every OTel-based backend guide
 // now lives under /client/otel/*, so the whole backend story is one `otel` entry.
@@ -39,11 +39,11 @@ export default {
     text: function FooterText() {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          <Harvest
-            src="/harvest/wheat-divider.svg"
-            width={280}
-            height={56}
-            style={{ width: "180px", height: "auto", marginLeft: "-16px" }}
+          <Holiday
+            src="/holiday/peppermint-divider.svg"
+            width={256}
+            height={46}
+            style={{ width: "180px", height: "auto", marginLeft: "-6px" }}
           />
           <span>{new Date().getFullYear()} Traceway. All rights reserved.</span>
         </div>

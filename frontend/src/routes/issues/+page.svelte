@@ -16,7 +16,7 @@
 	import ArchiveConfirmationDialog from '$lib/components/archive-confirmation-dialog.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
-	import { harvestSeason } from '$lib/utils/harvest';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import PageHeader from '$lib/components/traceway/page-header.svelte';
@@ -384,14 +384,7 @@
 				{:else if exceptions.length === 0}
 					<Table.Body>
 						<TableEmptyState colspan={5} message="No issues found.">
-							{#if harvestSeason}
-								<img
-									src="/harvest/under-one-leaf.svg"
-									alt=""
-									aria-hidden="true"
-									class="mx-auto mb-2 size-20 select-none"
-								/>
-							{/if}
+							<HolidayArt name="midnight-globe" class="mx-auto mb-2 size-20" />
 						</TableEmptyState>
 					</Table.Body>
 				{:else}

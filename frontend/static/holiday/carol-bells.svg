@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Carol Bells</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .carol-bells-swing{animation:carol-bells-swing 4s ease-in-out infinite}
+      @keyframes carol-bells-swing{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+    }
+  </style>
+  <g class="carol-bells-swing" style="transform-origin:51px 28px">
+    <g transform="translate(37 53) rotate(22) scale(.92)">
+      <path d="M-18 8Q-11 1 -12 -9Q-11 -20 0 -21Q12 -20 13 -8Q12 2 19 8Z" fill="#e9ae51"/>
+      <ellipse cy="8" rx="19" ry="4" fill="#ffcf79"/>
+      <circle cy="12" r="4" fill="#915c42"/>
+      <path d="M-7 -7q0 -8 5 -9" fill="none" stroke="#fff1d3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="translate(65 61) rotate(-20) scale(1.06)">
+      <path d="M-18 8Q-11 1 -12 -9Q-11 -20 0 -21Q12 -20 13 -8Q12 2 19 8Z" fill="#e9ae51"/>
+      <ellipse cy="8" rx="19" ry="4" fill="#ffcf79"/>
+      <circle cy="12" r="4" fill="#915c42"/>
+      <path d="M-7 -7q0 -8 5 -9" fill="none" stroke="#fff1d3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+  <g transform="translate(51 29) scale(.89)">
+    <path d="M0 0Q-24 -23 -25 -5Q-27 9 -4 3L-16 19L-8 16L-5 20L1 4L10 19L11 14L18 15L5 2Q26 10 24 -3Q25 -22 0 0Z" fill="#bf3946"/>
+    <path d="M-16 -6l11 6m11 -1 10 -5" fill="none" stroke="#ef8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse rx="4" ry="5" fill="#792e47"/>
+  </g>
+</svg>

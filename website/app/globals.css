@@ -2183,7 +2183,7 @@
   color: var(--fg-0);
 }
 
-/* Thanksgiving decorations: hidden unless the head script marked the season. */
-html:not(.harvest-season) .harvest {
+/* Winter holiday decorations: hidden unless the head script marked the season. */
+html:not(.holiday-season) .holiday {
   display: none;
 }

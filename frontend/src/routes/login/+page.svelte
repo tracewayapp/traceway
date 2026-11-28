@@ -103,7 +103,7 @@
 
 <div class="flex h-screen w-full items-center justify-center px-4">
 	<Card class="relative w-[350px]">
-		<HolidayArt name="santa-waves" class="absolute -top-[59px] right-6 size-16" />
+		<HolidayArt name="snowman-on-skates" class="absolute -top-[58px] right-6 size-16" />
 		<CardHeader>
 			<CardTitle class="text-2xl">
 				<div class="flex flex-row items-center justify-center gap-2">

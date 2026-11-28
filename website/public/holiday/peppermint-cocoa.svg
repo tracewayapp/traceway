@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Peppermint Cocoa</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .peppermint-cocoa-rise{animation:peppermint-cocoa-rise 3s ease-in-out infinite}
+      @keyframes peppermint-cocoa-rise{0%,100%{transform:translateY(1px);opacity:.9}50%{transform:translateY(-4px);opacity:.42}}
+    }
+  </style>
+  <path d="M66 41q29 -10 22 15q-4 12 -23 12l2 -7q16 -2 16 -13q1 -6 -15 0Z" fill="#20564c"/>
+  <rect x="19" y="39" width="52" height="40" rx="12" fill="#42816c"/>
+  <ellipse cx="45" cy="40" rx="26" ry="7" fill="#a4cfc0"/>
+  <ellipse cx="45" cy="40" rx="21" ry="4" fill="#915c42"/>
+  <path d="M54 39l7 -17q3 -7 8 -3l1 3" fill="none" stroke="#fff1d3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M54 39l7 -17q3 -7 8 -3l1 3" fill="none" stroke="#bf3946" stroke-width="5" stroke-dasharray="2.6 4.6" stroke-dashoffset="-4"/>
+  <g transform="translate(45 59) scale(.65)">
+    <path d="M0 0V-17M0 -8l-5 -5m5 5 5 -5" fill="none" stroke="#fff1d3" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path transform="rotate(60)" d="M0 0V-17M0 -8l-5 -5m5 5 5 -5" fill="none" stroke="#fff1d3" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path transform="rotate(120)" d="M0 0V-17M0 -8l-5 -5m5 5 5 -5" fill="none" stroke="#fff1d3" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path transform="rotate(180)" d="M0 0V-17M0 -8l-5 -5m5 5 5 -5" fill="none" stroke="#fff1d3" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path transform="rotate(240)" d="M0 0V-17M0 -8l-5 -5m5 5 5 -5" fill="none" stroke="#fff1d3" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path transform="rotate(300)" d="M0 0V-17M0 -8l-5 -5m5 5 5 -5" fill="none" stroke="#fff1d3" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g class="peppermint-cocoa-rise">
+    <path d="M31 31q-4 -3 0 -6t0 -6M41 30q-3.5 -2.5 0 -5t0 -5" fill="none" stroke="#65899e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

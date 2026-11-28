@@ -4,6 +4,7 @@ import { Github } from "lucide-react";
 import { DiscordIcon } from "@/components/discord-icon";
 import { GITHUB_URL, DISCORD_URL } from "@/lib/links";
 import { CookieSettingsLink } from "@/components/cookie-settings-link";
+import { Holiday } from "@/components/holiday";
 
 type Column = {
   heading: string;
@@ -78,8 +79,18 @@ export function SiteFooter() {
   const year = new Date().getFullYear();
   return (
     <footer
+      className="relative"
       style={{ borderTop: "1px solid var(--hair)", padding: "50px 0 40px" }}
     >
+      {/* A snowy street that sits on the footer's top border. */}
+      <div className="wrap relative">
+        <Holiday
+          src="/holiday/snowy-roofline.svg"
+          width={256}
+          height={60}
+          className="absolute right-7 -top-[94px] w-[208px]"
+        />
+      </div>
       <div className="wrap">
         <div className="footer-grid grid gap-10 md:gap-9 grid-cols-2 md:grid-cols-[1.2fr_repeat(5,1fr)]">
           <div className="col-span-2 md:col-span-1">

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Chimney Mishap</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .chimney-mishap-rock{animation:chimney-mishap-rock 3.6s ease-in-out infinite}
+      @keyframes chimney-mishap-rock{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
+    }
+    .chimney-mishap-rock{transform-origin:50px 78px}
+  </style>
+  <g class="chimney-mishap-rock">
+    <g transform="translate(48 53)">
+      <path d="M-14 0l-2 -26 10 -1 6 28m4 -2 6 -32 10 4 -5 30Z" fill="#bf3946"/>
+      <path d="M-17 -21l-8 -2q-7 -10 4 -11l14 4 1 10Zm26 -6 3 -11 14 1q8 5 0 9l-8 4Z" fill="#293d52"/>
+      <path d="M-16 -17l12 -1m13 -5 10 3" fill="none" stroke="#fff8e8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+  <rect x="24" y="52" width="53" height="35" rx="2" fill="#bf3946"/>
+  <path d="M26 66h49M26 78h49M42 54v11m18 2v10m-13 3v6" fill="none" stroke="#ef8780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="18" y="46" width="65" height="10" rx="3" fill="#792e47"/>
+  <path d="M17 47Q18 40 29 43Q36 37 45 42Q56 38 63 42Q77 38 84 46Q86 51 77 50L68 50Q66 57 61 51L54 49H20Z" fill="#d7e7da"/>
+</svg>

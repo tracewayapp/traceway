@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="46" viewBox="0 0 256 46" role="img">
+  <title>Peppermint Divider</title>
+  <path d="M8 23Q52 15 89 23m78 0q43 -8 81 0" fill="none" stroke="#42816c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(128 23) scale(1.25)">
+    <circle r="13" fill="#fff1d3"/>
+    <path d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(60)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(120)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(180)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(240)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(300)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <circle r="2" fill="#bf3946"/>
+  </g>
+  <g transform="translate(96 23) scale(.58)">
+    <circle r="13" fill="#fff1d3"/>
+    <path d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(60)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(120)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(180)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(240)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(300)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <circle r="2" fill="#bf3946"/>
+  </g>
+  <g transform="translate(160 23) scale(.58)">
+    <circle r="13" fill="#fff1d3"/>
+    <path d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(60)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(120)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(180)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(240)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <path transform="rotate(300)" d="M0 0Q4 -4 3 -12Q7 -12 10 -8Q8 -3 0 0Z" fill="#bf3946"/>
+    <circle r="2" fill="#bf3946"/>
+  </g>
+  <g transform="translate(65 20) rotate(-80) scale(.48)">
+    <g transform="rotate(-55) scale(.88)">
+      <path d="M0 0Q-13 -3 -14 -10Q-8 -9 -11 -17Q-5 -14 -5 -22Q0 -19 2 -27Q9 -19 6 -15Q12 -14 8 -9Q12 -8 8 -4Z" fill="#42816c"/>
+      <path d="M0 0l2 -18" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="rotate(42) scale(.95)">
+      <path d="M0 0Q-13 -3 -14 -10Q-8 -9 -11 -17Q-5 -14 -5 -22Q0 -19 2 -27Q9 -19 6 -15Q12 -14 8 -9Q12 -8 8 -4Z" fill="#42816c"/>
+      <path d="M0 0l2 -18" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="scale(.82)">
+      <circle cx="-4" r="4" fill="#bf3946"/>
+      <circle cx="3" cy="-2" r="4" fill="#792e47"/>
+      <circle cx="2" cy="4" r="4" fill="#bf3946"/>
+      <circle cx="-5" cy="-1" r="1" fill="#ef8780"/>
+    </g>
+  </g>
+  <g transform="translate(256 0) scale(-1 1)">
+    <g transform="translate(65 20) rotate(-80) scale(.48)">
+      <g transform="rotate(-55) scale(.88)">
+        <path d="M0 0Q-13 -3 -14 -10Q-8 -9 -11 -17Q-5 -14 -5 -22Q0 -19 2 -27Q9 -19 6 -15Q12 -14 8 -9Q12 -8 8 -4Z" fill="#42816c"/>
+        <path d="M0 0l2 -18" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <g transform="rotate(42) scale(.95)">
+        <path d="M0 0Q-13 -3 -14 -10Q-8 -9 -11 -17Q-5 -14 -5 -22Q0 -19 2 -27Q9 -19 6 -15Q12 -14 8 -9Q12 -8 8 -4Z" fill="#42816c"/>
+        <path d="M0 0l2 -18" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <g transform="scale(.82)">
+        <circle cx="-4" r="4" fill="#bf3946"/>
+        <circle cx="3" cy="-2" r="4" fill="#792e47"/>
+        <circle cx="2" cy="4" r="4" fill="#bf3946"/>
+        <circle cx="-5" cy="-1" r="1" fill="#ef8780"/>
+      </g>
+    </g>
+  </g>
+</svg>

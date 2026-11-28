@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Holiday } from "@/components/holiday";
 
 type Action = { label: string; href: string; external?: boolean };
 
@@ -20,6 +21,12 @@ export function FinalCTA({
   return (
     <section className={cn("wrap py-20", className)}>
       <div className="final-cta-box">
+        <Holiday
+          src="/holiday/north-star-divider.svg"
+          width={256}
+          height={48}
+          className="relative mx-auto mb-5 w-[200px]"
+        />
         <h2>{title}</h2>
         {description ? <p>{description}</p> : null}
         <div className="btns">

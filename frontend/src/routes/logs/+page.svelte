@@ -9,6 +9,7 @@
 	import { getTimezone } from '$lib/state/timezone.svelte';
 	import { TracewayTableHeader } from '$lib/components/ui/traceway-table-header';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { SeverityBadge } from '$lib/components/ui/severity-badge';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
@@ -1021,7 +1022,9 @@
 						</Table.Body>
 					{:else if logs.length === 0}
 						<Table.Body>
-							<TableEmptyState colspan={5} message="No logs found." />
+							<TableEmptyState colspan={5} message="No logs found.">
+								<HolidayArt name="candle-and-holly" class="mx-auto mb-2 size-20" />
+							</TableEmptyState>
 						</Table.Body>
 					{:else}
 						<!-- Solid thead bg so rows can't show through the translucent th

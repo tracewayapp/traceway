@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Gingerbread Dancer</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .gingerbread-dancer-hop{animation:gingerbread-dancer-hop 2.5s ease-in-out infinite}
+      @keyframes gingerbread-dancer-hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+    }
+  </style>
+  <g class="gingerbread-dancer-hop">
+    <path d="M39 39C22 19 52 7 60 24Q65 29 59 39L75 33Q86 28 86 38Q86 43 69 50L61 54L64 64L76 73Q84 83 72 86Q67 87 51 69L37 86Q29 94 24 85Q22 80 37 62L40 51L21 49Q10 47 14 39Q16 34 25 37Z" fill="#c7804d"/>
+    <circle cx="44" cy="29" r="1.7" fill="#293d52"/>
+    <circle cx="53" cy="28" r="1.7" fill="#293d52"/>
+    <path d="M44 34q5 4 10 -1" fill="none" stroke="#fff8e8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M23 39l-2 8m54 -12 4 7M31 75l7 5m29 -8 -5 5" fill="none" stroke="#fff8e8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="50" cy="48" r="3" fill="#bf3946"/>
+    <circle cx="50" cy="57" r="2.6" fill="#20564c"/>
+  </g>
+</svg>

@@ -10,6 +10,7 @@
 	import { ErrorAlert } from '$lib/components/ui/error-alert';
 	import { CircleCheck } from '@lucide/svelte';
 	import { themeState } from '$lib/state/theme.svelte';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 
 	let email = $state('');
 	let error = $state('');
@@ -59,7 +60,8 @@
 </script>
 
 <div class="flex h-screen w-full items-center justify-center px-4">
-	<Card class="w-[350px]">
+	<Card class="relative w-[350px]">
+		<HolidayArt name="chimney-mishap" class="absolute -top-[56px] right-6 size-16" />
 		<CardHeader>
 			<CardTitle class="text-2xl">
 				<div class="flex flex-row items-center justify-center gap-2">

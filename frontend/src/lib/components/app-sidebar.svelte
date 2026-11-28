@@ -40,7 +40,7 @@
 	import { page } from '$app/state';
 	import { addStickyParamsToHref, createRowClickHandler } from '$lib/utils/navigation';
 	import { resolveHref } from '$lib/utils/links';
-	import { harvestSeason } from '$lib/utils/harvest';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 	import { cn } from '$lib/utils';
 
 	interface SidebarItem {
@@ -392,9 +392,7 @@
 		</div>
 
 		<div class="flex items-center gap-1.5 group-data-[collapsible=icon]:hidden">
-			{#if harvestSeason}
-				<img src="/harvest/maple-leaf.svg" alt="" aria-hidden="true" class="size-4 select-none" />
-			{/if}
+			<HolidayArt name="paper-star" class="size-4" />
 			<span class="text-xs text-muted-foreground">Traceway - v{__APP_VERSION__}</span>
 		</div>
 	</Sidebar.SidebarFooter>

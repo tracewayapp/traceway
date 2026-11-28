@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { JetBrains_Mono, IBM_Plex_Mono, Inter } from 'next/font/google'
 import '../styles/custom.css'
 import { SdkProvider } from '../components/SdkContext'
-import Harvest from '../components/Harvest'
+import Holiday from '../components/Holiday'
 
 const jetbrainsMono = JetBrains_Mono({
   variable: '--font-display',
@@ -38,7 +38,7 @@ export default function App({ Component, pageProps }) {
 
   return (
     <div className={`docs-root ${jetbrainsMono.variable} ${ibmPlexMono.variable} ${inter.variable}`}>
-      <Harvest className="harvest-corner" src="/harvest/harvest-corner.svg" width={152} height={150} />
+      <Holiday className="holiday-corner" src="/holiday/evergreen-corner.svg" width={133} height={132} />
       <SdkProvider>
         <Component {...pageProps} />
       </SdkProvider>

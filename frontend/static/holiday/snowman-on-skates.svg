@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Snowman on Skates</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .snowman-on-skates-rock{animation:snowman-on-skates-rock 3.6s ease-in-out infinite}
+      @keyframes snowman-on-skates-rock{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
+    }
+    .snowman-on-skates-rock{transform-origin:50px 78px}
+  </style>
+  <g class="snowman-on-skates-rock">
+    <ellipse cx="48" cy="68" rx="21" ry="17" fill="#d7e7da"/>
+    <ellipse cx="46.2" cy="66.2" rx="17.6" ry="13.8" fill="#fff8e8"/>
+    <circle cx="48" cy="42" r="15" fill="#d7e7da"/>
+    <circle cx="46.6" cy="40.6" r="12.4" fill="#fff8e8"/>
+    <path d="M38 30l-3 -15 19 -3 5 16Z" fill="#293d52"/>
+    <path d="M31 32l33 -6" fill="none" stroke="#293d52" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M37 24l18 -4" fill="none" stroke="#bf3946" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="43.5" cy="42" r="2" fill="#293d52"/>
+    <circle cx="52" cy="41" r="2" fill="#293d52"/>
+    <path d="M54 44l18 -3 -15 8Z" fill="#c7804d"/>
+    <path d="M34 54q11 6 26 1M55.5 57l2.5 9 5 2" fill="none" stroke="#bf3946" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M29 65L13 56m56 6 14 -13" fill="none" stroke="#915c42" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="49" cy="66" r="2" fill="#293d52"/>
+    <circle cx="50" cy="73" r="2" fill="#293d52"/>
+    <path d="M38 83l-3 4m21 -5 4 4" fill="none" stroke="#293d52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M25 88q9 2 18 -1m11 1q12 3 19 -3" fill="none" stroke="#65899e" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

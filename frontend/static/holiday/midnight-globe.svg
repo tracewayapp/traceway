@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Midnight Globe</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .midnight-globe-fall{animation:midnight-globe-fall 4s ease-in-out infinite}
+      @keyframes midnight-globe-fall{0%,100%{transform:translateY(-2px)}50%{transform:translateY(4px)}}
+    }
+  </style>
+  <circle cx="50" cy="43" r="33" fill="#65899e"/>
+  <circle cx="50" cy="43" r="29" fill="#293d52"/>
+  <clipPath id="midnight-globe-glass">
+    <circle cx="50" cy="43" r="29"/>
+  </clipPath>
+  <path clip-path="url(#midnight-globe-glass)" d="M18 58q16 -10 29 -2q13 5 36 -5v24H18Z" fill="#d7e7da"/>
+  <g transform="translate(44 58) scale(.54)">
+    <rect x="-3" y="0" width="6" height="9" fill="#915c42"/>
+    <path d="M0 -40Q-4 -31 -12 -25L-8 -24Q-13 -17 -19 -13L-13 -12Q-18 -5 -24 -1Q-9 4 0 1Q13 5 24 -1Q17 -5 13 -12L18 -13Q12 -17 8 -24L12 -25Q5 -31 0 -40Z" fill="#42816c"/>
+    <path d="M-7 -23q4 2 7 -1m-10 12q6 3 10 -1" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(60 58) scale(.36)">
+    <rect x="-3" y="0" width="6" height="9" fill="#915c42"/>
+    <path d="M0 -40Q-4 -31 -12 -25L-8 -24Q-13 -17 -19 -13L-13 -12Q-18 -5 -24 -1Q-9 4 0 1Q13 5 24 -1Q17 -5 13 -12L18 -13Q12 -17 8 -24L12 -25Q5 -31 0 -40Z" fill="#42816c"/>
+    <path d="M-7 -23q4 2 7 -1m-10 12q6 3 10 -1" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g class="midnight-globe-fall">
+    <circle cx="28" cy="38" r="1.6" fill="#fff8e8"/>
+    <circle cx="34" cy="28" r="1.6" fill="#fff8e8"/>
+    <circle cx="52" cy="25" r="1.6" fill="#fff8e8"/>
+    <circle cx="62" cy="32" r="1.6" fill="#fff8e8"/>
+    <circle cx="67" cy="41" r="1.6" fill="#fff8e8"/>
+    <circle cx="33" cy="46" r="1.6" fill="#fff8e8"/>
+    <circle cx="52" cy="39" r="1.6" fill="#fff8e8"/>
+  </g>
+  <path d="M29 73h42l8 14H21Z" fill="#792e47"/>
+  <rect x="20" y="85" width="60" height="5" rx="2" fill="#915c42"/>
+  <g transform="translate(50 80) scale(.48)">
+    <path d="M0 -10L3 -3L10 -3L5 2L7 10L0 6L-7 10L-5 2L-10 -3L-3 -3Z" fill="#e9ae51"/>
+    <path d="M0 -10L0 2L10 -3L3 -3Z" fill="#ffcf79"/>
+  </g>
+</svg>

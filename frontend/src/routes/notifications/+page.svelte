@@ -26,6 +26,7 @@
 	import { Pencil, Trash2, Zap, ZapOff, Clock, Send } from '@lucide/svelte';
 	import { FilterBar, type FilterApply } from '$lib/components/traceway/filter-bar';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { CalendarDate } from '@internationalized/date';
 	import {
@@ -700,7 +701,9 @@
 							</Table.Body>
 						{:else if history.length === 0}
 							<Table.Body>
-								<TableEmptyState colspan={6} message="No Historic Alerts found." />
+								<TableEmptyState colspan={6} message="No Historic Alerts found.">
+									<HolidayArt name="carol-bells" class="mx-auto mb-2 size-20" />
+								</TableEmptyState>
 							</Table.Body>
 						{:else}
 							<Table.Header>

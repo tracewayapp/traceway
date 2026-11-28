@@ -11,6 +11,7 @@
 	import { ImpactBadge } from '$lib/components/ui/impact-badge';
 	import { Badge } from '$lib/components/ui/badge';
 	import { TableEmptyState } from '$lib/components/ui/table-empty-state';
+	import HolidayArt from '$lib/components/holiday-art.svelte';
 	import { PaginationFooter } from '$lib/components/ui/pagination-footer';
 	import { TimeRangePicker } from '$lib/components/ui/time-range-picker';
 	import { NonRootChip } from '$lib/components/ui/non-root-chip';
@@ -540,7 +541,9 @@
 						<TableEmptyState
 							colspan={6}
 							message="No endpoint data available for your search parameters"
-						/>
+						>
+							<HolidayArt name="tree-lot-truck" class="mx-auto mb-2 size-20" />
+						</TableEmptyState>
 					</Table.Body>
 				{:else}
 					<Table.Header>

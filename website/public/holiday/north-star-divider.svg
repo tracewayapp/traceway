@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="48" viewBox="0 0 256 48" role="img">
+  <title>North Star Divider</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .north-star-divider-twinkle{animation:north-star-divider-twinkle 2.8s ease-in-out infinite}
+      @keyframes north-star-divider-twinkle{0%,100%{opacity:1}50%{opacity:.36}}
+    }
+  </style>
+  <path d="M9 24h72m94 0h72" fill="none" stroke="#e9ae51" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path transform="translate(93 24) scale(.45)" d="M0 -8Q1 -1 7 0Q1 1 0 8Q-1 1 -7 0Q-1 -1 0 -8Z" fill="#65899e"/>
+  <path transform="translate(106 24) scale(.76)" d="M0 -8Q1 -1 7 0Q1 1 0 8Q-1 1 -7 0Q-1 -1 0 -8Z" fill="#65899e"/>
+  <path transform="translate(150 24) scale(.76)" d="M0 -8Q1 -1 7 0Q1 1 0 8Q-1 1 -7 0Q-1 -1 0 -8Z" fill="#65899e"/>
+  <path transform="translate(163 24) scale(.45)" d="M0 -8Q1 -1 7 0Q1 1 0 8Q-1 1 -7 0Q-1 -1 0 -8Z" fill="#65899e"/>
+  <g class="north-star-divider-twinkle">
+    <path transform="translate(128 24) scale(1.85)" d="M0 -8Q1 -1 7 0Q1 1 0 8Q-1 1 -7 0Q-1 -1 0 -8Z" fill="#e9ae51"/>
+  </g>
+</svg>

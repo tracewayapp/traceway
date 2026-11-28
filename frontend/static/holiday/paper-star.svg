@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Paper Star</title>
+  <g transform="translate(50 52) rotate(-8)">
+    <path d="M0 -37L9 -11L37 -9L15 7L20 34L0 18L-23 32L-17 7L-36 -11L-10 -13Z" fill="#e9ae51"/>
+    <path d="M0 0V-37L9 -11ZM0 0L37 -9L15 7ZM0 0L20 34L0 18ZM0 0L-23 32L-17 7ZM0 0L-36 -11L-10 -13Z" fill="#ffcf79"/>
+    <path d="M-3 -11l2 -12m11 24 11 -4" fill="none" stroke="#fff1d3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

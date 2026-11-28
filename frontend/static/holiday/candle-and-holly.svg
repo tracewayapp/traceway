@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" role="img">
+  <title>Candle and Holly</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .candle-and-holly-twinkle{animation:candle-and-holly-twinkle 2.8s ease-in-out infinite}
+      @keyframes candle-and-holly-twinkle{0%,100%{opacity:1}50%{opacity:.36}}
+    }
+  </style>
+  <ellipse cx="49" cy="80" rx="27" ry="6" fill="#42816c"/>
+  <rect x="40" y="39" width="19" height="42" rx="3" fill="#fff1d3"/>
+  <path d="M40 40q2 -5 6 -3l13 2v10q-2 5 -5 0v-4q-4 5 -6 -1Z" fill="#e9ae51"/>
+  <path d="M49 39v-6" fill="none" stroke="#915c42" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="candle-and-holly-twinkle">
+    <path d="M49 35Q35 30 50 12Q49 19 55 24Q62 34 49 35Z" fill="#e9ae51"/>
+    <path d="M50 33q-5 -3 0 -11q7 9 0 11Z" fill="#fff1d3"/>
+  </g>
+  <g transform="translate(61 81) rotate(39) scale(.78)">
+    <g transform="rotate(-55) scale(.88)">
+      <path d="M0 0Q-13 -3 -14 -10Q-8 -9 -11 -17Q-5 -14 -5 -22Q0 -19 2 -27Q9 -19 6 -15Q12 -14 8 -9Q12 -8 8 -4Z" fill="#42816c"/>
+      <path d="M0 0l2 -18" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="rotate(42) scale(.95)">
+      <path d="M0 0Q-13 -3 -14 -10Q-8 -9 -11 -17Q-5 -14 -5 -22Q0 -19 2 -27Q9 -19 6 -15Q12 -14 8 -9Q12 -8 8 -4Z" fill="#42816c"/>
+      <path d="M0 0l2 -18" fill="none" stroke="#a4cfc0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="scale(.82)">
+      <circle cx="-4" r="4" fill="#bf3946"/>
+      <circle cx="3" cy="-2" r="4" fill="#792e47"/>
+      <circle cx="2" cy="4" r="4" fill="#bf3946"/>
+      <circle cx="-5" cy="-1" r="1" fill="#ef8780"/>
+    </g>
+  </g>
+</svg>

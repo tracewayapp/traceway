@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="68" viewBox="0 0 256 68" role="img">
+  <title>Ornament Fringe</title>
+  <style>
+    @media (prefers-reduced-motion:no-preference) {
+      .ornament-fringe-swing{animation:ornament-fringe-swing 4s ease-in-out infinite}
+      @keyframes ornament-fringe-swing{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+    }
+  </style>
+  <clipPath id="ornament-fringe-ball">
+    <ellipse rx="11" ry="13"/>
+  </clipPath>
+  <g class="ornament-fringe-swing" style="transform-origin:18px 4px">
+    <path d="M18 4V13" fill="none" stroke="#e9ae51" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(18 29)">
+      <ellipse rx="11" ry="13" fill="#bf3946"/>
+      <g clip-path="url(#ornament-fringe-ball)">
+        <path d="M-12 -3.5q12 6 24 0v4.6q-12 6 -24 0Z" fill="#fff1d3"/>
+        <path d="M-12 4.6q12 6 24 0" fill="none" stroke="#fff1d3" stroke-width="1.2"/>
+      </g>
+      <path d="M-7 -5.6q.8 -3.4 3.8 -5" fill="none" stroke="#fff1d3" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>
+    </g>
+    <rect x="14.5" y="12.4" width="7" height="5" rx="1" fill="#915c42"/>
+  </g>
+  <g class="ornament-fringe-swing" style="transform-origin:54px 4px;animation-delay:-1.3s">
+    <path d="M54 4V27" fill="none" stroke="#e9ae51" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(54 43)">
+      <ellipse rx="11" ry="13" fill="#42816c"/>
+      <g clip-path="url(#ornament-fringe-ball)">
+        <path d="M-12 -3.5q12 6 24 0v4.6q-12 6 -24 0Z" fill="#fff1d3"/>
+        <path d="M-12 4.6q12 6 24 0" fill="none" stroke="#fff1d3" stroke-width="1.2"/>
+      </g>
+      <path d="M-7 -5.6q.8 -3.4 3.8 -5" fill="none" stroke="#fff1d3" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>
+    </g>
+    <rect x="50.5" y="26.4" width="7" height="5" rx="1" fill="#915c42"/>
+  </g>
+  <g class="ornament-fringe-swing" style="transform-origin:91px 4px;animation-delay:-2.6s">
+    <path d="M91 4V10" fill="none" stroke="#e9ae51" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(91 26)">
+      <ellipse rx="11" ry="13" fill="#e9ae51"/>
+      <g clip-path="url(#ornament-fringe-ball)">
+        <path d="M-12 -3.5q12 6 24 0v4.6q-12 6 -24 0Z" fill="#fff1d3"/>
+        <path d="M-12 4.6q12 6 24 0" fill="none" stroke="#fff1d3" stroke-width="1.2"/>
+      </g>
+      <path d="M-7 -5.6q.8 -3.4 3.8 -5" fill="none" stroke="#fff1d3" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>
+    </g>
+    <rect x="87.5" y="9.4" width="7" height="5" rx="1" fill="#915c42"/>
+  </g>
+  <g class="ornament-fringe-swing" style="transform-origin:128px 4px;animation-delay:-0.7s">
+    <path d="M128 4V33" fill="none" stroke="#e9ae51" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(128 49)">
+      <ellipse rx="11" ry="13" fill="#792e47"/>
+      <g clip-path="url(#ornament-fringe-ball)">
+        <path d="M-12 -3.5q12 6 24 0v4.6q-12 6 -24 0Z" fill="#fff1d3"/>
+        <path d="M-12 4.6q12 6 24 0" fill="none" stroke="#fff1d3" stroke-width="1.2"/>
+      </g>
+      <path d="M-7 -5.6q.8 -3.4 3.8 -5" fill="none" stroke="#fff1d3" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>
+    </g>
+    <rect x="124.5" y="32.4" width="7" height="5" rx="1" fill="#915c42"/>
+  </g>
+  <g class="ornament-fringe-swing" style="transform-origin:165px 4px;animation-delay:-3.3s">
+    <path d="M165 4V10" fill="none" stroke="#e9ae51" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(165 26)">
+      <ellipse rx="11" ry="13" fill="#e9ae51"/>
+      <g clip-path="url(#ornament-fringe-ball)">
+        <path d="M-12 -3.5q12 6 24 0v4.6q-12 6 -24 0Z" fill="#fff1d3"/>
+        <path d="M-12 4.6q12 6 24 0" fill="none" stroke="#fff1d3" stroke-width="1.2"/>
+      </g>
+      <path d="M-7 -5.6q.8 -3.4 3.8 -5" fill="none" stroke="#fff1d3" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>
+    </g>
+    <rect x="161.5" y="9.4" width="7" height="5" rx="1" fill="#915c42"/>
+  </g>
+  <g class="ornament-fringe-swing" style="transform-origin:202px 4px;animation-delay:-2s">
+    <path d="M202 4V27" fill="none" stroke="#e9ae51" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(202 43)">
+      <ellipse rx="11" ry="13" fill="#42816c"/>
+      <g clip-path="url(#ornament-fringe-ball)">
+        <path d="M-12 -3.5q12 6 24 0v4.6q-12 6 -24 0Z" fill="#fff1d3"/>
+        <path d="M-12 4.6q12 6 24 0" fill="none" stroke="#fff1d3" stroke-width="1.2"/>
+      </g>
+      <path d="M-7 -5.6q.8 -3.4 3.8 -5" fill="none" stroke="#fff1d3" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>
+    </g>
+    <rect x="198.5" y="26.4" width="7" height="5" rx="1" fill="#915c42"/>
+  </g>
+  <g class="ornament-fringe-swing" style="transform-origin:238px 4px;animation-delay:-0.4s">
+    <path d="M238 4V13" fill="none" stroke="#e9ae51" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(238 29)">
+      <ellipse rx="11" ry="13" fill="#bf3946"/>
+      <g clip-path="url(#ornament-fringe-ball)">
+        <path d="M-12 -3.5q12 6 24 0v4.6q-12 6 -24 0Z" fill="#fff1d3"/>
+        <path d="M-12 4.6q12 6 24 0" fill="none" stroke="#fff1d3" stroke-width="1.2"/>
+      </g>
+      <path d="M-7 -5.6q.8 -3.4 3.8 -5" fill="none" stroke="#fff1d3" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>
+    </g>
+    <rect x="234.5" y="12.4" width="7" height="5" rx="1" fill="#915c42"/>
+  </g>
+  <path d="M8 4h240" fill="none" stroke="#20564c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

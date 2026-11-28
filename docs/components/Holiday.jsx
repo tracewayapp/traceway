@@ -1,17 +1,19 @@
 import { useSyncExternalStore } from "react";
 
-// Thanksgiving decorations only show in the second half of November. The check
+// Winter holiday decorations only show from November 27 to January 7. The check
 // runs in the browser, so a deploy made in season does not keep them all year.
-function isHarvestSeason(now) {
-  return now.getMonth() === 10 && now.getDate() >= 15;
+function isHolidaySeason(now) {
+  const month = now.getMonth();
+  const day = now.getDate();
+  return month === 11 || (month === 10 && day >= 27) || (month === 0 && day <= 7);
 }
 
 const subscribe = () => () => {};
 
-export default function Harvest({ src, width, height, className, style }) {
+export default function Holiday({ src, width, height, className, style }) {
   const inSeason = useSyncExternalStore(
     subscribe,
-    () => isHarvestSeason(new Date()),
+    () => isHolidaySeason(new Date()),
     () => false,
   );
   if (!inSeason) return null;

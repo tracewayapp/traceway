@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -344,5 +345,113 @@ func TestCloudResetsWhitespaceSeparatedGradleURL(t *testing.T) {
 	}
 	if got := readFile(t, path); got != "traceway.url="+cloud+"\ntraceway.token=token\n" {
 		t.Fatal(got)
+	}
+}
+
+func TestSetupApplyReactNativeGetsAConnectionString(t *testing.T) {
+	setupTestEnvIsolation(t)
+	selfHosted := "https://traceway.acme.test"
+	server := newSetupTestServerWith(t, 0, selfHosted, []map[string]any{
+		approvedProject("p-rn", "App", "react-native", "tok_rn-secret", "", selfHosted),
+	})
+	defer server.Close()
+
+	dir := t.TempDir()
+	planPath := writePlan(t, dir, map[string]any{"url": server.URL, "projects": []map[string]any{
+		{"name": "App", "framework": "react-native", "envFile": ".env", "envVar": "EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING",
+			"deployment": map[string]any{"platform": "EAS", "instructions": "eas env:create --name EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING --value <token>"}},
+	}})
+	stdout, stderr, err := runCmd(t, testSetupToken+"\n", "setup", "apply", "--plan", planPath, "--token-stdin", "--output", "table")
+	if err != nil {
+		t.Fatalf("setup apply failed: %v\nstderr: %s", err, stderr.String())
+	}
+	want := "EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING=tok_rn-secret@https://traceway.acme.test/api/report\n"
+	if got := readFile(t, filepath.Join(dir, ".env")); got != want {
+		t.Errorf("self-hosted env = %q, want %q: @tracewayapp/react-native starts only from a connection string", got, want)
+	}
+	if strings.Contains(stdout.String(), "the server URL") {
+		t.Errorf("a connection string carries the server, so the deployment needs no URL variable: %s", stdout.String())
+	}
+
+	p := client.SetupPlanProject{Name: "App", Framework: "react-native", EnvFile: ".env", EnvVar: "EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING"}
+	cloudDir := t.TempDir()
+	if err := applyEnvWrites(cloudDir, setupEnvWrites(p, "tok", cloud)); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(cloudDir, ".env")); got != "EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING=tok@"+cloud+"/api/report\n" {
+		t.Errorf("cloud env = %q, want the connection string", got)
+	}
+
+	p.EnvFormat = envFormatToken
+	if writes := setupEnvWrites(p, "tok", cloud); writes[0].value != "tok" {
+		t.Errorf("an explicit token format is kept: %+v", writes)
+	}
+}
+
+func TestSetupInstanceURLKeepsTheWorkingURLOfTheSameHost(t *testing.T) {
+	cases := []struct{ server, cli, want string }{
+		// A server without APP_BASE_URL names itself from the request: scheme://host, no path, http behind a TLS proxy.
+		{"https://corp.example", "https://corp.example/traceway", "https://corp.example/traceway"},
+		{"http://corp.example", "https://corp.example", "https://corp.example"},
+		{"https://corp.example", "http://corp.example", "https://corp.example"},
+		{"http://corp.example:8443", "https://corp.example:8443/traceway", "https://corp.example:8443/traceway"},
+		{"https://traceway.acme.test", "https://corp.example/traceway", "https://traceway.acme.test"},
+	}
+	for _, tc := range cases {
+		if got := setupInstanceURL(tc.server, tc.cli); got != tc.want {
+			t.Errorf("setupInstanceURL(%q, %q) = %q, want %q", tc.server, tc.cli, got, tc.want)
+		}
+	}
+}
+
+func TestSetupApplyKeepsASubPathTheServerDoesNotReport(t *testing.T) {
+	setupTestEnvIsolation(t)
+	// Behind a path prefix and without APP_BASE_URL the server names itself scheme://host.
+	server := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		self := "http://" + r.Host
+		switch r.Method + " " + r.URL.Path {
+		case "GET /traceway/api/setup/session":
+			_ = json.NewEncoder(w).Encode(map[string]any{"organizationId": 1, "organizationName": "Acme", "email": "a@b.c", "backendUrl": self, "projects": []any{}})
+		case "PUT /traceway/api/setup/plan":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "pending"})
+		case "GET /traceway/api/setup/plan":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "approved", "projects": []map[string]any{
+				approvedProject("p-web", "Web", "react", "tok_web-secret", "up_web-secret", self),
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	planPath := writePlan(t, dir, map[string]any{"projects": []map[string]any{
+		{"name": "Web", "framework": "react", "envFile": ".env", "envVar": "VITE_TRACEWAY_TOKEN", "uploadTokenEnvFile": ".env.sourcemaps"},
+	}})
+	base := server.URL + "/traceway"
+	if _, stderr, err := runCmd(t, testSetupToken+"\n", "setup", "apply", "--url", base, "--plan", planPath, "--token-stdin"); err != nil {
+		t.Fatalf("setup apply failed: %v\nstderr: %s", err, stderr.String())
+	}
+	if got, want := readFile(t, filepath.Join(dir, ".env")), "VITE_TRACEWAY_TOKEN=tok_web-secret\nVITE_TRACEWAY_URL="+base+"\n"; got != want {
+		t.Errorf(".env = %q, want %q (the URL that reached the server)", got, want)
+	}
+	if got, want := readFile(t, filepath.Join(dir, ".env.sourcemaps")), "TRACEWAY_SOURCEMAP_TOKEN=up_web-secret\nTRACEWAY_URL="+base+"\n"; got != want {
+		t.Errorf(".env.sourcemaps = %q, want %q", got, want)
+	}
+}
+
+func TestSetupApplyHelpDescribesWhatIsWritten(t *testing.T) {
+	help := strings.Join(strings.Fields(newSetupApplyCmd().Long), " ")
+	for _, want := range []string{
+		"<token>@<server>/api/report",
+		"\"react-native\" project gets a connection string",
+		"a URL variable already in the file is reset to https://cloud.tracewayapp.com",
+	} {
+		if !strings.Contains(help, want) {
+			t.Errorf("help does not say %q", want)
+		}
+	}
+	if strings.Contains(help, "is left as it is") {
+		t.Error("help still promises to keep an older spelling of a connection string")
 	}
 }

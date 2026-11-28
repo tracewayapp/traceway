@@ -19,7 +19,7 @@ import { TracewayProvider } from "@tracewayapp/react-native";
 
 export default function App() {
   return (
-    <TracewayProvider connectionString="your-token@https://traceway.example.com/api/report">
+    <TracewayProvider connectionString="YOUR_TOKEN@https://cloud.tracewayapp.com/api/report">
       <RootNavigator />
     </TracewayProvider>
   );
@@ -80,7 +80,7 @@ Field names mirror the Android and Flutter SDKs and the 1.x browser SDK, so exis
 
 ```tsx
 <TracewayProvider
-  connectionString="your-token@https://traceway.example.com/api/report"
+  connectionString="YOUR_TOKEN@https://cloud.tracewayapp.com/api/report"
   options={{
     debug: true,
     version: "1.4.0",
@@ -322,7 +322,7 @@ Both paths moved between React Native versions. If yours is not there, search th
 Traceway matches a map to a frame by filename: the frame says `index.android.bundle`, so the uploaded file must be named `index.android.bundle.map`. `curl -F` sends the basename of the local path, so keep the filename as the build produced it.
 
 ```bash
-export TRACEWAY_URL="https://traceway.example.com"
+export TRACEWAY_URL="https://cloud.tracewayapp.com"
 export TRACEWAY_SOURCEMAP_TOKEN="your-upload-token"
 
 curl --fail -X POST "$TRACEWAY_URL/api/sourcemaps/upload" \

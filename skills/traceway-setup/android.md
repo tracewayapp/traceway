@@ -50,7 +50,6 @@ class MyApp : Application() {
             this,
             TracewayOptions(
                 token = BuildConfig.TRACEWAY_TOKEN,
-                version = "1.0.0",
                 screenCapture = true, // wireframe session replay
             ),
         )
@@ -58,7 +57,7 @@ class MyApp : Application() {
 }
 ```
 
-- `version` defaults to the app's `versionName`. Leave the line out unless the app reports another version.
+- `version` is not passed: the SDK reports the app's `versionName`. Add `version = "…"` only when the app must report another version.
 - A self-hosted server adds `baseUrl = BuildConfig.TRACEWAY_URL`. Traceway Cloud (`https://cloud.tracewayapp.com`) is the default, so cloud apps pass only the token.
 - Register the class in `AndroidManifest.xml`, or `onCreate()` never runs:
 

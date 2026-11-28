@@ -9,8 +9,10 @@ Without debug IDs, maps are matched by filename, which works with content-hashed
 ## Installation
 
 ```bash
-npm install -D @tracewayapp/bundler-plugin
+npm install -D @tracewayapp/bundler-plugin @tracewayapp/sourcemap-upload
 ```
+
+`@tracewayapp/sourcemap-upload` provides the `traceway-sourcemaps` command that [uploads the maps](#upload-as-usual); leave it out if the project already has it.
 
 ## Vite
 

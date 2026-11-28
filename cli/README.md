@@ -101,7 +101,7 @@ older session (a `sessions list` row's `startedAt`, or a linked occurrence's
 Multiple Traceway instances or accounts coexist via profiles. Configuration (URL, username) lives in `$XDG_CONFIG_HOME/traceway/config.json` so it can be checked in or managed declaratively (e.g. NixOS); credentials and the active project live in `$XDG_STATE_HOME/traceway/state.json`.
 
 ```bash
-traceway login --url https://traceway.example.com --profile work
+traceway login --url https://cloud.tracewayapp.com --profile work
 traceway profiles list
 traceway profiles use work
 traceway --profile personal exceptions list   # one-off override
@@ -230,7 +230,7 @@ just test
 End-to-end tests against a real Traceway instance are gated behind a build tag and read connection info from env vars:
 
 ```bash
-export TRACEWAY_SMOKE_URL=https://traceway.example.com
+export TRACEWAY_SMOKE_URL=https://cloud.tracewayapp.com
 export TRACEWAY_SMOKE_USERNAME=you@example.com
 export TRACEWAY_SMOKE_PASSWORD=...
 export TRACEWAY_SMOKE_PROJECT_ID=...

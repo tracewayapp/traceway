@@ -44,7 +44,7 @@ For SPAs, initialize once at app startup. The SDK handles batching across route 
 // main.js or index.js
 import { init } from "@tracewayapp/frontend";
 
-init("your-token@https://traceway.example.com/api/report");
+init("your-token@https://cloud.tracewayapp.com/api/report");
 ```
 
 ### Server-Side Rendering (SSR)
@@ -54,7 +54,7 @@ The SDK is browser-only. For SSR frameworks:
 ```javascript
 // Only initialize on client
 if (typeof window !== "undefined") {
-  init("your-token@https://traceway.example.com/api/report");
+  init("your-token@https://cloud.tracewayapp.com/api/report");
 }
 ```
 
@@ -65,7 +65,7 @@ Or use framework-specific packages that handle this automatically.
 Adjust timing based on your needs:
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
+init("your-token@https://cloud.tracewayapp.com/api/report", {
   // Faster batching for critical apps
   debounceMs: 500,
   retryDelayMs: 5000,
@@ -73,7 +73,7 @@ init("your-token@https://traceway.example.com/api/report", {
 ```
 
 ```javascript
-init("your-token@https://traceway.example.com/api/report", {
+init("your-token@https://cloud.tracewayapp.com/api/report", {
   // More aggressive batching for high-traffic apps
   debounceMs: 3000,
   retryDelayMs: 15000,

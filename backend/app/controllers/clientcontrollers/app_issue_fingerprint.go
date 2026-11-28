@@ -40,6 +40,7 @@ var (
 		"java.", "javax.", "jakarta.", "jdk.", "sun.", "com.sun.", "kotlin.", "kotlinx.", "android.", "androidx.",
 		"com.android.", "com.google.android.", "dalvik.", "libcore.", "org.json.",
 	}
+	// Apple's images as far as a name tells: what is left to go by when no dSYM resolved a frame of the trace.
 	iosSystemImages = map[string]bool{
 		"CoreFoundation": true, "Foundation": true, "CFNetwork": true, "Security": true, "UIKitCore": true,
 		"UIKit": true, "SwiftUI": true, "GraphicsServices": true, "QuartzCore": true, "CoreGraphics": true,
@@ -64,10 +65,16 @@ func frameGroupedIssueType(stackTrace string) (string, bool) {
 // else its top frames when none is the app's (an ANR on an idle looper), else its message without numbers.
 func appIssueFingerprint(typ, stackTrace string) string {
 	lines := strings.Split(strings.ReplaceAll(stackTrace, "\r\n", "\n"), "\n")
+	symbolicated := hasDsymFrame(lines[1:])
 	var inApp, top []string
 	for _, line := range lines[1:] {
-		key, app, ok := fingerprintFrame(line)
+		key, app, imageOnly, ok := fingerprintFrame(line, symbolicated)
 		if !ok {
+			continue
+		}
+		// An image's name says no more the second time: a sample one call deeper in a system framework is the same
+		// run of frames.
+		if imageOnly && len(top) > 0 && top[len(top)-1] == key {
 			continue
 		}
 		if len(top) < fingerprintFrames {
@@ -90,8 +97,9 @@ func appIssueFingerprint(typ, stackTrace string) string {
 }
 
 // fingerprintFrame reads one frame line as the part of it that is the same on every device running the same code,
-// and whether the frame is the app's own.
-func fingerprintFrame(line string) (key string, inApp bool, ok bool) {
+// whether the frame is the app's own, and whether all it names is the image it is in. symbolicated is hasDsymFrame of
+// the trace.
+func fingerprintFrame(line string, symbolicated bool) (key string, inApp, imageOnly, ok bool) {
 	if m := nativeFrameRe.FindStringSubmatch(line); m != nil {
 		path, symbol := splitNativeFrame(m[2])
 		library := nativeLibraryName(path)
@@ -100,34 +108,60 @@ func fingerprintFrame(line string) (key string, inApp bool, ok bool) {
 			if javaMethodRe.MatchString(symbol) && !strings.Contains(symbol, "::") {
 				// Compiled or JIT-compiled Java code names its method; the class says whose it is.
 				inApp = !isJavaSystemClass(symbol)
-				return symbol, inApp, true
+				return symbol, inApp, false, true
 			}
-			return library + " " + symbol, inApp, true
+			return library + " " + symbol, inApp, false, true
 		}
 		// Without a symbol the program counter is all that tells two frames apart. It moves with every build of the
 		// library, which for the app's own libraries is a new release, as a line number is for Java frames.
-		return library + " pc " + strings.TrimLeft(strings.ToLower(m[1]), "0"), inApp, true
+		return library + " pc " + strings.TrimLeft(strings.ToLower(m[1]), "0"), inApp, false, true
 	}
 	if m := javaFrameRe.FindStringSubmatch(line); m != nil {
-		return m[1], !isJavaSystemClass(m[1]), true
+		return m[1], !isJavaSystemClass(m[1]), false, true
 	}
 	if m := iosWireFrameRe.FindStringSubmatch(line); m != nil {
-		image := strings.TrimSpace(m[3])
-		if image == "" || image == "<unknown>" {
-			return "<unknown>", false, true
-		}
-		return image + "+0x" + strings.TrimLeft(strings.ToLower(m[2]), "0"), !isIOSSystemImage(image), true
+		return iosImageFrame(m[3], m[2], symbolicated)
 	}
 	if m := iosUnresolvedFrameRe.FindStringSubmatch(line); m != nil {
-		image := strings.TrimSpace(m[1])
-		return image + "+0x" + strings.TrimLeft(strings.ToLower(m[2]), "0"), !isIOSSystemImage(image), true
+		return iosImageFrame(m[1], m[2], symbolicated)
 	}
 	if m := iosResolvedFrameRe.FindStringSubmatch(line); m != nil {
 		location := strings.TrimSpace(m[2])
 		system := location == "" || location == "<compiler-generated>" || location == "<unknown>"
-		return strings.TrimSpace(m[1]), !system, true
+		return strings.TrimSpace(m[1]), !system, false, true
 	}
-	return "", false, false
+	return "", false, false, false
+}
+
+// iosImageFrame reads an iOS frame that is an offset into an image. The offset is the same wherever one build of the
+// app runs only inside the app's own binaries: in a system image it moves with every OS build, so there the image
+// alone is the key. The SDK sends an image's file name and nothing that says whose it is; the project's dSYMs do,
+// because they resolve the app's frames and no others. In a trace with a resolved frame, a frame left as an offset is
+// therefore outside the app. A trace without one, for a build whose dSYM was not uploaded, has the image's name to go
+// by.
+func iosImageFrame(image, offset string, symbolicated bool) (key string, inApp, imageOnly, ok bool) {
+	image = strings.TrimSpace(image)
+	if image == "" || image == "<unknown>" {
+		return "<unknown>", false, true, true
+	}
+	if symbolicated || isIOSSystemImage(image) {
+		return image, false, true, true
+	}
+	return image + "+0x" + strings.TrimLeft(strings.ToLower(offset), "0"), true, false, true
+}
+
+// hasDsymFrame reports whether a dSYM resolved a frame of an iOS trace: `#3  CartView.layout() (CartView.swift:42)`.
+func hasDsymFrame(lines []string) bool {
+	for _, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") || nativeFrameRe.MatchString(line) ||
+			iosWireFrameRe.MatchString(line) || iosUnresolvedFrameRe.MatchString(line) {
+			continue
+		}
+		if iosResolvedFrameRe.MatchString(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // splitNativeFrame separates what follows a frame's program counter into the mapped file and the symbol, reading the

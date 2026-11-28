@@ -212,6 +212,8 @@ func TestSubmitPlanStartApiFields(t *testing.T) {
 		"next public upload token var":         `{"projects":[{"name":"App","framework":"react","uploadTokenEnvFile":".env","uploadTokenEnvVar":"next_public_upload"}]}`,
 		"url var over the token var":           `{"projects":[{"name":"App","framework":"react","envFile":".env","envVar":"VITE_TRACEWAY_TOKEN","urlEnvVar":"VITE_TRACEWAY_TOKEN"}]}`,
 		"upload token var over the token var":  `{"projects":[{"name":"App","framework":"ios","envFile":"Traceway.xcconfig","envVar":"TRACEWAY_TOKEN","uploadTokenEnvVar":"TRACEWAY_TOKEN"}]}`,
+		"url var over the token var of a deployment": `{"projects":[{"name":"App","framework":"react","envVar":"VITE_TRACEWAY","urlEnvVar":"VITE_TRACEWAY",
+			"deployment":{"platform":"Vercel","instructions":"vercel env add VITE_TRACEWAY <token>"}}]}`,
 	}
 	for name, body := range rejected {
 		t.Run(name, func(t *testing.T) {
@@ -273,6 +275,36 @@ func TestSetupPlanRejectsInferredFileKeyCollisions(t *testing.T) {
 	} {
 		if msg := validateSetupPlanPayload(&models.SetupPlanPayload{Projects: projects}); msg == "" {
 			t.Fatalf("accepted conflicting plan %+v", projects)
+		}
+	}
+}
+
+func TestSetupPlanReactNativeDefaultsToAConnectionString(t *testing.T) {
+	reactNative := models.SetupPlanProject{Name: "App", Framework: "react-native", EnvFile: ".env", EnvVar: "EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING"}
+	if keys := setupFileKeys(&reactNative); len(keys) != 1 || keys[0].key != reactNative.EnvVar || keys[0].serverURL {
+		t.Errorf("keys = %+v, want the connection string alone: the apply step writes no URL variable for React Native", keys)
+	}
+	// The name another project's default URL variable would take stays free.
+	other := models.SetupPlanProject{Name: "Api", Framework: "opentelemetry", EnvFile: ".env", EnvVar: "EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING_URL"}
+	if msg := validateSetupPlanPayload(&models.SetupPlanPayload{Projects: []models.SetupPlanProject{reactNative, other}}); msg != "" {
+		t.Errorf("plan rejected: %s", msg)
+	}
+
+	token := reactNative
+	token.EnvFormat = setupEnvFormatToken
+	if keys := setupFileKeys(&token); len(keys) != 2 {
+		t.Errorf("an explicit token format keeps the URL variable: %+v", keys)
+	}
+}
+
+func TestSetupPlanAcceptsUnusedUrlEnvVar(t *testing.T) {
+	// A connection string carries the server, so its urlEnvVar is never written.
+	for _, p := range []models.SetupPlanProject{
+		{Name: "Old", Framework: "react", EnvFile: ".env", EnvVar: "DSN", UrlEnvVar: "DSN", EnvFormat: setupEnvFormatConnectionString},
+		{Name: "Old", Framework: "react", EnvVar: "DSN", UrlEnvVar: "DSN", EnvFormat: setupEnvFormatConnectionString},
+	} {
+		if msg := validateSetupPlanPayload(&models.SetupPlanPayload{Projects: []models.SetupPlanProject{p}}); msg != "" {
+			t.Errorf("%+v rejected: %s", p, msg)
 		}
 	}
 }

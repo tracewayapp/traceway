@@ -8,7 +8,13 @@ import {
 	getTestingRouteCode2
 } from './framework-code';
 import { getOtelSteps, OTEL_TARGETS } from './otel-setup';
-import { getStartCode, getStartConfigFiles, usesStartApi, xcconfigValue } from './sdk-start';
+import {
+	getStartCode,
+	getStartConfigFiles,
+	getStartVariants,
+	usesStartApi,
+	xcconfigValue
+} from './sdk-start';
 
 const CLOUD = 'https://cloud.tracewayapp.com';
 const SELF_HOSTED = 'https://traceway.acme.test';
@@ -96,6 +102,59 @@ describe('start snippets', () => {
 		);
 		expect(getStartCode('ios', SELF_HOSTED)).toContain(
 			'baseUrl: info?["TracewayURL"] as? String ?? "",'
+		);
+	});
+
+	it('leaves the version to the Android and iOS SDKs, which read the app’s own', () => {
+		for (const framework of ['android', 'ios'] as const) {
+			for (const backendUrl of [CLOUD, SELF_HOSTED]) {
+				expect(getStartCode(framework, backendUrl)).not.toMatch(/version/i);
+			}
+		}
+		// Flutter has no version of the app to read at start.
+		expect(getStartCode('flutter', CLOUD)).toContain("version: '1.0.0',");
+	});
+
+	it('gives a React project the Next.js spelling as a second variant', () => {
+		expect(getStartVariants('react')).toEqual([
+			{ id: 'vite', label: 'Vite' },
+			{ id: 'nextjs', label: 'Next.js' }
+		]);
+		for (const framework of START_FRAMEWORKS.filter((f) => f !== 'react')) {
+			expect(getStartVariants(framework)).toEqual([]);
+		}
+
+		const [cloudEnv] = getStartConfigFiles('react', TOKEN, CLOUD, 'nextjs');
+		expect(cloudEnv.title).toBe('.env.local');
+		expect(cloudEnv.code).toBe('NEXT_PUBLIC_TRACEWAY_TOKEN=abc123token');
+		expect(cloudEnv.secret).toBe(true);
+		const cloud = getFrameworkCode('react', TOKEN, CLOUD, 'nextjs');
+		expect(cloud).toContain('// app/layout.tsx');
+		expect(cloud).toContain('<TracewayProvider token={process.env.NEXT_PUBLIC_TRACEWAY_TOKEN}>');
+		expect(cloud).not.toContain('baseUrl');
+
+		expect(getStartConfigFiles('react', TOKEN, SELF_HOSTED, 'nextjs')[0].code).toBe(
+			'NEXT_PUBLIC_TRACEWAY_TOKEN=abc123token\nNEXT_PUBLIC_TRACEWAY_URL=https://traceway.acme.test'
+		);
+		const selfHosted = getFrameworkCode('react', TOKEN, SELF_HOSTED, 'nextjs');
+		expect(selfHosted).toContain('baseUrl={process.env.NEXT_PUBLIC_TRACEWAY_URL}');
+		for (const text of [cloud, selfHosted]) {
+			expect(text).not.toContain('import.meta.env');
+			expect(text).not.toContain('VITE_');
+		}
+
+		// Vite stays what a React project shows first, and the only spelling of the other frameworks.
+		expect(getFrameworkCode('react', TOKEN, CLOUD)).toBe(
+			getFrameworkCode('react', TOKEN, CLOUD, 'vite')
+		);
+		expect(getFrameworkCode('react', TOKEN, CLOUD)).toContain(
+			'import.meta.env.VITE_TRACEWAY_TOKEN'
+		);
+		expect(getFrameworkCode('vuejs', TOKEN, CLOUD, 'nextjs')).toBe(
+			getFrameworkCode('vuejs', TOKEN, CLOUD)
+		);
+		expect(getStartConfigFiles('vuejs', TOKEN, CLOUD, 'nextjs')).toEqual(
+			getStartConfigFiles('vuejs', TOKEN, CLOUD)
 		);
 	});
 

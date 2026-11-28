@@ -267,7 +267,7 @@ java \
   -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=my-spring-app \
   -Dotel.exporter.otlp.protocol=http/protobuf \
-  -Dotel.exporter.otlp.endpoint=https://<your-instance>/api/otel \
+  -Dotel.exporter.otlp.endpoint=https://cloud.tracewayapp.com/api/otel \
   -Dotel.exporter.otlp.headers="Authorization=Bearer <project_token>" \
   -jar target/my-app.jar
 ```

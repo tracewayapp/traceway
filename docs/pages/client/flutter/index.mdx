@@ -487,7 +487,7 @@ With the add-on registered, `screenCapture: true` in video mode:
 
 - wraps the app in a `RepaintBoundary` and takes a picture of it `fps` times a second (15 by default, at `capturePixelRatio` 0.75) into a ring of `maxBufferFrames` frames, about 10 seconds;
 - encodes the frames a clip covers to MP4 only when an exception is captured or replay streams (a capture, a trigger or a rule), each frame held for as long as it was on screen, and uploads the clip to Traceway, linked to the exception by its ID;
-- draws touch and click positions onto the recorded frames, applies the masks, and with `replay.maskAllInputs` on (the default) pixelates the text area of every field the user types into. The user never sees any of it.
+- draws touch and click positions onto the recorded frames, applies the masks, covers every password field (`obscureText: true`) with an opaque box, and with `replay.maskAllInputs` on (the default) pixelates the text area of every other field the user types into. The user never sees any of it.
 
 Without `TracewayVideo.register()`, video mode prints one warning that says what to add and records a wireframe; so does a platform without an encoder. `TracewayVideo.register(encoder: …)` takes a `VideoEncoder` of your own (an `ffmpeg` process on desktop, say). The dashboard plays a video in its own player, next to the stack trace on the issue and on the session.
 
@@ -524,7 +524,7 @@ What a wireframe shows of an image is decided when the frame is captured, so a p
 - Each wireframe segment allows up to 128 KiB of embedded raster image data, counting base64 URLs each time they appear in snapshots or updates. If the segment exceeds that total, the SDK sends a layout-only wireframe with the same events, text masks and image positions. The next segment has its own allowance.
 - **Unmetered** is what `TracewayOptions.isUnmeteredNetwork` says when the app sets it (from `connectivity_plus`, say); otherwise the SDK guesses from the network interfaces that are up (Android `wlan*`/`eth*`, iOS `en0`, desktop Wi‑Fi and Ethernet), without a plugin. The guess takes a hotspot shared by a phone for Wi‑Fi; until it is known, the network counts as metered.
 - A `DecorationImage` (a `BoxDecoration` image, `CircleAvatar.backgroundImage`) keeps its URL or the placeholder: its pixels are not inlined.
-- `off` takes effect as soon as the setting arrives: the frames held are dropped and the screen is taken again. Every image inside a [mask](#privacy-masks) is a placeholder, and nothing of it is drawn or encoded.
+- A stricter value (`always` to `wifi` or `off`, `wifi` to `off`) takes effect as soon as the setting arrives: the frames held and the clips not uploaded yet are dropped, and the screen is taken again. A looser value drops nothing. Every image inside a [mask](#privacy-masks) is a placeholder, and nothing of it is drawn or encoded.
 - Video records the screen's pixels, images included, whatever the policy: mask an image with `TracewayMask` to hide it there.
 - With `debug: true` the console says when a picture was dropped for its size or the session's budget.
 
@@ -581,7 +581,7 @@ The marker takes the place of the widget's own key and is never reported as its 
 
 A mask covers the widget where it is in each recorded frame: its place is read from the render tree when the frame is captured, so it stays on the widget while that scrolls in a list, animates or is transformed.
 
-Text typed into fields is masked as well: in a wireframe it is replaced with `*`, and obscured fields always are; in a video the text area of every field the user types into is pixelated, like a blur mask. A rule's `replay.maskAllInputs: false` turns this off, and turning it back on drops the frames recorded without it.
+Text typed into fields is masked as well: in a wireframe it is replaced with `*`; in a video the text area of every field the user types into is pixelated, like a blur mask. A rule's `replay.maskAllInputs: false` turns this off, except for password fields (`obscureText: true`): in a wireframe their text is always replaced with `*`, and in a video they are always covered by an opaque box, which also hides the last character the field shows while the user types. Turning `maskAllInputs` back on drops the frames recorded without it and the clips made from them that are not uploaded yet.
 
 `TracewayPrivacyMask`, the name in 1.x, is a deprecated alias of `TracewayMask`.
 
@@ -942,6 +942,7 @@ The API has the names of the [browser](/client/js-sdk), [Android](/client/androi
 - **Getters**: `Traceway.currentSessionId` is a getter (a function in the browser); `getInstanceId()` is a method, as in the browser and Android (iOS: `instanceId`). `Traceway.client` is the running `TracewayClient`, like Android's and iOS's `Traceway.client` and the browser's `getClient()`. `Traceway.ready` completes when the SDK has started.
 - **Navigation** is recorded by `Traceway.navigatorObserver` on the app's `Navigator`, not by itself; a router that does not report to it calls `recordNavigation`.
 - **Selectors name widgets**: types, `ValueKey`s and `Semantics` identifiers, labels and roles (see [Naming views](#naming-views)).
+- **Replay switch**: `screenCapture` is off by default, as on Android and iOS. The browser's counterpart is `sessionRecording`, which is on by default.
 - **Video** replay (`screenCaptureMode: video`, `fps`, `capturePixelRatio`) exists only in Flutter, as the `traceway_video` add-on.
 - **Native crashes and hangs**: Flutter reports Dart errors only, and hangs as the `app.hang` metric only; native crashes, ANRs and hang stacks need the Android and iOS SDKs in the host app (see [Exit reasons and native crashes](#exit-reasons-and-native-crashes)).
 - **Unmetered network**: Flutter has no network type API, so `replay.images = wifi` uses `isUnmeteredNetwork` or an interface heuristic, where Android and iOS ask the system.
@@ -954,14 +955,14 @@ The API has the names of the [browser](/client/js-sdk), [Android](/client/androi
 - **Connection strings still work**: `Traceway.run(connectionString: 'YOUR_TOKEN@https://cloud.tracewayapp.com/api/report', child: …)` is deprecated and prints one warning naming the new form. Every form works the same way: `token@url`, with or without a trailing `/api` or `/api/report`, trailing slashes, surrounding spaces, no scheme (`https://` is added; `http://` for `localhost`), or a server under a sub-path. One the SDK cannot read prints one warning and leaves the SDK off; it never throws.
 - **`TracewayClient.initialize`** takes the same named parameters, `initialize(token:, baseUrl:, options:)`, and returns `null` when the server URL is unusable.
 - **Video is an add-on**: the default `screenCaptureMode` is now `wireframe`, and `traceway` no longer depends on `flutter_quick_video_encoder` (no Gradle patch, no CocoaPods requirement). For video, add [`traceway_video`](#video-flutter-only) and call `TracewayVideo.register()` before `Traceway.run`; without it, video mode warns once and records a wireframe. Remove the `flutter_quick_video_encoder` Gradle block from an app that does not use the add-on: Gradle fails on a project that no longer exists.
-- **`legacyConnectionString` is gone**: the reports a 1.x build left on the device are sent as OTLP exception records of the running SDK, through its normal path, with the time they happened (their video clips are dropped); reports older than 12 hours, the 1.x default, are deleted. Nothing is sent to the 1.x report endpoint any more.
+- **`legacyConnectionString` is gone**: nothing is sent to the 1.x report endpoint any more. A report a 1.x build left on the device does not say which project it belongs to, so 2.1 does not send it: the file stays on the device and is deleted once it is 12 hours old. Only reports that a 2.0 beta filed under the same server and token are converted to OTLP records, with the time they happened; their video clips are dropped.
 - **New in 2.1.0**: `Traceway.tracer`, `Traceway.client`, `Traceway.ready`, the options `captureAppHangs`, `appHangThresholdMs` and `isUnmeteredNetwork`, inlined image pictures in wireframes, the keyboard box, masked typed text in video, and the crash-safety guard.
 
 ## Migrating from 1.x
 
 - **Server**: 2.x sends OTLP to `/api/otel/v1/logs`, `/api/otel/v1/traces` and `/api/otel/v1/metrics`, polls `/api/otel/v1/opamp` and uploads clips to `/api/recordings`. There is no fallback to the 1.x report protocol.
 - **Start**: start with the project token, as in [Upgrading from 2.0](#upgrading-from-20). Without a token the SDK runs [standalone](#standalone-without-a-traceway-server).
-- **Unsent 1.x reports** are delivered by the first 2.1 start, as OTLP records (see above).
+- **Unsent 1.x reports** are not delivered: they stay on the device and are deleted once they are 12 hours old, as [above](#upgrading-from-20).
 - **Behaviour**: logs and actions are no longer limited to the last 10 seconds and no longer travel inside the recording. They are buffered for up to 10 minutes and sent as their own records with an exception. `captureMessage` no longer attaches a screen recording. `screenCapture: true` records a wireframe unless you add the video add-on.
 - **Renamed API**: `TracewayPrivacyMask` is now `TracewayMask`; the old name is a deprecated alias of it.
 - **Removed options**: `debounceMs`, `retryDelayMs`, `maxPendingExceptions`, `maxLocalFiles`, `localFileMaxAgeHours`, `eventsWindow`, `eventsMaxCount`.

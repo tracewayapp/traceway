@@ -10,7 +10,10 @@ export interface SetupPlanProject {
 	framework: string;
 	envFile?: string;
 	envVar?: string;
-	/** `connectionString` is the 1.x form of old plans: `<token>@<server>/api/report` in one variable. */
+	/**
+	 * `connectionString` puts `<token>@<server>/api/report` in one variable: the 1.x form of old plans, and what a
+	 * `react-native` project gets when the field is left out (see `envFormat`).
+	 */
 	envFormat?: 'token' | 'connectionString';
 	urlEnvVar?: string;
 	uploadTokenEnvFile?: string;
@@ -47,9 +50,18 @@ export interface SetupTokenResponse {
 	backendUrl: string;
 }
 
-/** The value the token variable gets: the token, or `<token>@<server>/api/report` for an old plan's connection string. */
+/**
+ * The form the token variable takes. `@tracewayapp/react-native` starts only from a connection string, so a React
+ * Native project gets one unless the plan says otherwise, as in `traceway setup apply` and on the server.
+ */
+export function envFormat(planned: SetupPlanProject): 'token' | 'connectionString' {
+	if (planned.envFormat) return planned.envFormat;
+	return planned.framework === 'react-native' ? 'connectionString' : 'token';
+}
+
+/** The value the token variable gets: the token, or `<token>@<server>/api/report` for a connection string. */
 export function credentialValue(planned: SetupPlanProject, project: SetupDraftProject): string {
-	if (planned.envFormat === 'connectionString') {
+	if (envFormat(planned) === 'connectionString') {
 		const base = normalizeBaseUrl(project.backendUrl) ?? project.backendUrl.replace(/\/+$/, '');
 		return `${project.token}@${base}/api/report`;
 	}
@@ -61,7 +73,7 @@ export function urlEnvVar(
 	planned: SetupPlanProject,
 	backendUrl: string | null | undefined
 ): string | null {
-	if (planned.envFormat === 'connectionString' || !planned.envVar) return null;
+	if (envFormat(planned) === 'connectionString' || !planned.envVar) return null;
 	if (!backendUrl || selfHostedBaseUrl(backendUrl) === null) return null;
 	if (planned.urlEnvVar) return planned.urlEnvVar;
 	const name = planned.envVar;

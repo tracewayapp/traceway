@@ -37,6 +37,29 @@ const BROWSER_ENV: Partial<Record<Framework, BrowserEnv>> = {
 	}
 };
 
+/** How a React app is built: Vite and Next.js name the public variables differently and read them differently. */
+export type StartVariant = 'vite' | 'nextjs';
+
+const NEXTJS_ENV: BrowserEnv = {
+	file: '.env.local',
+	prefix: 'NEXT_PUBLIC_',
+	description: 'Next.js exposes NEXT_PUBLIC_ variables to the browser.'
+};
+
+const REACT_VARIANTS: { id: StartVariant; label: string }[] = [
+	{ id: 'vite', label: 'Vite' },
+	{ id: 'nextjs', label: 'Next.js' }
+];
+
+/** The variants a framework's start snippets come in, the default first; none when there is only one. */
+export function getStartVariants(framework: Framework): { id: StartVariant; label: string }[] {
+	return framework === 'react' ? REACT_VARIANTS : [];
+}
+
+function isNextjs(framework: Framework, variant: StartVariant): boolean {
+	return framework === 'react' && variant === 'nextjs';
+}
+
 /** Whether the framework starts with `token` (+ `baseUrl`), the start API of the 2.1 SDKs. */
 export function usesStartApi(framework: Framework): boolean {
 	return framework in BROWSER_ENV || isMobileStartFramework(framework);
@@ -62,12 +85,13 @@ function envLines(entries: [string, string | null][]): string {
 export function getStartConfigFiles(
 	framework: Framework,
 	token: string,
-	backendUrl: string
+	backendUrl: string,
+	variant: StartVariant = 'vite'
 ): StartConfigFile[] {
 	const value = token || 'YOUR_TOKEN';
 	const url = selfHostedBaseUrl(backendUrl);
 
-	const browser = BROWSER_ENV[framework];
+	const browser = isNextjs(framework, variant) ? NEXTJS_ENV : BROWSER_ENV[framework];
 	if (browser) {
 		return [
 			{
@@ -180,10 +204,32 @@ dependencies {
 }
 
 /** The SDK start code; it reads the token (and the server URL off Cloud) from the files above. */
-export function getStartCode(framework: Framework, backendUrl: string): string {
+export function getStartCode(
+	framework: Framework,
+	backendUrl: string,
+	variant: StartVariant = 'vite'
+): string {
 	const selfHosted = selfHostedBaseUrl(backendUrl) !== null;
 	const viteToken = 'import.meta.env.VITE_TRACEWAY_TOKEN';
 	const viteUrl = 'import.meta.env.VITE_TRACEWAY_URL';
+
+	if (isNextjs(framework, variant)) {
+		return `// app/layout.tsx
+// TracewayProvider is a client component, so the server layout renders it as it is.
+import { TracewayProvider } from "@tracewayapp/react";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+${reactProvider('process.env.NEXT_PUBLIC_TRACEWAY_TOKEN', 'process.env.NEXT_PUBLIC_TRACEWAY_URL', selfHosted, '        ')}
+          {children}
+        </TracewayProvider>
+      </body>
+    </html>
+  );
+}`;
+	}
 
 	switch (framework) {
 		case 'react':
@@ -267,7 +313,6 @@ class MyApp : Application() {
             this,
             TracewayOptions(
                 token = BuildConfig.TRACEWAY_TOKEN,${selfHosted ? '\n                baseUrl = BuildConfig.TRACEWAY_URL,' : ''}
-                version = "1.0.0",
                 screenCapture = true,
             ),
         )
@@ -285,7 +330,6 @@ struct MyApp: App {
         Traceway.initialize(
             token: info?["TracewayToken"] as? String ?? "",${selfHosted ? '\n            baseUrl: info?["TracewayURL"] as? String ?? "",' : ''}
             options: TracewayOptions(
-                version: "1.0.0",
                 screenCapture: true
             )
         )

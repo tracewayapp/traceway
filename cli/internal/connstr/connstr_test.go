@@ -79,3 +79,21 @@ func TestIsCloud(t *testing.T) {
 		}
 	}
 }
+
+func TestSameHost(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"http://corp.example", "https://corp.example/traceway", true},
+		{"https://Corp.Example:8443", "http://corp.example:8443/x", true},
+		{"https://corp.example", "https://corp.example:8443", false},
+		{"https://traceway.acme.test", "http://10.0.0.5:8082", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		if got := SameHost(tc.a, tc.b); got != tc.want {
+			t.Errorf("SameHost(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
+	}
+}

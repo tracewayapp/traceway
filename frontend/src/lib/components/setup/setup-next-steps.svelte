@@ -1,6 +1,4 @@
-<script lang="ts">
-	import bash from 'svelte-highlight/languages/bash';
-	import { KeyRound, Rocket } from '@lucide/svelte';
+<script lang="ts" module>
 	import {
 		credentialValue,
 		substituteToken,
@@ -10,6 +8,31 @@
 		type SetupDraftProject,
 		type SetupPlanProject
 	} from '$lib/utils/setup-plan';
+
+	type UploadStep = { planned: SetupPlanProject; project: SetupDraftProject; envVar: string };
+
+	// Upload tokens the plan did not ask `traceway setup` to write: the release build needs them for source maps,
+	// symbols, mappings and dSYMs.
+	function uploadTokenSteps(draft: SetupDraft): UploadStep[] {
+		const byName = new Map((draft.projects ?? []).map((p) => [p.name, p]));
+		const result: UploadStep[] = [];
+		for (const planned of draft.payload.projects) {
+			const project = byName.get(planned.name);
+			if (!project?.sourceMapToken || uploadTokenEnvFile(planned)) continue;
+			result.push({ planned, project, envVar: uploadTokenEnvVar(planned) });
+		}
+		return result;
+	}
+
+	/** Whether the plan leaves credentials for the user to copy from the cards below. */
+	export function hasNextSteps(draft: SetupDraft): boolean {
+		return draft.payload.projects.some((p) => p.deployment) || uploadTokenSteps(draft).length > 0;
+	}
+</script>
+
+<script lang="ts">
+	import bash from 'svelte-highlight/languages/bash';
+	import { KeyRound, Rocket } from '@lucide/svelte';
 	import CopyableCodeBlock from './copyable-code-block.svelte';
 	import CopyableInline from './copyable-inline.svelte';
 
@@ -40,20 +63,7 @@
 		return result;
 	});
 
-	type UploadStep = { planned: SetupPlanProject; project: SetupDraftProject; envVar: string };
-
-	// Upload tokens the plan did not ask `traceway setup` to write: the release build needs them for source maps,
-	// symbols, mappings and dSYMs.
-	const uploadSteps = $derived.by((): UploadStep[] => {
-		const byName = new Map((draft.projects ?? []).map((p) => [p.name, p]));
-		const result: UploadStep[] = [];
-		for (const planned of draft.payload.projects) {
-			const project = byName.get(planned.name);
-			if (!project?.sourceMapToken || uploadTokenEnvFile(planned)) continue;
-			result.push({ planned, project, envVar: uploadTokenEnvVar(planned) });
-		}
-		return result;
-	});
+	const uploadSteps = $derived(uploadTokenSteps(draft));
 </script>
 
 {#if steps.length > 0}

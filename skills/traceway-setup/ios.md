@@ -106,7 +106,6 @@ struct MyApp: App {
         Traceway.initialize(
             token: info?["TracewayToken"] as? String ?? "",
             options: TracewayOptions(
-                version: "1.0.0",
                 screenCapture: true
             )
         )
@@ -130,12 +129,13 @@ func application(
     let info = Bundle.main.infoDictionary
     Traceway.initialize(
         token: info?["TracewayToken"] as? String ?? "",
-        options: TracewayOptions(version: "1.0.0", screenCapture: true)
+        options: TracewayOptions(screenCapture: true)
     )
     return true
 }
 ```
 
+- `version` is not passed: the SDK reports the bundle's `CFBundleShortVersionString`. Add `version: "…"` only when the app must report another version.
 - `token` is the project token. The SDK sends to Traceway Cloud (`https://cloud.tracewayapp.com`) by default. Pass `baseUrl` (a `String`) only for a self-hosted server: `baseUrl: info?["TracewayURL"] as? String ?? ""`.
 - Swift keeps `Traceway.init(...)` for initializers, so iOS calls it `initialize` (the browser and Android say `init`, Flutter `run`).
 - `initialize` never crashes the app. With settings it cannot use (no token, a `baseUrl` that is not an HTTP(S) URL) it logs one `[Traceway] not started: …` line, returns `nil` and the SDK stays off. A second call does not start a second client. A `baseUrl` without a scheme gets `https://`, and a blank one is Traceway Cloud.

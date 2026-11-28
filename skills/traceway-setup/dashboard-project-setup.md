@@ -64,8 +64,9 @@ Do not ask the user to paste tokens into chat. Ask them to set the values in the
 |---|---|---|
 | Backend project token | Backend OTLP exporter | Secret; store in the backend deployment environment. |
 | Browser project token | Browser SDK (`token`) | Build-time public configuration; never reuse the backend token. Follow the framework's public environment-variable prefix. |
-| Mobile project token | Mobile SDK (`token`) | Build configuration (`.env` with `--dart-define-from-file`, `local.properties`, an untracked `.xcconfig`); never reuse the backend or browser token. |
-| Server URL | Every SDK (`baseUrl`) and every uploader | Only for a self-hosted server; Traceway Cloud is the SDK default. Not a secret. |
+| Mobile project token | Flutter, Android and iOS SDK (`token`) | Build configuration (`.env` with `--dart-define-from-file`, `local.properties`, an untracked `.xcconfig`); never reuse the backend or browser token. |
+| React Native connection string | React Native SDK (`connectionString`) | The whole `<token>@<server>/api/report` string from the project's Connection page, in one variable, on Traceway Cloud too; this SDK has no `token` or `baseUrl`. |
+| Server URL | Browser, Flutter, Android and iOS SDK (`baseUrl`) and every uploader | Only for a self-hosted server; Traceway Cloud is the SDK default. Not a secret. |
 | Upload token | Frontend source maps and mobile symbols/mappings | CI secret. Every browser, Flutter, Android and iOS project has one from the start, on **Connection** (Source Map Upload or Symbol Upload card). Never embed it in the application. |
 
 Runtime credentials take explicit component names. Adapt these to the repository's conventions:
@@ -75,6 +76,7 @@ TRACEWAY_BACKEND_TOKEN          # backend .env, read by the OTLP exporter
 VITE_TRACEWAY_TOKEN             # browser .env (SvelteKit PUBLIC_, Next.js NEXT_PUBLIC_ in .env.local)
 TRACEWAY_TOKEN                  # Flutter .env, Android local.properties, iOS Traceway.xcconfig
 TRACEWAY_URL                    # with the same prefix; only for a self-hosted server
+EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING   # React Native (Expo) .env.local: <token>@<server>/api/report, no separate URL
 ```
 
 These are the names the project's Connection page shows in its start snippet, so a value copied from there matches. The platform files (`frontend-js.md`, `flutter.md`, `android.md`, `ios.md`) show how each app reads them.

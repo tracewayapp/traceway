@@ -172,7 +172,10 @@ func renderSetupAPIError(errOut io.Writer, mode output.Mode, err error) error {
 }
 
 // setupInstanceURL is the server the app sends to: the one the server names, unless that is the cloud default of
-// a server without APP_BASE_URL (older self-hosted servers report it) while this command talks to another one.
+// a server without APP_BASE_URL (older self-hosted servers report it) while this command talks to another one. A
+// server without APP_BASE_URL names itself from the request as scheme://host, which loses a path prefix and the
+// https of a proxy in front of it, so for the same host the URL this command just reached it at is kept, unless
+// that would turn the server's https into http.
 func setupInstanceURL(serverURL, cliURL string) string {
 	server, serverErr := connstr.NormalizeBaseURL(serverURL)
 	if serverErr != nil {
@@ -181,7 +184,19 @@ func setupInstanceURL(serverURL, cliURL string) string {
 	if connstr.IsCloud(server) && !connstr.IsCloud(cliURL) {
 		return cliURL
 	}
+	if connstr.SameHost(server, cliURL) && !(strings.HasPrefix(server, "https://") && strings.HasPrefix(cliURL, "http://")) {
+		return cliURL
+	}
 	return server
+}
+
+// setupEnvFormat is the form the token variable takes. @tracewayapp/react-native starts only from a connection
+// string, so a React Native entry gets one without asking.
+func setupEnvFormat(p client.SetupPlanProject) string {
+	if p.EnvFormat == "" && p.Framework == "react-native" {
+		return envFormatConnectionString
+	}
+	return p.EnvFormat
 }
 
 // urlEnvVarFor names the server URL variable after the token one: VITE_TRACEWAY_TOKEN → VITE_TRACEWAY_URL,
@@ -243,7 +258,7 @@ func setupEnvWrites(p client.SetupPlanProject, token, instance string) []setupEn
 	if p.EnvFile == "" {
 		return nil
 	}
-	if p.EnvFormat == envFormatConnectionString {
+	if setupEnvFormat(p) == envFormatConnectionString {
 		value := token + "@" + instance + "/api/report"
 		return []setupEnvWrite{{file: p.EnvFile, key: p.EnvVar, value: value, equivalent: func(existing string) bool { return existing == value }}}
 	}
@@ -431,7 +446,7 @@ func runSetupApply(cmd *cobra.Command, _ []string) error {
 		instance := setupInstanceURL(cmp.Or(project.BackendURL, session.BackendURL), url)
 		if planned.Deployment != nil {
 			summary.DeploymentPlatform = planned.Deployment.Platform
-			if planned.EnvVar != "" && planned.EnvFormat != envFormatConnectionString && !connstr.IsCloud(instance) {
+			if planned.EnvVar != "" && setupEnvFormat(planned) != envFormatConnectionString && !connstr.IsCloud(instance) {
 				deploymentURLVars[planned.Name] = urlEnvVarFor(planned)
 			}
 		}

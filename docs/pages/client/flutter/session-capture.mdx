@@ -82,7 +82,7 @@ Masks change the recording only: the user sees no difference in the live app.
 
 ### Inputs are masked by default
 
-In a wireframe, text typed into a field is replaced with `*`, and an obscured field (`obscureText: true`) always is. In a video, the text area of every field the user types into is pixelated. Only a rule that sets `replay.maskAllInputs` to `false` turns this off; turning it back on drops the frames recorded without it.
+In a wireframe, text typed into a field is replaced with `*`. In a video, the text area of every field the user types into is pixelated. Only a rule that sets `replay.maskAllInputs` to `false` turns this off, and never for a password field (`obscureText: true`): in a wireframe its text is always replaced with `*`, and in a video it is always covered by an opaque box. Turning `maskAllInputs` back on drops the frames recorded without it and the clips made from them that are not uploaded yet.
 
 <KeyboardBox />
 

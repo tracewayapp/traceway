@@ -52,8 +52,9 @@
 		getCodeLanguage,
 		getInstallLanguage
 	} from '$lib/utils/framework-code';
-	import { getStartConfigFiles } from '$lib/utils/sdk-start';
+	import { getStartConfigFiles, getStartVariants, type StartVariant } from '$lib/utils/sdk-start';
 	import StartConfigFiles from '$lib/components/setup/start-config-files.svelte';
+	import StartVariantTabs from '$lib/components/setup/start-variant-tabs.svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { OTEL_SDKS } from '$lib/utils/otel-sdks';
@@ -145,13 +146,18 @@
 	let projectWithToken = $derived(projectsState.currentProject);
 	let setupMode = $state(getSetupMode());
 	let checking = $state(false);
+	let startVariant = $state<StartVariant>('vite');
+	const startVariants = $derived(
+		projectWithToken ? getStartVariants(projectWithToken.framework) : []
+	);
 
 	const sdkCode = $derived(
 		projectWithToken
 			? getFrameworkCode(
 					projectWithToken.framework,
 					projectWithToken.token,
-					projectWithToken.backendUrl
+					projectWithToken.backendUrl,
+					startVariant
 				)
 			: ''
 	);
@@ -165,7 +171,8 @@
 			? getStartConfigFiles(
 					projectWithToken.framework,
 					projectWithToken.token,
-					projectWithToken.backendUrl
+					projectWithToken.backendUrl,
+					startVariant
 				)
 			: []
 	);
@@ -629,6 +636,7 @@ service:
 							</p>
 						</div>
 						<div class="space-y-4 p-4">
+							<StartVariantTabs variants={startVariants} bind:value={startVariant} />
 							<StartConfigFiles files={startConfig} />
 							<CopyableCodeBlock code={sdkCode} language={highlightLanguage} secret />
 						</div>

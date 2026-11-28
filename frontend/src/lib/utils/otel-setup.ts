@@ -313,7 +313,7 @@ export function register() {
 						backendUrl,
 						token,
 						[],
-						'Start the server with next start. To capture browser telemetry, create a separate React project and use its token in the browser.'
+						'Start the server with next start. To capture browser telemetry, create a separate React project and use its token in the browser: its Connection page has the Next.js snippet.'
 					)
 				];
 			}

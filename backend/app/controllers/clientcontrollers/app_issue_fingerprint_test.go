@@ -29,6 +29,12 @@ func TestAppIssueTypesGroupByTypeAndTopInAppFrames(t *testing.T) {
 		{"ANR on two devices", "ApplicationNotResponding", "anr_blocked_main.txt", "anr_blocked_main_again.txt"},
 		// Two samples of one hang: blocked for a different time, one frame deeper in the kernel, on another iOS build.
 		{"iOS hang sampled twice", "AppHang", "ios_hang_sample_1.txt", "ios_hang_sample_2.txt"},
+		// A symbolicated hang on two iOS builds: other offsets in the system frameworks above the app's frames, one
+		// frame deeper in a framework, CoreAutoLayout, that no list of system images names.
+		{"iOS hang on two OS builds", "AppHang", "ios_hang_autolayout_ios17.txt", "ios_hang_autolayout_ios18.txt"},
+		// No frame of the app's above main: the system images name the group, not the offsets in them.
+		{"iOS crash in system code on two OS builds", "NativeCrash", "ios_crash_system_only_ios17.txt", "ios_crash_system_only_ios18.txt"},
+		{"iOS hang on an idle run loop on two OS builds", "AppHang", "ios_hang_idle_ios17.txt", "ios_hang_idle_ios18.txt"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -68,6 +74,23 @@ func TestAppIssueFingerprintKeepsTheAppsFrames(t *testing.T) {
 		{"AppHang", "ios_hang_sample_1.txt", "AppHang\nShopApp+0x1a2b4\nShopApp+0x19f80\nShopApp+0x8c40"},
 		// MetricKit names images by a UUID with dashes.
 		{"WatchdogTermination", "ios_watchdog_metrickit.txt", "WatchdogTermination\nShopApp+0x55e10\nShopApp+0x54a08"},
+		// With the app's dSYM uploaded, the frames it resolved are the app's; a frame it left as image+offset is not.
+		{"AppHang", "ios_hang_autolayout_ios17.txt", strings.Join([]string{"AppHang",
+			"CartView.layoutCart()",
+			"CartViewController.viewDidLayoutSubviews()"}, "\n")},
+		// A system frame is named by its image alone, once per run of frames in it.
+		{"NativeCrash", "ios_crash_system_only_ios18.txt", strings.Join([]string{"NativeCrash",
+			"libsystem_kernel.dylib",
+			"libsystem_c.dylib",
+			"CoreMedia",
+			"AVFCore",
+			"UIKitCore"}, "\n")},
+		{"AppHang", "ios_hang_idle_ios18.txt", strings.Join([]string{"AppHang",
+			"libsystem_kernel.dylib",
+			"CoreFoundation",
+			"GraphicsServices",
+			"UIKitCore",
+			"<unknown>"}, "\n")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.fixture, func(t *testing.T) {
@@ -86,6 +109,18 @@ func TestAppIssueTypesStayApartWhereTheAppDiffers(t *testing.T) {
 	anr := appIssueTrace(t, "ApplicationNotResponding", "anr_blocked_main.txt")
 	if ComputeExceptionHash(anr, false) == ComputeExceptionHash(appIssueTrace(t, "ApplicationNotResponding", "anr_idle_looper.txt"), false) {
 		t.Error("an ANR in the app's code and one on an idle looper are one issue")
+	}
+	iosHang := appIssueTrace(t, "AppHang", "ios_hang_autolayout_ios17.txt")
+	if ComputeExceptionHash(iosHang, false) == ComputeExceptionHash(appIssueTrace(t, "AppHang", "ios_hang_other_site.txt"), false) {
+		t.Error("iOS hangs in two functions of the app, below the same system frames, are one issue")
+	}
+	if ComputeExceptionHash(iosHang, false) == ComputeExceptionHash(appIssueTrace(t, "NativeCrash", "ios_crash_system_only_ios17.txt"), false) {
+		t.Error("an iOS hang in the app's code and a crash in system code are one issue")
+	}
+	// Without a dSYM the offset in the app's binary is all that tells two call sites apart.
+	wire := appIssueTrace(t, "AppHang", "ios_hang_sample_1.txt")
+	if ComputeExceptionHash(wire, false) == ComputeExceptionHash(strings.Replace(wire, "0x1a2b4 ShopApp", "0x2c3d8 ShopApp", 1), false) {
+		t.Error("iOS hangs at two offsets of the app's binary are one issue")
 	}
 	// The frames say where; the type says what happened there.
 	hang := "AppHang: Main thread blocked for 2.4 s\n" + strings.SplitN(anr, "\n", 2)[1]

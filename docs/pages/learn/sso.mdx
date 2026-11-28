@@ -12,7 +12,7 @@ SSO is configured with environment variables on the backend. There is nothing to
 | **2** | [Set the environment variables and restart](#step-2-set-the-environment-variables-and-restart) | The Traceway backend | Once per provider |
 | **3** | [Let your team in](#step-3-let-your-team-in) | Traceway **Settings**, or one more variable | Once, or once per person |
 
-The examples use `https://traceway.example.com` as the address of your instance. Use your own everywhere you see it.
+The examples use `https://traceway.mycompany.com` as the address of your instance. Use your own everywhere you see it.
 
 ## Step 1: Register Traceway with the provider
 
@@ -28,8 +28,8 @@ GitHub calls these OAuth Apps. A GitHub App is a different thing.
 1. On GitHub, open **Settings → Developer settings → OAuth Apps → New OAuth App**. For an app owned by an organization, start from the organization's **Settings** instead.
 2. Fill in the form:
    - **Application name**: what users see on the consent screen, for example `Traceway`.
-   - **Homepage URL**: `https://traceway.example.com`
-   - **Authorization callback URL**: `https://traceway.example.com/api/auth/callback/github`
+   - **Homepage URL**: `https://traceway.mycompany.com`
+   - **Authorization callback URL**: `https://traceway.mycompany.com/api/auth/callback/github`
 3. Click **Register application**.
 4. On the app page, click **Generate a new client secret**. Copy the **Client ID** and the secret now. GitHub shows the secret only once.
 
@@ -45,8 +45,8 @@ Traceway asks GitHub for the `user:email` scope. Each person needs a verified pr
    - Add your domain under **Authorized domains**, for example `example.com`.
 3. Choose **Create Credentials → OAuth client ID**:
    - **Application type**: **Web application**
-   - **Authorized JavaScript origins**: `https://traceway.example.com`
-   - **Authorized redirect URIs**: `https://traceway.example.com/api/auth/callback/google`
+   - **Authorized JavaScript origins**: `https://traceway.mycompany.com`
+   - **Authorized redirect URIs**: `https://traceway.mycompany.com/api/auth/callback/google`
 4. Copy the **Client ID** and the **Client secret** from the dialog.
 
 </Tabs.Tab>
@@ -56,7 +56,7 @@ Traceway asks GitHub for the `user:email` scope. Each person needs a verified pr
 2. Configure it:
    - **Name**: for example `traceway`
    - **Client type**: **Confidential**
-   - **Redirect URIs**: `https://traceway.example.com/api/auth/callback/oidc`
+   - **Redirect URIs**: `https://traceway.mycompany.com/api/auth/callback/oidc`
    - **Scopes**: `openid`, `email` and `profile` selected
 3. Copy the **Client ID** and the **Client Secret** that Authentik generated.
 4. Go to **Applications → Create** and link the provider you just created.
@@ -78,8 +78,8 @@ Open it in a browser. It should return a JSON document.
    - **Client ID**: for example `traceway`
    - **Client authentication**: **On**, which makes it a confidential client
 3. On the **Settings** tab:
-   - **Valid redirect URIs**: `https://traceway.example.com/api/auth/callback/oidc`
-   - **Web origins**: `https://traceway.example.com`
+   - **Valid redirect URIs**: `https://traceway.mycompany.com/api/auth/callback/oidc`
+   - **Web origins**: `https://traceway.mycompany.com`
 4. On the **Credentials** tab, copy the **Client secret**.
 
 You also need the discovery URL. Keycloak has one per realm:
@@ -96,7 +96,7 @@ Open it in a browser. It should return a JSON document.
 Any provider that implements OpenID Connect works, for example Okta or Dex. The names differ per product, the values do not:
 
 1. Create a confidential (server-side web) client or application.
-2. Set its redirect URI to `https://traceway.example.com/api/auth/callback/oidc`.
+2. Set its redirect URI to `https://traceway.mycompany.com/api/auth/callback/oidc`.
 3. Allow the scopes `openid`, `email` and `profile`. Traceway asks for these three.
 4. Copy the client ID and the client secret.
 5. Find the provider's discovery URL. It usually ends in `/.well-known/openid-configuration` and returns a JSON document when you open it.
@@ -118,7 +118,7 @@ Give the backend the values from step 1, plus `APP_BASE_URL`, the public address
 <Tabs.Tab>
 
 ```
-APP_BASE_URL=https://traceway.example.com
+APP_BASE_URL=https://traceway.mycompany.com
 GITHUB_CLIENT_ID=Ov23li...
 GITHUB_CLIENT_SECRET=...
 ```
@@ -127,7 +127,7 @@ GITHUB_CLIENT_SECRET=...
 <Tabs.Tab>
 
 ```
-APP_BASE_URL=https://traceway.example.com
+APP_BASE_URL=https://traceway.mycompany.com
 GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=...
 ```
@@ -138,7 +138,7 @@ GOOGLE_CLIENT_SECRET=...
 For Authentik, Keycloak and every other OpenID Connect provider:
 
 ```
-APP_BASE_URL=https://traceway.example.com
+APP_BASE_URL=https://traceway.mycompany.com
 OIDC_CLIENT_ID=traceway
 OIDC_CLIENT_SECRET=...
 OIDC_DISCOVERY_URL=https://auth.example.com/application/o/traceway/.well-known/openid-configuration
@@ -200,7 +200,7 @@ On a new instance without an organization, the first person who signs in with SS
 Ask the backend which providers it loaded:
 
 ```bash
-curl https://traceway.example.com/api/auth/providers
+curl https://traceway.mycompany.com/api/auth/providers
 ```
 
 The answer, formatted here for reading:
@@ -213,7 +213,7 @@ The answer, formatted here for reading:
 }
 ```
 
-Every provider you configured should be in `providers`. Then open `https://traceway.example.com/login` in a private browser window. The **Continue with ...** buttons are above the email and password form. Click one, approve at the provider, and you should land in the dashboard as yourself.
+Every provider you configured should be in `providers`. Then open `https://traceway.mycompany.com/login` in a private browser window. The **Continue with ...** buttons are above the email and password form. Click one, approve at the provider, and you should land in the dashboard as yourself.
 
 If a provider is missing from the list or the sign-in ends on the login page with a message, see [When sign-in fails](#when-sign-in-fails).
 
@@ -386,7 +386,7 @@ Set these on the backend. Each provider is independent: configure one, several o
 
 | Variable | Description |
 |---|---|
-| `APP_BASE_URL` | Required. Public address of your instance, for example `https://traceway.example.com`. Used to build the callback URL and to send the browser back after sign-in. |
+| `APP_BASE_URL` | Required. Public address of your instance, for example `https://traceway.mycompany.com`. Used to build the callback URL and to send the browser back after sign-in. |
 | `OAUTH_SESSION_SECRET` | Optional. Signs the cookie used during the sign-in round trip. Falls back to `JWT_SECRET`. Set it to rotate cookie signing separately from sessions. |
 | `DISABLE_PASSWORD_LOGIN` | Optional. `true` turns email and password login off. See [Forcing SSO-only login](#forcing-sso-only-login). |
 

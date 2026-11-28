@@ -572,7 +572,9 @@
 									<div>
 										<div class="text-sm">Replay type</div>
 										<div class="text-xs text-muted-foreground">
-											{flutter ? 'Video, or a wireframe of the widget tree' : 'Flutter SDK only'}
+											{flutter
+												? 'A wireframe of the widget tree, or video with the traceway_video add-on (a wireframe without it)'
+												: 'Flutter SDK only'}
 										</div>
 									</div>
 									<Select.Root type="single" bind:value={captureModeChoice} disabled={saving}>

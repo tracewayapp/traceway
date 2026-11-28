@@ -18,4 +18,6 @@ A picture that must never be recorded belongs inside `traceway-mask` or `tracewa
 
 With `"always"`, each loaded `<img>` is copied at its displayed size. A picture with transparency becomes a PNG of at most 192 px on its longest side, because JPEG would replay its transparent pixels as black; any other picture becomes a JPEG at quality 0.45 of at most 384 px. A copy over 48 KiB is tried once at half the size and otherwise left as a URL. The SDK keeps up to 128 copies for the next snapshots, adds at most 4 MiB of them to a session's recording, and spends at most 16 ms on them per recorded change. It never changes the page's own `<img>` elements, so a picture from another origin without CORS stays a URL reference.
 
+A segment carries at most 128 KiB of copies. One that would carry more is recorded without copies, with the URL references `"wifi"` records, and the next segment starts with a fresh allowance. So `"always"` never shows fewer pictures than `"wifi"`, but on a page full of pictures it may add none.
+
 A change of `replay.images` restarts the recorder and drops the buffered replay recorded with the old value. Each session reports the value that applies, ceiling included, as `traceway.replay.images`, and the bytes of the copies added so far as `traceway.replay.image_bytes`.

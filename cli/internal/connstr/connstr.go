@@ -82,6 +82,13 @@ func IsCloud(baseURL string) bool {
 		(u.Port() == "" || u.Port() == "443") && strings.Trim(u.Path, "/") == ""
 }
 
+// SameHost reports whether two base URLs name the same host and port, whatever their scheme and path.
+func SameHost(a, b string) bool {
+	ua, errA := url.Parse(a)
+	ub, errB := url.Parse(b)
+	return errA == nil && errB == nil && ua.Host != "" && strings.EqualFold(ua.Host, ub.Host)
+}
+
 // hostOf is the host of a URL written without a scheme, without its port.
 func hostOf(s string) string {
 	if i := strings.IndexAny(s, "/?#"); i >= 0 {

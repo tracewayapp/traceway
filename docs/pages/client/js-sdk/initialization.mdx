@@ -155,14 +155,14 @@ init({
 
 For fine-grained control, use the `beforeCapture` callback. It receives a `TracewayCapturedError` and returns `false` to drop the event:
 
-| Field        | Value                                                                      |
-| ------------ | -------------------------------------------------------------------------- |
-| `error`      | What was thrown or passed to `captureException`; `undefined` for a message |
-| `type`       | The error's type, e.g. `TypeError`; `undefined` for a message              |
-| `message`    | The error's message, or the message text                                   |
-| `isMessage`  | `true` for `captureMessage`                                                |
-| `stack`      | The stack trace; `undefined` for a message                                 |
-| `attributes` | The attributes passed with the call                                        |
+| Field        | Value                                                                                                                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`      | What was thrown or passed to `captureException`; `undefined` for a message                                                                                                                                          |
+| `type`       | The error's type, e.g. `TypeError`; `undefined` for a message                                                                                                                                                       |
+| `message`    | The error's message, or the message text                                                                                                                                                                            |
+| `isMessage`  | `true` for `captureMessage`                                                                                                                                                                                         |
+| `stack`      | The stack trace; `undefined` for a message                                                                                                                                                                          |
+| `attributes` | A copy of every attribute the event will carry: the ones passed with the call, the global ones (`setAttribute`), the page's (`url`, `path`, `userAgent` and the rest), the screen keys and the `exception.*` fields |
 
 ```javascript
 import { init } from "@tracewayapp/frontend";

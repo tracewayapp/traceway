@@ -239,20 +239,20 @@ openssl rand -hex 32   # use the output as JWT_SECRET
 Set it when the server sits behind a proxy that changes the `Host` header and does not send `X-Forwarded-Host`. Otherwise the printed link points at an address your users cannot open.
 
 ```bash
-APP_BASE_URL=https://traceway.example.com
+APP_BASE_URL=https://traceway.mycompany.com
 ```
 
 To check, ask the server what it tells clients. `issuer` must be the address your users type:
 
 ```bash
-curl https://traceway.example.com/.well-known/oauth-authorization-server
+curl https://traceway.mycompany.com/.well-known/oauth-authorization-server
 ```
 
 ```json
 {
-  "issuer": "https://traceway.example.com",
-  "device_authorization_endpoint": "https://traceway.example.com/api/auth/device/authorize",
-  "token_endpoint": "https://traceway.example.com/api/auth/token",
+  "issuer": "https://traceway.mycompany.com",
+  "device_authorization_endpoint": "https://traceway.mycompany.com/api/auth/device/authorize",
+  "token_endpoint": "https://traceway.mycompany.com/api/auth/token",
   "scopes_supported": ["traceway:read", "traceway:write"]
 }
 ```

@@ -107,6 +107,16 @@ type setupFileKey struct {
 	serverURL bool
 }
 
+// setupPlanEnvFormat is the form the token variable takes. @tracewayapp/react-native starts only from a connection
+// string, so a React Native project gets one unless the plan says otherwise; the CLI, the shell fallback and the
+// dashboard apply the same default.
+func setupPlanEnvFormat(p *models.SetupPlanProject) string {
+	if p.EnvFormat == "" && p.Framework == "react-native" {
+		return setupEnvFormatConnectionString
+	}
+	return p.EnvFormat
+}
+
 func setupFileKeys(p *models.SetupPlanProject) []setupFileKey {
 	urlKey := p.UrlEnvVar
 	if urlKey == "" {
@@ -124,7 +134,7 @@ func setupFileKeys(p *models.SetupPlanProject) []setupFileKey {
 	var keys []setupFileKey
 	if p.EnvFile != "" && p.EnvVar != "" {
 		keys = append(keys, setupFileKey{p.EnvFile, p.EnvVar, false})
-		if p.EnvFormat != setupEnvFormatConnectionString {
+		if setupPlanEnvFormat(p) != setupEnvFormatConnectionString {
 			keys = append(keys, setupFileKey{p.EnvFile, urlKey, true})
 		}
 	}
@@ -197,6 +207,10 @@ func validateSetupPlanPayload(payload *models.SetupPlanPayload) string {
 		}
 		if p.UploadTokenEnvVar != "" && uploadFile == "" {
 			return "uploadTokenEnvVar requires an uploadTokenEnvFile or envFile"
+		}
+		// Without an envFile no file key carries the pair, but a deployment still gets both names.
+		if p.EnvFile == "" && p.UrlEnvVar != "" && p.UrlEnvVar == p.EnvVar && setupPlanEnvFormat(p) != setupEnvFormatConnectionString {
+			return "urlEnvVar must differ from envVar"
 		}
 		for _, w := range setupFileKeys(p) {
 			slot := [2]string{filepath.Clean(w.file), w.key}

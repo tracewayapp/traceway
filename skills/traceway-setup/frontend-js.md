@@ -125,7 +125,7 @@ SvelteKit (root layout, Svelte 5):
 {@render children()}
 ```
 
-Do not wrap `setupTraceway` in a `browser` check: it puts the capture functions into Svelte's context, and it does nothing on the server. Self-hosted: import `PUBLIC_TRACEWAY_URL` too and pass `baseUrl: PUBLIC_TRACEWAY_URL`. A plain Svelte app (Vite) uses `import.meta.env.VITE_TRACEWAY_TOKEN` in its root component. Svelte has no global error boundary: in Svelte 5 pass `onerror={(error) => captureSvelteError(error)}` to `<svelte:boundary>`; SvelteKit `load` and navigation errors are reported from `handleError` in `src/hooks.client.js` with the plain `captureException` export.
+Do not wrap `setupTraceway` in a `browser` check: it puts the capture functions into Svelte's context, and it does nothing on the server. Self-hosted: import `PUBLIC_TRACEWAY_URL` too and pass `baseUrl: PUBLIC_TRACEWAY_URL`. `$env/static/public` only exports variables that are defined at build time, so a build fails on the import of one that is missing: define `PUBLIC_TRACEWAY_TOKEN` in every build (CI and preview builds included), and `PUBLIC_TRACEWAY_URL` wherever it is imported. Either may be empty: an empty token leaves the SDK off with one console warning, and an empty URL means Traceway Cloud. A plain Svelte app (Vite) uses `import.meta.env.VITE_TRACEWAY_TOKEN` in its root component. Svelte has no global error boundary: in Svelte 5 pass `onerror={(error) => captureSvelteError(error)}` to `<svelte:boundary>`; SvelteKit `load` and navigation errors are reported from `handleError` in `src/hooks.client.js` with the plain `captureException` export.
 
 jQuery (with a bundler, pass the jQuery you import; a bundled jQuery is not on `window`):
 
@@ -139,7 +139,7 @@ init({
 });
 ```
 
-`init()` never throws, in any package. Without a usable token or URL (a preview build without its env variable), it logs one `console.warn` and the SDK stays off; every other function does nothing. On the server (SSR, no `window`) it does nothing, so the wrappers are safe to render there.
+`init()` never throws, in any package. Without a usable token or URL (a preview build without its env variable), it logs one `console.warn` and the SDK stays off; every other function does nothing. SvelteKit is the one place where the build itself needs the variable: a `$env/static/public` import of a name that is not defined fails the build, so define it there even when it is empty. On the server (SSR, no `window`) it does nothing, so the wrappers are safe to render there.
 
 ### Where the token comes from
 

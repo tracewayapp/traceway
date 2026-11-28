@@ -84,10 +84,7 @@ struct MyApp: App {
         let info = Bundle.main.infoDictionary
         Traceway.initialize(
             token: info?["TracewayToken"] as? String ?? "",
-            options: TracewayOptions(
-                version: "1.0.0",
-                screenCapture: true
-            )
+            options: TracewayOptions(screenCapture: true)
         )
     }
 
@@ -106,7 +103,7 @@ func application(
 ) -> Bool {
     Traceway.initialize(
         token: Bundle.main.infoDictionary?["TracewayToken"] as? String ?? "",
-        options: TracewayOptions(version: "1.0.0", screenCapture: true)
+        options: TracewayOptions(screenCapture: true)
     )
     return true
 }
@@ -426,7 +423,7 @@ Up to `fps` times a second (4 by default) the SDK walks the app's windows and tu
 - **Not pixel-exact.** Text is drawn in the browser's system font. Pictures follow the [image policy](#images). Views that draw themselves in `draw(_:)` are dashed outlines, and web views, maps, `AVPlayer` views, camera and Metal views are labeled placeholders.
 - **SwiftUI** draws most of its content without views of its own. Its colors, shapes, gradients and symbols are recorded from its layers, and UIKit controls it hosts (a `Toggle`'s switch) as UIKit. Its text is readable only through accessibility, which iOS fills in while an assistive technology such as VoiceOver runs. Otherwise each `Text` is a neutral bar where its lines are, the way masked text would be.
 - **Keyboard.** The on-screen keyboard is a neutral "Keyboard" box where the keyboard is, never its keys.
-- **Typed text.** Text typed into fields is replaced with `*` unless a rule sets `replay.maskAllInputs: false`; secure fields always show bullets.
+- **Typed text.** Text typed into fields is replaced with `*` unless a rule sets `replay.maskAllInputs: false`; secure fields always show bullets. Turning `maskAllInputs` back on drops the frames recorded without it and the clips made from them that are not uploaded yet.
 
 ### Images
 
@@ -440,6 +437,7 @@ The pictures `UIImageView`s show, and the image layers SwiftUI uses for photos, 
 
 - The lower of the setting and `replayImages` (`.always` by default) applies, in the order `off`, `wifi`, `always`, so `replayImages: .off` keeps every image a placeholder whatever a rule says. Set the setting in a rule's **Signals** tab, or in `collection` (`"replay": ["images": "always"]`).
 - `wifi` asks `NWPathMonitor`: a path that is satisfied and neither expensive nor constrained is unmetered. The connection is checked for each frame, so a picture recorded on Wi‑Fi stays in its clip.
+- A change to a stricter value (`always` to `wifi` or `off`, `wifi` to `off`) drops the frames the device holds and the clips it has not uploaded yet, and captures the screen again, so no picture recorded under the old value goes up after the change. A looser value drops nothing.
 - What is recorded is the bitmap the view shows, never a screenshot of the window, never anything under a [mask](#privacy-masks). SF Symbols and template images keep their shape either way.
 - Each picture is downscaled to its displayed size (one pixel per point): an opaque picture as JPEG at quality 0.45, at most 384 pixels a side; one with see-through pixels always as PNG (a JPEG would replay it as a black or white box), at most 192 pixels a side. One over 48 KiB is tried once at half size, then dropped.
 - A picture seen for the first time is encoded off the main thread: the frame that first shows it has the placeholder, a later one the picture. The same picture in many cells is sent once. The recorder keeps up to 128 pictures; a new one past that replaces the one shown longest ago. At most 4 MiB of pictures per session, counted with the replay budget (50 MiB and 10,000 rrweb events); past that, placeholders.
@@ -746,7 +744,7 @@ The API has the names of the [browser](/client/js-sdk), [Flutter](/client/flutte
 - **Requests**: every `URLSession` request is recorded by opentelemetry-swift's `URLSessionInstrumentation`, with no interceptor to add (Android has `TracewayOkHttpInterceptor`).
 - **Selectors name views**: classes, `accessibilityIdentifier`s, `tag`s, accessibility labels and traits (see [Naming views](#naming-views)). SwiftUI controls have no views of their own and are named for taps with `.tracewayIdentifier(_:)`, where Compose uses `testTag` and Flutter a key. iOS has no hover.
 - **SwiftUI text** shows as its words in replays only while an assistive technology runs (iOS fills in the accessibility elements then); otherwise each text is a neutral bar where it is drawn.
-- **Replay**: wireframes only (no video), as on Android.
+- **Replay**: wireframes only (no video), as on Android. `screenCapture` is off by default, as in Flutter and on Android; the browser's counterpart is `sessionRecording`, which is on by default.
 
 ### App Store privacy
 
@@ -780,7 +778,7 @@ The wireframe replay records what the screen shows (text fields are masked); mas
 - **Server**: 2.x sends OTLP to `/api/otel/v1/logs`, `/api/otel/v1/traces` and `/api/otel/v1/metrics`, polls `/api/otel/v1/opamp` and uploads replays to `/api/recordings`. There is no fallback to the 0.1.x report protocol.
 - **Requirements**: Xcode 26.4 (Swift 6.3) or later, for the OpenTelemetry Swift packages.
 - **Start**: `Traceway.start(connectionString:options:)` becomes `Traceway.initialize(token:baseUrl:options:)`: the part of the connection string before the `@` is the token, and the server is `baseUrl` when it is not Traceway Cloud. The old call still works (see [Upgrading from 2.0](#upgrading-from-20)). Without a token the SDK runs [standalone](#standalone-without-a-traceway-server).
-- **Unsent reports**: 0.1.x reports younger than 12 hours, and crashes 0.1.x recorded, are sent once over OTLP on the first 2.x start.
+- **Unsent reports** are not delivered: report, crash and fatal hang files that an earlier version wrote do not say which project they belong to, so the first 2.1 start with `persistToDisk` on deletes them without sending them. Crashes and hangs that 2.1 records are reported at the next start, to the project that recorded them.
 - **Behaviour**: exceptions are OpenTelemetry `exception` log events (`exception.type`, `exception.message`, `exception.stacktrace`), so issues regroup once after the upgrade. Breadcrumbs and session replay are new.
 - **Removed options**: `debounceMs`, `retryDelayMs`, `maxPendingExceptions`, `maxLocalFiles` and `localFileMaxAgeHours`.
 - **Renamed API**: `capture(_:)` and `capture(error:)` are `captureException(_:attributes:)`, and `capture(message:)` is `captureMessage(_:attributes:)`. `log(_:severity:)` became `log(_:level:attributes:)` with `TracewayLogLevel` (was `TracewayLogSeverity`), `sessionId` became `currentSessionId`, and `tracewayPrivacyMask` became `tracewayMask`. The old names still work and are deprecated. `flush(timeout:)` now waits at most 10 seconds by default.

@@ -1,7 +1,7 @@
 import type { Framework } from '$lib/state/projects.svelte';
 import { isJsFramework } from '$lib/state/projects.svelte';
 import { normalizeBaseUrl } from './connection-string';
-import { SDK_VERSION, getStartCode, usesStartApi } from './sdk-start';
+import { SDK_VERSION, getStartCode, usesStartApi, type StartVariant } from './sdk-start';
 
 // Legacy Go and Node.js projects (LEGACY_GO_FRAMEWORKS, LEGACY_NODE_FRAMEWORKS) get the OpenTelemetry setup
 // guide instead, so the retired Go and 1.x Node.js SDKs have no install command or snippet here.
@@ -40,11 +40,16 @@ export function getInstallCommand(framework: Framework): string {
 	}
 }
 
-// Browser and mobile projects get the start API of the 2.1 SDKs (token + baseUrl, see sdk-start.ts). React
-// Native is still on its 1.x SDK, which posts to the 1.x /api/report endpoint itself, so its snippet alone keeps
-// a connection string.
-export function getFrameworkCode(framework: Framework, token: string, backendUrl: string): string {
-	if (usesStartApi(framework)) return getStartCode(framework, backendUrl);
+// Browser and mobile projects get the start API of the 2.1 SDKs (token + baseUrl, see sdk-start.ts). The React
+// Native SDK keeps its 1.x API in 2.x and posts to the /api/report endpoint itself, so its snippet alone keeps a
+// connection string.
+export function getFrameworkCode(
+	framework: Framework,
+	token: string,
+	backendUrl: string,
+	variant?: StartVariant
+): string {
+	if (usesStartApi(framework)) return getStartCode(framework, backendUrl, variant);
 
 	const base = normalizeBaseUrl(backendUrl) ?? backendUrl;
 	const connectionString = `${token || 'YOUR_TOKEN'}@${base}/api/report`;

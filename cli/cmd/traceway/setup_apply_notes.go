@@ -28,7 +28,7 @@ type mobileServerURL struct {
 
 // writesServerURL reports whether the project received a separate URL assignment or a legacy connection string.
 func writesServerURL(p client.SetupPlanProject, writes []setupEnvWrite) bool {
-	return (len(writes) > 1 && writes[1].result != "") || (p.EnvFormat == envFormatConnectionString && len(writes) == 1)
+	return (len(writes) > 1 && writes[1].result != "") || (setupEnvFormat(p) == envFormatConnectionString && len(writes) == 1)
 }
 
 type serverReach struct {

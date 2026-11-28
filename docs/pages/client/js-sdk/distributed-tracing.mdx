@@ -9,11 +9,14 @@ import { init } from "@tracewayapp/frontend";
 
 init({
   token: import.meta.env.VITE_TRACEWAY_TOKEN,
-  propagateTraceHeaderCorsUrls: [/^https:\/\/api\.example\.com\//],
+  propagateTraceHeaderCorsUrls: [
+    "https://api.example.com/",
+    /^https:\/\/[a-z]+\.example\.org\//,
+  ],
 });
 ```
 
-Same-origin requests receive the header automatically, with no option. Cross-origin requests receive it only when their URL matches an entry of `propagateTraceHeaderCorsUrls`. A regular expression is tested against the request URL; a string must equal the whole URL, so use a regular expression for an API host. The API's CORS policy must allow `traceparent` in request headers. Axios and jQuery AJAX are covered because they use `fetch` or XMLHttpRequest; they need no additional interceptor. With `captureNetwork: false` requests are not instrumented, so no span is recorded and no header is sent.
+Same-origin requests receive the header automatically, with no option. Cross-origin requests receive it only when their URL matches an entry of `propagateTraceHeaderCorsUrls`. A string is a URL prefix, as in the apps' `propagateTraceHeaderUrls`: `"https://api.example.com/"` matches every request to that host. A regular expression is tested against the request URL. The API's CORS policy must allow `traceparent` in request headers. Axios and jQuery AJAX are covered because they use `fetch` or XMLHttpRequest; they need no additional interceptor. With `captureNetwork: false` requests are not instrumented, so no span is recorded and no header is sent.
 
 Configure your backend's OpenTelemetry instrumentation and exporter using the [OpenTelemetry guides](/client/otel). Standard trace-context extraction is all the backend needs; it replaces the custom header middleware once written for SDK 1.x.
 

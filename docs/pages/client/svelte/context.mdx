@@ -31,7 +31,7 @@ Must be called during component initialization (not in an event handler):
 
 **Initialization is synchronous:** `setupTraceway` calls the SDK's `init()` immediately, during component setup, not in `onMount`. Everything captured after that point is recorded, including captures in a child component's setup code that runs before `onMount`. There is no pre-init buffer, so a capture made before `setupTraceway` runs is dropped.
 
-The SDK starts once per page. A later `setupTraceway` call (a nested layout, a remounted root) sets the context again but does not restart the SDK or apply its options. Only after `await shutdown()` does the next call start it again. `setupTraceway` never throws: a build without its token renders the app as usual, with the SDK off and one console warning that says what is missing.
+The SDK starts once per page. A later `setupTraceway` call (a nested layout, a remounted root) sets the context again but does not restart the SDK or apply its options. Only after `await shutdown()` does the next call start it again. `setupTraceway` never throws: with an empty or missing token the app renders as usual, with the SDK off and one console warning that says what is missing. In SvelteKit the variable must still be defined at build time (see [Environment Variables](#environment-variables)).
 
 ### Options
 
@@ -341,7 +341,7 @@ PUBLIC_TRACEWAY_TOKEN=YOUR_TOKEN
 {@render children()}
 ```
 
-For a self-hosted server, add `PUBLIC_TRACEWAY_URL` with its address to `.env`, import it next to the token and pass it as `baseUrl`. `$env/static/public` only exports variables that are set at build time, so import it only where it is defined.
+For a self-hosted server, add `PUBLIC_TRACEWAY_URL` with its address to `.env`, import it next to the token and pass it as `baseUrl`. `$env/static/public` only exports variables that are defined at build time, so a build fails on the import of one that is missing. Define `PUBLIC_TRACEWAY_TOKEN` in every build, and `PUBLIC_TRACEWAY_URL` wherever it is imported. Either may be empty: an empty token leaves the SDK off with one console warning, and an empty URL means Traceway Cloud.
 
 ## Best Practices
 

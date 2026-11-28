@@ -117,6 +117,16 @@ describe('rule dialog', () => {
 		expect(body.name).toBe('Quiet logs everywhere');
 		expect(body.settings).toEqual(rule.settings);
 	});
+
+	it('says that video replay on Flutter needs the traceway_video add-on', async () => {
+		state.framework = 'flutter';
+		render(RuleDialog, { open: true, rule: null, onSaved: vi.fn() });
+		await fireEvent.click(tab(/^Signals/));
+
+		const hint = screen.getByText('Replay type').nextElementSibling?.textContent ?? '';
+		expect(hint).toContain('traceway_video');
+		expect(hint).toContain('wireframe');
+	});
 });
 
 describe('log-line trigger builder', () => {

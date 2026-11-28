@@ -37,7 +37,9 @@ PUBLIC_TRACEWAY_TOKEN=YOUR_TOKEN
 
 The project's **Connection** page in Traceway shows the token. The SDK sends to Traceway Cloud; for a self-hosted server, also pass its address as `baseUrl` (`PUBLIC_TRACEWAY_URL` from `$env/static/public`). Outside SvelteKit, call `setupTraceway` in the root component with `import.meta.env.VITE_TRACEWAY_TOKEN`.
 
-`setupTraceway` runs `init()` synchronously, which installs the handlers for uncaught errors and unhandled rejections, instruments `console.*`, `fetch` / XHR, the History API and clicks, and starts the replay recorder. It never throws: a build without its token renders the app as usual, with the SDK off and one console warning that says what is missing.
+`setupTraceway` runs `init()` synchronously, which installs the handlers for uncaught errors and unhandled rejections, instruments `console.*`, `fetch` / XHR, the History API and clicks, and starts the replay recorder. It never throws: with an empty or missing token the app renders as usual, with the SDK off and one console warning that says what is missing.
+
+In SvelteKit the variable itself must be defined when the app is built: `$env/static/public` only exports the variables that exist then, so a build without `PUBLIC_TRACEWAY_TOKEN` fails on the import. A build that should run without Traceway (CI, a preview) defines it empty, `PUBLIC_TRACEWAY_TOKEN=`.
 
 Do not wrap it in an `if (browser)` guard. `setupTraceway` is what puts the capture functions into Svelte's context; if it is skipped during SSR, `getTraceway()` falls back to the module's own capture functions, which do nothing on the server. The call is safe there: without `window` the SDK never starts, so it installs no instrumentation, opens no session and sends nothing. Errors thrown on the server are not reported by this package.
 

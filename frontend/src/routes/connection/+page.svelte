@@ -33,8 +33,9 @@
 		getInstallLanguage,
 		getFrameworkLabel
 	} from '$lib/utils/framework-code';
-	import { getStartConfigFiles } from '$lib/utils/sdk-start';
+	import { getStartConfigFiles, getStartVariants, type StartVariant } from '$lib/utils/sdk-start';
 	import StartConfigFiles from '$lib/components/setup/start-config-files.svelte';
+	import StartVariantTabs from '$lib/components/setup/start-variant-tabs.svelte';
 	import { getSetupMode } from '$lib/utils/setup-storage';
 	import SetupModeTabs from '$lib/components/setup/setup-mode-tabs.svelte';
 	import AiSetupSteps from '$lib/components/setup/ai-setup-steps.svelte';
@@ -47,6 +48,10 @@
 
 	let projectWithToken = $derived(projectsState.currentProject);
 	let setupMode = $state(getSetupMode());
+	let startVariant = $state<StartVariant>('vite');
+	const startVariants = $derived(
+		projectWithToken ? getStartVariants(projectWithToken.framework) : []
+	);
 
 	const isOtel = $derived(projectWithToken ? isOtelFramework(projectWithToken.framework) : false);
 	const isOtelGeneric = $derived(
@@ -102,7 +107,8 @@ service:
 			? getFrameworkCode(
 					projectWithToken.framework,
 					projectWithToken.token,
-					projectWithToken.backendUrl
+					projectWithToken.backendUrl,
+					startVariant
 				)
 			: ''
 	);
@@ -116,7 +122,8 @@ service:
 			? getStartConfigFiles(
 					projectWithToken.framework,
 					projectWithToken.token,
-					projectWithToken.backendUrl
+					projectWithToken.backendUrl,
+					startVariant
 				)
 			: []
 	);
@@ -240,11 +247,15 @@ service:
 						Add Traceway to your application with just a few lines of code.
 					</CardDescription>
 					{#if projectWithToken.framework === 'react-native'}
-						<p class="text-sm text-muted-foreground">A 2.x React Native SDK is coming.</p>
+						<p class="text-sm text-muted-foreground">
+							The React Native SDK keeps its 1.x API in 2.x: it starts from a connection string, not
+							from a token and a URL.
+						</p>
 					{/if}
 				</CardHeader>
 				<CardContent>
 					<div class="space-y-4">
+						<StartVariantTabs variants={startVariants} bind:value={startVariant} />
 						<StartConfigFiles files={startConfig} />
 						<div>
 							{#if startConfig.length > 0}

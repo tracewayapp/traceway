@@ -43,6 +43,24 @@ describe('credentialValue', () => {
 			'tok@https://corp.example/traceway/api/report'
 		);
 	});
+
+	it('is a connection string for React Native, whose SDK starts from nothing else', () => {
+		const reactNative: SetupPlanProject = {
+			name: 'App',
+			framework: 'react-native',
+			envVar: 'EXPO_PUBLIC_TRACEWAY_CONNECTION_STRING'
+		};
+		expect(credentialValue(reactNative, project('https://cloud.tracewayapp.com'))).toBe(
+			'tok@https://cloud.tracewayapp.com/api/report'
+		);
+		expect(credentialValue(reactNative, project('https://traceway.acme.test/'))).toBe(
+			'tok@https://traceway.acme.test/api/report'
+		);
+		expect(urlEnvVar(reactNative, 'https://traceway.acme.test')).toBeNull();
+		expect(
+			credentialValue({ ...reactNative, envFormat: 'token' }, project('https://traceway.acme.test'))
+		).toBe('tok');
+	});
 });
 
 describe('urlEnvVar', () => {
